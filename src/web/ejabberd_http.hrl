@@ -47,8 +47,5 @@
 	    path,						% the websocket GET request path
 	    headers,						% [{Tag, Val}]
 	    local_path,
-	    q,
-	    protocol,
-	    acceptable_origins = [],
-	    auth_module
+	    q
     }).

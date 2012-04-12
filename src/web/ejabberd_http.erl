@@ -352,42 +352,16 @@ get_transfer_protocol(SockMod, HostPort) ->
 %% matches the requested URL path, and pass control to it.  If none is
 %% found, answer with HTTP 404.
 
-process([], _) ->
+process([], _, _, _) ->
     ejabberd_web:error(not_found);
-process(Handlers, #ws{} = Ws)->
-  [{HandlerPathPrefix, HandlerModule, HandlerOpts} | HandlersLeft] = Handlers,
-  case (lists:prefix(HandlerPathPrefix, Ws#ws.path) or
-         (HandlerPathPrefix==Ws#ws.path)) of
-	true ->
-      LocalPath = lists:nthtail(length(HandlerPathPrefix), Ws#ws.path),
-      ejabberd_hooks:run(ws_debug, [{LocalPath, Ws}]),
-      Protocol = case lists:keysearch(protocol, 1, HandlerOpts) of
-         {value, {protocol, P}} -> P;
-         false -> undefined
-       end,
-      Origins =  case lists:keysearch(origins, 1, HandlerOpts) of
-          {value, {origins, O}} -> O;
-          false -> []
+process(Handlers, Request, Socket, SockMod) ->
+    {HandlerPathPrefix, HandlerModule, HandlerOpts, HandlersLeft} =
+        case Handlers of
+            [{Pfx, Mod} | Tail] ->
+                {Pfx, Mod, [], Tail};
+            [{Pfx, Mod, Opts} | Tail] ->
+                {Pfx, Mod, Opts, Tail}
         end,
-      Auth =  case lists:keysearch(auth, 1, HandlerOpts) of
-         {value, {auth, A}} -> A;
-         false -> undefined
-       end,
-      WS2 = Ws#ws{local_path = LocalPath,
-                  protocol=Protocol,
-                  acceptable_origins=Origins,
-                  auth_module=Auth},
-      case ejabberd_websocket:is_acceptable(WS2) of
-        true ->
-          ejabberd_websocket:connect(WS2, HandlerModule);
-        false ->
-          process(HandlersLeft, Ws)
-      end;
-	false ->
-	    process(HandlersLeft, Ws)
-    end;
-process(Handlers, Request) ->
-    [{HandlerPathPrefix, HandlerModule} | HandlersLeft] = Handlers,
 
     case (lists:prefix(HandlerPathPrefix, Request#request.path) or
          (HandlerPathPrefix==Request#request.path)) of
@@ -398,11 +372,17 @@ process(Handlers, Request) ->
             %% requested path is "/test/foo/bar", the local path is
             %% ["foo", "bar"]
             LocalPath = lists:nthtail(length(HandlerPathPrefix), Request#request.path),
-  	        R = HandlerModule:process(LocalPath, Request),
+            code:ensure_loaded(HandlerModule),
+            R = case erlang:function_exported(HandlerModule, socket_handoff, 5) of
+                    false ->
+                        HandlerModule:process(LocalPath, Request);
+                    _ ->
+                        HandlerModule:socket_handoff(LocalPath, Request, Socket, SockMod, HandlerOpts)
+                end,
             ejabberd_hooks:run(http_request_debug, [{LocalPath, Request}]),
             R;
 	false ->
-	    process(HandlersLeft, Request)
+	    process(HandlersLeft, Request, Socket, SockMod)
     end.
 
 extract_path_query(#state{request_method = Method,
@@ -454,7 +434,6 @@ extract_path_query(_State) ->
     false.
 
 process_request(#state{request_method = Method,
-		       request_path = {abs_path, Path},
 		       request_auth = Auth,
 		       request_lang = Lang,
 		       sockmod = SockMod,
@@ -478,51 +457,32 @@ process_request(#state{request_method = Method,
 		end,
 	    XFF = proplists:get_value('X-Forwarded-For', RequestHeaders, []),
 	    IP = analyze_ip_xff(IPHere, XFF, Host),
-	    case Method=:='GET' andalso ejabberd_websocket:check(Path, RequestHeaders) of
-		{true, VSN} ->
-		    {_, Origin} = case lists:keyfind("Sec-Websocket-Origin", 1, RequestHeaders) of
-				      false -> lists:keyfind("Origin", 1, RequestHeaders);
-				      Value -> Value
-				  end,
-		    Ws = #ws{socket = Socket,
-			     sockmod = SockMod,
-			     ws_autoexit = false,
-			     ip = IP,
-			     path = LPath,
-			     q = LQuery,
-			     vsn = VSN,
-			     host = Host,
-			     port = Port,
-			     origin = Origin,
-			     headers = RequestHeaders
-			    },
-		    process(WebSocketHandlers, Ws);
-		false ->
-		    Request = #request{method = Method,
-				       path = LPath,
-				       q = LQuery,
-				       auth = Auth,
-				       data = Data,
-				       lang = Lang,
-				       host = Host,
-				       port = Port,
-				       tp = TP,
-				       headers = RequestHeaders,
-				       ip = IP},
-		    case process(RequestHandlers, Request) of
-			El when element(1, El) == xmlelement ->
-			    make_xhtml_output(State, 200, [], El);
-			{Status, Headers, El} when
-                              element(1, El) == xmlelement ->
-			    make_xhtml_output(State, Status, Headers, El);
-			Output when is_list(Output) or is_binary(Output) ->
-			    make_text_output(State, 200, [], Output);
-			{Status, Headers, Output} when is_list(Output) or is_binary(Output) ->
-			    make_text_output(State, Status, Headers, Output);
-			{Status, Reason, Headers, Output} when is_list(Output) or is_binary(Output) ->
-			    make_text_output(State, Status, Reason, Headers, Output)
-		    end
-	    end
+            Request = #request{method = Method,
+                               path = LPath,
+                               q = LQuery,
+                               auth = Auth,
+                               data = Data,
+                               lang = Lang,
+                               host = Host,
+                               port = Port,
+                               tp = TP,
+                               headers = RequestHeaders,
+                               ip = IP},
+            case process(RequestHandlers ++ WebSocketHandlers, Request, Socket, SockMod) of
+                El when element(1, El) == xmlelement ->
+                    make_xhtml_output(State, 200, [], El);
+                {Status, Headers, El} when
+                      element(1, El) == xmlelement ->
+                    make_xhtml_output(State, Status, Headers, El);
+                Output when is_list(Output) or is_binary(Output) ->
+                    make_text_output(State, 200, [], Output);
+                {Status, Headers, Output} when is_list(Output) or is_binary(Output) ->
+                    make_text_output(State, Status, Headers, Output);
+                {Status, Reason, Headers, Output} when is_list(Output) or is_binary(Output) ->
+                    make_text_output(State, Status, Reason, Headers, Output);
+                _ ->
+                    none
+            end
     end;
 
 process_request(State) ->

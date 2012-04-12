@@ -8,12 +8,12 @@
 %%% (http://github.com/ostinelli/misultin/blob/master/src/misultin_websocket.erl)
 %%% Copyright (C) 2010, Roberto Ostinelli <roberto@ostinelli.net>, Joe Armstrong.
 %%% All rights reserved.
-%%% 
+%%%
 %%% Code portions from Joe Armstrong have been originally taken under MIT license at the address:
 %%% <http://armstrongonsoftware.blogspot.com/2009/12/comet-is-dead-long-live-websockets.html>
 %%%
 %%% BSD License
-%%% 
+%%%
 %%% Redistribution and use in source and binary forms, with or without modification, are permitted provided
 %%% that the following conditions are met:
 %%%
@@ -38,10 +38,22 @@
 
 -module (ejabberd_websocket).
 -author('ecestari@process-one.net').
--export([connect/2, check/2, is_acceptable/1]).
+-export([connect/2, check/2, socket_handoff/6]).
 -include("ejabberd.hrl").
 -include("jlib.hrl").
 -include("ejabberd_http.hrl").
+
+-define(CT_XML, {"Content-Type", "text/xml; charset=utf-8"}).
+-define(CT_PLAIN, {"Content-Type", "text/plain"}).
+
+-define(AC_ALLOW_ORIGIN, {"Access-Control-Allow-Origin", "*"}).
+-define(AC_ALLOW_METHODS, {"Access-Control-Allow-Methods", "GET, OPTIONS"}).
+-define(AC_ALLOW_HEADERS, {"Access-Control-Allow-Headers", "Content-Type"}).
+-define(AC_MAX_AGE, {"Access-Control-Max-Age", "86400"}).
+
+-define(OPTIONS_HEADER, [?CT_PLAIN, ?AC_ALLOW_ORIGIN, ?AC_ALLOW_METHODS,
+                          ?AC_ALLOW_HEADERS, ?AC_MAX_AGE]).
+-define(HEADER, [?CT_XML, ?AC_ALLOW_ORIGIN, ?AC_ALLOW_HEADERS]).
 
 check(_Path, Headers)->
 	% set supported websocket protocols, order does matter
@@ -52,23 +64,102 @@ check(_Path, Headers)->
 % Checks if websocket can be access by client
 % If origins are set in configuration, check if it belongs
 % If origins not set, access is open.
-is_acceptable(#ws{origin=Origin, protocol=Protocol, 
-                  headers = Headers, acceptable_origins = Origins, auth_module=undefined})->
+is_acceptable(_LocalPath, Origin, _IP, _Q, Headers, Protocol, Origins, undefined) ->
   ClientProtocol = find_subprotocol(Headers),
   case {(Origins == []) or lists:member(Origin, Origins), ClientProtocol, Protocol } of
-    {false, _, _} -> 
+    {false, _, _} ->
       ?INFO_MSG("client does not come from authorized origin", []),
       false;
-    {_, false, _} -> 
+    {_, false, _} ->
       true;
     {_, P, P} ->
       true;
-    _ = E-> 
+    _ = E->
      ?INFO_MSG("Wrong protocol requested : ~p", [E]),
     false
   end;
-is_acceptable(#ws{local_path=LocalPath, origin=Origin, ip=IP, q=Q, protocol=Protocol, headers = Headers,auth_module=Module})->
-  Module:is_acceptable(LocalPath, Q, Origin, Protocol, IP, Headers).   
+is_acceptable(LocalPath, Origin, IP, Q, Headers, Protocol, _Origins, AuthModule) ->
+  AuthModule:is_acceptable(LocalPath, Q, Origin, Protocol, IP, Headers).
+
+socket_handoff(LocalPath, #request{method = 'GET', ip = IP, q = Q, path = Path,
+                                   headers = Headers, host = Host, port = Port},
+               Socket, SockMod, Opts, HandlerModule) ->
+    {_, Origin} = case lists:keyfind("Sec-Websocket-Origin", 1, Headers) of
+                      false ->
+                          case lists:keyfind("Origin", 1, Headers) of
+                              false -> {value, undefined};
+                              Value2 -> Value2
+                          end;
+                      Value -> Value
+                  end,
+    case Origin of
+        undefined ->
+            {200, ?HEADER, get_human_html_xmlel()};
+        _ ->
+            Protocol = case lists:keysearch(protocol, 1, Opts) of
+                           {value, {protocol, P}} -> P;
+                           false -> undefined
+                       end,
+            Origins =  case lists:keysearch(origins, 1, Opts) of
+                           {value, {origins, O}} -> O;
+                           false -> []
+                       end,
+            Auth =  case lists:keysearch(auth, 1, Opts) of
+                        {value, {auth, A}} -> A;
+                        false -> undefined
+                    end,
+            case is_acceptable(LocalPath, Origin, IP, Q, Headers, Protocol, Origins, Auth) of
+                true ->
+                    case check(LocalPath, Headers) of
+                        {true, Vsn} ->
+                            WS = #ws{vsn = Vsn,
+                                     socket = Socket,
+                                     sockmod = SockMod,
+                                     ws_autoexit = false,
+                                     ip = IP,
+                                     origin = Origin,
+                                     q = Q,
+                                     host = Host,
+                                     port = Port,
+                                     path = Path,
+                                     headers = Headers,
+                                     local_path = LocalPath},
+
+                            connect(WS, HandlerModule);
+                        _ ->
+                            {200, ?HEADER, get_human_html_xmlel()}
+                    end;
+                _ ->
+                    {403, ?HEADER, {xmlelement, "h1", [],
+                                    [{xmlcdata, "403 Forbiden"}]}}
+            end
+    end;
+socket_handoff(_, #request{method = 'OPTIONS'}, _, _, _, _) ->
+    {200, ?OPTIONS_HEADER, []};
+socket_handoff(_, #request{method = 'HEAD'}, _, _, _, _) ->
+    {200, ?HEADER, []};
+socket_handoff(_, _, _, _, _, _) ->
+    {400, ?HEADER, {xmlelement, "h1", [],
+                    [{xmlcdata, "400 Bad Request"}]}}.
+
+get_human_html_xmlel() ->
+    Heading = "ejabberd " ++ atom_to_list(?MODULE),
+    {xmlelement, "html", [{"xmlns", "http://www.w3.org/1999/xhtml"}],
+     [{xmlelement, "head", [],
+       [{xmlelement, "title", [], [{xmlcdata, Heading}]}]},
+      {xmlelement, "body", [],
+       [{xmlelement, "h1", [], [{xmlcdata, Heading}]},
+        {xmlelement, "p", [],
+         [{xmlcdata, "An implementation of "},
+          {xmlelement, "a",
+           [{"href", "http://tools.ietf.org/html/rfc6455"}],
+           [{xmlcdata, "WebSocket protocol"}]}]},
+        {xmlelement, "p", [],
+         [{xmlcdata, "This web page is only informative. "
+           "To use WebSocket connection you need a client that supports it."}
+         ]}
+       ]}]}.
+
 
 % Connect and handshake with Websocket.
 connect(#ws{vsn = Vsn, socket = Socket, q=Q,origin=Origin, host=Host, port=Port, sockmod = SockMod, path = Path, headers = Headers, ws_autoexit = WsAutoExit} = Ws, WsLoop) ->
@@ -92,7 +183,7 @@ connect(#ws{vsn = Vsn, socket = Socket, q=Q,origin=Origin, host=Host, port=Port,
   	% start listening for incoming data
         ws_loop(Vsn, none, Socket, WsHandleLoopPid, SockMod, WsAutoExit).
 
-	
+
 check_websockets([], _Headers) -> false;
 check_websockets([Vsn|T], Headers) ->
 	case check_websocket(Vsn, Headers) of
@@ -141,7 +232,7 @@ check_websocket({'draft-hybi', 8} = Vsn, Headers) ->
 	% check for headers existance
 	case check_headers(Headers, RequiredHeaders) of
 		true -> {true, Vsn};
-		RemainingHeaders ->
+		_RemainingHeaders ->
 			%%?INFO_MSG("not protocol ~p, remaining headers: ~p", [Vsn, RemainingHeaders]),
 			false
 	end;
@@ -155,7 +246,7 @@ check_websocket({'draft-hybi', 13} = Vsn, Headers) ->
 	% check for headers existance
 	case check_headers(Headers, RequiredHeaders) of
 		true -> {true, Vsn};
-		RemainingHeaders ->
+		_RemainingHeaders ->
 			%%?INFO_MSG("not protocol ~p, remaining headers: ~p", [Vsn, RemainingHeaders]),
 			false
 	end;
@@ -174,7 +265,7 @@ check_headers(Headers, RequiredHeaders) ->
 					ignore -> false; % ignore value -> ok, remove from list
 					HVal -> false;	 % expected val -> ok, remove from list
 					_ -> true		 % val is different, keep in list
-				end		
+				end
 		end
 	end,
 	case lists:filter(F, RequiredHeaders) of
@@ -296,7 +387,6 @@ find_subprotocol(Headers) ->
     end.
 
 	
-	
 ws_loop(Vsn, HandlerState, Socket, WsHandleLoopPid, SocketMode, WsAutoExit) ->
 	receive
                {tcp, Socket, Data} ->
@@ -305,7 +395,7 @@ ws_loop(Vsn, HandlerState, Socket, WsHandleLoopPid, SocketMode, WsAutoExit) ->
                    lists:foreach(fun(Pkt) ->
                                         SocketMode:send(Socket, Pkt)
                                 end, ToSend),
-                   ws_loop(Vsn, NewHandlerState, Socket, WsHandleLoopPid, SocketMode, WsAutoExit);                
+                   ws_loop(Vsn, NewHandlerState, Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
 		{tcp_closed, Socket} ->
 			?DEBUG("tcp connection was closed, exit", []),
 			% close websocket and custom controlling loop
@@ -436,7 +526,7 @@ process_hybi_8(#hybi_8_state{unprocessed=none, unmasked=UnmaskedPre, opcode=Opco
                     Frame = encode_frame({'draft-hybi', 8}, <<CloseCode:16/integer-big>>, 8),
                     {State3#hybi_8_state{unmasked_msg=UnmaskedMsg}, Recv, [Frame|Send]};
                 _ ->
-                    {State3#hybi_8_state{unmasked_msg=UnmaskedMsg}, Recv, Send}                     
+                    {State3#hybi_8_state{unmasked_msg=UnmaskedMsg}, Recv, Send}
             end;
         _ ->
             process_hybi_8(#hybi_8_state{unmasked_msg=[UnmaskedMsg, UnmaskedPre, Unmasked]}, Unprocessed)
