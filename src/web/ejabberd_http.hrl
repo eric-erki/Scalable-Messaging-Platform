@@ -47,5 +47,6 @@
 	    path,						% the websocket GET request path
 	    headers,						% [{Tag, Val}]
 	    local_path,
-	    q
+	    q,
+	    buf
     }).

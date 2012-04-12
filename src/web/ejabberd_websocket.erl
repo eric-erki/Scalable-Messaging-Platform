@@ -38,7 +38,7 @@
 
 -module (ejabberd_websocket).
 -author('ecestari@process-one.net').
--export([connect/2, check/2, socket_handoff/6]).
+-export([connect/2, check/2, socket_handoff/7]).
 -include("ejabberd.hrl").
 -include("jlib.hrl").
 -include("ejabberd_http.hrl").
@@ -83,7 +83,7 @@ is_acceptable(LocalPath, Origin, IP, Q, Headers, Protocol, _Origins, AuthModule)
 
 socket_handoff(LocalPath, #request{method = 'GET', ip = IP, q = Q, path = Path,
                                    headers = Headers, host = Host, port = Port},
-               Socket, SockMod, Opts, HandlerModule) ->
+               Socket, SockMod, Buf, Opts, HandlerModule) ->
     {_, Origin} = case lists:keyfind("Sec-Websocket-Origin", 1, Headers) of
                       false ->
                           case lists:keyfind("Origin", 1, Headers) of
@@ -123,7 +123,8 @@ socket_handoff(LocalPath, #request{method = 'GET', ip = IP, q = Q, path = Path,
                                      port = Port,
                                      path = Path,
                                      headers = Headers,
-                                     local_path = LocalPath},
+                                     local_path = LocalPath,
+                                     buf = Buf},
 
                             connect(WS, HandlerModule);
                         _ ->
@@ -134,11 +135,11 @@ socket_handoff(LocalPath, #request{method = 'GET', ip = IP, q = Q, path = Path,
                                     [{xmlcdata, "403 Forbiden"}]}}
             end
     end;
-socket_handoff(_, #request{method = 'OPTIONS'}, _, _, _, _) ->
+socket_handoff(_, #request{method = 'OPTIONS'}, _, _, _, _, _) ->
     {200, ?OPTIONS_HEADER, []};
-socket_handoff(_, #request{method = 'HEAD'}, _, _, _, _) ->
+socket_handoff(_, #request{method = 'HEAD'}, _, _, _, _, _) ->
     {200, ?HEADER, []};
-socket_handoff(_, _, _, _, _, _) ->
+socket_handoff(_, _, _, _, _, _, _) ->
     {400, ?HEADER, {xmlelement, "h1", [],
                     [{xmlcdata, "400 Bad Request"}]}}.
 
@@ -162,26 +163,35 @@ get_human_html_xmlel() ->
 
 
 % Connect and handshake with Websocket.
-connect(#ws{vsn = Vsn, socket = Socket, q=Q,origin=Origin, host=Host, port=Port, sockmod = SockMod, path = Path, headers = Headers, ws_autoexit = WsAutoExit} = Ws, WsLoop) ->
-  	% build handshake
-  	HandshakeServer = handshake(Vsn, Socket,SockMod, Headers, {Path, Q, Origin, Host, Port}),
-  	% send handshake back
-  	SockMod:send(Socket, HandshakeServer),
-  	?DEBUG("Sent handshake response : ~p", [HandshakeServer]),
-  	Ws0 = ejabberd_ws:new(Ws#ws{origin = Origin, host = Host}, self()),
-  	%?DEBUG("Ws0 : ~p",[Ws0]),
-  	% add data to ws record and spawn controlling process
-  	{ok, WsHandleLoopPid} = WsLoop:start_link(Ws0),
-  	erlang:monitor(process, WsHandleLoopPid),
-  	% set opts
-  	case SockMod of
-  	  gen_tcp ->
+connect(#ws{vsn = Vsn, socket = Socket, sockmod = SockMod, origin = Origin,
+            host = Host, ws_autoexit = WsAutoExit} = Ws, WsLoop) ->
+    % build handshake
+    {NewWs, HandshakeResponse} = handshake(Ws),
+    % send handshake back
+    SockMod:send(Socket, HandshakeResponse),
+    ?DEBUG("Sent handshake response : ~p", [HandshakeResponse]),
+    Ws0 = ejabberd_ws:new(NewWs#ws{origin = Origin, host = Host}, self()),
+    %?DEBUG("Ws0 : ~p",[Ws0]),
+    % add data to ws record and spawn controlling process
+    {ok, WsHandleLoopPid} = WsLoop:start_link(Ws0),
+    erlang:monitor(process, WsHandleLoopPid),
+
+    case NewWs#ws.buf of
+        <<>> ->
+            ok;
+        Data ->
+            self() ! {raw, Socket, Data}
+    end,
+
+    % set opts
+    case SockMod of
+        gen_tcp ->
   	    inet:setopts(Socket, [{packet, 0}, {active, true}]);
-  	  _ ->
+        _ ->
   	    SockMod:setopts(Socket, [{packet, 0}, {active, true}])
-  	end,
-  	% start listening for incoming data
-        ws_loop(Vsn, none, Socket, WsHandleLoopPid, SockMod, WsAutoExit).
+    end,
+    % start listening for incoming data
+    ws_loop(Vsn, none, Socket, WsHandleLoopPid, SockMod, WsAutoExit).
 
 
 check_websockets([], _Headers) -> false;
@@ -246,8 +256,8 @@ check_websocket({'draft-hybi', 13} = Vsn, Headers) ->
 	% check for headers existance
 	case check_headers(Headers, RequiredHeaders) of
 		true -> {true, Vsn};
-		_RemainingHeaders ->
-			%%?INFO_MSG("not protocol ~p, remaining headers: ~p", [Vsn, RemainingHeaders]),
+		RemainingHeaders ->
+			?INFO_MSG("not protocol ~p, remaining headers: ~p", [Vsn, RemainingHeaders]),
 			false
 	end;
 check_websocket(_Vsn, _Headers) -> false. % not implemented
@@ -256,109 +266,129 @@ check_websocket(_Vsn, _Headers) -> false. % not implemented
 % Description: Check if headers correspond to headers requirements.
 check_headers(Headers, RequiredHeaders) ->
 	F = fun({Tag, Val}) ->
-		% see if the required Tag is in the Headers
-        case lists:keyfind(Tag, 1, Headers) of
+                    % see if the required Tag is in the Headers
+                    case lists:keyfind(Tag, 1, Headers) of
 			false -> true; % header not found, keep in list
 			{_, HVal} ->
-			  %?DEBUG("check: ~p", [{Tag, HVal,Val }]),
-				case Val of
-					ignore -> false; % ignore value -> ok, remove from list
-					HVal -> false;	 % expected val -> ok, remove from list
-					_ -> true		 % val is different, keep in list
-				end
-		end
-	end,
-	case lists:filter(F, RequiredHeaders) of
-		[] -> true;
-		MissingHeaders -> MissingHeaders
-	end.
+                            %?DEBUG("check: ~p", [{Tag, HVal,Val }]),
+                            case Val of
+                                ignore -> false; % ignore value -> ok, remove from list
+                                HVal -> false;	 % expected val -> ok, remove from list
+                                _ -> true	 % val is different, keep in list
+                            end
+                    end
+            end,
+    case lists:filter(F, RequiredHeaders) of
+        [] -> true;
+        MissingHeaders -> MissingHeaders
+    end.
+
+recv_data(#ws{buf = Buf} = Ws, Length, _Timeout) when size(Buf) >= Length->
+    <<Data:Length, Tail/binary>> = Buf,
+    {Ws#ws{buf = Tail}, Data};
+recv_data(#ws{buf = Buf, socket = Sock, sockmod = SockMod} = Ws, Length, Timeout) ->
+    case SockMod of
+        gen_tcp ->
+	    inet:setopts(Sock, [{packet, raw}, {active, false}]);
+        _ ->
+	    SockMod:setopts(Sock, [{packet, raw}, {active, false}])
+    end,
+    Data = case SockMod:recv(Sock, Length - size(Buf), Timeout) of
+               {ok, Bin} -> <<Buf/binary, Bin/binary>>;
+               {error, timeout} ->
+                   ?WARNING_MSG("timeout in reading websocket body", []),
+                   <<>>;
+               _Other ->
+                   ?ERROR_MSG("tcp error treating data: ~p", [_Other]),
+                   <<>>
+           end,
+    {Ws#ws{buf = <<>>}, Data}.
+
 
 % Function: List
 % Description: Builds the server handshake response.
-handshake({'draft-hixie', 0}, Sock,SocketMod, Headers, {Path, Q,Origin, Host, Port}) ->
-	% build data
-	{_, Key1} = lists:keyfind("Sec-Websocket-Key1",1, Headers),
-	{_, Key2} = lists:keyfind("Sec-Websocket-Key2",1, Headers),
-	HostPort = case lists:keyfind('Host', 1, Headers) of
-		{_, Value} -> Value;
+handshake(#ws{vsn = {'draft-hixie', 0}, headers = Headers, path = Path,
+              q = Q, origin = Origin, host = Host, port = Port,
+              sockmod = SockMod} = State) ->
+
+    {_, Key1} = lists:keyfind("Sec-Websocket-Key1",1, Headers),
+    {_, Key2} = lists:keyfind("Sec-Websocket-Key2",1, Headers),
+    HostPort = case lists:keyfind('Host', 1, Headers) of
+                   {_, Value} -> Value;
 		_ -> string:join([Host, integer_to_list(Port)],":")
-	end,
-	% handshake needs body of the request, still need to read it [TODO: default recv timeout hard set, will be exported when WS protocol is final]
-	case SocketMod of
-	  gen_tcp ->
-	    inet:setopts(Sock, [{packet, raw}, {active, false}]);
-	  _ ->
-	    SocketMod:setopts(Sock, [{packet, raw}, {active, false}])
-	end,
-	Body = case SocketMod:recv(Sock, 8, 30*1000) of
-		{ok, Bin} -> Bin;
-		{error, timeout} ->
-			?WARNING_MSG("timeout in reading websocket body", []),
-			<<>>; 
-		_Other ->
-			?ERROR_MSG("tcp error treating data: ~p", [_Other]),
-			<<>>
-	end,
-	QParams = lists:map(
-	        fun({nokey,[]})->
-	            none;
-	           ({K, V})->
-	              K ++ "=" ++ V
-	    end, Q),
-	QString = case QParams of
-	    [none]-> "";
-	    QParams-> "?" ++ string:join(QParams, "&")
-	end,       
-	%?DEBUG("got content in body of websocket request: ~p, ~p", [Body,string:join([Host, Path],"/")]),	
+               end,
+    {NewState, Body} = recv_data(State, 8, 30*1000),
+
+    QParams = lists:map(
+                fun({nokey,[]})->
+                        none;
+                   ({K, V})->
+                        K ++ "=" ++ V
+                end, Q),
+    QString = case QParams of
+                  [none]-> "";
+                  QParams-> "?" ++ string:join(QParams, "&")
+              end,
+    Protocol = case SockMod of
+                   gen_tcp -> "ws://";
+                   _ -> "wss://"
+               end,
+    %?DEBUG("got content in body of websocket request: ~p, ~p", [Body,string:join([Host, Path],"/")]),
 	SubProtocolHeader = case find_subprotocol(Headers) of
                             false ->
                                 [];
                             V ->
                                 ["Sec-Websocket-Protocol:", V, "\r\n"]
                         end,
-	% prepare handhsake response
-	["HTTP/1.1 101 WebSocket Protocol Handshake\r\n",
-		"Upgrade: WebSocket\r\n",
-		"Connection: Upgrade\r\n",
-		"Sec-WebSocket-Origin: ", Origin, "\r\n",
+    % prepare handhsake response
+    {NewState, ["HTTP/1.1 101 WebSocket Protocol Handshake\r\n",
+                "Upgrade: WebSocket\r\n",
+                "Connection: Upgrade\r\n",
+                "Sec-WebSocket-Origin: ", Origin, "\r\n",
 		SubProtocolHeader,
-		"Sec-WebSocket-Location: ws://", HostPort, "/", string:join(Path,"/"),
-		QString, "\r\n\r\n",
-		build_challenge({'draft-hixie', 0}, {Key1, Key2, Body})
-	];
-handshake({'draft-hixie', 68}, _Sock,_SocketMod, Headers, {Path, Origin, Host, Port}) ->
-	HostPort = case lists:keyfind('Host', 1, Headers) of
-		{_, Value} -> Value;
-		_ -> string:join([Host, integer_to_list(Port)],":")
-	end,
+                "Sec-WebSocket-Location: ", Protocol, HostPort, "/", string:join(Path,"/"),
+                QString, "\r\n\r\n",
+                build_challenge({'draft-hixie', 0}, {Key1, Key2, Body})
+               ]};
+handshake(#ws{vsn = {'draft-hixie', 68}, headers = Headers, origin = Origin,
+              path = Path, host = Host, port = Port, sockmod = SockMod} = State) ->
+    HostPort = case lists:keyfind('Host', 1, Headers) of
+                   {_, Value} -> Value;
+                   _ -> string:join([Host, integer_to_list(Port)],":")
+               end,
     SubProtocolHeader = case find_subprotocol(Headers) of
                             false ->
                                 [];
                             V ->
                                 ["WebSocket-Protocol:", V, "\r\n"]
                         end,
-	["HTTP/1.1 101 Web Socket Protocol Handshake\r\n",
-		"Upgrade: WebSocket\r\n",
-		"Connection: Upgrade\r\n",
-		"WebSocket-Origin: ", Origin , "\r\n",
-		SubProtocolHeader,
-		"WebSocket-Location: ws://", HostPort, "/", string:join(Path,"/"),"\r\n\r\n"
-	];
-handshake({'draft-hybi', _}, Sock,SocketMod, Headers, {Path, Q,Origin, Host, Port}) ->
-	{_, Key} = lists:keyfind("Sec-Websocket-Key",1, Headers),
-	Hash = jlib:encode_base64(binary_to_list(sha:sha1(Key++"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))),
+    Protocol = case SockMod of
+                   gen_tcp -> "ws://";
+                   _ -> "wss://"
+               end,
+
+    {State, ["HTTP/1.1 101 Web Socket Protocol Handshake\r\n",
+             "Upgrade: WebSocket\r\n",
+             "Connection: Upgrade\r\n",
+             "WebSocket-Origin: ", Origin , "\r\n",
+             SubProtocolHeader,
+             "WebSocket-Location: ", Protocol, HostPort, "/", string:join(Path,"/"),"\r\n\r\n"
+            ]};
+handshake(#ws{vsn = {'draft-hybi', _}, headers = Headers} = State) ->
+    {_, Key} = lists:keyfind("Sec-Websocket-Key", 1, Headers),
+    Hash = jlib:encode_base64(binary_to_list(sha:sha1(Key++"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))),
     SubProtocolHeader = case find_subprotocol(Headers) of
                             false ->
                                 [];
                             V ->
                                 ["Sec-WebSocket-Protocol:", V, "\r\n"]
                         end,
-	["HTTP/1.1 101 Switching Protocols\r\n",
-		"Upgrade: websocket\r\n",
-		"Connection: Upgrade\r\n",
-		SubProtocolHeader,
-		"Sec-WebSocket-Accept: ", Hash, "\r\n\r\n"
-	].
+	{State, ["HTTP/1.1 101 Switching Protocols\r\n",
+                 "Upgrade: websocket\r\n",
+                 "Connection: Upgrade\r\n",
+                 SubProtocolHeader,
+                 "Sec-WebSocket-Accept: ", Hash, "\r\n\r\n"
+                ]}.
 
 % Function: List
 % Description: Builds the challenge for a handshake response.
@@ -389,40 +419,44 @@ find_subprotocol(Headers) ->
 	
 ws_loop(Vsn, HandlerState, Socket, WsHandleLoopPid, SocketMode, WsAutoExit) ->
 	receive
-               {tcp, Socket, Data} ->
-                   %?ERROR_MSG("[WS recv] ~p~n[Buffer state] ~p", [Data, Buffer]),
-                   {NewHandlerState, ToSend} = handle_data(Vsn, HandlerState, Data, Socket, WsHandleLoopPid, SocketMode, WsAutoExit),
-                   lists:foreach(fun(Pkt) ->
-                                        SocketMode:send(Socket, Pkt)
-                                end, ToSend),
-                   ws_loop(Vsn, NewHandlerState, Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
-		{tcp_closed, Socket} ->
-			?DEBUG("tcp connection was closed, exit", []),
-			% close websocket and custom controlling loop
-			websocket_close(Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
-		{'DOWN', Ref, process, WsHandleLoopPid, Reason} ->
-			case Reason of
-				normal ->
-					%?DEBUG("linked websocket controlling loop stopped.", []);
-					ok;
-				_ ->
-					?ERROR_MSG("linked websocket controlling loop crashed with reason: ~p", [Reason])
-			end,
-			% demonitor
-			erlang:demonitor(Ref),
-			% close websocket and custom controlling loop
-			websocket_close(Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
-		{send, Data} ->
-			%?DEBUG("sending data to websocket: ~p", [Data]),
-			SocketMode:send(Socket, encode_frame(Vsn, Data)),
-			ws_loop(Vsn, HandlerState, Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
-		shutdown ->
-			?DEBUG("shutdown request received, closing websocket with pid ~p", [self()]),
-			% close websocket and custom controlling loop
-			websocket_close(Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
-		_Ignored ->
-			?WARNING_MSG("received unexpected message, ignoring: ~p", [_Ignored]),
-			ws_loop(Vsn, HandlerState, Socket, WsHandleLoopPid, SocketMode, WsAutoExit)
+            {DataType, _Socket, Data} when DataType =:= tcp orelse DataType =:= raw ->
+                case handle_data(DataType, Vsn, HandlerState, Data, Socket, WsHandleLoopPid, SocketMode, WsAutoExit) of
+                   {NewHandlerState, ToSend} ->
+                        lists:foreach(fun(Pkt) ->
+                                              SocketMode:send(Socket, Pkt)
+                                      end, ToSend),
+                        ws_loop(Vsn, NewHandlerState, Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
+                    Error ->
+			?DEBUG("tls decode error ~p", [Error]),
+                        websocket_close(Socket, WsHandleLoopPid, SocketMode, WsAutoExit)
+                end;
+            {tcp_closed, _Socket} ->
+                ?DEBUG("tcp connection was closed, exit", []),
+                % close websocket and custom controlling loop
+                websocket_close(Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
+            {'DOWN', Ref, process, WsHandleLoopPid, Reason} ->
+                case Reason of
+                    normal ->
+                        %?DEBUG("linked websocket controlling loop stopped.", []);
+                        ok;
+                    _ ->
+                        ?ERROR_MSG("linked websocket controlling loop crashed with reason: ~p", [Reason])
+                end,
+                % demonitor
+                erlang:demonitor(Ref),
+                % close websocket and custom controlling loop
+                websocket_close(Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
+            {send, Data} ->
+                %?DEBUG("sending data to websocket: ~p", [Data]),
+                SocketMode:send(Socket, encode_frame(Vsn, Data)),
+                ws_loop(Vsn, HandlerState, Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
+            shutdown ->
+                ?DEBUG("shutdown request received, closing websocket with pid ~p", [self()]),
+                %close websocket and custom controlling loop
+                websocket_close(Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
+            _Ignored ->
+                ?WARNING_MSG("received unexpected message, ignoring: ~p", [_Ignored]),
+                ws_loop(Vsn, HandlerState, Socket, WsHandleLoopPid, SocketMode, WsAutoExit)
 	end.
 
 encode_frame({'draft-hybi', _}, Data, Opcode) ->
@@ -543,6 +577,16 @@ process_hybi_8(#hybi_8_state{unprocessed= <<>>}=State, Data) ->
 process_hybi_8(#hybi_8_state{unprocessed=UnprocessedPre}=State, Data) ->
     process_hybi_8(State#hybi_8_state{unprocessed = <<>>}, <<UnprocessedPre/binary, Data/binary>>).
 
+
+handle_data(tcp, Vsn, State, Data, Socket, WsHandleLoopPid, tls, WsAutoExit) ->
+    case tls:recv_data(Socket, Data) of
+        {ok, NewData} ->
+            handle_data(Vsn, State, NewData, Socket, WsHandleLoopPid, tls, WsAutoExit);
+        Error ->
+            Error
+    end;
+handle_data(_, Vsn, State, Data, Socket, WsHandleLoopPid, SockMod, WsAutoExit) ->
+    handle_data(Vsn, State, Data, Socket, WsHandleLoopPid, SockMod, WsAutoExit).
 
 % Buffering and data handling
 handle_data({'draft-hybi', _}, State, Data, _Socket, WsHandleLoopPid, _SocketMode, _WsAutoExit) ->

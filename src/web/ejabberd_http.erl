@@ -352,9 +352,9 @@ get_transfer_protocol(SockMod, HostPort) ->
 %% matches the requested URL path, and pass control to it.  If none is
 %% found, answer with HTTP 404.
 
-process([], _, _, _) ->
+process([], _, _, _, _) ->
     ejabberd_web:error(not_found);
-process(Handlers, Request, Socket, SockMod) ->
+process(Handlers, Request, Socket, SockMod, Trail) ->
     {HandlerPathPrefix, HandlerModule, HandlerOpts, HandlersLeft} =
         case Handlers of
             [{Pfx, Mod} | Tail] ->
@@ -373,16 +373,16 @@ process(Handlers, Request, Socket, SockMod) ->
             %% ["foo", "bar"]
             LocalPath = lists:nthtail(length(HandlerPathPrefix), Request#request.path),
             code:ensure_loaded(HandlerModule),
-            R = case erlang:function_exported(HandlerModule, socket_handoff, 5) of
+            R = case erlang:function_exported(HandlerModule, socket_handoff, 6) of
                     false ->
                         HandlerModule:process(LocalPath, Request);
                     _ ->
-                        HandlerModule:socket_handoff(LocalPath, Request, Socket, SockMod, HandlerOpts)
+                        HandlerModule:socket_handoff(LocalPath, Request, Socket, SockMod, Trail, HandlerOpts)
                 end,
             ejabberd_hooks:run(http_request_debug, [{LocalPath, Request}]),
             R;
 	false ->
-	    process(HandlersLeft, Request, Socket, SockMod)
+	    process(HandlersLeft, Request, Socket, SockMod, Trail)
     end.
 
 extract_path_query(#state{request_method = Method,
@@ -443,7 +443,8 @@ process_request(#state{request_method = Method,
 		       request_tp = TP,
 		       websocket_handlers = WebSocketHandlers,
 		       request_headers = RequestHeaders,
-		       request_handlers = RequestHandlers} = State) ->
+		       request_handlers = RequestHandlers,
+                       trail = Trail} = State) ->
     case extract_path_query(State) of
 	false ->
 	    make_bad_request(State);
@@ -468,7 +469,7 @@ process_request(#state{request_method = Method,
                                tp = TP,
                                headers = RequestHeaders,
                                ip = IP},
-            case process(RequestHandlers ++ WebSocketHandlers, Request, Socket, SockMod) of
+            case process(RequestHandlers ++ WebSocketHandlers, Request, Socket, SockMod, Trail) of
                 El when element(1, El) == xmlelement ->
                     make_xhtml_output(State, 200, [], El);
                 {Status, Headers, El} when
