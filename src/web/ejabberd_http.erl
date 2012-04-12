@@ -1148,45 +1148,61 @@ parse_header_line([C | Rest], Name, true) ->
 parse_header_line([C | Rest], Name, false) ->
     parse_header_line(Rest, [tolower(C) | Name], false).
 
+-define(ENCODE_HEADER_GEN(Name), encode_header(Name, Val) ->
+    {ok, {http_header,  undefined, list_to_atom(Name), undefined, strip_spaces(Val)}}).
 
-encode_header("Connection", Con) ->
-    {ok, {http_header,  undefined, 'Connection', undefined, strip_spaces(Con)}};
-encode_header("Host", Con) ->
-    {ok, {http_header,  undefined, 'Host', undefined, strip_spaces(Con)}};
-encode_header("Accept", Con) ->
-    {ok, {http_header,  undefined, 'Accept', undefined, strip_spaces(Con)}};
-encode_header("If-Modified-Since", Con) ->
-    {ok, {http_header,  undefined, 'If-Modified-Since', undefined, strip_spaces(Con)}};
-encode_header("If-Match", Con) ->
-    {ok, {http_header,  undefined, 'If-Match', undefined, strip_spaces(Con)}};
-encode_header("If-None-Match", Con) ->
-    {ok, {http_header,  undefined, 'If-None-Match', undefined, strip_spaces(Con)}};
-encode_header("If-Range", Con) ->
-    {ok, {http_header,  undefined, 'If-Range', undefined, strip_spaces(Con)}};
-encode_header("If-Unmodified-Since", Con) ->
-    {ok, {http_header,  undefined, 'If-Unmodified-Since', undefined, strip_spaces(Con)}};
-encode_header("Range", Con) ->
-    {ok, {http_header,  undefined, 'Range', undefined, strip_spaces(Con)}};
-encode_header("User-Agent", Con) ->
-    {ok, {http_header,  undefined, 'User-Agent', undefined, strip_spaces(Con)}};
-encode_header("Accept-Ranges", Con) ->
-    {ok, {http_header,  undefined, 'Accept-Ranges', undefined, strip_spaces(Con)}};
-encode_header("Authorization", Con) ->
-    {ok, {http_header,  undefined, 'Authorization', undefined, strip_spaces(Con)}};
-encode_header("Keep-Alive", Con) ->
-    {ok, {http_header,  undefined, 'Keep-Alive', undefined, strip_spaces(Con)}};
-encode_header("Referer", Con) ->
-    {ok, {http_header,  undefined, 'Referer', undefined, strip_spaces(Con)}};
-encode_header("Content-Type", Con) ->
-    {ok, {http_header,  undefined, 'Content-Type', undefined, strip_spaces(Con)}};
-encode_header("Content-Length", Con) ->
-    {ok, {http_header,  undefined, 'Content-Length', undefined, strip_spaces(Con)}};
-encode_header("Cookie", Con) ->
-    {ok, {http_header,  undefined, 'Cookie', undefined, strip_spaces(Con)}};
-encode_header("Accept-Language", Con) ->
-    {ok, {http_header,  undefined, 'Accept-Language', undefined, strip_spaces(Con)}};
-encode_header("Accept-Encoding", Con) ->
-    {ok, {http_header,  undefined, 'Accept-Encoding', undefined, strip_spaces(Con)}};
+?ENCODE_HEADER_GEN("Cache-Control");
+?ENCODE_HEADER_GEN("Connection");
+?ENCODE_HEADER_GEN("Date");
+?ENCODE_HEADER_GEN("Pragma");
+?ENCODE_HEADER_GEN("Transfer-Encoding");
+?ENCODE_HEADER_GEN("Upgrade");
+?ENCODE_HEADER_GEN("Via");
+?ENCODE_HEADER_GEN("Accept");
+?ENCODE_HEADER_GEN("Accept-Charset");
+?ENCODE_HEADER_GEN("Accept-Encoding");
+?ENCODE_HEADER_GEN("Accept-Language");
+?ENCODE_HEADER_GEN("Authorization");
+?ENCODE_HEADER_GEN("From");
+?ENCODE_HEADER_GEN("Host");
+?ENCODE_HEADER_GEN("If-Modified-Since");
+?ENCODE_HEADER_GEN("If-Match");
+?ENCODE_HEADER_GEN("If-None-Match");
+?ENCODE_HEADER_GEN("If-Range");
+?ENCODE_HEADER_GEN("If-Unmodified-Since");
+?ENCODE_HEADER_GEN("Max-Forwards");
+?ENCODE_HEADER_GEN("Proxy-Authorization");
+?ENCODE_HEADER_GEN("Range");
+?ENCODE_HEADER_GEN("Referer");
+?ENCODE_HEADER_GEN("User-Agent");
+?ENCODE_HEADER_GEN("Age");
+?ENCODE_HEADER_GEN("Location");
+?ENCODE_HEADER_GEN("Proxy-Authenticate");
+?ENCODE_HEADER_GEN("Public");
+?ENCODE_HEADER_GEN("Retry-After");
+?ENCODE_HEADER_GEN("Server");
+?ENCODE_HEADER_GEN("Vary");
+?ENCODE_HEADER_GEN("Warning");
+?ENCODE_HEADER_GEN("Www-Authenticate");
+?ENCODE_HEADER_GEN("Allow");
+?ENCODE_HEADER_GEN("Content-Base");
+?ENCODE_HEADER_GEN("Content-Encoding");
+?ENCODE_HEADER_GEN("Content-Language");
+?ENCODE_HEADER_GEN("Content-Length");
+?ENCODE_HEADER_GEN("Content-Location");
+?ENCODE_HEADER_GEN("Content-Md5");
+?ENCODE_HEADER_GEN("Content-Range");
+?ENCODE_HEADER_GEN("Content-Type");
+?ENCODE_HEADER_GEN("Etag");
+?ENCODE_HEADER_GEN("Expires");
+?ENCODE_HEADER_GEN("Last-Modified");
+?ENCODE_HEADER_GEN("Accept-Ranges");
+?ENCODE_HEADER_GEN("Set-Cookie");
+?ENCODE_HEADER_GEN("Set-Cookie2");
+?ENCODE_HEADER_GEN("X-Forwarded-For");
+?ENCODE_HEADER_GEN("Cookie");
+?ENCODE_HEADER_GEN("Keep-Alive");
+?ENCODE_HEADER_GEN("Proxy-Connection");
 encode_header(Name, Val) ->
     {ok, {http_header,  undefined, Name, undefined, strip_spaces(Val)}}.
 
