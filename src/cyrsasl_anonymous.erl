@@ -27,7 +27,7 @@
 
 -module(cyrsasl_anonymous).
 
--export([start/1, stop/0, mech_new/4, mech_step/2]).
+-export([start/1, stop/0, mech_new/6, mech_step/2]).
 
 -behaviour(cyrsasl).
 
@@ -40,7 +40,8 @@ start(_Opts) ->
 stop() ->
     ok.
 
-mech_new(Host, _GetPassword, _CheckPassword, _CheckPasswordDigest) ->
+mech_new(Host, _GetPassword, _CheckPassword, _CheckPasswordDigest,
+         _IsUserExists, _CertFile) ->
     {ok, #state{server = Host}}.
 
 mech_step(State, _ClientIn) ->

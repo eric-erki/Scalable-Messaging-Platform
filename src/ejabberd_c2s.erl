@@ -234,7 +234,12 @@ init([{SockMod, Socket}, Opts, FSMLimitOpts]) ->
 	lists:filter(fun({certfile, _}) -> true;
 			(_) -> false
 		     end, Opts),
-    TLSOpts = [verify_none | TLSOpts1],
+    TLSOpts = case lists:member(tls_verify, Opts) of
+                  true ->
+                      TLSOpts1;
+                  false ->
+                      [verify_none | TLSOpts1]
+              end,
     Redirect = case lists:keysearch(redirect, 1, Opts) of
                    {value, {_, true}} ->
                        true;
@@ -388,7 +393,10 @@ wait_for_stream({xmlstreamstart, Name, Attrs}, StateData) ->
 					  fun(U, P, D, DG) ->
 						  ejabberd_auth:check_password_with_authmodule(
 						    U, Server, P, D, DG)
-					  end),
+					  end,
+                                          fun(U) ->
+                                                  ejabberd_auth:is_user_exists(U, Server)
+                                          end),
 				    Mechs = lists:map(
 					      fun(S) ->
 						      {xmlelement, "mechanism", [],
@@ -744,9 +752,10 @@ wait_for_feature_request({xmlstreamelement, El}, StateData) ->
 	{?NS_SASL, "auth"} when not ((SockMod == gen_tcp) and TLSRequired) ->
 	    Mech = xml:get_attr_s("mechanism", Attrs),
 	    ClientIn = jlib:decode_base64(xml:get_cdata(Els)),
+            ClientCertFile = get_cert_file(StateData, Mech),
 	    case cyrsasl:server_start(StateData#state.sasl_state,
-				      Mech,
-				      ClientIn) of
+				      Mech, ClientIn,
+                                      ClientCertFile) of
 		{ok, Props} ->
                     catch (StateData#state.sockmod):reset_stream(
                             StateData#state.socket),
@@ -792,6 +801,22 @@ wait_for_feature_request({xmlstreamelement, El}, StateData) ->
 				  [{xmlelement, Error, [], []}]}),
 		    {next_state, wait_for_feature_request, StateData,
 		     ?C2S_OPEN_TIMEOUT};
+                {error, Error, Username, Txt} ->
+                    if Username /= "" ->
+                            ?INFO_MSG(
+                               "(~w) Failed authentication for ~s@~s",
+                               [StateData#state.socket,
+                                Username, StateData#state.server]);
+                       true ->
+                            ok
+                    end,
+                    send_element(StateData,
+				 {xmlelement, "failure",
+				  [{"xmlns", ?NS_SASL}],
+				  [{xmlelement, Error, [],
+                                    [{xmlelement, "text", [],
+                                      [{xmlcdata, Txt}]}]}]}),
+		    fsm_next_state(wait_for_feature_request, StateData);
 		{error, Error} ->
 		    send_element(StateData,
 				 {xmlelement, "failure",
@@ -811,9 +836,16 @@ wait_for_feature_request({xmlstreamelement, El}, StateData) ->
 			       lists:keydelete(
 				 certfile, 1, StateData#state.tls_options)]
 		      end,
+            TLSOpts1 = case ejabberd_config:get_local_option(
+                              {c2s_tls_verify, StateData#state.server}) of
+                           true ->
+                               TLSOpts -- [verify_none];
+                           _ ->
+                               TLSOpts
+                       end,
 	    Socket = StateData#state.socket,
 	    TLSSocket = (StateData#state.sockmod):starttls(
-			  Socket, TLSOpts,
+			  Socket, TLSOpts1,
 			  xml:element_to_binary(
 			    {xmlelement, "proceed", [{"xmlns", ?NS_TLS}], []})),
 	    fsm_next_state(wait_for_stream,
@@ -978,6 +1010,22 @@ wait_for_sasl_response({xmlstreamelement, El}, StateData) ->
 				 {xmlelement, "failure",
 				  [{"xmlns", ?NS_SASL}],
 				  [{xmlelement, Error, [], []}]}),
+		    fsm_next_state(wait_for_feature_request, StateData);
+                {error, Error, Username, Txt} ->
+                    if Username /= "" ->
+                            ?INFO_MSG(
+                               "(~w) Failed authentication for ~s@~s",
+                               [StateData#state.socket,
+                                Username, StateData#state.server]);
+                       true ->
+                            ok
+                    end,
+                    send_element(StateData,
+				 {xmlelement, "failure",
+				  [{"xmlns", ?NS_SASL}],
+				  [{xmlelement, Error, [],
+                                    [{xmlelement, "text", [],
+                                      [{xmlcdata, Txt}]}]}]}),
 		    fsm_next_state(wait_for_feature_request, StateData);
 		{error, Error} ->
 		    send_element(StateData,
@@ -3618,6 +3666,30 @@ get_jid_from_opts(Opts) ->
 	_ ->
 	    error
     end.
+
+get_cert_file(StateData, "EXTERNAL") ->
+    case lists:member(verify_none, StateData#state.tls_options) of
+        false ->
+            %% Certificate verification is enabled in the config
+            case (StateData#state.sockmod):get_peer_certificate(
+                   StateData#state.socket) of
+                {ok, Cert} ->
+                    case (StateData#state.sockmod):get_verify_result(
+                           StateData#state.socket) of
+                        0 ->
+                            Cert;
+                        Res ->
+                            Err = tls:get_cert_verify_string(Res, Cert),
+                            {Cert, Err}
+                    end;
+                error ->
+                    undefined
+            end;
+        true ->
+            undefined
+    end;
+get_cert_file(_StateData, _Mech) ->
+    undefined.
 
 is_remote_receiver(#socket_state{receiver = Pid}) when is_pid(Pid) ->
     node(Pid) /= node();
