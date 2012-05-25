@@ -86,7 +86,6 @@ stop_iq_handler(_Module, _Function, Opts) ->
     end.
 
 handle(Host, Module, Function, Opts, From, To, IQ) ->
-    ?INFO_MSG("Opts = ~p", [Opts]),
     case Opts of
 	no_queue ->
 	    process_iq(Host, Module, Function, From, To, IQ);
