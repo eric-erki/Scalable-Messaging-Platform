@@ -87,7 +87,13 @@ process_iq(From, To, Packet) ->
 			true ->
 			    ok
 		    end;
-		[{_, Module, Function, Opts}] ->
+                [{_, Module, Function, Opts1}|Tail] ->
+                    Opts = if is_pid(Opts1) ->
+                                   [Opts1 |
+                                    [Pid || {_, _, _, Pid} <- Tail]];
+                              true ->
+                                   Opts1
+                           end,
 		    gen_iq_handler:handle(Host, Module, Function, Opts,
 					  From, To, IQ);
 		[] ->
@@ -194,7 +200,7 @@ init([]) ->
 	      ejabberd_hooks:add(local_send_to_resource_hook, Host,
 				 ?MODULE, bounce_resource_packet, 100)
       end, ?MYHOSTS),
-    catch ets:new(?IQTABLE, [named_table, public]),
+    catch ets:new(?IQTABLE, [named_table, public, bag]),
     mnesia:delete_table(iq_response),
     catch ets:new(iq_response, [named_table, public,
 				{keypos, #iq_response.id}]),
@@ -243,11 +249,17 @@ handle_info({register_iq_handler, Host, XMLNS, Module, Function}, State) ->
     {noreply, State};
 handle_info({register_iq_handler, Host, XMLNS, Module, Function, Opts}, State) ->
     ets:insert(?IQTABLE, {{XMLNS, Host}, Module, Function, Opts}),
+    if is_pid(Opts) ->
+            erlang:monitor(process, Opts);
+       true ->
+            ok
+    end,
     catch mod_disco:register_feature(Host, XMLNS),
     {noreply, State};
 handle_info({unregister_iq_handler, Host, XMLNS}, State) ->
     case ets:lookup(?IQTABLE, {XMLNS, Host}) of
-	[{_, Module, Function, Opts}] ->
+        [{_, Module, Function, Opts1}|Tail] when is_pid(Opts1) ->
+            Opts = [Opts1 | [Pid || {_, _, _, Pid} <- Tail]],
 	    gen_iq_handler:stop_iq_handler(Module, Function, Opts);
 	_ ->
 	    ok
@@ -270,6 +282,13 @@ handle_info(refresh_iq_handlers, State) ->
     {noreply, State};
 handle_info({timeout, _TRef, ID}, State) ->
     spawn(fun() -> process_iq_timeout(ID) end),
+    {noreply, State};
+handle_info({'DOWN', _MRef, _Type, Pid, _Info}, State) ->
+    Rs = ets:select(?IQTABLE,
+                    [{{'_','_','_','$1'},
+                      [{'==', '$1', Pid}],
+                      ['$_']}]),
+    lists:foreach(fun(R) -> ets:delete_object(?IQTABLE, R) end, Rs),
     {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.

@@ -30,7 +30,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/3,
+-export([start_link/5,
 	 add_iq_handler/6,
 	 remove_iq_handler/3,
 	 stop_iq_handler/3,
@@ -54,29 +54,22 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link(Host, Module, Function) ->
-    gen_server:start_link(?MODULE, [Host, Module, Function], []).
+start_link(Component, Host, NS, Module, Function) ->
+    {ok, Pid} = gen_server:start_link(?MODULE, [Host, Module, Function], []),
+    Component:register_iq_handler(Host, NS, Module, Function, Pid),
+    {ok, Pid}.
 
 add_iq_handler(Component, Host, NS, Module, Function, Type) ->
     case Type of
 	no_queue ->
 	    Component:register_iq_handler(Host, NS, Module, Function, no_queue);
 	one_queue ->
-	    {ok, Pid} = supervisor:start_child(ejabberd_iq_sup,
-					       [Host, Module, Function]),
-	    Component:register_iq_handler(Host, NS, Module, Function,
-					  {one_queue, Pid});
+            start_handler(Component, Host, NS, Module, Function);
 	{queues, N} ->
-	    Pids =
-		lists:map(
-		  fun(_) ->
-			  {ok, Pid} = supervisor:start_child(
-					ejabberd_iq_sup,
-					[Host, Module, Function]),
-			  Pid
-		  end, lists:seq(1, N)),
-	    Component:register_iq_handler(Host, NS, Module, Function,
-					  {queues, Pids});
+            lists:foreach(
+              fun(_) ->
+                      start_handler(Component, Host, NS, Module, Function)
+              end, lists:seq(1, N));
 	parallel ->
 	    Component:register_iq_handler(Host, NS, Module, Function, parallel)
     end.
@@ -86,28 +79,24 @@ remove_iq_handler(Component, Host, NS) ->
 
 stop_iq_handler(_Module, _Function, Opts) ->
     case Opts of
-	{one_queue, Pid} ->
-	    gen_server:call(Pid, stop);
-	{queues, Pids} ->
-	    lists:foreach(fun(Pid) ->
-				  catch gen_server:call(Pid, stop)
-			  end, Pids);
+	[_|_] = Pids ->
+	    stop_handlers(Pids);
 	_ ->
 	    ok
     end.
 
 handle(Host, Module, Function, Opts, From, To, IQ) ->
+    ?INFO_MSG("Opts = ~p", [Opts]),
     case Opts of
 	no_queue ->
 	    process_iq(Host, Module, Function, From, To, IQ);
-	{one_queue, Pid} ->
-	    Pid ! {process_iq, From, To, IQ};
-	{queues, Pids} ->
+        parallel ->
+	    spawn(?MODULE, process_iq, [Host, Module, Function, From, To, IQ]);
+	[_|_] = Pids ->
 	    Pid = lists:nth(erlang:phash(now(), length(Pids)), Pids),
 	    Pid ! {process_iq, From, To, IQ};
-	parallel ->
-	    spawn(?MODULE, process_iq, [Host, Module, Function, From, To, IQ]);
 	_ ->
+            ?ERROR_MSG("unexpected iqdisc options = ~p", [Opts]),
 	    todo
     end.
 
@@ -125,6 +114,28 @@ process_iq(_Host, Module, Function, From, To, IQ) ->
 		    ok
 	    end
     end.
+
+start_handler(Component, Host, NS, Module, Function) ->
+    Spec = {{?MODULE, make_ref()},
+            {?MODULE, start_link, [Component, Host, NS, Module, Function]},
+            permanent,
+            brutal_kill,
+            worker,
+            [?MODULE]},
+    {ok, Pid} = supervisor:start_child(ejabberd_iq_sup, Spec),
+    Pid.
+
+stop_handlers(Pids) ->
+    lists:foreach(
+      fun({Id, Pid, _, _}) ->
+              case lists:member(Pid, Pids) of
+                  true ->
+                      supervisor:terminate_child(ejabberd_iq_sup, Id),
+                      supervisor:delete_child(ejabberd_iq_sup, Id);
+                  false ->
+                      ok
+              end
+      end, supervisor:which_children(ejabberd_iq_sup)).
 
 %%====================================================================
 %% gen_server callbacks

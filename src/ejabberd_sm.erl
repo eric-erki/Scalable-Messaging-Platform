@@ -384,7 +384,7 @@ init([]) ->
     mnesia:add_table_index(session, usr),
     mnesia:add_table_index(session, us),
     mnesia:add_table_copy(session, node(), ram_copies),
-    ets:new(sm_iqtable, [named_table]),
+    ets:new(sm_iqtable, [named_table, bag]),
     ejabberd_hooks:add(node_up, ?MODULE, node_up, 100),
     ejabberd_hooks:add(node_down, ?MODULE, node_down, 100),
     ejabberd_hooks:add(node_hash_update, ?MODULE, migrate, 100),
@@ -449,15 +449,28 @@ handle_info({register_iq_handler, Host, XMLNS, Module, Function}, State) ->
     {noreply, State};
 handle_info({register_iq_handler, Host, XMLNS, Module, Function, Opts}, State) ->
     ets:insert(sm_iqtable, {{XMLNS, Host}, Module, Function, Opts}),
+    if is_pid(Opts) ->
+            erlang:monitor(process, Opts);
+       true ->
+            ok
+    end,
     {noreply, State};
 handle_info({unregister_iq_handler, Host, XMLNS}, State) ->
     case ets:lookup(sm_iqtable, {XMLNS, Host}) of
-	[{_, Module, Function, Opts}] ->
+	[{_, Module, Function, Opts1}|Tail] when is_pid(Opts1) ->
+            Opts = [Opts1 | [Pid || {_, _, _, Pid} <- Tail]],
 	    gen_iq_handler:stop_iq_handler(Module, Function, Opts);
 	_ ->
 	    ok
     end,
     ets:delete(sm_iqtable, {XMLNS, Host}),
+    {noreply, State};
+handle_info({'DOWN', _MRef, _Type, Pid, _Info}, State) ->
+    Rs = ets:select(sm_iqtable,
+                    [{{'_','_','_','$1'},
+                      [{'==', '$1', Pid}],
+                      ['$_']}]),
+    lists:foreach(fun(R) -> ets:delete_object(sm_iqtable, R) end, Rs),
     {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -839,7 +852,13 @@ process_iq(From, To, Packet) ->
 			true ->
 			    ok
 		    end;
-		[{_, Module, Function, Opts}] ->
+		[{_, Module, Function, Opts1}|Tail] ->
+                    Opts = if is_pid(Opts1) ->
+                                   [Opts1 |
+                                    [Pid || {_, _, _, Pid} <- Tail]];
+                              true ->
+                                   Opts1
+                           end,
 		    gen_iq_handler:handle(Host, Module, Function, Opts,
 					  From, To, IQ);
 		[] ->
