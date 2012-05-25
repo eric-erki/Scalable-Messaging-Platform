@@ -32,6 +32,7 @@
 %% API
 -export([start_link/0,
 	 route/3,
+         do_route1/3,
 	 set_session/6,
 	 open_session/5,
 	 open_session/6,
@@ -398,7 +399,7 @@ init([]) ->
 				 ejabberd_sm, disconnect_removed_user, 100)
       end, ?MYHOSTS),
     ejabberd_commands:register_commands(commands()),
-    start_dispatchers(),
+    start_handlers(),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------
@@ -429,19 +430,13 @@ handle_cast(_Msg, State) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
-handle_info({route, From, To, Packet} = Msg, State) ->
-    case get_proc_num() of
-        N when N > 1 ->
-            #jid{luser = U, lserver = S} = To,
-            get_proc_by_hash({U, S}) ! Msg;
+handle_info({route, From, To, Packet}, State) ->
+    case catch do_route(From, To, Packet) of
+        {'EXIT', Reason} ->
+            ?ERROR_MSG("~p~nwhen processing: ~p",
+                       [Reason, {From, To, Packet}]);
         _ ->
-            case catch do_route(From, To, Packet) of
-                {'EXIT', Reason} ->
-                    ?ERROR_MSG("~p~nwhen processing: ~p",
-                               [Reason, {From, To, Packet}]);
-                _ ->
-                    ok
-            end
+            ok
     end,
     {noreply, State};
 handle_info({register_iq_handler, Host, XMLNS, Module, Function}, State) ->
@@ -487,7 +482,7 @@ terminate(_Reason, _State) ->
     ejabberd_hooks:delete(node_down, ?MODULE, node_down, 100),
     ejabberd_hooks:delete(node_hash_update, ?MODULE, migrate, 100),
     ejabberd_commands:unregister_commands(commands()),
-    stop_dispatchers(),
+    stop_handlers(),
     ok.
 
 %%--------------------------------------------------------------------
@@ -550,7 +545,7 @@ do_route(From, To, Packet) ->
 	Node when Node /= node() ->
 	    {?MODULE, Node} ! {route, From, To, Packet};
 	_ ->
-	    do_route1(From, To, Packet)
+	    dispatch(From, To, Packet)
     end.
 
 do_route1(From, To, Packet) ->
@@ -932,45 +927,23 @@ get_proc_by_hash(Term) ->
 get_proc(N) ->
     list_to_atom(atom_to_list(?MODULE) ++ "_" ++ integer_to_list(N)).
 
-start_dispatchers() ->
-    case get_proc_num() of
-        N when N > 1 ->
-            lists:foreach(
-              fun(I) ->
-                      Pid = spawn(fun dispatch/0),
-                      erlang:register(get_proc(I), Pid)
-              end, lists:seq(1, N));
-        _ ->
-            ok
-    end.
+start_handlers() ->
+    N = get_proc_num(),
+    lists:foreach(
+      fun(I) ->
+              ejabberd_sm_handler:start(get_proc(I))
+      end, lists:seq(1, N)).
 
-stop_dispatchers() ->
-    case get_proc_num() of
-        N when N > 1 ->
-            lists:foreach(
-              fun(I) ->
-                      get_proc(I) ! stop
-              end, lists:seq(1, N));
-        _ ->
-            ok
-    end.
+stop_handlers() ->
+    N = get_proc_num(),
+    lists:foreach(
+      fun(I) ->
+              ejabberd_sm_handler:stop(get_proc(I))
+      end, lists:seq(1, N)).
 
-dispatch() ->
-    receive
-        {route, From, To, Packet} ->
-            case catch do_route(From, To, Packet) of
-                {'EXIT', Reason} ->
-                    ?ERROR_MSG("~p~nwhen processing: ~p",
-                               [Reason, {From, To, Packet}]);
-                _ ->
-                    ok
-            end,
-            dispatch();
-        stop ->
-            stopped;
-        _ ->
-            dispatch()
-    end.
+dispatch(From, To, Packet) ->
+    #jid{luser = U, lserver = S} = To,
+    ejabberd_sm_handler:route(get_proc_by_hash({U, S}), From, To, Packet).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Update Mnesia tables
