@@ -68,6 +68,12 @@
 	 migrate/3
 	]).
 
+%% To avoid presence broadcast between nodes.
+-export([multicast_route/4]).
+
+%% spawn targets
+-export([do_local_multicast/4]).
+
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
@@ -430,6 +436,15 @@ handle_cast(_Msg, State) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
+handle_info({multicast_route, Domain, From, ToList, Packet}, State) ->
+    case catch do_local_multicast(Domain, From, ToList, Packet) of
+	{'EXIT', Reason} ->
+	    ?ERROR_MSG("~p~nwhen processing: ~p",
+		       [Reason, {From, ToList, Packet}]);
+	_ ->
+	    ok
+    end,
+    {noreply, State};
 handle_info({route, From, To, Packet}, State) ->
     case catch do_route(From, To, Packet) of
         {'EXIT', Reason} ->
@@ -536,6 +551,21 @@ set_session({_, Pid} = SID, User, Server, Resource, Priority, Info) ->
     end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+multicast_route(Domain, From, ToList,  Packet) ->
+    ByTargetNode = ejabberd_router:group_by(fun(To) -> 
+    			{U, S, _} = jlib:jid_tolower(To),
+			ejabberd_cluster:get_node({U, S}) end, ToList),
+    lists:foreach(
+                fun({TargetNode, TargetList}) when TargetNode == node() ->
+                        do_local_multicast(Domain, From, TargetList, Packet);
+                    ({OtherNode, TargetList}) ->
+			spawn(OtherNode, ?MODULE, do_local_multicast, [Domain, From, TargetList, Packet])
+                end, ByTargetNode).
+
+%% We are sure all are local, route locally.
+do_local_multicast(_Domain, From, ToList, Packet) ->
+    ?DEBUG("Local multicast on node: ~p  Targets: ~p  Packet: ~p", [node(), ToList, Packet]),
+    lists:foreach(fun(Target) -> dispatch(From, Target, Packet) end, ToList).
 
 do_route(From, To, Packet) ->
     ?DEBUG("session manager~n\tfrom ~p~n\tto ~p~n\tpacket ~P~n",

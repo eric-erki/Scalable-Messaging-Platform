@@ -2397,64 +2397,62 @@ is_privacy_allow(StateData, From, To, Packet, Dir) ->
     allow == privacy_check_packet(StateData, From, To, Packet, Dir).
 
 presence_broadcast(StateData, From, JIDSet, Packet) ->
-    lists:foreach(fun(JID) ->
-			  FJID = jlib:make_jid(JID),
-			  case privacy_check_packet(StateData, From, FJID, Packet, out) of
-			      deny ->
-				  ok;
-			      allow ->
-				  ejabberd_router:route(From, FJID, Packet)
-			  end
-		  end, ?SETS:to_list(JIDSet)).
+	%%TODO: map + filter is more readable than this foldl
+	PrivacyFilteredJIDs = lists:foldl(fun(JID, Acc) ->
+				  FJID = jlib:make_jid(JID),
+				  case privacy_check_packet(StateData, From, FJID, Packet, out) of
+					deny ->
+						Acc;
+					allow ->
+						[FJID | Acc]
+				  end 
+				  end, [], ?SETS:to_list(JIDSet)),
+    ejabberd_router:multicast_route(From, PrivacyFilteredJIDs, Packet).
 
 presence_broadcast_to_trusted(StateData, From, T, A, Packet) ->
-    lists:foreach(
-      fun(JID) ->
-	      case ?SETS:is_element(JID, T) of
-		  true ->
-		      FJID = jlib:make_jid(JID),
-		      case privacy_check_packet(StateData, From, FJID, Packet, out) of
-			  deny ->
-			      ok;
-			  allow ->
-			      ejabberd_router:route(From, FJID, Packet)
-		      end;
-		  _ ->
-		      ok
-	      end
-      end, ?SETS:to_list(A)).
+    Filtered = lists:filter( fun(JID) -> ?SETS:is_element(JID, T) end, ?SETS:to_list(A)),
+    PrivacyFilteredJIDs = lists:foldl(fun(JID, Acc) ->
+				  FJID = jlib:make_jid(JID),
+				  case ejabberd_hooks:run_fold(
+						privacy_check_packet, StateData#state.server,
+						allow,
+						[StateData#state.user,
+						 StateData#state.server,
+						 StateData#state.privacy_list,
+						 {From, FJID, Packet},
+						 out]) of
+					deny ->
+						Acc;
+					allow ->
+						[FJID | Acc]
+				  end 
+				  end, [], Filtered),
+    ejabberd_router:multicast_route(From, PrivacyFilteredJIDs, Packet).
+
 
 
 presence_broadcast_first(From, StateData, Packet) ->
-    ?SETS:fold(fun(JID, X) ->
-		       ejabberd_router:route(
-			 From,
-			 jlib:make_jid(JID),
-			 {xmlelement, "presence",
+    ProbeList = [jlib:make_jid(JID) || JID <- ?SETS:to_list(StateData#state.pres_t)],
+    ejabberd_router:multicast_route(From, ProbeList, {xmlelement, "presence",
 			  [{"type", "probe"}],
 			  []}),
-		       X
-	       end,
-	       [],
-	       StateData#state.pres_t),
+		
     if
 	StateData#state.pres_invis ->
 	    StateData;
 	true ->
-	    As = ?SETS:fold(
-		    fun(JID, A) ->
-			    FJID = jlib:make_jid(JID),
-			    case privacy_check_packet(StateData, From, FJID, Packet, out) of
-				deny ->
-				    ok;
-				allow ->
-				    ejabberd_router:route(From, FJID, Packet)
-			    end,
-			    ?SETS:add_element(JID, A)
-		    end,
-		    StateData#state.pres_a,
-		    StateData#state.pres_f),
-	    StateData#state{pres_a = As}
+	    {FilteredFromList, As} = lists:foldl(fun(JID, {Filtered, As}) ->
+				  FJID = jlib:make_jid(JID),
+				  case privacy_check_packet(StateData, From, FJID, Packet, out) of
+					deny ->
+						{Filtered, ?SETS:add_element(JID, As)};
+					allow ->
+						{[FJID|Filtered], ?SETS:add_element(JID, As)}
+				  end 
+				  end, {[], StateData#state.pres_a}, ?SETS:to_list(StateData#state.pres_f)),
+
+        ejabberd_router:multicast_route(From, FilteredFromList, Packet),
+	StateData#state{pres_a = As}
     end.
 
 

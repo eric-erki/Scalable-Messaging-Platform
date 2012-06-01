@@ -42,6 +42,8 @@
 	 make_id/0
 	]).
 
+-export([multicast_route/3, group_by/2]).
+
 -export([start_link/0]).
 
 %% gen_server callbacks
@@ -440,6 +442,37 @@ get_component_number(LDomain) ->
 	_ ->
 	    undefined
     end.
+
+
+group_by(F, List) ->
+    lists:foldl(fun(Item, Acc) ->
+                    Key = F(Item),
+                    case lists:keyfind(Key, 1, Acc) of
+                            false -> 
+                                [{Key, [Item]} | Acc];
+                            {Key, Members} ->
+                                lists:keyreplace(Key, 1, Acc, {Key, [Item|Members]})
+                     end
+                end, [], List).
+
+%% Currently we only enable multicast for inter-node sm messages (presence).
+%% Note: this skip ejabberd_local, so please don't try to multicast to an adress
+%%       in a local domain without node, like  "localhost", it won't work.
+%%       Should be ok for all normal usage like presence, pep, muc
+multicast_route(From, ToList, Packet) ->
+    ByTargetDomain = group_by(fun(Jid) -> Jid#jid.lserver end, ToList),
+    lists:foreach(fun({Domain, TargetList}) ->
+        case mnesia:dirty_read(route, Domain) of
+            [#route{local_hint = {apply, ejabberd_local, route}} | _] -> 
+	    	%if this is a local domain
+		ejabberd_sm:multicast_route(Domain, From, TargetList, Packet);
+            _ ->
+                %%TODO: this handles s2s and components, we could actualize them to handle
+		%%      these multicast too.
+                lists:foreach(fun(T) -> do_route(From, T, Packet) end, TargetList)
+       end
+   end, ByTargetDomain).
+
 
 update_tables() ->
     case catch mnesia:table_info(route, attributes) of
