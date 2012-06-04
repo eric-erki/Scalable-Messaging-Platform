@@ -433,11 +433,11 @@ active1(#body{attrs = Attrs} = Req, From, State) ->
                 {value, PrevBody} ->
                     {next_state, active, do_reply(State, From, PrevBody, RID)};
                 none ->
-                    reply_stop(State, 
-                               #body{http_reason = "Request ID is out of range",
-                                     attrs = [{"type", "terminate"},
-                                              {"condition", "item-not-found"}]},
-                               From, RID)
+                    State1 = drop_holding_receiver(State),
+                    State2 = restart_inactivity_timer(State1),
+                    Receivers = gb_trees:insert(RID, {From, Req},
+                                                State2#state.receivers),
+                    {next_state, active, State2#state{receivers = Receivers}}
             end;
        not IsValidKey ->
             reply_stop(State,
