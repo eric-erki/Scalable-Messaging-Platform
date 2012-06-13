@@ -374,8 +374,8 @@ process_hybi_8(#hybi_8_state{unprocessed=none, unmasked=UnmaskedPre, left=Left}=
     {State2#hybi_8_state{left=Left-byte_size(Data), unmasked=[UnmaskedPre, Unmasked]}, [], []};
 process_hybi_8(#hybi_8_state{unprocessed=none, unmasked=UnmaskedPre, opcode=Opcode,
                               final_frame=Final, left=Left, unmasked_msg=UnmaskedMsg}=State, Data) ->
-    {_State, Unmasked} = unmask_hybi_8(State, binary_part(Data, 0, Left)),
-    Unprocessed = binary_part(Data, Left, byte_size(Data)-Left),
+    <<ToProcess:(Left)/binary, Unprocessed/binary>> = Data,
+    {_State, Unmasked} = unmask_hybi_8(State, ToProcess),
     case Final of
         true ->
             {State3, Recv, Send} = process_hybi_8(#hybi_8_state{}, Unprocessed),
