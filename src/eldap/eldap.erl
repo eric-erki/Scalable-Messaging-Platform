@@ -580,36 +580,6 @@ handle_info({Tag, _Socket, Data}, connecting, S)
     ?DEBUG("tcp packet received when disconnected!~n~p", [Data]),
     {next_state, connecting, S};
 
-handle_info({tcp, Socket, Data}, StateName, #eldap{tls = starttls} = S) ->
-    NewData = if S#eldap.sockmod == gen_tcp ->
-                      Data;
-                 S#eldap.sockmod == tls ->
-                      {ok, Data1} = tls:recv_data(S#eldap.fd, Data),
-                      Data1
-              end,
-    NewBuf = <<(S#eldap.buf)/binary, NewData/binary>>,
-    activate_socket(S),
-    case decode_tlv(NewBuf) of
-        {ok, Pkt, Tail} ->
-            case handle_info({asn1, Socket, Pkt},
-                             StateName, S#eldap{buf = <<>>}) of
-                {next_state, NewStateName, NewS} = NextS ->
-                    if Tail == <<>> ->
-                            NextS;
-                       true ->
-                            handle_info({tcp, Socket, Tail},
-                                        NewStateName, NewS)
-                    end;
-                Stop ->
-                    Stop
-            end;
-        more when NewBuf == <<>>, StateName == wait_bind_response,
-                  S#eldap.sockmod == tls ->
-            bind_request(S#eldap{buf = <<>>});
-        more ->
-            {next_state, StateName, S#eldap{buf = NewBuf}}
-    end;
-
 handle_info({Tag, Socket, Data}, StateName, S)
   when Tag == tcp; Tag == ssl ->
     activate_socket(S),
@@ -618,12 +588,15 @@ handle_info({Tag, Socket, Data}, StateName, S)
 handle_info({asn1, Socket, Data}, wait_starttls_response, S) ->
     cancel_timer(S#eldap.starttls_timer),
     case catch recvd_wait_starttls_response(Data, S) of
-        proceed ->
-            {ok, TLSSock} = tls:tcp_to_tls(Socket,
-                                           [connect | S#eldap.tls_options]),
-            {ok, <<>>} = tls:recv_data(TLSSock, <<>>),
-            bind_request(S#eldap{fd = TLSSock, sockmod = tls,
-                                 id = bump_id(S)});
+        proceed ->            
+            case ssl:connect(Socket, S#eldap.tls_options,
+                             ?STARTTLS_TIMEOUT) of
+                {error, Reason} ->
+                    report_starttls_failure(S#eldap.host, S#eldap.port, Reason);
+                {ok, SSLSock} ->
+                    bind_request(S#eldap{fd = SSLSock, sockmod = ssl,
+                                         id = bump_id(S)})
+            end;
         {fail_starttls, Reason} ->
             report_starttls_failure(S#eldap.host, S#eldap.port, Reason),
             {next_state, connecting, close_and_retry(S, ?GRACEFUL_RETRY_TIMEOUT)};
@@ -978,18 +951,6 @@ check_id(_, _)   -> throw({error, wrong_bind_id}).
 %%-----------------------------------------------------------------------
 %% General Helpers
 %%-----------------------------------------------------------------------
-decode_tlv(Bin) ->
-    try
-        {_Tag, Bin1, _Rb1} = asn1rt_ber_bin:decode_tag(Bin),
-        {{Len, Bin2}, _Rb2} = asn1rt_ber_bin:decode_length(Bin1),
-        <<_:Len/binary, Bin3/binary>> = Bin2,
-        PktSize = size(Bin) - size(Bin3),
-        <<Pkt:PktSize/binary, _/binary>> = Bin,
-        {ok, Pkt, Bin3}
-    catch _:_ ->
-            more
-    end.
-
 cancel_timer(Timer) ->
     erlang:cancel_timer(Timer),
     receive
@@ -1078,9 +1039,6 @@ connect_bind(S) ->
                tls ->
                    [{packet, asn1}, {active, once}, {keepalive, true},
                     binary | S#eldap.tls_options];
-               starttls ->
-                   [{packet, raw}, {active, once}, {keepalive, true},
-                    {send_timeout, ?SEND_TIMEOUT}, binary];
                _ ->
                    [{packet, asn1}, {active, once}, {keepalive, true},
                     {send_timeout, ?SEND_TIMEOUT}, binary]
@@ -1134,11 +1092,9 @@ bind_request(#eldap{fd = Socket, id = Id} = S) ->
     Message = #'LDAPMessage'{messageID  = Id,
 			     protocolOp = {bindRequest, Req}},
     {ok, Bytes} = asn1rt:encode('ELDAPv3', 'LDAPMessage', Message),
-    TRef = erlang:start_timer(0, self(), handshake_timeout),
     case (S#eldap.sockmod):send(Socket, Bytes) of
 	ok ->
             ?DEBUG("Bind Request Message:~p~n",[Message]),
-            cancel_timer(TRef),
             Timer = erlang:start_timer(?BIND_TIMEOUT, self(),
                                        bind_timeout),
             {next_state, wait_bind_response, S#eldap{bind_timer = Timer}};
@@ -1146,7 +1102,6 @@ bind_request(#eldap{fd = Socket, id = Id} = S) ->
             {next_state, wait_bind_response, S};
 	{error, Reason} ->
             ?DEBUG("Bind Request Message:~p~n",[Message]),
-            cancel_timer(TRef),
             report_bind_failure(S#eldap.host, S#eldap.port, Reason),
             NewS = close_and_retry(S),
             {next_state, connecting, NewS}

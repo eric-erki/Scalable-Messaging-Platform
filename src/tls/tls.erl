@@ -227,7 +227,7 @@ send(#tlssock{tcpsock = TCPSocket, tlsport = Port} = TLSSock, Packet) ->
 	<<2>> -> % Dirty hack
 	    receive
 		{timeout, _Timer, _} ->
-		    {error, handshake_timeout}
+		    {error, timeout}
 	    after 100 ->
 		    send(TLSSock, Packet)
 	    end
