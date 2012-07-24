@@ -154,8 +154,6 @@ send_copies(JID, Packet, Direction)->
     %% receiver of the original message
     TargetJIDs = lists:delete(JID, [ jlib:make_jid({U, S, CCRes}) || CCRes <- list(U, S) ]),
 
-    %% XML with a list of CC addresses, it will be embedded on each carbon message below 
-    CCListXML = build_xep033_carbon_addresses(TargetJIDs),
 
     lists:map(fun(Dest) ->
 		    {_, _, Resource} = jlib:jid_tolower(Dest),
@@ -168,7 +166,6 @@ send_copies(JID, Packet, Direction)->
 						    {"to", jlib:jid_to_string(Dest)}],
 			   [{xmlelement, "forwarded", [{"xmlns", ?FORWARD_NS}],
 			     [{xmlelement, atom_to_list(Direction), [{"xmlns", ?CC_NS}],[]},
-			      CCListXML,
  			      complete_packet(JID, Packet, Direction)]
 			    }]
 			  },
@@ -206,17 +203,3 @@ list(User, Server)->
 	[{'==', '$1', Server}, {'==', '$2', User}],
 	['$3']}]).
 
-%% Example of a xep-033 CC list in XML:
-%% <addresses xmlns='http://jabber.org/protocol/address'>
-%%  <address type='cc' jid='romeo@example.net/browser1-a'/>
-%%  <address type='cc' jid='romeo@example.net/browser1-b'/>
-%%  <address type='cc' jid='romeo@example.net/browser2-b'/>
-%% </addresses>
-build_xep033_carbon_addresses(Destinations) ->
-    {xmlelement, "addresses", [ {"xmlns", ?ADDRESSES_NS} ],
-	lists:foldl(fun(Destination, Acc) ->
-			[{xmlelement, "address", [  {"type", "cc"},
-						    {"jid", jlib:jid_to_string(Destination)} ],
-						 [] } | Acc]
-		    end, [], Destinations)}.
-    
