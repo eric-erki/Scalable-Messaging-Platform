@@ -43,7 +43,6 @@
 
 -define(CC_NS, "urn:xmpp:carbons:1").
 -define(FORWARD_NS, "urn:xmpp:forward:0").
--define(ADDRESSES_NS, "http://jabber.org/protocol/address").
 
 -include("ejabberd.hrl").
 -include("jlib.hrl").
@@ -164,11 +163,10 @@ send_copies(JID, Packet, Direction)->
 						    {"type", "chat"}, 
 						    {"from", jlib:jid_to_string(Sender)}, 
 						    {"to", jlib:jid_to_string(Dest)}],
-			   [{xmlelement, "forwarded", [{"xmlns", ?FORWARD_NS}],
-			     [{xmlelement, atom_to_list(Direction), [{"xmlns", ?CC_NS}],[]},
- 			      complete_packet(JID, Packet, Direction)]
-			    }]
-			  },
+			   [{xmlelement, atom_to_list(Direction), [{"xmlns", ?CC_NS}],[]},
+			    {xmlelement, "forwarded", [{"xmlns", ?FORWARD_NS}],
+			        [complete_packet(JID, Packet, Direction)]}
+			   ]},
 		    ejabberd_router:route(Sender, Dest, New)
 	      end, TargetJIDs),
     ok.
@@ -184,16 +182,19 @@ disable(Host, U, R)->
         mnesia:delete_object(#carboncopy{host=Host, user=U, resource=R})
     end).
 
-complete_packet(From, {xmlelement, "message", Attrs, ChildElements} = Packet, sent) ->
+complete_packet(From, {xmlelement, "message", OrigAttrs, ChildElements} = _Packet, sent) ->
     %% if this is a packet sent by user on this host, then Packet doesn't
     %% include the 'from' attribute. We must add it.
+    Attrs = lists:keystore("xmlns", 1, OrigAttrs, {"xmlns", "jabber:client"}),
     case proplists:get_value("from", Attrs) of
 	undefined ->
 	    {xmlelement, "message", [{"from", jlib:jid_to_string(From)}|Attrs], ChildElements};
 	_ ->
-	    Packet
+  	    {xmlelement, "message", Attrs, ChildElements}
     end;
-complete_packet(_, Packet, _) -> Packet.
+complete_packet(_From, {xmlelement, "message", OrigAttrs, ChildElements} = _Packet, received) ->
+    Attrs = lists:keystore("xmlns", 1, OrigAttrs, {"xmlns", "jabber:client"}),
+    {xmlelement, "message", Attrs, ChildElements}.
 
 %% list resources with carbons enabled for given user and host
 list(User, Server)->
