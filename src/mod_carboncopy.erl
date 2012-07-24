@@ -80,7 +80,7 @@ stop(Host) ->
     ejabberd_hooks:delete(user_receive_packet,Host, ?MODULE, user_receive_packet, 89),
     ejabberd_hooks:delete(unset_presence_hook,Host, ?MODULE, remove_connection, 10).
 
-iq_handler(From, _To,  #iq{type=set, sub_el = {xmlelement, Operation, Attrs, []}} = IQ)->
+iq_handler(From, _To,  #iq{type=set, sub_el = {xmlelement, Operation, _Attrs, []}} = IQ)->
     ?INFO_MSG("carbons IQ received: ~p", [IQ]),
     {U, S, R} = jlib:jid_tolower(From),
     Result = case Operation of
@@ -106,8 +106,13 @@ iq_handler(_From, _To, IQ)->
 user_send_packet(_Debug, From, _To, Packet) ->
     check_and_forward(From, Packet, sent).
 
-user_receive_packet(_Debug, JID, _From, _To, Packet) ->
-    check_and_forward(JID, Packet, received).
+%% Only make carbon copies if the original destination was not a bare jid. 
+%% If the original destination was a bare jid, the message is going to be delivered to all
+%% connected resources anyway. Avoid duplicate delivery. "XEP-0280 : 3.5 Receiving Messages"
+user_receive_packet(_Debug, JID, _From, #jid{resource=Resource} = _To, Packet) when Resource /= "" ->
+    check_and_forward(JID, Packet, received);
+user_receive_packet(_Debug, _JID, _From, _To, _Packet) ->
+	ok.
     
 % verifier si le trafic est local
 % Modified from original version: 
