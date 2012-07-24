@@ -35,8 +35,8 @@
          stop/1]).
 
 %% Hooks:
--export([user_send_packet/3,
-	 user_receive_packet/4,
+-export([user_send_packet/4,
+	 user_receive_packet/5,
          iq_handler/3,
          remove_connection/4,
          is_carbon_copy/1]).
@@ -63,6 +63,7 @@ is_carbon_copy(Packet) ->
 
 start(Host, Opts) ->
     IQDisc = gen_mod:get_opt(iqdisc, Opts, one_queue),
+    mod_disco:register_feature(Host, ?CC_NS),
     mnesia:create_table(?TABLE,
             [{attributes, record_info(fields, ?TABLE)}, {type, bag}]),
     ejabberd_hooks:add(unset_presence_hook,Host, ?MODULE, remove_connection, 10),
@@ -73,14 +74,14 @@ start(Host, Opts) ->
 
 stop(Host) ->
     gen_iq_handler:remove_iq_handler(ejabberd_sm, Host, ?CC_NS),
+    mod_disco:unregister_feature(Host, ?CC_NS),
     %% why priority 89: to define clearly that we must run BEFORE mod_logdb hook (90)
     ejabberd_hooks:delete(user_send_packet,Host, ?MODULE, user_send_packet, 89),
     ejabberd_hooks:delete(user_receive_packet,Host, ?MODULE, user_receive_packet, 89),
     ejabberd_hooks:delete(unset_presence_hook,Host, ?MODULE, remove_connection, 10).
 
-iq_handler(From, _To,  #iq{type=set, sub_el = {xmlelement, "carbons", Attrs, []}} = IQ)->
+iq_handler(From, _To,  #iq{type=set, sub_el = {xmlelement, Operation, Attrs, []}} = IQ)->
     ?INFO_MSG("carbons IQ received: ~p", [IQ]),
-    {_ ,Operation}=lists:keyfind( "mode", 1,Attrs),
     {U, S, R} = jlib:jid_tolower(From),
     Result = case Operation of
         "enable"->
@@ -100,12 +101,12 @@ iq_handler(From, _To,  #iq{type=set, sub_el = {xmlelement, "carbons", Attrs, []}
     end;
 
 iq_handler(_From, _To, IQ)->
-    IQ#iq{sub_el = [?ERR_NOT_ALLOWED]}.
+    IQ#iq{type=error, sub_el = [?ERR_NOT_ALLOWED]}.
 
-user_send_packet(From, _To, Packet) ->
+user_send_packet(_Debug, From, _To, Packet) ->
     check_and_forward(From, Packet, sent).
 
-user_receive_packet(JID, _From, _To, Packet) ->
+user_receive_packet(_Debug, JID, _From, _To, Packet) ->
     check_and_forward(JID, Packet, received).
     
 % verifier si le trafic est local
