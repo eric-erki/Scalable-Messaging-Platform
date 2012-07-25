@@ -92,13 +92,13 @@ start(Host, Opts) ->
 
 loop(Host, AccessMaxOfflineMsgs) ->
     receive
-        #offline_msg{us = User} = Msg ->
+        #offline_msg{us = UserServer} = Msg ->
             DBType = gen_mod:db_type(Host, ?MODULE),
-	    Msgs = receive_all(User, [Msg], DBType),
+	    Msgs = receive_all(UserServer, [Msg], DBType),
 	    Len = length(Msgs),
 	    MaxOfflineMsgs = get_max_user_messages(AccessMaxOfflineMsgs,
-						   User, Host),
-            store_offline_msg(Host, User, Msgs, Len, MaxOfflineMsgs, DBType),
+						   UserServer, Host),
+            store_offline_msg(Host, UserServer, Msgs, Len, MaxOfflineMsgs, DBType),
             loop(Host, AccessMaxOfflineMsgs);
         _ ->
 	    loop(Host, AccessMaxOfflineMsgs)
@@ -109,9 +109,9 @@ store_offline_msg(_Host, US, Msgs, Len, MaxOfflineMsgs, mnesia) ->
                 %% Only count messages if needed:
                 Count = if MaxOfflineMsgs =/= infinity ->
                                 Len + p1_mnesia:count_records(
-                                        offline_msg, 
+                                        offline_msg,
                                         #offline_msg{us=US, _='_'});
-                           true -> 
+                           true ->
                                 0
                         end,
                 if
@@ -135,7 +135,7 @@ store_offline_msg(Host, User, Msgs, Len, MaxOfflineMsgs, odbc) ->
                     Len + count_offline_messages(User, Host);
                true -> 0
             end,
-    if 
+    if
         Count > MaxOfflineMsgs ->
             discard_warn_sender(Msgs);
         true ->
@@ -161,7 +161,7 @@ store_offline_msg(Host, User, Msgs, Len, MaxOfflineMsgs, odbc) ->
                                                jlib:make_jid("", Host, ""),
                                                "Offline Storage"),
                                              %% TODO: Delete the next three lines once XEP-0091 is Obsolete
-                                             jlib:timestamp_to_xml( 
+                                             jlib:timestamp_to_xml(
                                                calendar:now_to_universal_time(
                                                  M#offline_msg.timestamp))]},
                               XML =
@@ -173,9 +173,9 @@ store_offline_msg(Host, User, Msgs, Len, MaxOfflineMsgs, odbc) ->
     end.
 
 %% Function copied from ejabberd_sm.erl:
-get_max_user_messages(AccessRule, LUser, Host) ->
+get_max_user_messages(AccessRule, {User, Server}, Host) ->
     case acl:match_rule(
-	   Host, AccessRule, jlib:make_jid(LUser, Host, "")) of
+	   Host, AccessRule, jlib:make_jid(User, Server, "")) of
 	Max when is_integer(Max) -> Max;
 	infinity -> infinity;
 	_ -> ?MAX_USER_MESSAGES
@@ -866,7 +866,7 @@ count_offline_messages(LUser, LServer, mnesia) ->
     US = {LUser, LServer},
     F = fun () ->
 		p1_mnesia:count_records(
-		  offline_msg, 
+		  offline_msg,
 		  #offline_msg{us=US, _='_'})
 	end,
     case catch mnesia:async_dirty(F) of
