@@ -782,7 +782,14 @@ encode_body(#body{attrs = Attrs, els = Els}) ->
              ({xmlstreamelement, {xmlelement, "stream:features", _, _} = El}, {AttrsAcc, XMLBuf}) ->
                  {lists:keystore("xmlns:stream", 1, AttrsAcc, {"xmlns:stream", ?NS_STREAM}),
                   [xml:element_to_binary(El)|XMLBuf]};
-           ({xmlstreamelement, El}, {AttrsAcc, XMLBuf}) ->
+             ({xmlstreamelement, {xmlelement, Name, SAttrs, SEls}}, {AttrsAcc, XMLBuf})
+                when Name == "iq";
+                     Name == "message";
+                     Name == "presence" ->
+                  SAttrs2 = lists:keystore("xmlns", 1, SAttrs, {"xmlns", ?NS_CLIENT}),
+                  El2 = {xmlelement, Name, SAttrs2, SEls},
+                  {AttrsAcc, [xml:element_to_binary(El2)|XMLBuf]};
+             ({xmlstreamelement, El}, {AttrsAcc, XMLBuf}) ->
                   {AttrsAcc, [xml:element_to_binary(El)|XMLBuf]};
              ({xmlstreamend, _}, {AttrsAcc, XMLBuf}) ->
                   {[{"type", "terminate"},

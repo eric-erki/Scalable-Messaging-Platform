@@ -34,7 +34,7 @@
 
 %% External exports
 -export([start/2,
-	 stop/1,
+	 stop_or_detach/1,
 	 start_link/3,
 	 send_text/2,
 	 send_element/2,
@@ -53,12 +53,19 @@
 %% gen_fsm callbacks
 -export([init/1,
 	 wait_for_stream/2,
+	 wait_for_stream/3,
 	 wait_for_auth/2,
+	 wait_for_auth/3,
 	 wait_for_feature_request/2,
+	 wait_for_feature_request/3,
 	 wait_for_bind/2,
+	 wait_for_bind/3,
 	 wait_for_session/2,
+	 wait_for_session/3,
 	 wait_for_sasl_response/2,
+	 wait_for_sasl_response/3,
 	 session_established/2,
+	 session_established/3,
 	 handle_event/3,
 	 handle_sync_event/4,
 	 code_change/4,
@@ -191,8 +198,28 @@ get_subscription(LFrom, StateData) ->
 broadcast(FsmRef, Type, From, Packet) ->
     FsmRef ! {broadcast, Type, From, Packet}.
 
-stop(FsmRef) ->
-    ?GEN_FSM:send_event(FsmRef, closed).
+%% Used by mod_ack and mod_ping.  
+%% If the client is not oor capable, we must stop the session,
+%% and be sure to not return until the c2s process has really stopped. This
+%% is to avoid race conditions when resending messages in mod_ack (EJABS-1677). 
+%% In the other side, if the client is oor capable, then this just
+%% switch reception to false, and returns inmediately.
+stop_or_detach(FsmRef) ->
+    case ?GEN_FSM:sync_send_event(FsmRef, stop_or_detach) of
+	stopped ->
+		MRef = erlang:monitor(process, FsmRef),
+		receive 
+		   {'DOWN', MRef, process, FsmRef, _Reason}->
+			ok
+		after 5 ->
+			catch exit(FsmRef, kill)
+		end,
+		erlang:demonitor(MRef, [flush]),
+		ok;
+	detached ->
+		ok
+    end.
+
 
 migrate(FsmRef, Node, After) ->
     erlang:send_after(After, FsmRef, {migrate, Node}).
@@ -563,6 +590,8 @@ wait_for_stream({xmlstreamerror, _}, StateData) ->
 
 wait_for_stream(closed, StateData) ->
     {stop, normal, StateData}.
+wait_for_stream(stop_or_detach, _From, StateData) ->
+    {stop, normal, stopped, StateData}.
 
 
 wait_for_auth({xmlstreamelement, El}, StateData) ->
@@ -739,6 +768,8 @@ wait_for_auth({xmlstreamerror, _}, StateData) ->
 
 wait_for_auth(closed, StateData) ->
     {stop, normal, StateData}.
+wait_for_auth(stop_or_detach,_From, StateData) ->
+    {stop, normal, stopped, StateData}.
 
 
 wait_for_feature_request({xmlstreamelement, El}, StateData) ->
@@ -932,6 +963,8 @@ wait_for_feature_request({xmlstreamerror, _}, StateData) ->
 
 wait_for_feature_request(closed, StateData) ->
     {stop, normal, StateData}.
+wait_for_feature_request(stop_or_detach, _From, StateData) ->
+    {stop, normal, stopped, StateData}.
 
 
 wait_for_sasl_response({xmlstreamelement, El}, StateData) ->
@@ -1053,6 +1086,8 @@ wait_for_sasl_response({xmlstreamerror, _}, StateData) ->
 
 wait_for_sasl_response(closed, StateData) ->
     {stop, normal, StateData}.
+wait_for_sasl_response(stop_or_detach, _From, StateData) ->
+    {stop, normal, stopped, StateData}.
 
 
 resource_conflict_action(U, S, R) ->
@@ -1142,6 +1177,8 @@ wait_for_bind({xmlstreamerror, _}, StateData) ->
 
 wait_for_bind(closed, StateData) ->
     {stop, normal, StateData}.
+wait_for_bind(stop_or_detach, _From, StateData) ->
+    {stop, normal, stopped, StateData}.
 
 
 
@@ -1224,6 +1261,8 @@ wait_for_session({xmlstreamerror, _}, StateData) ->
 
 wait_for_session(closed, StateData) ->
     {stop, normal, StateData}.
+wait_for_session(stop_or_detach, _From, StateData) ->
+    {stop, normal, stopped, StateData}.
 
 
 session_established({xmlstreamelement, El}, StateData) ->
@@ -1273,6 +1312,19 @@ session_established(closed, StateData) ->
 	    fsm_next_state(session_established, NewState);
 	true ->
 	    {stop, normal, StateData}
+    end.
+session_established(stop_or_detach, From, StateData) ->
+    if
+	not StateData#state.reception ->
+	    ?GEN_FSM:reply(From, detached),
+	    fsm_next_state(session_established, StateData);
+	(StateData#state.keepalive_timer /= undefined) ->
+	    NewState1 = change_reception(StateData, false),
+	    NewState = start_keepalive_timer(NewState1),
+	    ?GEN_FSM:reply(From, detached),
+	    fsm_next_state(session_established, NewState);
+	true ->
+	    {stop, normal, stopped, StateData}
     end.
 
 %% Process packets sent by user (coming from user on c2s XMPP
@@ -2397,64 +2449,62 @@ is_privacy_allow(StateData, From, To, Packet, Dir) ->
     allow == privacy_check_packet(StateData, From, To, Packet, Dir).
 
 presence_broadcast(StateData, From, JIDSet, Packet) ->
-    lists:foreach(fun(JID) ->
-			  FJID = jlib:make_jid(JID),
-			  case privacy_check_packet(StateData, From, FJID, Packet, out) of
-			      deny ->
-				  ok;
-			      allow ->
-				  ejabberd_router:route(From, FJID, Packet)
-			  end
-		  end, ?SETS:to_list(JIDSet)).
+	%%TODO: map + filter is more readable than this foldl
+	PrivacyFilteredJIDs = lists:foldl(fun(JID, Acc) ->
+				  FJID = jlib:make_jid(JID),
+				  case privacy_check_packet(StateData, From, FJID, Packet, out) of
+					deny ->
+						Acc;
+					allow ->
+						[FJID | Acc]
+				  end 
+				  end, [], ?SETS:to_list(JIDSet)),
+    ejabberd_router:multicast_route(From, PrivacyFilteredJIDs, Packet).
 
 presence_broadcast_to_trusted(StateData, From, T, A, Packet) ->
-    lists:foreach(
-      fun(JID) ->
-	      case ?SETS:is_element(JID, T) of
-		  true ->
-		      FJID = jlib:make_jid(JID),
-		      case privacy_check_packet(StateData, From, FJID, Packet, out) of
-			  deny ->
-			      ok;
-			  allow ->
-			      ejabberd_router:route(From, FJID, Packet)
-		      end;
-		  _ ->
-		      ok
-	      end
-      end, ?SETS:to_list(A)).
+    Filtered = lists:filter( fun(JID) -> ?SETS:is_element(JID, T) end, ?SETS:to_list(A)),
+    PrivacyFilteredJIDs = lists:foldl(fun(JID, Acc) ->
+				  FJID = jlib:make_jid(JID),
+				  case ejabberd_hooks:run_fold(
+						privacy_check_packet, StateData#state.server,
+						allow,
+						[StateData#state.user,
+						 StateData#state.server,
+						 StateData#state.privacy_list,
+						 {From, FJID, Packet},
+						 out]) of
+					deny ->
+						Acc;
+					allow ->
+						[FJID | Acc]
+				  end 
+				  end, [], Filtered),
+    ejabberd_router:multicast_route(From, PrivacyFilteredJIDs, Packet).
+
 
 
 presence_broadcast_first(From, StateData, Packet) ->
-    ?SETS:fold(fun(JID, X) ->
-		       ejabberd_router:route(
-			 From,
-			 jlib:make_jid(JID),
-			 {xmlelement, "presence",
+    ProbeList = [jlib:make_jid(JID) || JID <- ?SETS:to_list(StateData#state.pres_t)],
+    ejabberd_router:multicast_route(From, ProbeList, {xmlelement, "presence",
 			  [{"type", "probe"}],
 			  []}),
-		       X
-	       end,
-	       [],
-	       StateData#state.pres_t),
+		
     if
 	StateData#state.pres_invis ->
 	    StateData;
 	true ->
-	    As = ?SETS:fold(
-		    fun(JID, A) ->
-			    FJID = jlib:make_jid(JID),
-			    case privacy_check_packet(StateData, From, FJID, Packet, out) of
-				deny ->
-				    ok;
-				allow ->
-				    ejabberd_router:route(From, FJID, Packet)
-			    end,
-			    ?SETS:add_element(JID, A)
-		    end,
-		    StateData#state.pres_a,
-		    StateData#state.pres_f),
-	    StateData#state{pres_a = As}
+	    {FilteredFromList, As} = lists:foldl(fun(JID, {Filtered, As}) ->
+				  FJID = jlib:make_jid(JID),
+				  case privacy_check_packet(StateData, From, FJID, Packet, out) of
+					deny ->
+						{Filtered, ?SETS:add_element(JID, As)};
+					allow ->
+						{[FJID|Filtered], ?SETS:add_element(JID, As)}
+				  end 
+				  end, {[], StateData#state.pres_a}, ?SETS:to_list(StateData#state.pres_f)),
+
+        ejabberd_router:multicast_route(From, FilteredFromList, Packet),
+	StateData#state{pres_a = As}
     end.
 
 

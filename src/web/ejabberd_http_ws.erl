@@ -167,13 +167,12 @@ handle_info(closed, _StateName, StateData) ->
     
 handle_info({browser, Packet}, StateName, StateData)->
     %?DEBUG("Received on websocket : ~p ", [Packet]),
-    NPacket = unicode:characters_to_binary(Packet,latin1),
     NewState = case StateData#state.waiting_input of
 		false ->
-		    Input = [StateData#state.input|NPacket],
+		    Input = [StateData#state.input|Packet],
 		    StateData#state{input = Input};
 		{Receiver, _Tag} ->
-		    Receiver ! {tcp, StateData#state.socket,NPacket},
+		    Receiver ! {tcp, StateData#state.socket,Packet},
 		    cancel_timer(StateData#state.timer),
 		    Timer = erlang:start_timer(StateData#state.timeout, self(), []),
         StateData#state{waiting_input = false,

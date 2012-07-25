@@ -54,14 +54,14 @@ check(_Path, Headers)->
 % If origins not set, access is open.
 is_acceptable(#ws{origin=Origin, protocol=Protocol, 
                   headers = Headers, acceptable_origins = Origins, auth_module=undefined})->
-  ClientProtocol = lists:keyfind("Sec-Websocket-Protocol",1, Headers),
+  ClientProtocol = find_subprotocol(Headers),
   case {(Origins == []) or lists:member(Origin, Origins), ClientProtocol, Protocol } of
     {false, _, _} -> 
       ?INFO_MSG("client does not come from authorized origin", []),
       false;
     {_, false, _} -> 
       true;
-    {_, {_, P}, P} -> 
+    {_, P, P} ->
       true;
     _ = E-> 
      ?INFO_MSG("Wrong protocol requested : ~p", [E]),
@@ -219,11 +219,18 @@ handshake({'draft-hixie', 0}, Sock,SocketMod, Headers, {Path, Q,Origin, Host, Po
 	    QParams-> "?" ++ string:join(QParams, "&")
 	end,       
 	%?DEBUG("got content in body of websocket request: ~p, ~p", [Body,string:join([Host, Path],"/")]),	
+	SubProtocolHeader = case find_subprotocol(Headers) of
+                            false ->
+                                [];
+                            V ->
+                                ["Sec-Websocket-Protocol:", V, "\r\n"]
+                        end,
 	% prepare handhsake response
 	["HTTP/1.1 101 WebSocket Protocol Handshake\r\n",
 		"Upgrade: WebSocket\r\n",
 		"Connection: Upgrade\r\n",
 		"Sec-WebSocket-Origin: ", Origin, "\r\n",
+		SubProtocolHeader,
 		"Sec-WebSocket-Location: ws://", HostPort, "/", string:join(Path,"/"),
 		QString, "\r\n\r\n",
 		build_challenge({'draft-hixie', 0}, {Key1, Key2, Body})
@@ -233,18 +240,32 @@ handshake({'draft-hixie', 68}, _Sock,_SocketMod, Headers, {Path, Origin, Host, P
 		{_, Value} -> Value;
 		_ -> string:join([Host, integer_to_list(Port)],":")
 	end,
+    SubProtocolHeader = case find_subprotocol(Headers) of
+                            false ->
+                                [];
+                            V ->
+                                ["WebSocket-Protocol:", V, "\r\n"]
+                        end,
 	["HTTP/1.1 101 Web Socket Protocol Handshake\r\n",
 		"Upgrade: WebSocket\r\n",
 		"Connection: Upgrade\r\n",
 		"WebSocket-Origin: ", Origin , "\r\n",
+		SubProtocolHeader,
 		"WebSocket-Location: ws://", HostPort, "/", string:join(Path,"/"),"\r\n\r\n"
 	];
 handshake({'draft-hybi', _}, Sock,SocketMod, Headers, {Path, Q,Origin, Host, Port}) ->
 	{_, Key} = lists:keyfind("Sec-Websocket-Key",1, Headers),
 	Hash = jlib:encode_base64(binary_to_list(sha:sha1(Key++"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))),
+    SubProtocolHeader = case find_subprotocol(Headers) of
+                            false ->
+                                [];
+                            V ->
+                                ["Sec-WebSocket-Protocol:", V, "\r\n"]
+                        end,
 	["HTTP/1.1 101 Switching Protocols\r\n",
 		"Upgrade: websocket\r\n",
 		"Connection: Upgrade\r\n",
+		SubProtocolHeader,
 		"Sec-WebSocket-Accept: ", Hash, "\r\n\r\n"
 	].
 
@@ -260,6 +281,20 @@ build_challenge({'draft-hixie', 0}, {Key1, Key2, Key3}) ->
 	Part2 = list_to_integer(Ikey2) div Blank2,
 	Ckey = <<Part1:4/big-unsigned-integer-unit:8, Part2:4/big-unsigned-integer-unit:8, Key3/binary>>,
 	erlang:md5(Ckey).
+
+find_subprotocol(Headers) ->
+    case lists:keysearch("Sec-Websocket-Protocol", 1, Headers) of
+        false ->
+            case lists:keysearch("Websocket-Protocol", 1, Headers) of
+                false ->
+                    false;
+                {value, {_, Protocol2}} ->
+                    Protocol2
+            end;
+        {value, {_, Protocol}} ->
+            Protocol
+    end.
+
 	
 	
 ws_loop(Vsn, HandlerState, Socket, WsHandleLoopPid, SocketMode, WsAutoExit) ->
@@ -325,7 +360,7 @@ process_hixie_68({_, L}, <<255,T/binary>>) ->
     {L2, Recv, Send} = process_hixie_68({false, <<>>}, T),
     {L2, [L|Recv], Send};
 process_hixie_68({true, L}, <<H/utf8, T/binary>>) ->
-    process_hixie_68({true, <<L/binary, H>>}, T).
+    process_hixie_68({true, <<L/binary, H/utf8>>}, T).
 
 -record(hybi_8_state, {mask=none, offset=0, left, final_frame=true, opcode, unprocessed = <<>>, unmasked = <<>>, unmasked_msg = <<>>}).
 
@@ -374,17 +409,32 @@ process_hybi_8(#hybi_8_state{unprocessed=none, unmasked=UnmaskedPre, left=Left}=
     {State2#hybi_8_state{left=Left-byte_size(Data), unmasked=[UnmaskedPre, Unmasked]}, [], []};
 process_hybi_8(#hybi_8_state{unprocessed=none, unmasked=UnmaskedPre, opcode=Opcode,
                               final_frame=Final, left=Left, unmasked_msg=UnmaskedMsg}=State, Data) ->
-    {_State, Unmasked} = unmask_hybi_8(State, binary_part(Data, 0, Left)),
-    Unprocessed = binary_part(Data, Left, byte_size(Data)-Left),
+    <<ToProcess:(Left)/binary, Unprocessed/binary>> = Data,
+    {_State, Unmasked} = unmask_hybi_8(State, ToProcess),
     case Final of
         true ->
             {State3, Recv, Send} = process_hybi_8(#hybi_8_state{}, Unprocessed),
             case Opcode of
-                9 ->
-                    Frame = encode_frame({'draft-hybi', 8}, Unprocessed, 10),
-                    {State3#hybi_8_state{unmasked_msg=UnmaskedMsg}, Recv, [Frame|Send]};
                 X when X < 3 ->
                     {State3, [iolist_to_binary([UnmaskedMsg, UnmaskedPre, Unmasked])|Recv], Send};
+                9 -> % Ping
+                    Frame = encode_frame({'draft-hybi', 8}, Unprocessed, 10),
+                    {State3#hybi_8_state{unmasked_msg=UnmaskedMsg}, Recv, [Frame|Send]};
+                8 -> % Close
+                    CloseCode = case Unmasked of
+                                    <<Code:16/integer-big, Message/binary>> ->
+                                        ?DEBUG("WebSocket close op: ~p ~s", [Code, Message]),
+                                        Code;
+                                    <<Code:16/integer-big>> ->
+                                        ?DEBUG("WebSocket close op: ~p", [Code]),
+                                        Code;
+                                    _ ->
+                                        ?DEBUG("WebSocket close op unknown: ~p", [Unmasked]),
+                                        1000
+                                end,
+
+                    Frame = encode_frame({'draft-hybi', 8}, <<CloseCode:16/integer-big>>, 8),
+                    {State3#hybi_8_state{unmasked_msg=UnmaskedMsg}, Recv, [Frame|Send]};
                 _ ->
                     {State3#hybi_8_state{unmasked_msg=UnmaskedMsg}, Recv, Send}                     
             end;
