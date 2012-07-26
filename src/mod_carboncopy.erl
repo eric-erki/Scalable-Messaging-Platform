@@ -4,7 +4,7 @@
 %%% Purpose : Download blacklists from ProcessOne
 %%% Created : 5 May 2008 by Mickael Remond <mremond@process-one.net>
 %%% Usage   : Add the following line in modules section of ejabberd.cfg:
-%%%              {mod_ip_blacklist, []}
+%%%              {mod_carboncopy, []}
 %%%
 %%%
 %%% ejabberd, Copyright (C) 2002-2011   ProcessOne
@@ -41,20 +41,22 @@
          remove_connection/4,
          is_carbon_copy/1]).
 
--define(CC_NS, "urn:xmpp:carbons:1").
--define(FORWARD_NS, "urn:xmpp:forward:0").
+-define(NS_CC, "urn:xmpp:carbons:1").
+-define(NS_FORWARD, "urn:xmpp:forward:0").
 
 -include("ejabberd.hrl").
 -include("jlib.hrl").
 -define(PROCNAME, ?MODULE).
 -define(TABLE, carboncopy).
--record(carboncopy,{host, user, resource}).
+-type matchspec_atom() :: '_' | '$1' | '$2'.
+-record(carboncopy,{us :: {list(), list()} | matchspec_atom(),
+		resource :: list() | matchspec_atom()}).
 
 is_carbon_copy(Packet) ->
 	case xml:get_subtag(Packet, "sent") of
 		{xmlelement, "sent", AAttrs, _} ->
 	    	case xml:get_attr_s("xmlns", AAttrs) of
-				?CC_NS -> true;
+				?NS_CC -> true;
 				_ -> false
 			end;
 		_ -> false
@@ -62,18 +64,21 @@ is_carbon_copy(Packet) ->
 
 start(Host, Opts) ->
     IQDisc = gen_mod:get_opt(iqdisc, Opts, one_queue),
-    mod_disco:register_feature(Host, ?CC_NS),
+    mod_disco:register_feature(Host, ?NS_CC),
     mnesia:create_table(?TABLE,
-            [{attributes, record_info(fields, ?TABLE)}, {type, bag}]),
+	[{ram_copies, [node()]},
+	 {attributes, record_info(fields, ?TABLE)}, 
+	 {type, bag}]),
+    mnesia:add_table_copy(?TABLE, node(), ram_copies),
     ejabberd_hooks:add(unset_presence_hook,Host, ?MODULE, remove_connection, 10),
     %% why priority 89: to define clearly that we must run BEFORE mod_logdb hook (90)
     ejabberd_hooks:add(user_send_packet,Host, ?MODULE, user_send_packet, 89),
     ejabberd_hooks:add(user_receive_packet,Host, ?MODULE, user_receive_packet, 89),
-    gen_iq_handler:add_iq_handler(ejabberd_sm, Host, ?CC_NS, ?MODULE, iq_handler, IQDisc).
+    gen_iq_handler:add_iq_handler(ejabberd_sm, Host, ?NS_CC, ?MODULE, iq_handler, IQDisc).
 
 stop(Host) ->
-    gen_iq_handler:remove_iq_handler(ejabberd_sm, Host, ?CC_NS),
-    mod_disco:unregister_feature(Host, ?CC_NS),
+    gen_iq_handler:remove_iq_handler(ejabberd_sm, Host, ?NS_CC),
+    mod_disco:unregister_feature(Host, ?NS_CC),
     %% why priority 89: to define clearly that we must run BEFORE mod_logdb hook (90)
     ejabberd_hooks:delete(user_send_packet,Host, ?MODULE, user_send_packet, 89),
     ejabberd_hooks:delete(user_receive_packet,Host, ?MODULE, user_receive_packet, 89),
@@ -91,10 +96,10 @@ iq_handler(From, _To,  #iq{type=set, sub_el = {xmlelement, Operation, _Attrs, []
             disable(S, U, R)
     end,
     case Result of 
-        {atomic, ok} ->
+        ok ->
 	    ?INFO_MSG("carbons IQ result: ok", []),
             IQ#iq{type=result, sub_el=[]};
-        {error,_} ->
+        {error,_Error} ->
 	    ?INFO_MSG("Error enabling / disabling carbons: ~p", [Result]),
             IQ#iq{type=error,sub_el = [?ERR_BAD_REQUEST]}
     end;
@@ -130,7 +135,7 @@ check_and_forward(JID, {xmlelement, "message", Attrs, _} = Packet, Direction)->
 			%% stop the hook chain, we don't want mod_logdb to register this message (duplicate)
 			stop
 		end;
-	    true ->
+	    _ ->
 		ok
 	end;
     _ ->
@@ -163,8 +168,8 @@ send_copies(JID, Packet, Direction)->
 						    {"type", "chat"}, 
 						    {"from", jlib:jid_to_string(Sender)}, 
 						    {"to", jlib:jid_to_string(Dest)}],
-			   [{xmlelement, atom_to_list(Direction), [{"xmlns", ?CC_NS}],[]},
-			    {xmlelement, "forwarded", [{"xmlns", ?FORWARD_NS}],
+			   [{xmlelement, atom_to_list(Direction), [{"xmlns", ?NS_CC}],[]},
+			    {xmlelement, "forwarded", [{"xmlns", ?NS_FORWARD}],
 			        [complete_packet(JID, Packet, Direction)]}
 			   ]},
 		    ejabberd_router:route(Sender, Dest, New)
@@ -172,15 +177,18 @@ send_copies(JID, Packet, Direction)->
     ok.
 
 enable(Host, U, R)->
-    ?DEBUG("enabling for ~p", [U]),
-    mnesia:transaction(fun()->
-        mnesia:write(#carboncopy{host=Host, user=U, resource=R})
-    end).
+	?DEBUG("enabling for ~p", [U]),
+	try mnesia:dirty_write(#carboncopy{us = {U,Host}, resource=R}) of
+		ok -> ok
+	catch _:Error -> {error, Error}
+	end.
 disable(Host, U, R)->
-    ?DEBUG("disabling for ~p", [U]),
-    mnesia:transaction(fun()->
-        mnesia:delete_object(#carboncopy{host=Host, user=U, resource=R})
-    end).
+	?DEBUG("disabling for ~p", [U]),
+	try mnesia:dirty_delete_object(#carboncopy{us={U,Host}, resource=R}) of
+		ok -> ok
+	catch _:Error -> {error, Error}
+	end.
+
 
 complete_packet(From, {xmlelement, "message", OrigAttrs, ChildElements} = _Packet, sent) ->
     %% if this is a packet sent by user on this host, then Packet doesn't
@@ -200,7 +208,5 @@ complete_packet(_From, {xmlelement, "message", OrigAttrs, ChildElements} = _Pack
 list(User, Server)->
     mnesia:dirty_select(
       ?TABLE,
-      [{#?TABLE{host = '$1', user = '$2', resource = '$3'},
-	[{'==', '$1', Server}, {'==', '$2', User}],
-	['$3']}]).
+      [{#carboncopy{us = {User, Server}, resource = '$2'},[], ['$2']}]).
 
