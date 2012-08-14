@@ -297,17 +297,21 @@ process_header(State, Data, Normalize) ->
 		    end,
 		    #state{sockmod = SockMod,
 			   socket = Socket,
-			   request_handlers = State#state.request_handlers};
+			   request_handlers = State#state.request_handlers,
+                           websocket_handlers = State#state.websocket_handlers};
 		_ ->
 		    #state{end_of_request = true,
-			   request_handlers = State#state.request_handlers}
+			   request_handlers = State#state.request_handlers,
+                           websocket_handlers = State#state.websocket_handlers}
 	    end;
 	{error, _Reason} ->
 	    #state{end_of_request = true,
-		   request_handlers = State#state.request_handlers};
+                   request_handlers = State#state.request_handlers,
+                   websocket_handlers = State#state.websocket_handlers};
 	_ ->
 	    #state{end_of_request = true,
-		   request_handlers = State#state.request_handlers}
+                   request_handlers = State#state.request_handlers,
+                   websocket_handlers = State#state.websocket_handlers}
     end.
 
 add_header(Name, Value, State) ->
