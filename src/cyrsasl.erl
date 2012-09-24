@@ -30,8 +30,8 @@
 -export([start/0,
 	 register_mechanism/3,
 	 listmech/1,
-	 server_new/8,
-	 server_start/4,
+	 server_new/7,
+	 server_start/3,
 	 server_step/2]).
 
 -include("ejabberd.hrl").
@@ -39,12 +39,12 @@
 -record(sasl_mechanism, {mechanism, module, password_type}).
 -record(sasl_state, {service, myname, realm,
 		     get_password, check_password, check_password_digest,
-		     mech_mod, mech_state, is_user_exists}).
+		     mech_mod, mech_state}).
 
 -export([behaviour_info/1]).
 
 behaviour_info(callbacks) ->
-    [{mech_new, 6}, {mech_step, 2}];
+    [{mech_new, 4}, {mech_step, 2}];
 behaviour_info(_Other) ->
     undefined.
 
@@ -56,7 +56,6 @@ start() ->
     cyrsasl_digest:start([]),
     cyrsasl_scram:start([]),
     cyrsasl_anonymous:start([]),
-    cyrsasl_pkix:start([]),
     ok.
 
 register_mechanism(Mechanism, Module, PasswordType) ->
@@ -120,17 +119,15 @@ listmech(Host) ->
     filter_anonymous(Host, Mechs).
 
 server_new(Service, ServerFQDN, UserRealm, _SecFlags,
-	   GetPassword, CheckPassword, CheckPasswordDigest,
-           IsUserExists) ->
+	   GetPassword, CheckPassword, CheckPasswordDigest) ->
     #sasl_state{service = Service,
 		myname = ServerFQDN,
 		realm = UserRealm,
 		get_password = GetPassword,
 		check_password = CheckPassword,
-		check_password_digest= CheckPasswordDigest,
-                is_user_exists = IsUserExists}.
+		check_password_digest= CheckPasswordDigest}.
 
-server_start(State, Mech, ClientIn, ClientCertFile) ->
+server_start(State, Mech, ClientIn) ->
     case lists:member(Mech, listmech(State#sasl_state.myname)) of
 	true ->
 	    case ets:lookup(sasl_mechanism, Mech) of
@@ -139,9 +136,7 @@ server_start(State, Mech, ClientIn, ClientCertFile) ->
 					State#sasl_state.myname,
 					State#sasl_state.get_password,
 					State#sasl_state.check_password,
-					State#sasl_state.check_password_digest,
-                                        State#sasl_state.is_user_exists,
-                                        ClientCertFile),
+					State#sasl_state.check_password_digest),
 		    server_step(State#sasl_state{mech_mod = Module,
 						 mech_state = MechState},
 				ClientIn);
@@ -175,8 +170,6 @@ server_step(State, ClientIn) ->
 	     State#sasl_state{mech_state = NewMechState}};
 	{error, Error, Username} ->
 	    {error, Error, Username};
-        {error, Error, Username, Txt} ->
-            {error, Error, Username, Txt};
 	{error, Error} ->
 	    {error, Error}
     end.

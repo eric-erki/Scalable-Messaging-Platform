@@ -29,7 +29,7 @@
 
 -export([start/1,
 	 stop/0,
-	 mech_new/6,
+	 mech_new/4,
 	 mech_step/2]).
 
 -include("ejabberd.hrl").
@@ -47,8 +47,7 @@ start(_Opts) ->
 stop() ->
     ok.
 
-mech_new(Host, GetPassword, _CheckPassword, CheckPasswordDigest,
-         _IsUserExists, _CertFile) ->
+mech_new(Host, GetPassword, _CheckPassword, CheckPasswordDigest) ->
     {ok, #state{step = 1,
 		nonce = randoms:get_string(),
 		host = Host,
