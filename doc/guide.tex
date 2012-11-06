@@ -3225,6 +3225,14 @@ themselves are not clustered nor fault-tolerant: if the node managing a
 set of rooms goes down, the rooms disappear and they will be recreated
 on an available node on first connection attempt.
 
+If the global option \option{domain\_balancing} is set to \term{broadcast}
+(see section \ref{domainlb}),
+then the rooms exist on all nodes of the cluster at the same time.
+It means that all messages published
+on one instance of a room are broadcasted to the instances of the same
+rooms on all clusters. To avoid useless traffic, this broadcast is
+limited to non empty room instances.
+
 Module options:
 \begin{description}
 \hostitem{conference}
@@ -5759,6 +5767,7 @@ Several balancing criteria are available:
 \item \term{source}: the full JID of the packet \term{from} attribute is used.
 \item \term{bare\_destination}: the bare JID (without resource) of the packet \term{to} attribute is used.
 \item \term{bare\_source}: the bare JID (without resource) of the packet \term{from} attribute is used.
+\item \term{broadcast}: send the packet to all the nodes.
 \end{itemize}
 
 If the value corresponding to the criteria is the same, the same component instance in the cluster will be used.
