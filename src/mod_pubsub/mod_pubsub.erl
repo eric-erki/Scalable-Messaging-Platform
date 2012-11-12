@@ -2130,7 +2130,7 @@ publish_item(Host, ServerHost, Node, Publisher, ItemId, Payload) ->
 	    ejabberd_hooks:run(pubsub_publish_item, ServerHost, [ServerHost, Node, Publisher, service_jid(Host), ItemId, BrPayload]),
 	    set_cached_item(Host, NodeId, ItemId, Publisher, BrPayload),
 	    case get_option(Options, deliver_notifications) of
-		true -> broadcast_publish_item(Host, Node, NodeId, Type, Options, ItemId, jlib:jid_tolower(Publisher), BrPayload, Removed);
+		true -> broadcast_publish_item(Host, Node, NodeId, Type, Options, ItemId, Publisher, BrPayload, Removed);
 		false -> ok
 	    end,
 	    case Result of
