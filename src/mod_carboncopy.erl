@@ -41,7 +41,7 @@
          remove_connection/4,
          is_carbon_copy/1]).
 
--define(NS_CC, "urn:xmpp:carbons:1").
+-define(NS_CC, "urn:xmpp:carbons:2").
 -define(NS_FORWARD, "urn:xmpp:forward:0").
 
 -include("ejabberd.hrl").
@@ -121,8 +121,6 @@ user_receive_packet(_Debug, _JID, _From, _To, _Packet) ->
 % verifier si le trafic est local
 % Modified from original version: 
 %    - registered to the user_send_packet hook, to be called only once even for multicast
-%    - do not support "private" message mode, and do not modify the original packet in any way
-%    - we also replicate "read" notifications
 check_and_forward(JID, {xmlelement, "message", Attrs, _} = Packet, Direction)->
     case lists:keyfind("type", 1, Attrs) of 
     {"type", "chat"} ->
@@ -168,9 +166,9 @@ send_copies(JID, Packet, Direction)->
 						    {"type", "chat"}, 
 						    {"from", jlib:jid_to_string(Sender)}, 
 						    {"to", jlib:jid_to_string(Dest)}],
-			   [{xmlelement, atom_to_list(Direction), [{"xmlns", ?NS_CC}],[]},
-			    {xmlelement, "forwarded", [{"xmlns", ?NS_FORWARD}],
-			        [complete_packet(JID, Packet, Direction)]}
+			   [{xmlelement, atom_to_list(Direction), [{"xmlns", ?NS_CC}],
+				[{xmlelement, "forwarded", [{"xmlns", ?NS_FORWARD}],
+					[complete_packet(JID, Packet, Direction)]}]}
 			   ]},
 		    ejabberd_router:route(Sender, Dest, New)
 	      end, TargetJIDs),
