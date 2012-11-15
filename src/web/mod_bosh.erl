@@ -130,8 +130,12 @@ node_up(_Node) ->
 
 node_down(Node) when Node == node() ->
     copy_entries(mnesia:dirty_first(bosh));
-node_down(_) ->
-    ok.
+node_down(Node) ->
+    ets:select_delete(
+      bosh,
+      [{#bosh{pid = '$1', _ = '_'},
+        [{'==', {'node', '$1'}, Node}],
+        [true]}]).
 
 copy_entries('$end_of_table') ->
     ok;

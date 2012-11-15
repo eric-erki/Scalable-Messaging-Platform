@@ -295,8 +295,12 @@ node_up(_Node) ->
 
 node_down(Node) when Node == node() ->
     copy_rooms(mnesia:dirty_first(muc_online_room));
-node_down(_) ->
-    ok.
+node_down(Node) ->
+    ets:select_delete(
+      muc_online_room,
+      [{#muc_online_room{pid = '$1', _ = '_'},
+        [{'==', {'node', '$1'}, Node}],
+        [true]}]).
 
 copy_rooms('$end_of_table') ->
     ok;
