@@ -45,6 +45,7 @@
 	 del_aux_field/2,
 	 get_subscription/2,
 	 broadcast/4,
+         is_remote_socket/1,
 	 get_subscribed/1]).
 
 %% API:
@@ -229,6 +230,19 @@ migrate(_FsmRef, _Node, _After) ->
 migrate_shutdown(FsmRef, Node, After) ->
     FsmRef ! {migrate_shutdown, Node, After}.
 
+is_remote_socket(Pid) when node(Pid) == node() ->
+    case catch process_info(Pid, dictionary) of
+        {dictionary, Dict} ->
+            SockMod = proplists:get_value(c2s_sockmod, Dict),
+            XMLSocket = proplists:get_value(c2s_xml_socket, Dict),
+            Socket = proplists:get_value(c2s_socket, Dict),
+            is_remote_socket(SockMod, XMLSocket, Socket);
+        _ ->
+            false
+    end;
+is_remote_socket(_) ->
+    false.
+
 %%%----------------------------------------------------------------------
 %%% Callback functions from gen_fsm
 %%%----------------------------------------------------------------------
@@ -307,6 +321,7 @@ init([{SockMod, Socket}, Opts, FSMLimitOpts]) ->
                                redirect       = Redirect,
 			       fsm_limit_opts = FSMLimitOpts},
             erlang:send_after(?C2S_OPEN_TIMEOUT, self(), open_timeout),
+            update_internal_dict(StateData),
             case get_jid_from_opts(Opts) of
 		{ok, #jid{user = U, server = Server, resource = R} = JID} ->
 		    ?GEN_FSM:send_event(self(), open_session),
@@ -322,6 +337,7 @@ init([{SockMod, Socket}, Opts, FSMLimitOpts]) ->
     end;
 init([StateName, StateData, _FSMLimitOpts]) ->
     MRef = (StateData#state.sockmod):monitor(StateData#state.socket),
+    update_internal_dict(StateData),
     if StateName == session_established ->
 	    Conn = get_conn_type(StateData),
 	    Info = [{ip, StateData#state.ip}, {conn, Conn},
@@ -850,10 +866,11 @@ wait_for_feature_request({xmlstreamelement, El}, StateData) ->
 			  xml:element_to_binary(
 			    {xmlelement, "proceed", [{"xmlns", ?NS_TLS}], []})),
 	    fsm_next_state(wait_for_stream,
-			   StateData#state{socket = TLSSocket,
-					   streamid = new_id(),
-					   tls_enabled = true
-					  });
+			   update_internal_dict(
+                             StateData#state{socket = TLSSocket,
+                                             streamid = new_id(),
+                                             tls_enabled = true
+                                            }));
 	{?NS_COMPRESS, "compress"} when Zlib == true,
 					((SockMod == gen_tcp) or
 					 (SockMod == tls)) ->
@@ -873,10 +890,12 @@ wait_for_feature_request({xmlstreamelement, El}, StateData) ->
 					   xml:element_to_binary(
 					     {xmlelement, "compressed",
 					      [{"xmlns", ?NS_COMPRESS}], []})),
-			    fsm_next_state(wait_for_stream,
-			     StateData#state{socket = ZlibSocket,
-					     streamid = new_id()
-					    });
+			    fsm_next_state(
+                              wait_for_stream,
+                              update_internal_dict(
+                                StateData#state{socket = ZlibSocket,
+                                                streamid = new_id()
+                                               }));
 			_ ->
 			    send_element(StateData,
 					 {xmlelement, "failure",
@@ -1809,9 +1828,9 @@ handle_info({migrate, Node}, StateName, StateData) ->
 	    fsm_next_state(StateName, StateData)
     end;
 handle_info({migrate_shutdown, Node, After}, StateName, StateData) ->
-    case StateData#state.sockmod == ejabberd_frontend_socket orelse
-        StateData#state.xml_socket == true orelse
-        is_remote_receiver(StateData#state.socket) of
+    case is_remote_socket(StateData#state.sockmod,
+                          StateData#state.xml_socket,
+                          StateData#state.socket) of
         true ->
             migrate(self(), Node, After);
         false ->
@@ -1835,8 +1854,9 @@ handle_info({change_socket, Socket}, StateName, StateData) ->
                   StateData#state.socket, Socket),
     MRef = (StateData#state.sockmod):monitor(NewSocket),
     fsm_next_state(StateName,
-                   StateData#state{socket = NewSocket,
-                                   socket_monitor = MRef});
+                   update_internal_dict(
+                     StateData#state{socket = NewSocket,
+                                     socket_monitor = MRef}));
 handle_info(Info, StateName, StateData) ->
     ?ERROR_MSG("Unexpected info: ~p", [Info]),
     fsm_next_state(StateName, StateData).
@@ -3283,6 +3303,7 @@ rebind(StateData, JID, StreamID) ->
 			  keepalive_timer = StateData#state.keepalive_timer,
 			  ack_timer = undefined
 			 },
+                    update_internal_dict(StateData2),
 		    send_element(StateData2,
 				 {xmlelement, "rebind",
 				  [{"xmlns", ?NS_P1_REBIND}],
@@ -3670,6 +3691,19 @@ get_jid_from_opts(Opts) ->
 	_ ->
 	    error
     end.
+
+update_internal_dict(#state{sockmod = SockMod,
+                            xml_socket = XMLSocket,
+                            socket = Socket} = StateData) ->
+    put(c2s_sockmod, SockMod),
+    put(c2s_xml_socket, XMLSocket),
+    put(c2s_socket, Socket),
+    StateData.
+
+is_remote_socket(SockMod, XMLSocket, Socket) ->
+    SockMod == ejabberd_frontend_socket orelse
+        XMLSocket == true orelse
+        is_remote_receiver(Socket).
 
 is_remote_receiver(#socket_state{receiver = Pid}) when is_pid(Pid) ->
     node(Pid) /= node();
