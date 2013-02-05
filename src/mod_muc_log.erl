@@ -56,28 +56,28 @@
 
 -define(T(Text), translate:translate(Lang, Text)).
 -define(PROCNAME, ejabberd_mod_muc_log).
-
--define(PLAINTEXT_CO, <<"ZZCZZ">>).
--define(PLAINTEXT_IN, <<"ZZIZZ">>).
--define(PLAINTEXT_OUT, <<"ZZOZZ">>).
-
 -record(room, {jid = <<"">> :: binary(),
                title = <<"">> :: binary(),
                subject = <<"">> :: binary(),
                subject_author = <<"">> :: binary(),
                config = [] :: list()}).
 
+-define(PLAINTEXT_CO, <<"ZZCZZ">>).
+-define(PLAINTEXT_IN, <<"ZZIZZ">>).
+-define(PLAINTEXT_OUT, <<"ZZOZZ">>).
+
 -record(logstate, {host = <<"">> :: binary(),
-                   out_dir = <<"">> :: binary(),
-                   dir_type = subdirs :: subdirs | plain,
-                   dir_name = room_jid :: room_jid| room_name,
-                   file_format = html :: html | plaintext,
-                   css_file = false :: false | binary(),
-                   access :: atom(),
-                   lang = <<"">> :: binary(),
-                   timezone = local :: local | universal,
-                   spam_prevention = true :: boolean(),
-                   top_link = {<<>>, <<>>} :: {binary(), binary()}}).
+		out_dir = <<"">> :: binary(),
+		dir_type = subdirs :: subdirs | plain,
+		dir_name = room_jid :: room_jid| room_name,
+		file_format = html :: html | plaintext,
+		file_permissions = {644, 33} :: {integer(), integer()},
+		css_file = false :: false | binary(),
+		access :: atom(),
+		lang = <<"">> :: binary(),
+		timezone = local :: local | universal,
+		spam_prevention = true :: boolean(),
+		top_link = {<<>>, <<>>} :: {binary(), binary()}}).
 
 %%====================================================================
 %% API
@@ -166,6 +166,15 @@ init([Host, Opts]) ->
                                  fun(html) -> html;
                                     (plaintext) -> plaintext
                                  end, html),
+    FilePermissions = gen_mod:get_opt(file_permissions, Opts,
+                                 fun(SubOpts) ->
+                                         F = fun({mode, Mode}, {_M, G}) ->
+                                                        {Mode, G};
+                                                ({group, Group}, {M, _G}) ->
+                                                        {M, Group}
+                                             end,
+                                         lists:foldl(F, {644, 33}, SubOpts)
+                                 end, {644, 33}),
     CSSFile = gen_mod:get_opt(cssfile, Opts,
                               fun iolist_to_binary/1,
                               false),
@@ -193,6 +202,7 @@ init([Host, Opts]) ->
      #logstate{host = Host, out_dir = OutDir,
 	       dir_type = DirType, dir_name = DirName,
 	       file_format = FileFormat, css_file = CSSFile,
+	       file_permissions = FilePermissions,
 	       access = AccessLog, lang = Lang, timezone = Timezone,
 	       spam_prevention = NoFollow, top_link = Top_link}}.
 
@@ -363,6 +373,10 @@ write_last_lines(F, Images_dir, _FileFormat) ->
        [Images_dir]),
     fw(F, <<"</span></div></body></html>">>).
 
+set_filemode(Fn, {FileMode, FileGroup}) ->
+    ok = file:change_mode(Fn, list_to_integer(integer_to_list(FileMode), 8)),
+    ok = file:change_group(Fn, FileGroup).
+
 htmlize_nick(Nick1, html) ->
     htmlize(<<"<", Nick1/binary, ">">>, html);
 htmlize_nick(Nick1, plaintext) ->
@@ -372,6 +386,7 @@ add_message_to_log(Nick1, Message, RoomJID, Opts,
 		   State) ->
     #logstate{out_dir = OutDir, dir_type = DirType,
 	      dir_name = DirName, file_format = FileFormat,
+	      file_permissions = FilePermissions,
 	      css_file = CSSFile, lang = Lang, timezone = Timezone,
 	      spam_prevention = NoFollow, top_link = TopLink} =
 	State,
@@ -397,6 +412,7 @@ add_message_to_log(Nick1, Message, RoomJID, Opts,
       {error, enoent} ->
 	  make_dir_rec(Fd),
 	  {ok, F} = file:open(Fn, [append]),
+	  catch set_filemode(Fn, FilePermissions),
 	  Datestring = get_dateweek(Date, Lang),
 	  TimeStampYesterday = get_timestamp_daydiff(TimeStamp,
 						     -1),
@@ -1261,6 +1277,13 @@ mod_opt_type(file_format) ->
     fun (html) -> html;
 	(plaintext) -> plaintext
     end;
+mod_opt_type(file_permissions) ->
+    fun (SubOpts) ->
+	    F = fun ({mode, Mode}, {_M, G}) -> {Mode, G};
+		    ({group, Group}, {M, _G}) -> {M, Group}
+		end,
+	    lists:foldl(F, {644, 33}, SubOpts)
+    end;
 mod_opt_type(outdir) -> fun iolist_to_binary/1;
 mod_opt_type(spam_prevention) ->
     fun (B) when is_boolean(B) -> B end;
@@ -1274,7 +1297,8 @@ mod_opt_type(top_link) ->
     end;
 mod_opt_type(_) ->
     [access_log, cssfile, dirname, dirtype, file_format,
-     outdir, spam_prevention, timezone, top_link].
+     file_permissions, outdir, spam_prevention, timezone,
+     top_link].
 
 opt_type(language) -> fun iolist_to_binary/1;
 opt_type(_) -> [language].
