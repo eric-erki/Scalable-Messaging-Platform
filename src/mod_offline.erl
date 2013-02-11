@@ -5,7 +5,7 @@
 %%% Created :  5 Jan 2003 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2012   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2013   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -130,7 +130,7 @@ store_offline_msg(_Host, US, Msgs, Len, MaxOfflineMsgs, mnesia) ->
                 end
         end,
     mnesia:transaction(F);
-store_offline_msg(Host, User, Msgs, Len, MaxOfflineMsgs, odbc) ->
+store_offline_msg(Host, {User, _Server}, Msgs, Len, MaxOfflineMsgs, odbc) ->
     Count = if MaxOfflineMsgs =/= infinity ->
                     Len + count_offline_messages(User, Host);
                true -> 0

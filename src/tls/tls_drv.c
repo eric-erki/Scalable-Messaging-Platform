@@ -1,5 +1,5 @@
 /*
- * ejabberd, Copyright (C) 2002-2012   ProcessOne
+ * ejabberd, Copyright (C) 2002-2013   ProcessOne
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -440,6 +440,8 @@ static ErlDrvSSizeT tls_drv_control(ErlDrvData handle,
 	    res = SSL_CTX_check_private_key(ctx);
 	    die_unless(res > 0, "SSL_CTX_check_private_key failed");
 
+	    SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2|SSL_OP_NO_TICKET);
+
 	    SSL_CTX_set_cipher_list(ctx, CIPHERS);
 
 #ifndef OPENSSL_NO_ECDH
@@ -485,11 +487,8 @@ static ErlDrvSSizeT tls_drv_control(ErlDrvData handle,
 	 SSL_set_bio(d->ssl, d->bio_read, d->bio_write);
 
 	 if (command == SET_CERTIFICATE_FILE_ACCEPT) {
-	    SSL_set_options(d->ssl, SSL_OP_NO_SSLv2|SSL_OP_NO_TICKET|SSL_OP_ALL);
-
 	    SSL_set_accept_state(d->ssl);
 	 } else {
-	    SSL_set_options(d->ssl, SSL_OP_NO_SSLv2|SSL_OP_NO_TICKET);
 	    SSL_set_connect_state(d->ssl);
 	 }
 	 break;
@@ -500,7 +499,6 @@ static ErlDrvSSizeT tls_drv_control(ErlDrvData handle,
 	 break;
       case SET_DECRYPTED_OUTPUT:
 	 die_unless(d->ssl, "SSL not initialized");
-
 	 res = SSL_write(d->ssl, buf, len);
 	 if (res <= 0) 
 	 {
