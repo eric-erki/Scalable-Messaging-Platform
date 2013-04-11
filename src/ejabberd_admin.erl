@@ -511,6 +511,9 @@ delete_old_messages(Days) ->
 export2odbc(Host, Directory) ->
     Tables = [{export_last, last},
               {export_offline, offline},
+              {export_pubsub_item, pubsub_item},
+              {export_pubsub_state, pubsub_state},
+              {export_pubsub_node, pubsub_node},
               {export_private_storage, private_storage},
               {export_roster, roster},
               {export_vcard, vcard},
