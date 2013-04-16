@@ -22,7 +22,10 @@
 -record(ejabberd_commands, {name, tags = [],
 			   desc = "", longdesc = "",
 			   module, function,
-			   args = [], result = rescode}).
+			   args = [], result = rescode,
+			   args_desc = none, result_desc = none,
+			   args_example = none,
+			   result_example = none}).
 
 %% @type ejabberd_commands() = #ejabberd_commands{
 %%    name = atom(),
