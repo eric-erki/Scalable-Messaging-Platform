@@ -2936,7 +2936,7 @@ process_item_change(UJID) ->
         process_item_change(E, SD, UJID)
     end.
 
-process_item_change(E, SD, _UJID) ->
+process_item_change(E, SD, UJID) ->
     case catch case E of
         {JID, affiliation, owner, _} when JID#jid.luser == <<"">> ->
             %% If the provided JID does not have username,
@@ -2944,7 +2944,7 @@ process_item_change(E, SD, _UJID) ->
             SD;
         {JID, role, none, Reason} ->
             catch
-                send_kickban_presence(JID,
+                send_kickban_presence(UJID, JID,
                     Reason,
                     <<"307">>,
                     SD),
@@ -2953,7 +2953,7 @@ process_item_change(E, SD, _UJID) ->
             case (SD#state.config)#config.members_only of
                 true ->
                     catch
-                        send_kickban_presence(JID,
+                        send_kickban_presence(UJID, JID,
                             Reason,
                             <<"321">>,
                             none,
@@ -2967,7 +2967,7 @@ process_item_change(E, SD, _UJID) ->
             end;
         {JID, affiliation, outcast, Reason} ->
             catch
-                send_kickban_presence(JID,
+                send_kickban_presence(UJID, JID,
                     Reason,
                     <<"301">>,
                     outcast,
@@ -3292,12 +3292,12 @@ can_change_ra(_FAffiliation, _FRole, _TAffiliation,
 	      _TRole, role, _Value, _ServiceAf) ->
     false.
 
-send_kickban_presence(JID, Reason, Code, StateData) ->
+send_kickban_presence(UJID, JID, Reason, Code, StateData) ->
     NewAffiliation = get_affiliation(JID, StateData),
-    send_kickban_presence(JID, Reason, Code, NewAffiliation,
+    send_kickban_presence(UJID, JID, Reason, Code, NewAffiliation,
 			  StateData).
 
-send_kickban_presence(JID, Reason, Code, NewAffiliation,
+send_kickban_presence(UJID, JID, Reason, Code, NewAffiliation,
 		      StateData) ->
     LJID = jid:tolower(JID),
     LJIDs = case LJID of
@@ -3320,19 +3320,27 @@ send_kickban_presence(JID, Reason, Code, NewAffiliation,
 								  StateData#state.users),
 			  add_to_log(kickban, {Nick, Reason, Code}, StateData),
 			  tab_remove_online_user(J, StateData),
-			  send_kickban_presence1(J, Reason, Code,
+			  send_kickban_presence1(UJID, J, Reason, Code,
 						 NewAffiliation, StateData)
 		  end,
 		  LJIDs),
     LJIDs.
 
-send_kickban_presence1(UJID, Reason, Code, Affiliation,
+send_kickban_presence1(MJID, UJID, Reason, Code, Affiliation,
 		       StateData) ->
     {ok, #user{jid = RealJID, nick = Nick}} =
 	(?DICT):find(jid:tolower(UJID),
 		     StateData#state.users),
     SAffiliation = affiliation_to_list(Affiliation),
     BannedJIDString = jid:to_string(RealJID),
+    case MJID /= <<"">> of
+	true ->
+		{ok, #user{nick = ActorNick}} =
+		(?DICT):find(jid:tolower(MJID),
+			     StateData#state.users);
+	false ->
+		ActorNick = <<"">>
+    end,
     lists:foreach(fun ({_LJID, Info}) ->
 			  JidAttrList = case Info#user.role == moderator orelse
 					       (StateData#state.config)#config.anonymous
@@ -3353,6 +3361,12 @@ send_kickban_presence1(UJID, Reason, Code, Affiliation,
 						  children =
 						      [{xmlcdata, Reason}]}]
 				    end,
+			  ItemElsActor = case MJID of
+					   <<"">> -> [];
+					   _ -> [#xmlel{name = <<"actor">>,
+						attrs =
+						    [{<<"nick">>, ActorNick}]}]
+				    end,
 			  Packet = #xmlel{name = <<"presence">>,
 					  attrs =
 					      [{<<"type">>, <<"unavailable">>}],
@@ -3367,7 +3381,7 @@ send_kickban_presence1(UJID, Reason, Code, Affiliation,
 								  attrs =
 								      ItemAttrs,
 								  children =
-								      ItemEls},
+								       ItemElsActor ++  ItemEls},
 							   #xmlel{name =
 								      <<"status">>,
 								  attrs =
@@ -4212,7 +4226,7 @@ remove_nonmembers(StateData) ->
 			Affiliation = get_affiliation(JID, SD),
 			case Affiliation of
 			  none ->
-			      catch send_kickban_presence(JID, <<"">>,
+			      catch send_kickban_presence(<<"">>, JID, <<"">>,
 							  <<"322">>, SD),
 			      set_role(JID, none, SD);
 			  _ -> SD
