@@ -70,8 +70,10 @@ endif
 
 all: deps src
 
-deps:
-	$(REBAR) get-deps
+deps: deps/.ok
+
+deps/.ok:
+	$(REBAR) get-deps && :> deps/.ok
 
 src:
 	$(REBAR) compile
@@ -196,6 +198,7 @@ uninstall-all: uninstall-binary
 	rm -rf $(LOGDIR)
 
 clean:
+	rm -rf deps/.ok
 	$(REBAR) clean
 
 clean-rel:
@@ -235,4 +238,4 @@ dialyzer: plt
 	--get_warnings -o dialyzer.log ebin
 
 .PHONY: src doc edoc dialyzer Makefile TAGS clean clean-rel distclean rel plt \
-	install uninstall uninstall-binary uninstall-all translations
+	install uninstall uninstall-binary uninstall-all translations deps
