@@ -60,10 +60,6 @@
                     | mod_pubsub_odbc:pubsubItem()
 ).
 
--type(nodeOptions() :: mod_pubsub:nodeOptions()
-                     | mod_pubsub_odbc:nodeOptions()
-).
-
 -type(subOptions() :: mod_pubsub:subOptions()
                     | mod_pubsub_odbc:subOptions()
 ).

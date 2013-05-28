@@ -66,12 +66,12 @@ list_join_with([El|Tail], M) ->
                                       [E, M | Acc]
                               end, [El], Tail)).
 
-rescode_to_int(ok) ->
-    0;
-rescode_to_int(true) ->
-    0;
-rescode_to_int(_) ->
-    1.
+%% rescode_to_int(ok) ->
+%%     0;
+%% rescode_to_int(true) ->
+%%     0;
+%% rescode_to_int(_) ->
+%%     1.
 
 perl_gen({Name, integer}, Int, _Indent) ->
     [?ARG(Name), ?OP_L(" => "), ?NUM(Int)];
@@ -205,7 +205,7 @@ generate_example_input({_Name, {list, Desc}}, Data) ->
 
 
 gen_calls(#ejabberd_commands{args_example=none, args=ArgsDesc} = C) ->
-    {R, D} = lists:foldl(fun(Arg, {Res2, Data2}) ->
+    {R, _} = lists:foldl(fun(Arg, {Res2, Data2}) ->
                                  {Res3, Data3} = generate_example_input(Arg, Data2),
                                  {[Res3 | Res2], Data3}
                          end, {[], {$a-1, 0}}, ArgsDesc),
@@ -223,7 +223,7 @@ gen_calls(#ejabberd_commands{args_example=Values, args=ArgsDesc, name=Name}) ->
            ?TAG(li, ?TAG(pre, Perl)),
            ?TAG(li, ?TAG(pre, XML))])].
 
-gen_doc(#ejabberd_commands{name=Name, tags=Tags, desc=Desc, longdesc=LongDesc,
+gen_doc(#ejabberd_commands{name=Name, tags=_Tags, desc=Desc, longdesc=LongDesc,
                            args=Args, args_desc=ArgsDesc,
                            result=Result, result_desc=ResultDesc}=Cmd) ->
     LDesc = case LongDesc of

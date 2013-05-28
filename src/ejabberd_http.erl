@@ -376,8 +376,8 @@ extract_path_query(#state{request_method = Method,
 extract_path_query(#state{request_method = Method,
 			  request_path = {abs_path, Path},
 			  request_content_length = Len,
-			  sockmod = SockMod,
-			  socket = Socket} = State)
+			  sockmod = _SockMod,
+			  socket = _Socket} = State)
     when (Method =:= 'POST' orelse Method =:= 'PUT') andalso
 	   is_integer(Len) ->
     Data = recv_data(State, Len),

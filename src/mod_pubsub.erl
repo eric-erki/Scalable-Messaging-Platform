@@ -1613,7 +1613,7 @@ command_disco_info(_Host, ?NS_PUBSUB_GET_PENDING,
 node_disco_info(Host, Node, From) ->
     node_disco_info(Host, Node, From, true, true).
 
-node_disco_info(Host, Node, From, Identity, Features) ->
+node_disco_info(Host, Node, From, _Identity, _Features) ->
 %    Action =
 %	fun(#pubsub_node{type = Type, id = NodeId}) ->
 %		I = case Identity of

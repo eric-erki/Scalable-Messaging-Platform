@@ -956,7 +956,7 @@ push_user_to_displayed(LUser, LServer, Group, Host,
 			GroupName, Subscription, UserGroups, Users)
      || {GroupD, _Opts} <- DisplayedToGroupsOpts].
 
-push_user_to_users(LUser, LServer, Group, Host,
+push_user_to_users(LUser, LServer, Group, _Host,
 		   GroupName, Subscription, UserGroups, Users) ->
     lists:foreach(
       fun({U, S})

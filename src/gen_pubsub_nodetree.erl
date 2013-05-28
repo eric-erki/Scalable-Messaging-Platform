@@ -44,10 +44,6 @@
                 | mod_pubsub_odbc:nodeIdx()
 ).
 
--type(itemId() :: mod_pubsub:itemId()
-                | mod_pubsub_odbc:itemId()
-).
-
 -type(pubsubNode() :: mod_pubsub:pubsubNode()
                     | mod_pubsub_odbc:pubsubNode()
 ).
