@@ -70,13 +70,23 @@ endif
 
 all: deps src
 
-deps: deps/.ok
+deps: deps/.got
 
-deps/.ok:
-	$(REBAR) get-deps && :> deps/.ok
+deps/.got:
+	rm -rf deps/.got
+	rm -rf deps/.built
+	$(REBAR) get-deps && :> deps/.got
 
-src:
-	$(REBAR) compile
+deps/.built:
+	$(REBAR) compile && :> deps/.built
+
+src: deps/.built
+	$(REBAR) skip_deps=true compile
+
+update:
+	rm -rf deps/.got
+	rm -rf deps/.built
+	$(REBAR) update-deps && :> deps/.got
 
 translations:
 	contrib/extract_translations/prepare-translation.sh -updateall
@@ -198,7 +208,8 @@ uninstall-all: uninstall-binary
 	rm -rf $(LOGDIR)
 
 clean:
-	rm -rf deps/.ok
+	rm -rf deps/.got
+	rm -rf deps/.built
 	$(REBAR) clean
 
 clean-rel:
