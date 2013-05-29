@@ -21,6 +21,7 @@ prepare_dirs ()
 	EXTRACT_BEAM=$EXTRACT_DIR/extract_translations.beam
 
 	SRC_DIR=$RUN_DIR/src
+	EBIN_DIR=$RUN_DIR/ebin
 	MSGS_DIR=$EJA_DIR/priv/msgs
 
 	if !([[ -n $EJA_DIR ]])
@@ -155,7 +156,8 @@ extract_lang_srcmsg2po ()
 
 	echo $MSGS_PATH
 
-	$ERL -pa $EXTRACT_DIR -pa $SRC_DIR -pa $EJA_SRC_DIR -pa /lib/ejabberd/include -noinput -noshell -s extract_translations -s init stop -extra -srcmsg2po . $MSGS_PATH >$PO_PATH.1
+	cd $SRC_DIR
+	$ERL -pa $EXTRACT_DIR -pa $EBIN_DIR -pa $EJA_SRC_DIR -pa /lib/ejabberd/include -noinput -noshell -s extract_translations -s init stop -extra -srcmsg2po . $MSGS_PATH >$PO_PATH.1
 	sed -e 's/ \[\]$/ \"\"/g;' $PO_PATH.1 > $PO_PATH.2
 	msguniq --sort-by-file $PO_PATH.2 --output-file=$PO_PATH
 	
@@ -174,7 +176,7 @@ extract_lang_src2pot ()
 	echo "" >>$MSGS_PATH
 
 	cd $SRC_DIR
-	$ERL -pa $EXTRACT_DIR -pa $SRC_DIR -pa $EJA_SRC_DIR -pa /lib/ejabberd/include -noinput -noshell -s extract_translations -s init stop -extra -srcmsg2po . $MSGS_PATH >$POT_PATH.1
+	$ERL -pa $EXTRACT_DIR -pa $EBIN_DIR -pa $EJA_SRC_DIR -pa /lib/ejabberd/include -noinput -noshell -s extract_translations -s init stop -extra -srcmsg2po . $MSGS_PATH >$POT_PATH.1
 	sed -e 's/ \[\]$/ \"\"/g;' $POT_PATH.1 > $POT_PATH.2
 
 	#msguniq --sort-by-file $POT_PATH.2 $EJA_MSGS_DIR --output-file=$POT_PATH

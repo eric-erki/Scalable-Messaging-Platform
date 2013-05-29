@@ -277,9 +277,9 @@ iq_vcard(Lang) ->
      #xmlel{name = <<"DESC">>, attrs = [],
 	    children =
 		[{xmlcdata,
-		  translate:translate(Lang,
-				      <<"ejabberd Multicast service\nCopyright "
-					"(c) 2007-2013 ProcessOne">>)}]}].
+                  <<(translate:translate(Lang,
+                                      <<"ejabberd Multicast service">>))/binary,
+                                        "\nCopyright (c) 2002-2013 ProcessOne">>}]}].
 
 iq_version() ->
     [#xmlel{name = <<"name">>, attrs = [],
