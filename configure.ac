@@ -4,6 +4,8 @@
 AC_PREREQ(2.53)
 AC_PACKAGE_VERSION(3.0.0)
 AC_INIT(ejabberd, 3.0.0, [ejabberd@process-one.net], [ejabberd])
+REQUIRE_ERLANG_MIN="5.9.1 (Erlang/OTP R15B01)"
+REQUIRE_ERLANG_MAX="9.0.0 (No Max)"
 
 # Checks for programs.
 AC_PROG_MAKE_SET
@@ -15,8 +17,33 @@ if test "x$GCC" = "xyes"; then
 fi
 
 # Checks Erlang runtime and compiler
+AC_ARG_WITH(erlang,
+	AC_HELP_STRING([--with-erlang=dir],
+		[search for erlang in dir]),
+[if test "$withval" = "yes" -o "$withval" = "no" -o "X$with_erlang" = "X"; then
+    extra_erl_path=""
+else
+    extra_erl_path="$with_erlang:$with_erlang/bin:"
+fi
+])
+
+AC_PATH_TOOL(ERL, erl, , [${extra_erl_path}$PATH])
+AC_PATH_TOOL(ERLC, erlc, , [${extra_erl_path}$PATH])
+
 AC_ERLANG_NEED_ERL
 AC_ERLANG_NEED_ERLC
+
+AC_ARG_ENABLE(erlang-version-check,
+[AC_HELP_STRING([--enable-erlang-version-check],
+	[Check Erlang/OTP version @<:@default=yes@:>@])])
+	case "$enable_erlang_version_check" in
+	yes|'')
+		ERLANG_VERSION_CHECK([$REQUIRE_ERLANG_MIN],[$REQUIRE_ERLANG_MAX])
+		;;
+	no)
+		ERLANG_VERSION_CHECK([$REQUIRE_ERLANG_MIN],[$REQUIRE_ERLANG_MAX],[warn])
+		;;
+esac
 
 # Checks and sets ERLANG_ROOT_DIR and ERLANG_LIB_DIR variable
 AC_ERLANG_SUBST_ROOT_DIR
