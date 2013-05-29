@@ -123,10 +123,10 @@ AC_ARG_ENABLE(tools,
 esac],[tools=false])
 
 AC_ARG_ENABLE(all,
-[AC_HELP_STRING([--enable-all], [same as --enable-nif --enable-mysql --enable-pgsql --enable-pam --enable-zlib --enable-stun --enable-riak --enable-json --enable-iconv --enable-debug --enable-pubsub-ng --enable-http (useful for Dialyzer checks, default: no)])],
+[AC_HELP_STRING([--enable-all], [same as --enable-nif --enable-odbc --enable-mysql --enable-pgsql --enable-pam --enable-zlib --enable-stun --enable-riak --enable-json --enable-iconv --enable-debug --enable-pubsub-ng --enable-http (useful for Dialyzer checks, default: no)])],
 [case "${enableval}" in
-  yes) nif=true mysql=true pgsql=true pam=true zlib=true stun=true riak=true json=true iconv=true debug=true pubsub_ng=true http=true ;;
-  no) nif=false mysql=false pgsql=false pam=false zlib=false stun=false riak=false json=false iconv=false debug=false pubsub_ng=false http=false ;;
+  yes) nif=true odbc=true mysql=true pgsql=true pam=true zlib=true stun=true riak=true json=true iconv=true debug=true pubsub_ng=true http=true ;;
+  no) nif=false odbc=false mysql=false pgsql=false pam=false zlib=false stun=false riak=false json=false iconv=false debug=false pubsub_ng=false http=false ;;
   *) AC_MSG_ERROR(bad value ${enableval} for --enable-all) ;;
 esac],[])
 
@@ -137,6 +137,14 @@ AC_ARG_ENABLE(nif,
   no)  nif=false ;;
   *) AC_MSG_ERROR(bad value ${enableval} for --enable-nif) ;;
 esac],[if test "x$nif" = "x"; then nif=false; fi])
+
+AC_ARG_ENABLE(odbc,
+[AC_HELP_STRING([--enable-odbc], [enable pure ODBC support (default: no)])],
+[case "${enableval}" in
+  yes) odbc=true ;;
+  no)  odbc=false ;;
+  *) AC_MSG_ERROR(bad value ${enableval} for --enable-odbc) ;;
+esac],[if test "x$odbc" = "x"; then odbc=false; fi])
 
 AC_ARG_ENABLE(mysql,
 [AC_HELP_STRING([--enable-mysql], [enable MySQL support (default: no)])],
@@ -256,10 +264,11 @@ AC_ERLANG_CHECK_LIB([mnesia], [],
     [AC_MSG_ERROR([Erlang application 'mnesia' was not found])])
 AC_ERLANG_CHECK_LIB([inets], [],
     [AC_MSG_ERROR([Erlang application 'inets' was not found])])
-AC_ERLANG_CHECK_LIB([odbc], [],
-    [AC_MSG_ERROR([Erlang application 'odbc' was not found])])
 AC_ERLANG_CHECK_LIB([compiler], [],
     [AC_MSG_ERROR([Erlang application 'compiler' was not found])])
+if test "x$odbc" = "xtrue"; then
+   AC_ERLANG_CHECK_LIB([odbc], [],
+      [AC_MSG_ERROR([Erlang application 'odbc' was not found])])
 if test "x$tools" = "xtrue"; then
    AC_ERLANG_CHECK_LIB([tools], [],
       [AC_MSG_ERROR([Erlang application 'tools' was not found])])
@@ -274,6 +283,7 @@ AC_SUBST(transient_supervisors)
 AC_SUBST(full_xml)
 AC_SUBST(nif)
 AC_SUBST(db_type)
+AC_SUBST(odbc)
 AC_SUBST(mysql)
 AC_SUBST(pgsql)
 AC_SUBST(pam)

@@ -21,6 +21,7 @@
 {tools, @tools@}.
 
 %% Dependencies
+{odbc, @odbc@}.
 {mysql, @mysql@}.
 {pgsql, @pgsql@}.
 {pam, @pam@}.
