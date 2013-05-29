@@ -269,6 +269,7 @@ AC_ERLANG_CHECK_LIB([compiler], [],
 if test "x$odbc" = "xtrue"; then
    AC_ERLANG_CHECK_LIB([odbc], [],
       [AC_MSG_ERROR([Erlang application 'odbc' was not found])])
+fi
 if test "x$tools" = "xtrue"; then
    AC_ERLANG_CHECK_LIB([tools], [],
       [AC_MSG_ERROR([Erlang application 'tools' was not found])])
