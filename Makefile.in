@@ -1,4 +1,4 @@
-REBAR = @REBAR@
+REBAR = @ESCRIPT@ rebar
 INSTALL = @INSTALL@
 SED = @SED@
 ERL = @ERL@
