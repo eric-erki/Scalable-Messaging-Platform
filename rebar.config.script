@@ -24,6 +24,8 @@ Macros = lists:flatmap(
                    [{d, 'NIF'}];
               ({db_type, mssql}) ->
                    [{d, 'mssql'}];
+              ({lager, true}) ->
+                   [{d, 'LAGER'}];
               (_) ->
                    []
            end, Cfg),
@@ -102,6 +104,8 @@ CfgDeps = lists:flatmap(
                ({http, true}) ->
                     [{ibrowse, ".*", {git, "git://github.com/cmullaparthi/ibrowse"}},
                      {lhttpc, ".*", {git, "git://github.com/esl/lhttpc"}}];
+               ({lager, true}) ->
+                    [{lager, ".*", {git, "git://github.com/basho/lager"}}];
                (_) ->
                     []
             end, Cfg),

@@ -561,6 +561,7 @@ ac_default_prefix=/
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
 tools
+lager
 http
 pubsub_ng
 debug
@@ -672,6 +673,7 @@ enable_iconv
 enable_debug
 enable_pubsub_ng
 enable_http
+enable_lager
 enable_user
 '
       ac_precious_vars='build_alias
@@ -1326,6 +1328,7 @@ Optional Features:
   --enable-pubsub-ng      enable PubSub NG (default: no)
   --enable-http           build external HTTP libraries ('ibrowse' and
                           'lhttpc', default: no)
+  --enable-lager          enable lager support (default: yes)
   --enable-user[[[=USER]]]
                           allow this system user to start ejabberd (default:
                           no)
@@ -2635,6 +2638,18 @@ else
 fi
 
 
+# Check whether --enable-lager was given.
+if test "${enable_lager+set}" = set; then :
+  enableval=$enable_lager; case "${enableval}" in
+  yes) lager=true ;;
+  no)  lager=false ;;
+  *) as_fn_error $? "bad value ${enableval} for --enable-lager" "$LINENO" 5  ;;
+esac
+else
+  if test "x$lager" = "x"; then lager=true; fi
+fi
+
+
 ac_config_files="$ac_config_files Makefile vars.config src/ejabberd.app.src"
 
 
@@ -3447,6 +3462,7 @@ if test "$ac_cv_erlang_lib_dir_runtime_tools" = "not found"; then :
 fi
 
 fi
+
 
 
 

@@ -20,6 +20,26 @@
 %%%----------------------------------------------------------------------
 -define(PRINT(Format, Args), io:format(Format, Args)).
 
+-ifdef(LAGER).
+-compile([{parse_transform, lager_transform}]).
+
+-define(DEBUG(Format, Args),
+	lager:debug(Format, Args)).
+
+-define(INFO_MSG(Format, Args),
+	lager:info(Format, Args)).
+
+-define(WARNING_MSG(Format, Args),
+	lager:warning(Format, Args)).
+
+-define(ERROR_MSG(Format, Args),
+	lager:error(Format, Args)).
+
+-define(CRITICAL_MSG(Format, Args),
+	lager:critical(Format, Args)).
+
+-else.
+
 -define(DEBUG(Format, Args),
 	ejabberd_logger:debug_msg(?MODULE, ?LINE, Format, Args)).
 
@@ -34,3 +54,4 @@
 
 -define(CRITICAL_MSG(Format, Args),
 	ejabberd_logger:critical_msg(?MODULE, ?LINE, Format, Args)).
+-endif.
