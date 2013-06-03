@@ -30,6 +30,7 @@
 {riak, @riak@}.
 {json, @json@}.
 {http, @http@}.
+{lager, @lager@}.
 {iconv, @iconv@}.
 
 %% Version

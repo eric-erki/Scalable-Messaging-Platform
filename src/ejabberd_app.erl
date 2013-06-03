@@ -39,6 +39,7 @@
 %%%
 
 start(normal, _Args) ->
+    maybe_start_lager(),
     ejabberd_logger:set(4),
     write_pid_file(),
     start_apps(),
@@ -239,6 +240,20 @@ delete_pid_file() ->
 	PidFilename ->
 	    file:delete(PidFilename)
     end.
+
+
+-ifdef(LAGER).
+
+maybe_start_lager() ->
+    lager:start().
+
+-else.
+
+maybe_start_lager() ->
+    ok.
+
+-endif.
+
 
 start_apps() ->
     ejabberd:start_app(sasl),
