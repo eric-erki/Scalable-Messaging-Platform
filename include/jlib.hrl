@@ -215,6 +215,8 @@
 
 -define(NS_BOB, <<"urn:xmpp:bob">>).
 
+-define(NS_PING, <<"urn:xmpp:ping">>).
+
 -include("xml.hrl").
 
 -define(STANZA_ERROR(Code, Type, Condition),
