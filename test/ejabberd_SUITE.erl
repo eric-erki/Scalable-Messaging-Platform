@@ -20,25 +20,26 @@
 	  "s' xmlns='jabber:client' to='~s' version='1.0"
 	  "'>">>).
 
--ifndef(NS_PING).
--define(NS_PING, <<"urn:xmpp:ping">>).
--endif.
-
--define(opt(Opt), proplists:get_value(Opt, Config)).
+-define(STREAM_TRAILER, <<"</stream:stream>">>).
 
 suite() ->
     [{timetrap,{seconds,30}}].
 
 init_per_suite(Config) ->
     DataDir = proplists:get_value(data_dir, Config),
+    PrivDir = proplists:get_value(priv_dir, Config),
     ConfigPath = filename:join([DataDir, "ejabberd.cfg"]),
+    LogPath = filename:join([PrivDir, "ejabberd.log"]),
+    SASLPath = filename:join([PrivDir, "sasl.log"]),
+    MnesiaDir = filename:join([PrivDir, "mnesia"]),
     application:set_env(ejabberd, config, ConfigPath),
-    application:start(ejabberd),
+    application:set_env(ejabberd, log_path, LogPath),
+    application:set_env(sasl, sasl_error_logger, {file, SASLPath}),
+    application:set_env(mnesia, dir, MnesiaDir),
     [{server, <<"localhost">>},
      {port, 5222},
      {user, <<"test_suite">>},
-     {password, <<"pass">>},
-     {resource, <<"test">>}
+     {password, <<"pass">>}
      |Config].
 
 end_per_suite(_Config) ->
@@ -50,34 +51,61 @@ init_per_group(_GroupName, Config) ->
 end_per_group(_GroupName, _Config) ->
     ok.
 
-init_per_testcase(connect, Config) ->
-    ok = re_register(Config),
+init_per_testcase(start_ejabberd, Config) ->
     Config;
-init_per_testcase(auth, Config) ->
-    connect(Config);
-init_per_testcase(bind, Config) ->
-    auth(connect(Config));
-init_per_testcase(session, Config) ->
-    bind(auth(connect(Config)));
-init_per_testcase(_TestCase, Config) ->
-    session(bind(auth(connect(Config)))).
+init_per_testcase(TestCase, OrigConfig) ->
+    Resource = list_to_binary(atom_to_list(TestCase)),
+    Config = [{resource, Resource}|OrigConfig],
+    case TestCase of
+        connect ->
+            Config;
+        auth ->
+            connect(Config);
+        bind ->
+            auth(connect(Config));
+        open_session ->
+            bind(auth(connect(Config)));
+        _ ->
+            open_session(bind(auth(connect(Config))))
+    end.
 
-end_per_testcase(_TestCase, _Config) ->
-    ok.
+end_per_testcase(_TestCase, Config) ->
+    case ?config(socket) of
+        undefined ->
+            ok;
+        _Socket ->
+            ok = ejabberd_socket:send_text(Config, ?STREAM_TRAILER)
+    end.
 
 groups() ->
     [].
 
 all() -> 
-    [connect, auth, bind, session, roster, broadcast,
-     ping, version, time, vcard_get, vcard_set, stats].
+    [start_ejabberd, connect, auth, bind, open_session, roster_get,
+     presence_broadcast, ping, version_get, time_get,
+     vcard_get, vcard_set, stats_get, stop_ejabberd].
+
+start_ejabberd(Config) ->
+    ok = application:start(ejabberd),
+    ok = re_register(Config),
+    Config.
+
+stop_ejabberd(Config) ->
+    ok = application:stop(ejabberd),
+    {xmlstreamelement,
+     #xmlel{name = <<"stream:error">>,
+            children = [#xmlel{name = <<"system-shutdown">>}]}} = recv(),
+    {xmlstreamend, <<"stream:stream">>} = recv(),
+    Config.
 
 connect(Config) ->
     {ok, Sock} = ejabberd_socket:connect(
-                   binary_to_list(?opt(server)), ?opt(port),
+                   binary_to_list(?config(server, Config)),
+                   ?config(port, Config),
                    [binary, {packet, 0}, {active, false}]),
     Config1 = [{socket, Sock}|Config],
-    ok = send_text(Config1, io_lib:format(?STREAM_HEADER, [?opt(server)])),
+    ok = send_text(Config1, io_lib:format(?STREAM_HEADER,
+                                          [?config(server, Config1)])),
     {xmlstreamstart, <<"stream:stream">>, Attrs} = recv(),
     <<"jabber:client">> = xml:get_attr_s(<<"xmlns">>, Attrs),
     <<"1.0">> = xml:get_attr_s(<<"version">>, Attrs),
@@ -114,7 +142,7 @@ bind(Config) ->
                                      attrs = [],
                                      children =
                                          [{xmlcdata,
-                                           ?opt(resource)}]}]}]},
+                                           ?config(resource, Config)}]}]}]},
     ok = send_iq(Config, IQ),
     {xmlstreamelement, El} = recv(),
     #iq{type = result, id = ID, xmlns = ?NS_BIND,
@@ -122,7 +150,7 @@ bind(Config) ->
         = jlib:iq_query_or_response_info(El),
     Config.
 
-session(Config) ->
+open_session(Config) ->
     ID = randoms:get_string(),
     IQ = #iq{type = set, xmlns = ?NS_SESSION, id = ID,
              sub_el =
@@ -136,7 +164,7 @@ session(Config) ->
         = jlib:iq_query_or_response_info(El),
     Config.
 
-roster(Config) ->
+roster_get(Config) ->
     ID = randoms:get_string(),
     RosterIQ = #iq{type = get, xmlns = ?NS_ROSTER, id = ID,
                    sub_el =
@@ -150,7 +178,7 @@ roster(Config) ->
         = jlib:iq_query_or_response_info(El),
     Config.
 
-broadcast(Config) ->
+presence_broadcast(Config) ->
     ok = send_element(Config, #xmlel{name = <<"presence">>}),
     JID = myjid(Config),
     {xmlstreamelement, #xmlel{name = <<"presence">>, attrs = Attrs}} = recv(),
@@ -168,23 +196,23 @@ ping(Config) ->
     #iq{type = result, id = ID, sub_el = []} = jlib:iq_query_or_response_info(El),
     Config.
 
-version(Config) ->
+version_get(Config) ->
     ID = randoms:get_string(),
     VerIQ = #iq{type = get, xmlns = ?NS_VERSION, id = ID,
                  sub_el = [#xmlel{name = <<"query">>,
                                   attrs = [{<<"xmlns">>, ?NS_VERSION}]}]},
-    ok = send_iq(Config, VerIQ, jlib:make_jid(<<>>, ?opt(server), <<>>)),
+    ok = send_iq(Config, VerIQ, jlib:make_jid(<<>>, ?config(server, Config), <<>>)),
     {xmlstreamelement, #xmlel{name = <<"iq">>} = El} = recv(),
     #iq{type = result, id = ID, xmlns = ?NS_VERSION, sub_el = [_|_]}
         = jlib:iq_query_or_response_info(El),
     Config.
 
-time(Config) ->
+time_get(Config) ->
     ID = randoms:get_string(),
     TimeIQ = #iq{type = get, xmlns = ?NS_TIME, id = ID,
                  sub_el = [#xmlel{name = <<"query">>,
                                   attrs = [{<<"xmlns">>, ?NS_TIME}]}]},
-    ok = send_iq(Config, TimeIQ, jlib:make_jid(<<>>, ?opt(server), <<>>)),
+    ok = send_iq(Config, TimeIQ, jlib:make_jid(<<>>, ?config(server, Config), <<>>)),
     {xmlstreamelement, #xmlel{name = <<"iq">>} = El} = recv(),
     #iq{type = result, id = ID, xmlns = ?NS_TIME, sub_el = [_|_]}
         = jlib:iq_query_or_response_info(El),
@@ -195,7 +223,7 @@ vcard_get(Config) ->
     VCardIQ = #iq{type = get, xmlns = ?NS_VCARD, id = ID,
                   sub_el = [#xmlel{name = <<"query">>,
                                    attrs = [{<<"xmlns">>, ?NS_VCARD}]}]},
-    ok = send_iq(Config, VCardIQ, jlib:make_jid(<<>>, ?opt(server), <<>>)),
+    ok = send_iq(Config, VCardIQ, jlib:make_jid(<<>>, ?config(server, Config), <<>>)),
     {xmlstreamelement, #xmlel{name = <<"iq">>} = El} = recv(),
     #iq{type = result, id = ID, xmlns = ?NS_VCARD, sub_el = [_|_]}
         = jlib:iq_query_or_response_info(El),
@@ -255,9 +283,9 @@ vcard_set(Config) ->
         = jlib:iq_query_or_response_info(El2),
     Config.
 
-stats(Config) ->
+stats_get(Config) ->
     ID = randoms:get_string(),
-    ServerJID = jlib:make_jid(<<>>, ?opt(server), <<>>),
+    ServerJID = jlib:make_jid(<<>>, ?config(server, Config), <<>>),
     StatsIQ = #iq{type = get, xmlns = ?NS_STATS, id = ID,
                   sub_el = [#xmlel{name = <<"query">>,
                                    attrs = [{<<"xmlns">>, ?NS_STATS}]}]},
@@ -287,9 +315,9 @@ auth_SASL(Config) ->
             case lists:member(Mech, [<<"DIGEST-MD5">>, <<"PLAIN">>]) of
                 true ->
                     {Response, SASL} = sasl_new(Mech,
-                                                ?opt(user),
-                                                ?opt(server),
-                                                ?opt(password)),
+                                                ?config(user, Config),
+                                                ?config(server, Config),
+                                                ?config(password, Config)),
                     ok = send_element(
                            Config1,
                            #xmlel{name = <<"auth">>,
@@ -313,10 +341,10 @@ wait_auth_SASL_result(Config) ->
     ?NS_SASL = xml:get_tag_attr_s(<<"xmlns">>, El),
     case El of
         #xmlel{name = <<"success">>} ->
-            ejabberd_socket:reset_stream(?opt(socket)),
+            ejabberd_socket:reset_stream(?config(socket, Config)),
             send_text(Config,
                       io_lib:format(?STREAM_HEADER,
-                                    [?opt(server)])),
+                                    [?config(server, Config)])),
             {xmlstreamstart, <<"stream:stream">>, Attrs} = recv(),
             <<"jabber:client">> = xml:get_attr_s(<<"xmlns">>, Attrs),
             <<"1.0">> = xml:get_attr_s(<<"version">>, Attrs),
@@ -324,7 +352,7 @@ wait_auth_SASL_result(Config) ->
             Config;
         #xmlel{name = <<"challenge">>} ->
             ClientIn = jlib:decode_base64(xml:get_tag_cdata(El)),
-            {Response, SASL} = (?opt(sasl))(ClientIn),
+            {Response, SASL} = (?config(sasl, Config))(ClientIn),
             send_element(Config,
                          #xmlel{name = <<"response">>,
                                 attrs = [{<<"xmlns">>, ?NS_SASL}],
@@ -341,9 +369,9 @@ wait_auth_SASL_result(Config) ->
 %%% Aux functions
 %%%===================================================================
 re_register(Config) ->
-    User = ?opt(user),
-    Server = ?opt(server),
-    Pass = ?opt(password),
+    User = ?config(user, Config),
+    Server = ?config(server, Config),
+    Pass = ?config(password, Config),
     {atomic, ok} = ejabberd_auth:try_register(User, Server, Pass),
     ok.
 
@@ -354,7 +382,7 @@ recv() ->
     end.
 
 send_text(Config, Text) ->
-    ejabberd_socket:send(?opt(socket), Text).
+    ejabberd_socket:send(?config(socket, Config), Text).
 
 send_element(State, El) ->
     send_text(State, xml:element_to_binary(El)).
@@ -444,4 +472,6 @@ response(User, Passwd, Nonce, AuthzId, Realm, CNonce,
     hex((crypto:md5(T))).
 
 myjid(Config) ->
-    jlib:make_jid(?opt(user), ?opt(server), ?opt(resource)).
+    jlib:make_jid(?config(user, Config),
+                  ?config(server, Config),
+                  ?config(resource, Config)).
