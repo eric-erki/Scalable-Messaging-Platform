@@ -235,8 +235,8 @@ handle_info({timeout, _TRef, {ID, Pid}}, State) ->
 	{ok, _} ->
             catch ejabberd_c2s:stop_or_detach(Pid),
             handle_cast({del, Pid}, State);
-        {error, Err} ->
-	    ?WARNING_MSG("ack ID not found :~p  ~p", [ID, Err]),
+        error ->
+	    ?WARNING_MSG("ack ID not found :~p", [ID]),
 	    {noreply, State}
     end;
 handle_info(_Info, State) ->
