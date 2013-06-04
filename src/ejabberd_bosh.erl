@@ -208,7 +208,7 @@ sockname(_Socket) -> {ok, {{0, 0, 0, 0}, 0}}.
 peername({http_bind, _FsmRef, IP}) -> {ok, IP}.
 
 migrate(FsmRef, Node, After) when node(FsmRef) == node() ->
-    erlang:send_after(After, FsmRef, {migrate, Node});
+    catch erlang:send_after(After, FsmRef, {migrate, Node});
 migrate(_FsmRef, _Node, _After) ->
     ok.
 
