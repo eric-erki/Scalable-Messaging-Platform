@@ -1,5 +1,5 @@
---- mod_pubsub.erl	2013-06-06 10:13:26.900481538 +0200
-+++ mod_pubsub_odbc.erl	2013-06-06 10:16:02.140469224 +0200
+--- mod_pubsub.erl	2013-06-06 11:34:55.880159261 +0200
++++ mod_pubsub_odbc.erl	2013-06-06 11:35:49.380155655 +0200
 @@ -41,7 +41,7 @@
  %%% 6.2.3.1, 6.2.3.5, and 6.3. For information on subscription leases see
  %%% XEP-0060 section 12.18.
@@ -1180,14 +1180,13 @@
        {'EXIT', Reason} ->
  	  ?ERROR_MSG("transaction return internal error: ~p~n",
  		     [{'EXIT', Reason}]),
-@@ -5098,6 +4780,20 @@
+@@ -5098,6 +4780,19 @@
  	  {error, ?ERR_INTERNAL_SERVER_ERROR}
      end.
  
-+odbc_conn({_U, Host, _R}) -> Host;
-+odbc_conn(Host) ->
-+    lists:dropwhile(fun (A) -> A /= $. end, Host) --
-+      <<".">>.
++odbc_conn({_U, Host, _R})-> Host;
++odbc_conn(<<$., Host/binary>>) -> Host;
++odbc_conn(<<_, Host/binary>>) -> odbc_conn(Host).
 +
 +-spec(escape/1 ::
 +(
