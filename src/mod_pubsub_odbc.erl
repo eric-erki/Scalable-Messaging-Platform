@@ -2526,7 +2526,7 @@ publish_item(Host, ServerHost, Node, Publisher, ItemId, Payload) ->
 	    true ->
 		broadcast_publish_item(Host, Node, NodeId, Type,
 				       Options, ItemId,
-				       jlib:jid_tolower(Publisher), BrPayload,
+				       Publisher, BrPayload,
 				       Removed);
 	    false -> ok
 	  end,
