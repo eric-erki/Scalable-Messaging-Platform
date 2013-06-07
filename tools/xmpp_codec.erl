@@ -2989,7 +2989,26 @@ decode_time_time_tzo_cdata(_val) ->
 
 'decode_stream_error_stream:error_see-other-host'({xmlel,
 						   _, _attrs, _els}) ->
-    'see-other-host'.
+    Cdata =
+	'decode_stream_error_stream:error_see-other-host_els'(_els,
+							      <<>>),
+    {'see-other-host', Cdata}.
+
+'decode_stream_error_stream:error_see-other-host_els'([{xmlcdata,
+							_data}
+						       | _els],
+						      Cdata) ->
+    'decode_stream_error_stream:error_see-other-host_els'(_els,
+							  <<Cdata/binary,
+							    _data/binary>>);
+'decode_stream_error_stream:error_see-other-host_els'([_
+						       | _els],
+						      Cdata) ->
+    'decode_stream_error_stream:error_see-other-host_els'(_els,
+							  Cdata);
+'decode_stream_error_stream:error_see-other-host_els'([],
+						      Cdata) ->
+    'decode_stream_error_stream:error_see-other-host_cdata'(Cdata).
 
 'decode_stream_error_stream:error_see-other-host_cdata'(<<>>) ->
     undefined;
