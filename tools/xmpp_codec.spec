@@ -590,7 +590,7 @@
                     xmlns = <<"urn:ietf:params:xml:ns:xmpp-streams">>,
                     min = 0, max = 1, label = '$reason'},
               #spec{name = <<"see-other-host">>,
-                    result = 'see-other-host',
+                    result = {'see-other-host', '$cdata'},
                     xmlns = <<"urn:ietf:params:xml:ns:xmpp-streams">>,
                     min = 0, max = 1, label = '$reason'},
               #spec{name = <<"system-shutdown">>,
