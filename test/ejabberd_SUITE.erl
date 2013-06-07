@@ -93,6 +93,8 @@ all() ->
      version_get,
      time_get,
      stats_get,
+     disco_info_get,
+     disco_items_get,
      %% vcard_get,
      %% vcard_set,
      stop_ejabberd].
@@ -119,9 +121,9 @@ connect(Config) ->
     {xmlstreamstart, <<"stream:stream">>, Attrs} = recv(),
     <<"jabber:client">> = xml:get_attr_s(<<"xmlns">>, Attrs),
     <<"1.0">> = xml:get_attr_s(<<"version">>, Attrs),
-    #stream_features{features = Fs} = recv(),
+    #stream_features{sub_els = Fs} = recv(),
     Mechs = lists:flatmap(
-              fun(#sasl_mechanisms{mechanisms = Ms}) ->
+              fun(#sasl_mechanisms{mechanism = Ms}) ->
                       Ms;
                  (_) ->
                       []
@@ -173,7 +175,7 @@ roster_get(Config) ->
                                attrs = [{<<"xmlns">>, ?NS_ROSTER}],
                                children = []}]},
     ok = send_iq(Config, RosterIQ),
-    #'Iq'{type = result, id = ID, sub_els = [#roster{items = []}]} = recv(),
+    #'Iq'{type = result, id = ID, sub_els = [#roster{item = []}]} = recv(),
     Config.
 
 presence_broadcast(Config) ->
@@ -207,6 +209,24 @@ time_get(Config) ->
                                   attrs = [{<<"xmlns">>, ?NS_TIME}]}]},
     ok = send_iq(Config, TimeIQ, jlib:make_jid(<<>>, ?config(server, Config), <<>>)),
     #'Iq'{type = result, id = ID, sub_els = [#time{}]} = recv(),
+    Config.
+
+disco_info_get(Config) ->
+    ID = randoms:get_string(),
+    IQ = #iq{type = get, xmlns = ?NS_DISCO_INFO, id = ID,
+             sub_el = [#xmlel{name = <<"query">>,
+                              attrs = [{<<"xmlns">>, ?NS_DISCO_INFO}]}]},
+    ok = send_iq(Config, IQ, jlib:make_jid(<<>>, ?config(server, Config), <<>>)),
+    #'Iq'{type = result, id = ID, sub_els = [#disco_info{}]} = recv(),
+    Config.
+
+disco_items_get(Config) ->
+    ID = randoms:get_string(),
+    IQ = #iq{type = get, xmlns = ?NS_DISCO_ITEMS, id = ID,
+             sub_el = [#xmlel{name = <<"query">>,
+                              attrs = [{<<"xmlns">>, ?NS_DISCO_ITEMS}]}]},
+    ok = send_iq(Config, IQ, jlib:make_jid(<<>>, ?config(server, Config), <<>>)),
+    #'Iq'{type = result, id = ID, sub_els = [#disco_items{}]} = recv(),
     Config.
 
 vcard_get(Config) ->
@@ -336,7 +356,7 @@ wait_auth_SASL_result(Config) ->
             <<"1.0">> = xml:get_attr_s(<<"version">>, Attrs),
             #stream_features{} = recv(),
             Config;
-        #sasl_challenge{text = ClientIn} ->
+        #sasl_challenge{cdata = ClientIn} ->
             {Response, SASL} = (?config(sasl, Config))(ClientIn),
             send_element(Config,
                          #xmlel{name = <<"response">>,

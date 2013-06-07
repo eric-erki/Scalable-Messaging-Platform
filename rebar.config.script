@@ -126,7 +126,8 @@ CfgPostHooks = lists:flatmap(
 Config = [{erl_opts, Includes ++ Macros ++ HiPE ++ DebugInfo ++
                [{src_dirs, [asn1, src | SrcDirs]}]},
           {sub_dirs, ["rel"]},
-          {ct_extra_params, "-include tools -include "
+          {ct_extra_params, "-include "
+           ++ filename:join([Cwd, "tools"]) ++ " "
            ++ filename:join([Cwd, "deps", "p1_xml", "include"])},
           {post_hooks, PostHooks ++ CfgPostHooks},
           {deps, Deps ++ CfgDeps}],
