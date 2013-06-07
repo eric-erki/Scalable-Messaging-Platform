@@ -1,0 +1,35 @@
+-record(last, {seconds, text}).
+-record(version, {name, version, os}).
+-record(roster, {items, ver}).
+-record(item, {jid, name, groups, subscription, ask}).
+-record(disco_info, {identity, feature}).
+-record(disco_items, {node, item}).
+-record('Iq', {id, type, lang, from, to, error, sub_els}).
+-record('Message', {id, type, lang, from, to, subject,
+                    body, thread, error, sub_els}).
+-record('Presence', {id, type, lang, from, to,
+                     show, status = [], priority, error, sub_els = []}).
+-record(error, {error_type, by, reason, text}).
+-record(bind, {jid, resource}).
+-record(sasl_auth, {mechanism, text}).
+-record(sasl_abort, {}).
+-record(sasl_challenge, {text}).
+-record(sasl_response, {text}).
+-record(sasl_success, {text}).
+-record(sasl_failure, {reason, text}).
+-record(sasl_mechanisms, {mechanisms}).
+-record(starttls, {required}).
+-record(starttls_proceed, {}).
+-record(starttls_failure, {}).
+-record(stream_features, {features}).
+-record(p1_push, {}).
+-record(p1_rebind, {}).
+-record(p1_ack, {}).
+-record(caps, {hash, node, ver}).
+-record(register, {}).
+-record(session, {}).
+-record(ping, {}).
+-record(time, {tzo, utc}).
+-record(stream_error, {reason, text}).
+-record(stats, {stat}).
+-record(stat, {name, units, value, error}).
