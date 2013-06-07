@@ -39,8 +39,6 @@
 
 -define(SUPERVISOR, ejabberd_sup).
 
--define(NS_PING, <<"urn:xmpp:ping">>).
-
 -define(DEFAULT_SEND_PINGS, false).
 
 -define(DEFAULT_PING_INTERVAL, 60).

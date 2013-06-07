@@ -99,6 +99,10 @@ edoc:
 	$(ERL) -noinput +B -eval \
         'case edoc:application(ejabberd, ".", []) of ok -> halt(0); error -> halt(1) end.'
 
+spec:
+	$(ERL) -noinput +B -pa ebin -pa deps/*/ebin -eval \
+	'case xml_gen:compile("tools/xmpp_codec.spec") of ok -> halt(0); _ -> halt(1) end.'
+
 install: all
 	#
 	# Configuration files
@@ -248,5 +252,8 @@ dialyzer: plt
 	-dialyzer --plt erlang.plt --add_to_plt --output_plt ejabberd.plt \
 	--get_warnings -o dialyzer.log ebin
 
+test:
+	$(REBAR) skip_deps=true ct
+
 .PHONY: src doc edoc dialyzer Makefile TAGS clean clean-rel distclean rel plt \
-	install uninstall uninstall-binary uninstall-all translations deps
+	install uninstall uninstall-binary uninstall-all translations deps test spec

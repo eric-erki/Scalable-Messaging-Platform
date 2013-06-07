@@ -121,9 +121,13 @@ CfgPostHooks = lists:flatmap(
                          []
                  end, Cfg),
 
+{ok, Cwd} = file:get_cwd(),
+
 Config = [{erl_opts, Includes ++ Macros ++ HiPE ++ DebugInfo ++
                [{src_dirs, [asn1, src | SrcDirs]}]},
           {sub_dirs, ["rel"]},
+          {ct_extra_params, "-include "
+           ++ filename:join([Cwd, "deps", "p1_xml", "include"])},
           {post_hooks, PostHooks ++ CfgPostHooks},
           {deps, Deps ++ CfgDeps}],
 %%io:format("ejabberd configuration:~n  ~p~n", [Config]),
