@@ -4,12 +4,37 @@
 
 -record(roster, {item = [], ver}).
 
--record(item,
+-record(roster_item,
 	{jid, name, groups = [], subscription = none, ask}).
 
--record(disco_info, {identity = [], feature = []}).
+-record(privacy_item,
+	{order, action, type, value, stanza}).
 
--record(disco_items, {node, item = []}).
+-record(privacy, {list = [], default, active}).
+
+-record(privacy_list, {name, privacy_item = []}).
+
+-record(block, {block_item = []}).
+
+-record(unblock, {block_item = []}).
+
+-record(block_list, {}).
+
+-record(disco_info,
+	{node, identity = [], feature = []}).
+
+-record(disco_items, {node, items = []}).
+
+-record(disco_item, {jid, name, node}).
+
+-record(private, {sub_els = []}).
+
+-record(bookmark_storage, {conference = [], url = []}).
+
+-record(bookmark_url, {name, url}).
+
+-record(bookmark_conference,
+	{name, jid, autojoin = false, nick, password}).
 
 -record(stats, {stat = []}).
 

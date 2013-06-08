@@ -15,17 +15,15 @@
        min = 0, max = 1,
        result = {version, '$name', '$version', '$os'},
        els = [#spec{name = <<"name">>,
-                    min = 1,
-                    max = 1,
+                    min = 0, max = 1,
                     result = '$cdata',
                     cdata = #cdata{label = '$cdata', required = true}},
               #spec{name = <<"version">>,
-                    min = 1,
-                    max = 1,
+                    min = 0, max = 1,
                     result = '$cdata',
                     cdata = #cdata{label = '$cdata', required = true}},
               #spec{name = <<"os">>,
-                    max = 1,
+                    min = 0, max = 1,
                     result = '$cdata',
                     cdata = #cdata{label = '$cdata', required = true}}]}}.
 
@@ -36,7 +34,7 @@
        min = 0, max = 1,
        attrs = [#attr{name = <<"ver">>}],
        els = [#spec{name = <<"item">>,
-                    result = {item, '$jid', '$name',
+                    result = {roster_item, '$jid', '$name',
                               '$groups', '$subscription', '$ask'},
                     attrs = [#attr{name = <<"jid">>,
                                    required = true},
@@ -55,11 +53,96 @@
                                  cdata = #cdata{required = true,
                                                 label = '$cdata'}}]}]}}.
 
+{spec, privacy_item,
+ #spec{name = <<"item">>,
+       result = {privacy_item, '$order', '$action', '$type',
+                 '$value', '$stanza'},
+       label = '$privacy_item',
+       attrs = [#attr{name = <<"action">>,
+                      required = true,
+                      dec = {dec_enum, [[allow, deny]]},
+                      enc = {enc_enum, []}},
+                #attr{name = <<"order">>,
+                      required = true,
+                      dec = {dec_int, [0, infinity]},
+                      enc = {enc_int, []}},
+                #attr{name = <<"type">>,
+                      dec = {dec_enum, [[group, jid, subscription]]},
+                      enc = {enc_enum, []}},
+                #attr{name = <<"value">>}],
+       els = [#spec{name = <<"message">>,
+                    min = 0, max = 1,
+                    label = '$stanza',
+                    result = message},
+              #spec{name = <<"iq">>,
+                    min = 0, max = 1,
+                    label = '$stanza',
+                    result = iq},
+              #spec{name = <<"presence-in">>,
+                    min = 0, max = 1,
+                    label = '$stanza',
+                    result = 'presence-in'},
+              #spec{name = <<"presence-out">>,
+                    min = 0, max = 1,
+                    label = '$stanza',
+                    result = 'presence-out'}]}}.
+
+{spec, privacy,
+ #spec{name = <<"query">>,
+       min = 0, max = 1,
+       xmlns = <<"jabber:iq:privacy">>,
+       result = {privacy, '$list', '$default', '$active'},
+       els = [#spec{name = <<"list">>,
+                    result = {privacy_list, '$name', '$privacy_item'},
+                    attrs = [#attr{name = <<"name">>,
+                                   required = true}],
+                    els = [privacy_item]},
+              #spec{name = <<"default">>,
+                    min = 0, max = 1,
+                    result = '$name',
+                    attrs = [#attr{name = <<"name">>,
+                                   default = none}]},
+              #spec{name = <<"active">>,
+                    min = 0, max = 1,
+                    result = '$name',
+                    attrs = [#attr{name = <<"name">>,
+                                   default = none}]}]}}.
+
+{spec, block_item,
+ #spec{name = <<"item">>,
+       label = '$block_item',
+       result = '$jid',
+       attrs = [#attr{name = <<"jid">>,
+                      required = true,
+                      dec = {dec_jid, []},
+                      enc = {enc_jid, []}}]}}.
+
+{spec, block,
+ #spec{name = <<"block">>,
+       xmlns = <<"urn:xmpp:blocking">>,
+       min = 0, max = 1,
+       result = {block, '$block_item'},
+       els = [block_item]}}.
+
+{spec, unblock,
+ #spec{name = <<"unblock">>,
+       xmlns = <<"urn:xmpp:blocking">>,
+       min = 0, max = 1,
+       result = {unblock, '$block_item'},
+       els = [block_item]}}.
+
+{spec, block_list,
+ #spec{name = <<"blocklist">>,
+       xmlns = <<"urn:xmpp:blocking">>,
+       result = {block_list},
+       min = 0, max = 1}}.
+
 {spec, disco_info,
  #spec{name = <<"query">>,
        min = 0, max = 1,
        xmlns = <<"http://jabber.org/protocol/disco#info">>,
-       result = {disco_info, '$identity', '$feature'},
+       result = {disco_info, '$node', '$identity', '$feature'},
+       attrs = [#attr{name = <<"node">>}],
        els = [#spec{name = <<"identity">>,
                     result = {'$category', '$type', '$name'},
                     attrs = [#attr{name = <<"category">>,
@@ -76,10 +159,11 @@
  #spec{name = <<"query">>,
        min = 0, max = 1,
        xmlns = <<"http://jabber.org/protocol/disco#items">>,
-       result = {disco_items, '$node', '$item'},
+       result = {disco_items, '$node', '$items'},
        attrs = [#attr{name = <<"node">>}],
        els = [#spec{name = <<"item">>,
-                    result = {'$jid', '$name', '$node'},
+                    label = '$items',
+                    result = {disco_item, '$jid', '$name', '$node'},
                     cdata = #cdata{label = '$cdata'},
                     attrs = [#attr{name = <<"jid">>,
                                    dec = {dec_jid, []},
@@ -87,6 +171,43 @@
                                    required = true},
                              #attr{name = <<"name">>},
                              #attr{name = <<"node">>}]}]}}.
+
+{spec, private,
+ #spec{name = <<"query">>,
+       min = 0, max = 1,
+       xmlns = <<"jabber:iq:private">>,
+       result = {private, '$_els'}}}.
+
+{spec, storage_bookmarks,
+ #spec{name = <<"storage">>,
+       xmlns = <<"storage:bookmarks">>,
+       min = 0, max = 1,
+       result = {bookmark_storage, '$conference', '$url'},
+       els = [#spec{name = <<"conference">>,
+                    result = {bookmark_conference, '$name', '$jid',
+                              '$autojoin', '$nick', '$password'},
+                    attrs = [#attr{name = <<"name">>,
+                                   required = true},
+                             #attr{name = <<"jid">>,
+                                   required = true,
+                                   dec = {dec_jid, []},
+                                   enc = {enc_jid, []}},
+                             #attr{name = <<"autojoin">>,
+                                   default = false,
+                                   dec = {dec_bool, []},
+                                   enc = {enc_bool, []}}],
+                    els = [#spec{name = <<"nick">>,
+                                 min = 0, max = 1,
+                                 result = '$cdata'},
+                           #spec{name = <<"password">>,
+                                 min = 0, max = 1,
+                                 result = '$cdata'}]},
+              #spec{name = <<"url">>,
+                    result = {bookmark_url, '$name', '$url'},
+                    attrs = [#attr{name = <<"name">>,
+                                   required = true},
+                             #attr{name = <<"url">>,
+                                   required = true}]}]}}.
 
 {spec, stats,
  #spec{name = <<"query">>,
@@ -493,12 +614,12 @@
        xmlns = <<"urn:xmpp:time">>,
        result = {time, '$tzo', '$utc'},
        els = [#spec{name = <<"tzo">>,
-                    min = 1, max = 1,
+                    min = 0, max = 1,
                     result = '$cdata',
                     cdata = #cdata{dec = {dec_tzo, []},
                                    enc = {enc_tzo, []}}},
               #spec{name = <<"utc">>,
-                    min = 1, max = 1,
+                    min = 0, max = 1,
                     result = '$cdata',
                     cdata = #cdata{dec = {dec_utc, []},
                                    enc = {enc_utc, []}}}]}}.
@@ -658,6 +779,12 @@ resourceprep(R) ->
 
 sign(N) when N < 0 -> <<"-">>;
 sign(_) -> <<"+">>.
+
+dec_bool(<<"false">>) -> false;
+dec_bool(<<"true">>) -> true.
+
+enc_bool(false) -> <<"false">>;
+enc_bool(true) -> <<"true">>.
 
 %% Local Variables:
 %% mode: erlang

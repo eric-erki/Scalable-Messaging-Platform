@@ -70,12 +70,14 @@ init_per_testcase(TestCase, OrigConfig) ->
             open_session(bind(auth(connect(Config))))
     end.
 
+end_per_testcase(stop_ejabberd, _Config) ->
+    ok;
 end_per_testcase(_TestCase, Config) ->
-    case ?config(socket) of
+    case ?config(socket, Config) of
         undefined ->
             ok;
-        _Socket ->
-            ok = ejabberd_socket:send_text(Config, ?STREAM_TRAILER)
+        Socket ->
+            ok = ejabberd_socket:send(Socket, ?STREAM_TRAILER)
     end.
 
 groups() ->
@@ -90,13 +92,14 @@ all() ->
      roster_get,
      presence_broadcast,
      ping,
-     version_get,
-     time_get,
-     stats_get,
-     disco_info_get,
-     disco_items_get,
-     %% vcard_get,
-     %% vcard_set,
+     version,
+     time,
+     stats,
+     disco,
+     last,
+     private,
+     privacy,
+     blocking,
      stop_ejabberd].
 
 start_ejabberd(Config) ->
@@ -135,28 +138,16 @@ auth(Config) ->
 
 bind(Config) ->
     ID = randoms:get_string(),
-    IQ = #iq{type = set, xmlns = ?NS_BIND, id = ID,
-             sub_el =
-                 [#xmlel{name = <<"bind">>,
-                         attrs = [{<<"xmlns">>, ?NS_BIND}],
-                         children =
-                             [#xmlel{name = <<"resource">>,
-                                     attrs = [],
-                                     children =
-                                         [{xmlcdata,
-                                           ?config(resource, Config)}]}]}]},
-    ok = send_iq(Config, IQ),
+    IQ = #'Iq'{id = ID, type = set,
+               sub_els = [#bind{resource = ?config(resource, Config)}]},
+    ok = send_element(Config, IQ),
     #'Iq'{type = result, id = ID, sub_els = [#bind{}]} = recv(),
     Config.
 
 open_session(Config) ->
     ID = randoms:get_string(),
-    IQ = #iq{type = set, xmlns = ?NS_SESSION, id = ID,
-             sub_el =
-                 [#xmlel{name = <<"session">>,
-                         attrs = [{<<"xmlns">>, ?NS_SESSION}],
-                         children = []}]},
-    ok = send_iq(Config, IQ),
+    IQ = #'Iq'{type = set, id = ID, sub_els = [#session{}]},
+    ok = send_element(Config, IQ),
     #'Iq'{type = result, id = ID, sub_els = SubEls} = recv(),
     case SubEls of
         [] ->
@@ -169,149 +160,223 @@ open_session(Config) ->
 
 roster_get(Config) ->
     ID = randoms:get_string(),
-    RosterIQ = #iq{type = get, xmlns = ?NS_ROSTER, id = ID,
-                   sub_el =
-                       [#xmlel{name = <<"query">>,
-                               attrs = [{<<"xmlns">>, ?NS_ROSTER}],
-                               children = []}]},
-    ok = send_iq(Config, RosterIQ),
-    #'Iq'{type = result, id = ID, sub_els = [#roster{item = []}]} = recv(),
+    IQ = #'Iq'{type = get, id = ID, sub_els = [#roster{}]},
+    ok = send_element(Config, IQ),
+    #'Iq'{type = result, id = ID,
+          sub_els = [#roster{item = []}]} = recv(),
     Config.
 
 presence_broadcast(Config) ->
-    ok = send_element(Config, #xmlel{name = <<"presence">>}),
-    JID = myjid(Config),
+    ok = send_element(Config, #'Presence'{}),
+    JID = my_jid(Config),
     #'Presence'{from = JID, to = JID} = recv(),
     Config.
 
 ping(Config) ->
     ID = randoms:get_string(),
-    PingIQ = #iq{type = get, xmlns = ?NS_PING, id = ID,
-                 sub_el = [#xmlel{name = <<"ping">>,
-                                  attrs = [{<<"xmlns">>, ?NS_PING}]}]},
-    ok = send_iq(Config, PingIQ),
+    IQ = #'Iq'{type = get, id = ID, sub_els = [#ping{}],
+               to = server_jid(Config)},
+    ok = send_element(Config, IQ),
     #'Iq'{type = result, id = ID, sub_els = []} = recv(),
     Config.
 
-version_get(Config) ->
+version(Config) ->
     ID = randoms:get_string(),
-    VerIQ = #iq{type = get, xmlns = ?NS_VERSION, id = ID,
-                 sub_el = [#xmlel{name = <<"query">>,
-                                  attrs = [{<<"xmlns">>, ?NS_VERSION}]}]},
-    ok = send_iq(Config, VerIQ, jlib:make_jid(<<>>, ?config(server, Config), <<>>)),
+    IQ = #'Iq'{type = get, id = ID, sub_els = [#version{}],
+               to = server_jid(Config)},
+    ok = send_element(Config, IQ),
     #'Iq'{type = result, id = ID, sub_els = [#version{}]} = recv(),
     Config.
 
-time_get(Config) ->
+time(Config) ->
     ID = randoms:get_string(),
-    TimeIQ = #iq{type = get, xmlns = ?NS_TIME, id = ID,
-                 sub_el = [#xmlel{name = <<"query">>,
-                                  attrs = [{<<"xmlns">>, ?NS_TIME}]}]},
-    ok = send_iq(Config, TimeIQ, jlib:make_jid(<<>>, ?config(server, Config), <<>>)),
+    IQ = #'Iq'{type = get, id = ID, sub_els = [#time{}],
+               to = server_jid(Config)},
+    ok = send_element(Config, IQ),
     #'Iq'{type = result, id = ID, sub_els = [#time{}]} = recv(),
     Config.
 
-disco_info_get(Config) ->
-    ID = randoms:get_string(),
-    IQ = #iq{type = get, xmlns = ?NS_DISCO_INFO, id = ID,
-             sub_el = [#xmlel{name = <<"query">>,
-                              attrs = [{<<"xmlns">>, ?NS_DISCO_INFO}]}]},
-    ok = send_iq(Config, IQ, jlib:make_jid(<<>>, ?config(server, Config), <<>>)),
-    #'Iq'{type = result, id = ID, sub_els = [#disco_info{}]} = recv(),
+disco(Config) ->
+    I1 = randoms:get_string(),
+    ok = send_element(
+           Config,
+           #'Iq'{type = get, id = I1, sub_els = [#disco_items{}],
+                 to = server_jid(Config)}),
+    #'Iq'{type = result, id = I1, sub_els = [#disco_items{items = Items}]} = recv(),
+    lists:foreach(
+      fun(#disco_item{jid = JID, node = Node}) ->
+              I = randoms:get_string(),
+              ok = send_element(
+                     Config,
+                     #'Iq'{type = get, id = I,
+                           sub_els = [#disco_info{node = Node}],
+                           to = JID}),
+              #'Iq'{type = result, id = I, sub_els = _} = recv()
+      end, Items),
     Config.
 
-disco_items_get(Config) ->
-    ID = randoms:get_string(),
-    IQ = #iq{type = get, xmlns = ?NS_DISCO_ITEMS, id = ID,
-             sub_el = [#xmlel{name = <<"query">>,
-                              attrs = [{<<"xmlns">>, ?NS_DISCO_ITEMS}]}]},
-    ok = send_iq(Config, IQ, jlib:make_jid(<<>>, ?config(server, Config), <<>>)),
-    #'Iq'{type = result, id = ID, sub_els = [#disco_items{}]} = recv(),
-    Config.
-
-vcard_get(Config) ->
-    ID = randoms:get_string(),
-    VCardIQ = #iq{type = get, xmlns = ?NS_VCARD, id = ID,
-                  sub_el = [#xmlel{name = <<"query">>,
-                                   attrs = [{<<"xmlns">>, ?NS_VCARD}]}]},
-    ok = send_iq(Config, VCardIQ, jlib:make_jid(<<>>, ?config(server, Config), <<>>)),
-    {xmlstreamelement, #xmlel{name = <<"iq">>} = El} = recv(),
-    #iq{type = result, id = ID, xmlns = ?NS_VCARD, sub_el = [_|_]}
-        = jlib:iq_query_or_response_info(El),
-    Config.
-
-vcard_set(Config) ->
+private(Config) ->
     ID1 = randoms:get_string(),
-    BlankPNG = <<"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMA"
-                 "AQAABQABDQottAAAAABJRU5ErkJggg==">>,
-    VCard =
-        #xmlel{name = <<"vCard">>,
-               attrs = [{<<"xmlns">>, ?NS_VCARD}],
-               children =
-                   [#xmlel{name = <<"BDAY">>,
-                           children = [{xmlcdata, <<"1476-06-09">>}]},
-                    #xmlel{name = <<"ADR">>,
-                           children =
-                               [#xmlel{name = <<"CTRY">>,
-                                       children =
-                                           [{xmlcdata, <<"Italy">>}]},
-                                #xmlel{name = <<"LOCALITY">>,
-                                       children =
-                                           [{xmlcdata, <<"Verona">>}]},
-                                #xmlel{name = <<"HOME">>}]},
-                    #xmlel{name = <<"NICKNAME">>},
-                    #xmlel{name = <<"N">>,
-                           children =
-                               [#xmlel{name = <<"GIVEN">>,
-                                       children =
-                                           [{xmlcdata, <<"Juliet">>}]},
-                                #xmlel{name = <<"FAMILY">>,
-                                       children =
-                                           [{xmlcdata, <<"Capulet">>}]}]},
-                    #xmlel{name = <<"EMAIL">>,
-                           children =
-                               [{xmlcdata, <<"jcapulet@shakespeare.lit">>}]},
-                    #xmlel{name = <<"PHOTO">>,
-                           children =
-                               [#xmlel{name = <<"TYPE">>,
-                                       children =
-                                           [{xmlcdata, <<"image/png">>}]},
-                                #xmlel{name = <<"BINVAL">>,
-                                       children =
-                                           [{xmlcdata, BlankPNG}]}]}]},
-    VCardIQSet = #iq{type = set, xmlns = ?NS_VCARD, id = ID1, sub_el = [VCard]},
-    ok = send_iq(Config, VCardIQSet),
-    {xmlstreamelement, #xmlel{name = <<"iq">>} = El1} = recv(),
-    #iq{type = result, id = ID1, sub_el = []}
-        = jlib:iq_query_or_response_info(El1),
+    ok = send_element(
+           Config,
+           #'Iq'{type = get, id = ID1, sub_els = [#private{}],
+                 to = server_jid(Config)}),
+    #'Iq'{type = error, id = ID1} = recv(),
     ID2 = randoms:get_string(),
-    VCardIQGet = #iq{type = get, xmlns = ?NS_VCARD, id = ID2,
-                     sub_el = [#xmlel{name = <<"vCard">>,
-                                      attrs = [{<<"xmlns">>, ?NS_VCARD}]}]},
-    ok = send_iq(Config, VCardIQGet),
-    {xmlstreamelement, #xmlel{name = <<"iq">>} = El2} = recv(),
-    #iq{type = result, id = ID2, xmlns = ?NS_VCARD, sub_el = [VCard]}
-        = jlib:iq_query_or_response_info(El2),
+    ConfBookmark = #xmlel{name = <<"conference">>,
+                          attrs = [{<<"name">>,
+                                    <<"The Play's the Thing">>},
+                                   {<<"autojoin">>, <<"true">>},
+                                   {<<"jid">>,
+                                    <<"theplay@conference.shakespeare.lit">>}],
+                          children = [#xmlel{name = <<"nick">>,
+                                             children = [{xmlcdata, <<"JC">>}]}]},
+    Storage = #bookmark_storage{
+      conference = [#bookmark_conference{
+                       name = <<"Some name">>,
+                       autojoin = true,
+                       jid = jlib:make_jid(
+                               <<"some">>,
+                               ?config(server, Config),
+                               <<>>)}]},
+    IQSet = #'Iq'{type = set, id = ID2,
+                  sub_els = [#private{sub_els = [Storage]}]},
+    ok = send_element(Config, IQSet),
+    #'Iq'{type = result, id = ID2, sub_els = []} = recv(),
+    ID3 = randoms:get_string(),
+    IQGet = #'Iq'{type = get, id = ID3,
+                  sub_els = [#private{sub_els = [#bookmark_storage{}]}]},
+    ok = send_element(Config, IQGet),
+    #'Iq'{type = result, id = ID3,
+          sub_els = [#private{sub_els = [Storage]}]} = recv(),
     Config.
 
-stats_get(Config) ->
+last(Config) ->
     ID = randoms:get_string(),
-    ServerJID = jlib:make_jid(<<>>, ?config(server, Config), <<>>),
-    StatsIQ = #iq{type = get, xmlns = ?NS_STATS, id = ID,
-                  sub_el = [#xmlel{name = <<"query">>,
-                                   attrs = [{<<"xmlns">>, ?NS_STATS}]}]},
-    ok = send_iq(Config, StatsIQ, ServerJID),
+    IQ = #'Iq'{type = get, id = ID, sub_els = [#last{}],
+               to = server_jid(Config)},
+    ok = send_element(Config, IQ),
+    #'Iq'{type = result, id = ID, sub_els = [#last{}]} = recv(),
+    Config.
+
+privacy(Config) ->
+    I1 = randoms:get_string(),
+    I2 = randoms:get_string(),
+    I3 = randoms:get_string(),
+    I4 = randoms:get_string(),
+    I5 = randoms:get_string(),
+    I6 = randoms:get_string(),
+    I7 = randoms:get_string(),
+    I8 = randoms:get_string(),
+    ok = send_element(
+           Config,
+           #'Iq'{type = get, id = I1, sub_els = [#privacy{}]}),
+    #'Iq'{type = result, id = I1, sub_els = [#privacy{}]} = recv(),
+    JID = <<"tybalt@example.com">>,
+    ok = send_element(
+           Config,
+           #'Iq'{type = set, id = I2,
+                 sub_els = [#privacy{
+                               list = [#privacy_list{
+                                          name = <<"public">>,
+                                          privacy_item =
+                                              [#privacy_item{
+                                                  type = jid,
+                                                  order = 3,
+                                                  action = deny,
+                                                  stanza = 'presence-in',
+                                                  value = JID}]}]}]}),
+    #'Iq'{type = result, id = I2, sub_els = []} = recv(),
+    _Push1 = #'Iq'{type = set, id = PushI1,
+                   sub_els = [#privacy{
+                                 list = [#privacy_list{
+                                            name = <<"public">>}]}]} = recv(),
+    %% BUG: ejabberd replies on this result
+    %% TODO: this should be fixed in ejabberd
+    %% ok = send_element(Config, Push1#'Iq'{type = result, sub_els = []}),
+    ok = send_element(
+           Config,
+           #'Iq'{type = set, id = I3,
+                 sub_els = [#privacy{active = <<"public">>}]}),
+    #'Iq'{type = result, id = I3, sub_els = []} = recv(),
+    ok = send_element(
+           Config,
+           #'Iq'{type = set, id = I4,
+                 sub_els = [#privacy{default = <<"public">>}]}),
+    #'Iq'{type = result, id = I4, sub_els = []} = recv(),
+    ok = send_element(
+           Config,
+           #'Iq'{type = get, id = I5,
+                 sub_els = [#privacy{}]}),
+    #'Iq'{type = result, id = I5,
+          sub_els = [#privacy{default = <<"public">>,
+                              active = <<"public">>,
+                              list = [#privacy_list{name = <<"public">>}]}]} = recv(),
+    ok = send_element(
+           Config,
+           #'Iq'{type = set, id = I6, sub_els = [#privacy{default = none}]}),
+    #'Iq'{type = result, id = I6, sub_els = []} = recv(),
+    ok = send_element(
+           Config,
+           #'Iq'{type = set, id = I7, sub_els = [#privacy{active = none}]}),
+    #'Iq'{type = result, id = I7, sub_els = []} = recv(),
+    ok = send_element(
+           Config,
+           #'Iq'{type = set, id = I8,
+                 sub_els = [#privacy{list = [#privacy_list{name = <<"public">>}]}]}),
+    #'Iq'{type = result, id = I8, sub_els = []} = recv(),
+    %% BUG: We should receive this:
+    %% TODO: fix in ejabberd
+    %% _Push2 = #'Iq'{type = set, id = PushI2, sub_els = []} = recv(),
+    _Push2 = #'Iq'{type = set, id = PushI2,
+                   sub_els = [#privacy{
+                                 list = [#privacy_list{
+                                            name = <<"public">>}]}]} = recv(),
+    Config.
+
+blocking(Config) ->
+    I1 = randoms:get_string(),
+    I2 = randoms:get_string(),
+    I3 = randoms:get_string(),
+    JID = jlib:make_jid(<<"romeo">>, <<"montague.net">>, <<>>),
+    ok = send_element(
+           Config,
+           #'Iq'{type = get, id = I1, sub_els = [#block_list{}]}),
+    #'Iq'{type = result, id = I1, sub_els = [#block_list{}]} = recv(),
+    ok = send_element(
+           Config,
+           #'Iq'{type = set, id = I2,
+                 sub_els = [#block{block_item = [JID]}]}),
+    #'Iq'{type = result, id = I2, sub_els = []} = recv(),
+    #'Iq'{type = set, id = _,
+          sub_els = [#privacy{list = [#privacy_list{}]}]} = recv(),
+    #'Iq'{type = set, id = _,
+          sub_els = [#block{block_item = [JID]}]} = recv(),
+    ok = send_element(
+           Config,
+           #'Iq'{type = set, id = I3,
+                 sub_els = [#unblock{block_item = [JID]}]}),
+    #'Iq'{type = result, id = I3, sub_els = []} = recv(),
+    #'Iq'{type = set, id = _,
+          sub_els = [#privacy{list = [#privacy_list{}]}]} = recv(),
+    #'Iq'{type = set, id = _,
+          sub_els = [#unblock{block_item = [JID]}]} = recv(),
+    Config.
+
+stats(Config) ->
+    ID = randoms:get_string(),
+    ServerJID = server_jid(Config),
+    StatsIQ = #'Iq'{type = get, id = ID, sub_els = [#stats{}],
+                    to = server_jid(Config)},
+    ok = send_element(Config, StatsIQ),
     #'Iq'{type = result, id = ID, sub_els = [#stats{stat = Stats}]} = recv(),
     lists:foreach(
-      fun(#stat{name = Name}) ->
+      fun(#stat{name = Name} = Stat) ->
               I = randoms:get_string(),
-              StatEl = #xmlel{name = <<"stat">>,
-                              attrs = [{<<"name">>, Name}]},
-              IQ = #iq{type = get, xmlns = ?NS_STATS, id = I,
-                       sub_el = [#xmlel{name = <<"query">>,
-                                        attrs = [{<<"xmlns">>, ?NS_STATS}],
-                                        children = [StatEl]}]},
-              ok = send_iq(Config, IQ, ServerJID),
+              IQ = #'Iq'{type = get, id = I,
+                         sub_els = [#stats{stat = [Stat]}],
+                    to = server_jid(Config)},
+              ok = send_element(Config, IQ),
               #'Iq'{type = result, id = I, sub_els = [_|_]} = recv()
       end, Stats),
     Config.
@@ -327,13 +392,8 @@ auth_SASL(Config) ->
                                                 ?config(password, Config)),
                     ok = send_element(
                            Config1,
-                           #xmlel{name = <<"auth">>,
-                                  attrs =
-                                      [{<<"xmlns">>, ?NS_SASL},
-                                       {<<"mechanism">>, Mech}],
-                                  children =
-                                      [{xmlcdata,
-                                        jlib:encode_base64(Response)}]}),
+                           #sasl_auth{mechanism = Mech,
+                                      cdata = Response}),
                     wait_auth_SASL_result(
                       [{sasl, SASL}, {mechs, Mechs}|Config1]);
                 false ->
@@ -344,8 +404,7 @@ auth_SASL(Config) ->
     end.
 
 wait_auth_SASL_result(Config) ->
-    El = recv(),
-    case El of
+    case recv() of
         #sasl_success{} ->
             ejabberd_socket:reset_stream(?config(socket, Config)),
             send_text(Config,
@@ -358,12 +417,9 @@ wait_auth_SASL_result(Config) ->
             Config;
         #sasl_challenge{cdata = ClientIn} ->
             {Response, SASL} = (?config(sasl, Config))(ClientIn),
-            send_element(Config,
-                         #xmlel{name = <<"response">>,
-                                attrs = [{<<"xmlns">>, ?NS_SASL}],
-                                children =
-                                    [{xmlcdata,
-                                      jlib:encode_base64(Response)}]}),
+            ok = send_element(
+                   Config,
+                   #sasl_response{cdata = Response}),
             Config1 = proplists:delete(sasl, Config),
             wait_auth_SASL_result([{sasl, SASL}|Config1]);
         #sasl_failure{} ->
@@ -383,7 +439,10 @@ re_register(Config) ->
 recv() ->
     receive
         {'$gen_event', {xmlstreamelement, El}} ->
-            xmpp_codec:decode(El);
+            ct:pal("recv: ~p~n", [El]),
+            Pkt = xmpp_codec:decode(El),
+            %%ct:pal("in: ~p~n", [Pkt]),
+            Pkt;
         {'$gen_event', Event} ->
             Event
     end.
@@ -391,15 +450,18 @@ recv() ->
 send_text(Config, Text) ->
     ejabberd_socket:send(?config(socket, Config), Text).
 
-send_element(State, El) ->
+send_element(State, Pkt) ->
+    %%ct:pal("out: ~p~n", [Pkt]),
+    El = xmpp_codec:encode(Pkt),
+    ct:pal("sent: ~p~n", [El]),
     send_text(State, xml:element_to_binary(El)).
 
 send_iq(State, IQ) ->
-    send_element(State, jlib:iq_to_xml(IQ)).
+    send_text(State, xml:element_to_binary(jlib:iq_to_xml(IQ))).
 
 send_iq(State, IQ, To) ->
-    El = jlib:replace_from_to(myjid(State), To, jlib:iq_to_xml(IQ)),
-    send_element(State, El).
+    El = jlib:replace_from_to(my_jid(State), To, jlib:iq_to_xml(IQ)),
+    send_text(State, xml:element_to_binary(El)).
 
 sasl_new(<<"PLAIN">>, User, Server, Password) ->
     {<<User/binary, $@, Server/binary, 0, User/binary, 0, Password/binary>>,
@@ -478,7 +540,10 @@ response(User, Passwd, Nonce, AuthzId, Realm, CNonce,
 	  ":", (hex((crypto:md5(A2))))/binary>>,
     hex((crypto:md5(T))).
 
-myjid(Config) ->
+my_jid(Config) ->
     jlib:make_jid(?config(user, Config),
                   ?config(server, Config),
                   ?config(resource, Config)).
+
+server_jid(Config) ->
+    jlib:make_jid(<<>>, ?config(server, Config), <<>>).
