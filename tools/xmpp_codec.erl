@@ -213,7 +213,7 @@ dec_tzo(Val) ->
     if H >= -12, H =< 12, M >= 0, M < 60 -> {H, M} end.
 
 decode_last_query({xmlel, _, _attrs, _els}) ->
-    Seconds = decode_last_query_attrs(_attrs, <<>>),
+    Seconds = decode_last_query_attrs(_attrs, undefined),
     Text = decode_last_query_els(_els, <<>>),
     {last, Seconds, Text}.
 
@@ -242,7 +242,7 @@ encode_last_query({last, Seconds, Text}, _acc) ->
 				       [{<<"xmlns">>, <<"jabber:iq:last">>}]),
     [{xmlel, <<"query">>, _attrs, _els} | _acc].
 
-decode_last_query_seconds(<<>>) -> undefined;
+decode_last_query_seconds(undefined) -> undefined;
 decode_last_query_seconds(_val) ->
     case catch xml_gen:dec_int(_val, 0, infinity) of
       {'EXIT', _} ->
@@ -405,7 +405,7 @@ encode_version_query_name_cdata(_val, _acc) ->
     [{xmlcdata, _val} | _acc].
 
 decode_roster_query({xmlel, _, _attrs, _els}) ->
-    Ver = decode_roster_query_attrs(_attrs, <<>>),
+    Ver = decode_roster_query_attrs(_attrs, undefined),
     Item = decode_roster_query_els(_els, []),
     {roster, Item, Ver}.
 
@@ -440,7 +440,7 @@ encode_roster_query({roster, Item, Ver}, _acc) ->
 				     [{<<"xmlns">>, <<"jabber:iq:roster">>}]),
     [{xmlel, <<"query">>, _attrs, _els} | _acc].
 
-decode_roster_query_ver(<<>>) -> undefined;
+decode_roster_query_ver(undefined) -> undefined;
 decode_roster_query_ver(_val) -> _val.
 
 encode_roster_query_ver(undefined, _acc) -> _acc;
@@ -456,8 +456,8 @@ encode_roster_query_cdata(_val, _acc) ->
 
 decode_roster_query_item({xmlel, _, _attrs, _els}) ->
     {Ask, Subscription, Name, Jid} =
-	decode_roster_query_item_attrs(_attrs, <<>>, <<>>, <<>>,
-				       <<>>),
+	decode_roster_query_item_attrs(_attrs, undefined,
+				       undefined, undefined, undefined),
     Groups = decode_roster_query_item_els(_els, []),
     {roster_item, Jid, Name, Groups, Subscription, Ask}.
 
@@ -524,7 +524,7 @@ encode_roster_query_item([{roster_item, Jid, Name,
     encode_roster_query_item(_tail,
 			     [{xmlel, <<"item">>, _attrs, _els} | _acc]).
 
-decode_roster_query_item_jid(<<>>) ->
+decode_roster_query_item_jid(undefined) ->
     erlang:error({missing_attr, <<"jid">>, <<"item">>,
 		  <<>>});
 decode_roster_query_item_jid(_val) -> _val.
@@ -532,14 +532,15 @@ decode_roster_query_item_jid(_val) -> _val.
 encode_roster_query_item_jid(_val, _acc) ->
     [{<<"jid">>, _val} | _acc].
 
-decode_roster_query_item_name(<<>>) -> undefined;
+decode_roster_query_item_name(undefined) -> undefined;
 decode_roster_query_item_name(_val) -> _val.
 
 encode_roster_query_item_name(undefined, _acc) -> _acc;
 encode_roster_query_item_name(_val, _acc) ->
     [{<<"name">>, _val} | _acc].
 
-decode_roster_query_item_subscription(<<>>) -> none;
+decode_roster_query_item_subscription(undefined) ->
+    none;
 decode_roster_query_item_subscription(_val) ->
     case catch xml_gen:dec_enum(_val,
 				[none, to, from, both, remove])
@@ -555,7 +556,7 @@ encode_roster_query_item_subscription(none, _acc) ->
 encode_roster_query_item_subscription(_val, _acc) ->
     [{<<"subscription">>, xml_gen:enc_enum(_val)} | _acc].
 
-decode_roster_query_item_ask(<<>>) -> undefined;
+decode_roster_query_item_ask(undefined) -> undefined;
 decode_roster_query_item_ask(_val) ->
     case catch xml_gen:dec_enum(_val, [subscribe]) of
       {'EXIT', _} ->
@@ -606,8 +607,8 @@ encode_roster_query_item_group_cdata(_val, _acc) ->
 
 decode_privacy_item_item({xmlel, _, _attrs, _els}) ->
     {Value, Type, Action, Order} =
-	decode_privacy_item_item_attrs(_attrs, <<>>, <<>>, <<>>,
-				       <<>>),
+	decode_privacy_item_item_attrs(_attrs, undefined,
+				       undefined, undefined, undefined),
     Stanza = decode_privacy_item_item_els(_els, undefined),
     {privacy_item, Order, Action, Type, Value, Stanza}.
 
@@ -718,7 +719,7 @@ encode_privacy_item_item([{privacy_item, Order, Action,
     encode_privacy_item_item(_tail,
 			     [{xmlel, <<"item">>, _attrs, _els} | _acc]).
 
-decode_privacy_item_item_action(<<>>) ->
+decode_privacy_item_item_action(undefined) ->
     erlang:error({missing_attr, <<"action">>, <<"item">>,
 		  <<>>});
 decode_privacy_item_item_action(_val) ->
@@ -732,7 +733,7 @@ decode_privacy_item_item_action(_val) ->
 encode_privacy_item_item_action(_val, _acc) ->
     [{<<"action">>, xml_gen:enc_enum(_val)} | _acc].
 
-decode_privacy_item_item_order(<<>>) ->
+decode_privacy_item_item_order(undefined) ->
     erlang:error({missing_attr, <<"order">>, <<"item">>,
 		  <<>>});
 decode_privacy_item_item_order(_val) ->
@@ -746,7 +747,7 @@ decode_privacy_item_item_order(_val) ->
 encode_privacy_item_item_order(_val, _acc) ->
     [{<<"order">>, xml_gen:enc_int(_val)} | _acc].
 
-decode_privacy_item_item_type(<<>>) -> undefined;
+decode_privacy_item_item_type(undefined) -> undefined;
 decode_privacy_item_item_type(_val) ->
     case catch xml_gen:dec_enum(_val,
 				[group, jid, subscription])
@@ -761,7 +762,7 @@ encode_privacy_item_item_type(undefined, _acc) -> _acc;
 encode_privacy_item_item_type(_val, _acc) ->
     [{<<"type">>, xml_gen:enc_enum(_val)} | _acc].
 
-decode_privacy_item_item_value(<<>>) -> undefined;
+decode_privacy_item_item_value(undefined) -> undefined;
 decode_privacy_item_item_value(_val) -> _val.
 
 encode_privacy_item_item_value(undefined, _acc) -> _acc;
@@ -930,7 +931,8 @@ encode_privacy_query_cdata(_val, _acc) ->
     [{xmlcdata, _val} | _acc].
 
 decode_privacy_query_active({xmlel, _, _attrs, _els}) ->
-    Name = decode_privacy_query_active_attrs(_attrs, <<>>),
+    Name = decode_privacy_query_active_attrs(_attrs,
+					     undefined),
     Name.
 
 decode_privacy_query_active_attrs([{<<"name">>, _val}
@@ -948,7 +950,7 @@ encode_privacy_query_active(Name, _acc) ->
     _attrs = encode_privacy_query_active_name(Name, []),
     [{xmlel, <<"active">>, _attrs, _els} | _acc].
 
-decode_privacy_query_active_name(<<>>) -> none;
+decode_privacy_query_active_name(undefined) -> none;
 decode_privacy_query_active_name(_val) -> _val.
 
 encode_privacy_query_active_name(none, _acc) -> _acc;
@@ -965,7 +967,8 @@ encode_privacy_query_active_cdata(_val, _acc) ->
 
 decode_privacy_query_default({xmlel, _, _attrs,
 			      _els}) ->
-    Name = decode_privacy_query_default_attrs(_attrs, <<>>),
+    Name = decode_privacy_query_default_attrs(_attrs,
+					      undefined),
     Name.
 
 decode_privacy_query_default_attrs([{<<"name">>, _val}
@@ -984,7 +987,7 @@ encode_privacy_query_default(Name, _acc) ->
     _attrs = encode_privacy_query_default_name(Name, []),
     [{xmlel, <<"default">>, _attrs, _els} | _acc].
 
-decode_privacy_query_default_name(<<>>) -> none;
+decode_privacy_query_default_name(undefined) -> none;
 decode_privacy_query_default_name(_val) -> _val.
 
 encode_privacy_query_default_name(none, _acc) -> _acc;
@@ -1000,7 +1003,8 @@ encode_privacy_query_default_cdata(_val, _acc) ->
     [{xmlcdata, _val} | _acc].
 
 decode_privacy_query_list({xmlel, _, _attrs, _els}) ->
-    Name = decode_privacy_query_list_attrs(_attrs, <<>>),
+    Name = decode_privacy_query_list_attrs(_attrs,
+					   undefined),
     Privacy_item = decode_privacy_query_list_els(_els, []),
     {privacy_list, Name, Privacy_item}.
 
@@ -1041,7 +1045,7 @@ encode_privacy_query_list([{privacy_list, Name,
     encode_privacy_query_list(_tail,
 			      [{xmlel, <<"list">>, _attrs, _els} | _acc]).
 
-decode_privacy_query_list_name(<<>>) ->
+decode_privacy_query_list_name(undefined) ->
     erlang:error({missing_attr, <<"name">>, <<"list">>,
 		  <<>>});
 decode_privacy_query_list_name(_val) -> _val.
@@ -1058,7 +1062,8 @@ encode_privacy_query_list_cdata(_val, _acc) ->
     [{xmlcdata, _val} | _acc].
 
 decode_block_item_item({xmlel, _, _attrs, _els}) ->
-    Jid = decode_block_item_item_attrs(_attrs, <<>>), Jid.
+    Jid = decode_block_item_item_attrs(_attrs, undefined),
+    Jid.
 
 decode_block_item_item_attrs([{<<"jid">>, _val}
 			      | _attrs],
@@ -1076,7 +1081,7 @@ encode_block_item_item([Jid | _tail], _acc) ->
     encode_block_item_item(_tail,
 			   [{xmlel, <<"item">>, _attrs, _els} | _acc]).
 
-decode_block_item_item_jid(<<>>) ->
+decode_block_item_item_jid(undefined) ->
     erlang:error({missing_attr, <<"jid">>, <<"item">>,
 		  <<>>});
 decode_block_item_item_jid(_val) ->
@@ -1181,7 +1186,7 @@ encode_block_list_blocklist_cdata(_val, _acc) ->
     [{xmlcdata, _val} | _acc].
 
 decode_disco_info_query({xmlel, _, _attrs, _els}) ->
-    Node = decode_disco_info_query_attrs(_attrs, <<>>),
+    Node = decode_disco_info_query_attrs(_attrs, undefined),
     {Feature, Identity} = decode_disco_info_query_els(_els,
 						      [], []),
     {disco_info, Node, Identity, Feature}.
@@ -1240,7 +1245,7 @@ encode_disco_info_query({disco_info, Node, Identity,
 					    <<"http://jabber.org/protocol/disco#info">>}]),
     [{xmlel, <<"query">>, _attrs, _els} | _acc].
 
-decode_disco_info_query_node(<<>>) -> undefined;
+decode_disco_info_query_node(undefined) -> undefined;
 decode_disco_info_query_node(_val) -> _val.
 
 encode_disco_info_query_node(undefined, _acc) -> _acc;
@@ -1257,7 +1262,7 @@ encode_disco_info_query_cdata(_val, _acc) ->
 decode_disco_info_query_feature({xmlel, _, _attrs,
 				 _els}) ->
     Var = decode_disco_info_query_feature_attrs(_attrs,
-						<<>>),
+						undefined),
     Var.
 
 decode_disco_info_query_feature_attrs([{<<"var">>, _val}
@@ -1278,7 +1283,7 @@ encode_disco_info_query_feature([Var | _tail], _acc) ->
 				    [{xmlel, <<"feature">>, _attrs, _els}
 				     | _acc]).
 
-decode_disco_info_query_feature_var(<<>>) ->
+decode_disco_info_query_feature_var(undefined) ->
     erlang:error({missing_attr, <<"var">>, <<"feature">>,
 		  <<>>});
 decode_disco_info_query_feature_var(_val) -> _val.
@@ -1299,8 +1304,8 @@ encode_disco_info_query_feature_cdata(_val, _acc) ->
 decode_disco_info_query_identity({xmlel, _, _attrs,
 				  _els}) ->
     {Name, Type, Category} =
-	decode_disco_info_query_identity_attrs(_attrs, <<>>,
-					       <<>>, <<>>),
+	decode_disco_info_query_identity_attrs(_attrs,
+					       undefined, undefined, undefined),
     {Category, Type, Name}.
 
 decode_disco_info_query_identity_attrs([{<<"name">>,
@@ -1345,7 +1350,7 @@ encode_disco_info_query_identity([{Category, Type, Name}
 				     [{xmlel, <<"identity">>, _attrs, _els}
 				      | _acc]).
 
-decode_disco_info_query_identity_category(<<>>) ->
+decode_disco_info_query_identity_category(undefined) ->
     erlang:error({missing_attr, <<"category">>,
 		  <<"identity">>, <<>>});
 decode_disco_info_query_identity_category(_val) -> _val.
@@ -1353,7 +1358,7 @@ decode_disco_info_query_identity_category(_val) -> _val.
 encode_disco_info_query_identity_category(_val, _acc) ->
     [{<<"category">>, _val} | _acc].
 
-decode_disco_info_query_identity_type(<<>>) ->
+decode_disco_info_query_identity_type(undefined) ->
     erlang:error({missing_attr, <<"type">>, <<"identity">>,
 		  <<>>});
 decode_disco_info_query_identity_type(_val) -> _val.
@@ -1361,7 +1366,7 @@ decode_disco_info_query_identity_type(_val) -> _val.
 encode_disco_info_query_identity_type(_val, _acc) ->
     [{<<"type">>, _val} | _acc].
 
-decode_disco_info_query_identity_name(<<>>) ->
+decode_disco_info_query_identity_name(undefined) ->
     undefined;
 decode_disco_info_query_identity_name(_val) -> _val.
 
@@ -1382,7 +1387,8 @@ encode_disco_info_query_identity_cdata(_val, _acc) ->
     [{xmlcdata, _val} | _acc].
 
 decode_disco_items_query({xmlel, _, _attrs, _els}) ->
-    Node = decode_disco_items_query_attrs(_attrs, <<>>),
+    Node = decode_disco_items_query_attrs(_attrs,
+					  undefined),
     Items = decode_disco_items_query_els(_els, []),
     {disco_items, Node, Items}.
 
@@ -1421,7 +1427,7 @@ encode_disco_items_query({disco_items, Node, Items},
 					     <<"http://jabber.org/protocol/disco#items">>}]),
     [{xmlel, <<"query">>, _attrs, _els} | _acc].
 
-decode_disco_items_query_node(<<>>) -> undefined;
+decode_disco_items_query_node(undefined) -> undefined;
 decode_disco_items_query_node(_val) -> _val.
 
 encode_disco_items_query_node(undefined, _acc) -> _acc;
@@ -1438,8 +1444,8 @@ encode_disco_items_query_cdata(_val, _acc) ->
 decode_disco_items_query_item({xmlel, _, _attrs,
 			       _els}) ->
     {Node, Name, Jid} =
-	decode_disco_items_query_item_attrs(_attrs, <<>>, <<>>,
-					    <<>>),
+	decode_disco_items_query_item_attrs(_attrs, undefined,
+					    undefined, undefined),
     {disco_item, Jid, Name, Node}.
 
 decode_disco_items_query_item_attrs([{<<"node">>, _val}
@@ -1480,7 +1486,7 @@ encode_disco_items_query_item([{disco_item, Jid, Name,
     encode_disco_items_query_item(_tail,
 				  [{xmlel, <<"item">>, _attrs, _els} | _acc]).
 
-decode_disco_items_query_item_jid(<<>>) ->
+decode_disco_items_query_item_jid(undefined) ->
     erlang:error({missing_attr, <<"jid">>, <<"item">>,
 		  <<>>});
 decode_disco_items_query_item_jid(_val) ->
@@ -1494,7 +1500,8 @@ decode_disco_items_query_item_jid(_val) ->
 encode_disco_items_query_item_jid(_val, _acc) ->
     [{<<"jid">>, enc_jid(_val)} | _acc].
 
-decode_disco_items_query_item_name(<<>>) -> undefined;
+decode_disco_items_query_item_name(undefined) ->
+    undefined;
 decode_disco_items_query_item_name(_val) -> _val.
 
 encode_disco_items_query_item_name(undefined, _acc) ->
@@ -1502,7 +1509,8 @@ encode_disco_items_query_item_name(undefined, _acc) ->
 encode_disco_items_query_item_name(_val, _acc) ->
     [{<<"name">>, _val} | _acc].
 
-decode_disco_items_query_item_node(<<>>) -> undefined;
+decode_disco_items_query_item_node(undefined) ->
+    undefined;
 decode_disco_items_query_item_node(_val) -> _val.
 
 encode_disco_items_query_item_node(undefined, _acc) ->
@@ -1612,8 +1620,8 @@ encode_storage_bookmarks_storage_cdata(_val, _acc) ->
 decode_storage_bookmarks_storage_url({xmlel, _, _attrs,
 				      _els}) ->
     {Url, Name} =
-	decode_storage_bookmarks_storage_url_attrs(_attrs, <<>>,
-						   <<>>),
+	decode_storage_bookmarks_storage_url_attrs(_attrs,
+						   undefined, undefined),
     {bookmark_url, Name, Url}.
 
 decode_storage_bookmarks_storage_url_attrs([{<<"url">>,
@@ -1650,7 +1658,7 @@ encode_storage_bookmarks_storage_url([{bookmark_url,
 					 [{xmlel, <<"url">>, _attrs, _els}
 					  | _acc]).
 
-decode_storage_bookmarks_storage_url_name(<<>>) ->
+decode_storage_bookmarks_storage_url_name(undefined) ->
     erlang:error({missing_attr, <<"name">>, <<"url">>,
 		  <<>>});
 decode_storage_bookmarks_storage_url_name(_val) -> _val.
@@ -1658,7 +1666,7 @@ decode_storage_bookmarks_storage_url_name(_val) -> _val.
 encode_storage_bookmarks_storage_url_name(_val, _acc) ->
     [{<<"name">>, _val} | _acc].
 
-decode_storage_bookmarks_storage_url_url(<<>>) ->
+decode_storage_bookmarks_storage_url_url(undefined) ->
     erlang:error({missing_attr, <<"url">>, <<"url">>,
 		  <<>>});
 decode_storage_bookmarks_storage_url_url(_val) -> _val.
@@ -1682,7 +1690,8 @@ decode_storage_bookmarks_storage_conference({xmlel, _,
 					     _attrs, _els}) ->
     {Autojoin, Jid, Name} =
 	decode_storage_bookmarks_storage_conference_attrs(_attrs,
-							  <<>>, <<>>, <<>>),
+							  undefined, undefined,
+							  undefined),
     {Password, Nick} =
 	decode_storage_bookmarks_storage_conference_els(_els,
 							undefined, undefined),
@@ -1776,7 +1785,7 @@ encode_storage_bookmarks_storage_conference([{bookmark_conference,
 						  _attrs, _els}
 						 | _acc]).
 
-decode_storage_bookmarks_storage_conference_name(<<>>) ->
+decode_storage_bookmarks_storage_conference_name(undefined) ->
     erlang:error({missing_attr, <<"name">>,
 		  <<"conference">>, <<>>});
 decode_storage_bookmarks_storage_conference_name(_val) ->
@@ -1786,7 +1795,7 @@ encode_storage_bookmarks_storage_conference_name(_val,
 						 _acc) ->
     [{<<"name">>, _val} | _acc].
 
-decode_storage_bookmarks_storage_conference_jid(<<>>) ->
+decode_storage_bookmarks_storage_conference_jid(undefined) ->
     erlang:error({missing_attr, <<"jid">>, <<"conference">>,
 		  <<>>});
 decode_storage_bookmarks_storage_conference_jid(_val) ->
@@ -1801,7 +1810,7 @@ encode_storage_bookmarks_storage_conference_jid(_val,
 						_acc) ->
     [{<<"jid">>, enc_jid(_val)} | _acc].
 
-decode_storage_bookmarks_storage_conference_autojoin(<<>>) ->
+decode_storage_bookmarks_storage_conference_autojoin(undefined) ->
     false;
 decode_storage_bookmarks_storage_conference_autojoin(_val) ->
     case catch dec_bool(_val) of
@@ -1955,7 +1964,8 @@ encode_stats_query_cdata(_val, _acc) ->
 
 decode_stats_query_stat({xmlel, _, _attrs, _els}) ->
     {Value, Units, Name} =
-	decode_stats_query_stat_attrs(_attrs, <<>>, <<>>, <<>>),
+	decode_stats_query_stat_attrs(_attrs, undefined,
+				      undefined, undefined),
     Error = decode_stats_query_stat_els(_els, []),
     {stat, Name, Units, Value, Error}.
 
@@ -2013,7 +2023,7 @@ encode_stats_query_stat([{stat, Name, Units, Value,
     encode_stats_query_stat(_tail,
 			    [{xmlel, <<"stat">>, _attrs, _els} | _acc]).
 
-decode_stats_query_stat_name(<<>>) ->
+decode_stats_query_stat_name(undefined) ->
     erlang:error({missing_attr, <<"name">>, <<"stat">>,
 		  <<>>});
 decode_stats_query_stat_name(_val) -> _val.
@@ -2021,14 +2031,14 @@ decode_stats_query_stat_name(_val) -> _val.
 encode_stats_query_stat_name(_val, _acc) ->
     [{<<"name">>, _val} | _acc].
 
-decode_stats_query_stat_units(<<>>) -> undefined;
+decode_stats_query_stat_units(undefined) -> undefined;
 decode_stats_query_stat_units(_val) -> _val.
 
 encode_stats_query_stat_units(undefined, _acc) -> _acc;
 encode_stats_query_stat_units(_val, _acc) ->
     [{<<"units">>, _val} | _acc].
 
-decode_stats_query_stat_value(<<>>) -> undefined;
+decode_stats_query_stat_value(undefined) -> undefined;
 decode_stats_query_stat_value(_val) -> _val.
 
 encode_stats_query_stat_value(undefined, _acc) -> _acc;
@@ -2045,7 +2055,7 @@ encode_stats_query_stat_cdata(_val, _acc) ->
 decode_stats_query_stat_error({xmlel, _, _attrs,
 			       _els}) ->
     Code = decode_stats_query_stat_error_attrs(_attrs,
-					       <<>>),
+					       undefined),
     Cdata = decode_stats_query_stat_error_els(_els, <<>>),
     {Code, Cdata}.
 
@@ -2077,7 +2087,7 @@ encode_stats_query_stat_error([{Code, Cdata} | _tail],
     encode_stats_query_stat_error(_tail,
 				  [{xmlel, <<"error">>, _attrs, _els} | _acc]).
 
-decode_stats_query_stat_error_code(<<>>) ->
+decode_stats_query_stat_error_code(undefined) ->
     erlang:error({missing_attr, <<"code">>, <<"error">>,
 		  <<>>});
 decode_stats_query_stat_error_code(_val) ->
@@ -2101,8 +2111,9 @@ encode_stats_query_stat_error_cdata(_val, _acc) ->
 
 decode_iq_iq({xmlel, _, _attrs, _els}) ->
     {To, From, Lang, Type, Id} = decode_iq_iq_attrs(_attrs,
-						    <<>>, <<>>, <<>>, <<>>,
-						    <<>>),
+						    undefined, undefined,
+						    undefined, undefined,
+						    undefined),
     {__Els, Error} = decode_iq_iq_els(_els, [], undefined),
     {'Iq', Id, Type, Lang, From, To, Error, __Els}.
 
@@ -2160,14 +2171,14 @@ encode_iq_iq({'Iq', Id, Type, Lang, From, To, Error,
 													 []))))),
     [{xmlel, <<"iq">>, _attrs, _els} | _acc].
 
-decode_iq_iq_id(<<>>) ->
+decode_iq_iq_id(undefined) ->
     erlang:error({missing_attr, <<"id">>, <<"iq">>, <<>>});
 decode_iq_iq_id(_val) -> _val.
 
 encode_iq_iq_id(_val, _acc) ->
     [{<<"id">>, _val} | _acc].
 
-decode_iq_iq_type(<<>>) ->
+decode_iq_iq_type(undefined) ->
     erlang:error({missing_attr, <<"type">>, <<"iq">>,
 		  <<>>});
 decode_iq_iq_type(_val) ->
@@ -2183,7 +2194,7 @@ decode_iq_iq_type(_val) ->
 encode_iq_iq_type(_val, _acc) ->
     [{<<"type">>, xml_gen:enc_enum(_val)} | _acc].
 
-decode_iq_iq_from(<<>>) -> undefined;
+decode_iq_iq_from(undefined) -> undefined;
 decode_iq_iq_from(_val) ->
     case catch dec_jid(_val) of
       {'EXIT', _} ->
@@ -2196,7 +2207,7 @@ encode_iq_iq_from(undefined, _acc) -> _acc;
 encode_iq_iq_from(_val, _acc) ->
     [{<<"from">>, enc_jid(_val)} | _acc].
 
-decode_iq_iq_to(<<>>) -> undefined;
+decode_iq_iq_to(undefined) -> undefined;
 decode_iq_iq_to(_val) ->
     case catch dec_jid(_val) of
       {'EXIT', _} ->
@@ -2209,7 +2220,7 @@ encode_iq_iq_to(undefined, _acc) -> _acc;
 encode_iq_iq_to(_val, _acc) ->
     [{<<"to">>, enc_jid(_val)} | _acc].
 
-'decode_iq_iq_xml:lang'(<<>>) -> undefined;
+'decode_iq_iq_xml:lang'(undefined) -> undefined;
 'decode_iq_iq_xml:lang'(_val) -> _val.
 
 'encode_iq_iq_xml:lang'(undefined, _acc) -> _acc;
@@ -2225,8 +2236,9 @@ encode_iq_iq_cdata(_val, _acc) ->
 
 decode_message_message({xmlel, _, _attrs, _els}) ->
     {To, From, Lang, Type, Id} =
-	decode_message_message_attrs(_attrs, <<>>, <<>>, <<>>,
-				     <<>>, <<>>),
+	decode_message_message_attrs(_attrs, undefined,
+				     undefined, undefined, undefined,
+				     undefined),
     {__Els, Error, Thread, Body, Subject} =
 	decode_message_message_els(_els, [], undefined,
 				   undefined, [], []),
@@ -2362,14 +2374,14 @@ encode_message_message({'Message', Id, Type, Lang, From,
 																			   []))))),
     [{xmlel, <<"message">>, _attrs, _els} | _acc].
 
-decode_message_message_id(<<>>) -> undefined;
+decode_message_message_id(undefined) -> undefined;
 decode_message_message_id(_val) -> _val.
 
 encode_message_message_id(undefined, _acc) -> _acc;
 encode_message_message_id(_val, _acc) ->
     [{<<"id">>, _val} | _acc].
 
-decode_message_message_type(<<>>) -> normal;
+decode_message_message_type(undefined) -> normal;
 decode_message_message_type(_val) ->
     case catch xml_gen:dec_enum(_val,
 				[chat, normal, groupchat, headline, error])
@@ -2384,7 +2396,7 @@ encode_message_message_type(normal, _acc) -> _acc;
 encode_message_message_type(_val, _acc) ->
     [{<<"type">>, xml_gen:enc_enum(_val)} | _acc].
 
-decode_message_message_from(<<>>) -> undefined;
+decode_message_message_from(undefined) -> undefined;
 decode_message_message_from(_val) ->
     case catch dec_jid(_val) of
       {'EXIT', _} ->
@@ -2397,7 +2409,7 @@ encode_message_message_from(undefined, _acc) -> _acc;
 encode_message_message_from(_val, _acc) ->
     [{<<"from">>, enc_jid(_val)} | _acc].
 
-decode_message_message_to(<<>>) -> undefined;
+decode_message_message_to(undefined) -> undefined;
 decode_message_message_to(_val) ->
     case catch dec_jid(_val) of
       {'EXIT', _} ->
@@ -2410,7 +2422,8 @@ encode_message_message_to(undefined, _acc) -> _acc;
 encode_message_message_to(_val, _acc) ->
     [{<<"to">>, enc_jid(_val)} | _acc].
 
-'decode_message_message_xml:lang'(<<>>) -> undefined;
+'decode_message_message_xml:lang'(undefined) ->
+    undefined;
 'decode_message_message_xml:lang'(_val) -> _val.
 
 'encode_message_message_xml:lang'(undefined, _acc) ->
@@ -2456,7 +2469,7 @@ encode_message_message_thread_cdata(_val, _acc) ->
 
 decode_message_message_body({xmlel, _, _attrs, _els}) ->
     Body_lang = decode_message_message_body_attrs(_attrs,
-						  <<>>),
+						  undefined),
     Cdata = decode_message_message_body_els(_els, <<>>),
     {Body_lang, Cdata}.
 
@@ -2491,7 +2504,7 @@ encode_message_message_body([{Body_lang, Cdata}
     encode_message_message_body(_tail,
 				[{xmlel, <<"body">>, _attrs, _els} | _acc]).
 
-'decode_message_message_body_xml:lang'(<<>>) ->
+'decode_message_message_body_xml:lang'(undefined) ->
     undefined;
 'decode_message_message_body_xml:lang'(_val) -> _val.
 
@@ -2512,7 +2525,7 @@ encode_message_message_body_cdata(_val, _acc) ->
 decode_message_message_subject({xmlel, _, _attrs,
 				_els}) ->
     Subject_lang =
-	decode_message_message_subject_attrs(_attrs, <<>>),
+	decode_message_message_subject_attrs(_attrs, undefined),
     Cdata = decode_message_message_subject_els(_els, <<>>),
     {Subject_lang, Cdata}.
 
@@ -2551,7 +2564,7 @@ encode_message_message_subject([{Subject_lang, Cdata}
 				   [{xmlel, <<"subject">>, _attrs, _els}
 				    | _acc]).
 
-'decode_message_message_subject_xml:lang'(<<>>) ->
+'decode_message_message_subject_xml:lang'(undefined) ->
     undefined;
 'decode_message_message_subject_xml:lang'(_val) -> _val.
 
@@ -2571,8 +2584,9 @@ encode_message_message_subject_cdata(_val, _acc) ->
 
 decode_presence_presence({xmlel, _, _attrs, _els}) ->
     {To, From, Lang, Type, Id} =
-	decode_presence_presence_attrs(_attrs, <<>>, <<>>, <<>>,
-				       <<>>, <<>>),
+	decode_presence_presence_attrs(_attrs, undefined,
+				       undefined, undefined, undefined,
+				       undefined),
     {__Els, Error, Priority, Status, Show} =
 	decode_presence_presence_els(_els, [], undefined,
 				     undefined, [], undefined),
@@ -2714,14 +2728,14 @@ encode_presence_presence({'Presence', Id, Type, Lang,
 																				     []))))),
     [{xmlel, <<"presence">>, _attrs, _els} | _acc].
 
-decode_presence_presence_id(<<>>) -> undefined;
+decode_presence_presence_id(undefined) -> undefined;
 decode_presence_presence_id(_val) -> _val.
 
 encode_presence_presence_id(undefined, _acc) -> _acc;
 encode_presence_presence_id(_val, _acc) ->
     [{<<"id">>, _val} | _acc].
 
-decode_presence_presence_type(<<>>) -> undefined;
+decode_presence_presence_type(undefined) -> undefined;
 decode_presence_presence_type(_val) ->
     case catch xml_gen:dec_enum(_val,
 				[unavailable, subscribe, subscribed,
@@ -2737,7 +2751,7 @@ encode_presence_presence_type(undefined, _acc) -> _acc;
 encode_presence_presence_type(_val, _acc) ->
     [{<<"type">>, xml_gen:enc_enum(_val)} | _acc].
 
-decode_presence_presence_from(<<>>) -> undefined;
+decode_presence_presence_from(undefined) -> undefined;
 decode_presence_presence_from(_val) ->
     case catch dec_jid(_val) of
       {'EXIT', _} ->
@@ -2750,7 +2764,7 @@ encode_presence_presence_from(undefined, _acc) -> _acc;
 encode_presence_presence_from(_val, _acc) ->
     [{<<"from">>, enc_jid(_val)} | _acc].
 
-decode_presence_presence_to(<<>>) -> undefined;
+decode_presence_presence_to(undefined) -> undefined;
 decode_presence_presence_to(_val) ->
     case catch dec_jid(_val) of
       {'EXIT', _} ->
@@ -2763,7 +2777,8 @@ encode_presence_presence_to(undefined, _acc) -> _acc;
 encode_presence_presence_to(_val, _acc) ->
     [{<<"to">>, enc_jid(_val)} | _acc].
 
-'decode_presence_presence_xml:lang'(<<>>) -> undefined;
+'decode_presence_presence_xml:lang'(undefined) ->
+    undefined;
 'decode_presence_presence_xml:lang'(_val) -> _val.
 
 'encode_presence_presence_xml:lang'(undefined, _acc) ->
@@ -2822,7 +2837,8 @@ encode_presence_presence_priority_cdata(_val, _acc) ->
 decode_presence_presence_status({xmlel, _, _attrs,
 				 _els}) ->
     Status_lang =
-	decode_presence_presence_status_attrs(_attrs, <<>>),
+	decode_presence_presence_status_attrs(_attrs,
+					      undefined),
     Cdata = decode_presence_presence_status_els(_els, <<>>),
     {Status_lang, Cdata}.
 
@@ -2862,7 +2878,7 @@ encode_presence_presence_status([{Status_lang, Cdata}
 				    [{xmlel, <<"status">>, _attrs, _els}
 				     | _acc]).
 
-'decode_presence_presence_status_xml:lang'(<<>>) ->
+'decode_presence_presence_status_xml:lang'(undefined) ->
     undefined;
 'decode_presence_presence_status_xml:lang'(_val) ->
     _val.
@@ -2921,7 +2937,7 @@ encode_presence_presence_show_cdata(_val, _acc) ->
 
 decode_error_error({xmlel, _, _attrs, _els}) ->
     {By, Error_type} = decode_error_error_attrs(_attrs,
-						<<>>, <<>>),
+						undefined, undefined),
     {Text, Reason} = decode_error_error_els(_els, undefined,
 					    undefined),
     {error, Error_type, By, Reason, Text}.
@@ -3277,7 +3293,7 @@ encode_error_error({error, Error_type, By, Reason,
 				     encode_error_error_by(By, [])),
     [{xmlel, <<"error">>, _attrs, _els} | _acc].
 
-decode_error_error_type(<<>>) ->
+decode_error_error_type(undefined) ->
     erlang:error({missing_attr, <<"type">>, <<"error">>,
 		  <<>>});
 decode_error_error_type(_val) ->
@@ -3293,7 +3309,7 @@ decode_error_error_type(_val) ->
 encode_error_error_type(_val, _acc) ->
     [{<<"type">>, xml_gen:enc_enum(_val)} | _acc].
 
-decode_error_error_by(<<>>) -> undefined;
+decode_error_error_by(undefined) -> undefined;
 decode_error_error_by(_val) -> _val.
 
 encode_error_error_by(undefined, _acc) -> _acc;
@@ -3860,7 +3876,8 @@ encode_error_error_conflict_cdata(_val, _acc) ->
     [{xmlcdata, _val} | _acc].
 
 decode_error_error_text({xmlel, _, _attrs, _els}) ->
-    Text_lang = decode_error_error_text_attrs(_attrs, <<>>),
+    Text_lang = decode_error_error_text_attrs(_attrs,
+					      undefined),
     Cdata = decode_error_error_text_els(_els, <<>>),
     {Text_lang, Cdata}.
 
@@ -3891,7 +3908,8 @@ encode_error_error_text({Text_lang, Cdata}, _acc) ->
 						  <<"urn:ietf:params:xml:ns:xmpp-stanzas">>}]),
     [{xmlel, <<"text">>, _attrs, _els} | _acc].
 
-'decode_error_error_text_xml:lang'(<<>>) -> undefined;
+'decode_error_error_text_xml:lang'(undefined) ->
+    undefined;
 'decode_error_error_text_xml:lang'(_val) -> _val.
 
 'encode_error_error_text_xml:lang'(undefined, _acc) ->
@@ -4017,7 +4035,8 @@ encode_bind_bind_jid_cdata(_val, _acc) ->
     [{xmlcdata, enc_jid(_val)} | _acc].
 
 decode_sasl_auth_auth({xmlel, _, _attrs, _els}) ->
-    Mechanism = decode_sasl_auth_auth_attrs(_attrs, <<>>),
+    Mechanism = decode_sasl_auth_auth_attrs(_attrs,
+					    undefined),
     Cdata = decode_sasl_auth_auth_els(_els, <<>>),
     {sasl_auth, Mechanism, Cdata}.
 
@@ -4048,7 +4067,7 @@ encode_sasl_auth_auth({sasl_auth, Mechanism, Cdata},
 					       <<"urn:ietf:params:xml:ns:xmpp-sasl">>}]),
     [{xmlel, <<"auth">>, _attrs, _els} | _acc].
 
-decode_sasl_auth_auth_mechanism(<<>>) ->
+decode_sasl_auth_auth_mechanism(undefined) ->
     erlang:error({missing_attr, <<"mechanism">>, <<"auth">>,
 		  <<"urn:ietf:params:xml:ns:xmpp-sasl">>});
 decode_sasl_auth_auth_mechanism(_val) -> _val.
@@ -4697,7 +4716,8 @@ encode_sasl_failure_failure_aborted_cdata(_val, _acc) ->
 decode_sasl_failure_failure_text({xmlel, _, _attrs,
 				  _els}) ->
     Text_lang =
-	decode_sasl_failure_failure_text_attrs(_attrs, <<>>),
+	decode_sasl_failure_failure_text_attrs(_attrs,
+					       undefined),
     Cdata = decode_sasl_failure_failure_text_els(_els,
 						 <<>>),
     {Text_lang, Cdata}.
@@ -4736,7 +4756,7 @@ encode_sasl_failure_failure_text({Text_lang, Cdata},
 						    []),
     [{xmlel, <<"text">>, _attrs, _els} | _acc].
 
-'decode_sasl_failure_failure_text_xml:lang'(<<>>) ->
+'decode_sasl_failure_failure_text_xml:lang'(undefined) ->
     undefined;
 'decode_sasl_failure_failure_text_xml:lang'(_val) ->
     _val.
@@ -5028,8 +5048,8 @@ encode_p1_ack_ack_cdata(_val, _acc) ->
     [{xmlcdata, _val} | _acc].
 
 decode_caps_c({xmlel, _, _attrs, _els}) ->
-    {Ver, Node, Hash} = decode_caps_c_attrs(_attrs, <<>>,
-					    <<>>, <<>>),
+    {Ver, Node, Hash} = decode_caps_c_attrs(_attrs,
+					    undefined, undefined, undefined),
     {caps, Hash, Node, Ver}.
 
 decode_caps_c_attrs([{<<"ver">>, _val} | _attrs], _Ver,
@@ -5057,21 +5077,21 @@ encode_caps_c({caps, Hash, Node, Ver}, _acc) ->
 								       <<"http://jabber.org/protocol/caps">>}]))),
     [{xmlel, <<"c">>, _attrs, _els} | _acc].
 
-decode_caps_c_hash(<<>>) -> undefined;
+decode_caps_c_hash(undefined) -> undefined;
 decode_caps_c_hash(_val) -> _val.
 
 encode_caps_c_hash(undefined, _acc) -> _acc;
 encode_caps_c_hash(_val, _acc) ->
     [{<<"hash">>, _val} | _acc].
 
-decode_caps_c_node(<<>>) -> undefined;
+decode_caps_c_node(undefined) -> undefined;
 decode_caps_c_node(_val) -> _val.
 
 encode_caps_c_node(undefined, _acc) -> _acc;
 encode_caps_c_node(_val, _acc) ->
     [{<<"node">>, _val} | _acc].
 
-decode_caps_c_ver(<<>>) -> undefined;
+decode_caps_c_ver(undefined) -> undefined;
 decode_caps_c_ver(_val) ->
     case catch base64:decode(_val) of
       {'EXIT', _} ->
@@ -6434,7 +6454,7 @@ encode_time_time_tzo_cdata(_val, _acc) ->
 					 _attrs, _els}) ->
     Text_lang =
 	'decode_stream_error_stream:error_text_attrs'(_attrs,
-						      <<>>),
+						      undefined),
     Cdata =
 	'decode_stream_error_stream:error_text_els'(_els, <<>>),
     {Text_lang, Cdata}.
@@ -6483,7 +6503,7 @@ encode_time_time_tzo_cdata(_val, _acc) ->
 							   <<"urn:ietf:params:xml:ns:xmpp-streams">>}]),
     [{xmlel, <<"text">>, _attrs, _els} | _acc].
 
-'decode_stream_error_stream:error_text_xml:lang'(<<>>) ->
+'decode_stream_error_stream:error_text_xml:lang'(undefined) ->
     undefined;
 'decode_stream_error_stream:error_text_xml:lang'(_val) ->
     _val.
