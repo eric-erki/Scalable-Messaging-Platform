@@ -11,7 +11,7 @@
 -compile(export_all).
 
 -include_lib("common_test/include/ct.hrl").
-%%-include("jlib.hrl").
+-include("ns.hrl").
 -include("ejabberd.hrl").
 -include("xmpp_codec.hrl").
 
@@ -22,6 +22,8 @@
 	  "'>">>).
 
 -define(STREAM_TRAILER, <<"</stream:stream>">>).
+
+-define(PUBSUB(Node), <<(?NS_PUBSUB)/binary, "#", Node>>).
 
 suite() ->
     [{timetrap,{seconds,30}}].
@@ -58,39 +60,38 @@ init_per_testcase(TestCase, OrigConfig) ->
     Resource = list_to_binary(atom_to_list(TestCase)),
     Config = [{resource, Resource}|OrigConfig],
     case TestCase of
-        connect ->
+        test_connect ->
             Config;
-        auth ->
+        test_auth ->
             connect(Config);
-        bind ->
+        auth_md5 ->
+            connect(Config);
+        auth_plain ->
+            connect(Config);
+        test_bind ->
             auth(connect(Config));
-        open_session ->
+        test_open_session ->
             bind(auth(connect(Config)));
         _ ->
             open_session(bind(auth(connect(Config))))
     end.
 
-end_per_testcase(stop_ejabberd, _Config) ->
-    ok;
-end_per_testcase(_TestCase, Config) ->
-    case ?config(socket, Config) of
-        undefined ->
-            ok;
-        Socket ->
-            ok = ejabberd_socket:send(Socket, ?STREAM_TRAILER)
-    end.
+end_per_testcase(_TestCase, _Config) ->
+    ok.
 
 groups() ->
     [].
 
-%%all() -> [start_ejabberd, vcard].
-    
-all() -> 
+%%all() -> [start_ejabberd, pubsub].
+
+all() ->
     [start_ejabberd,
-     connect,
-     auth,
-     bind,
-     open_session,
+     test_connect,
+     auth_plain,
+     auth_md5,
+     test_auth,
+     test_bind,
+     test_open_session,
      roster_get,
      presence_broadcast,
      ping,
@@ -103,6 +104,7 @@ all() ->
      privacy,
      blocking,
      vcard,
+     pubsub,
      stop_ejabberd].
 
 start_ejabberd(Config) ->
@@ -115,6 +117,9 @@ stop_ejabberd(Config) ->
     #stream_error{reason = 'system-shutdown'} = recv(),
     {xmlstreamend, <<"stream:stream">>} = recv(),
     Config.
+
+test_connect(Config) ->
+    disconnect(connect(Config)).
 
 connect(Config) ->
     {ok, Sock} = ejabberd_socket:connect(
@@ -136,151 +141,153 @@ connect(Config) ->
               end, Fs),
     [{mechs, Mechs}|Config1].
 
+disconnect(Config) ->
+    Socket = ?config(socket, Config),
+    ok = ejabberd_socket:send(Socket, ?STREAM_TRAILER),
+    {xmlstreamend, <<"stream:stream">>} = recv(),
+    ejabberd_socket:close(Socket),
+    Config.
+
+test_auth(Config) ->
+    disconnect(auth(Config)).
+
 auth(Config) ->
-    auth_SASL(Config).
+    Mechs = ?config(mechs, Config),
+    HaveMD5 = lists:member(<<"DIGEST-MD5">>, Mechs),
+    HavePLAIN = lists:member(<<"PLAIN">>, Mechs),
+    if HavePLAIN ->
+            auth_SASL(<<"PLAIN">>, Config);
+       HaveMD5 ->
+            auth_SASL(<<"DIGEST-MD5">>, Config);
+       true ->
+            ct:fail(no_sasl_mechanisms_available)
+    end.
+
+test_bind(Config) ->
+    disconnect(bind(Config)).
 
 bind(Config) ->
-    ID = randoms:get_string(),
-    IQ = #iq{id = ID, type = set,
-               sub_els = [#bind{resource = ?config(resource, Config)}]},
-    ok = send_element(Config, IQ),
+    ID = send(Config,
+              #iq{type = set,
+                  sub_els = [#bind{resource = ?config(resource, Config)}]}),
     #iq{type = result, id = ID, sub_els = [#bind{}]} = recv(),
     Config.
 
+test_open_session(Config) ->
+    disconnect(open_session(Config)).
+
 open_session(Config) ->
-    ID = randoms:get_string(),
-    IQ = #iq{type = set, id = ID, sub_els = [#session{}]},
-    ok = send_element(Config, IQ),
+    ID = send(Config, #iq{type = set, sub_els = [#session{}]}),
     #iq{type = result, id = ID, sub_els = SubEls} = recv(),
     case SubEls of
         [] ->
             ok;
         [#session{}] ->
-            %% ejabberd work-around
+            %% BUG: we should not receive this!
+            %% TODO: should be fixed in ejabberd
             ok
     end,
     Config.
 
 roster_get(Config) ->
-    ID = randoms:get_string(),
-    IQ = #iq{type = get, id = ID, sub_els = [#roster{}]},
-    ok = send_element(Config, IQ),
+    ID = send(Config, #iq{type = get, sub_els = [#roster{}]}),
     #iq{type = result, id = ID,
           sub_els = [#roster{item = []}]} = recv(),
-    Config.
+    disconnect(Config).
 
 presence_broadcast(Config) ->
-    ok = send_element(Config, #presence{}),
+    send(Config, #presence{}),
     JID = my_jid(Config),
     #presence{from = JID, to = JID} = recv(),
-    Config.
+    disconnect(Config).
 
 ping(Config) ->
-    ID = randoms:get_string(),
-    IQ = #iq{type = get, id = ID, sub_els = [#ping{}],
-               to = server_jid(Config)},
-    ok = send_element(Config, IQ),
+    true = is_feature_advertised(Config, ?NS_PING),
+    ID = send(Config,
+              #iq{type = get, sub_els = [#ping{}], to = server_jid(Config)}),
     #iq{type = result, id = ID, sub_els = []} = recv(),
-    Config.
+    disconnect(Config).
 
 version(Config) ->
-    ID = randoms:get_string(),
-    IQ = #iq{type = get, id = ID, sub_els = [#version{}],
-               to = server_jid(Config)},
-    ok = send_element(Config, IQ),
+    true = is_feature_advertised(Config, ?NS_VERSION),
+    ID = send(Config, #iq{type = get, sub_els = [#version{}],
+                          to = server_jid(Config)}),
     #iq{type = result, id = ID, sub_els = [#version{}]} = recv(),
-    Config.
+    disconnect(Config).
 
 time(Config) ->
-    ID = randoms:get_string(),
-    IQ = #iq{type = get, id = ID, sub_els = [#time{}],
-               to = server_jid(Config)},
-    ok = send_element(Config, IQ),
+    true = is_feature_advertised(Config, ?NS_TIME),
+    ID = send(Config, #iq{type = get, sub_els = [#time{}],
+                          to = server_jid(Config)}),
     #iq{type = result, id = ID, sub_els = [#time{}]} = recv(),
-    Config.
+    disconnect(Config).
 
 disco(Config) ->
-    I1 = randoms:get_string(),
-    ok = send_element(
-           Config,
-           #iq{type = get, id = I1, sub_els = [#disco_items{}],
-                 to = server_jid(Config)}),
+    true = is_feature_advertised(Config, ?NS_DISCO_INFO),
+    true = is_feature_advertised(Config, ?NS_DISCO_ITEMS),
+    I1 = send(Config, #iq{type = get, sub_els = [#disco_items{}],
+                          to = server_jid(Config)}),
     #iq{type = result, id = I1, sub_els = [#disco_items{items = Items}]} = recv(),
     lists:foreach(
       fun(#disco_item{jid = JID, node = Node}) ->
-              I = randoms:get_string(),
-              ok = send_element(
-                     Config,
-                     #iq{type = get, id = I,
-                           sub_els = [#disco_info{node = Node}],
-                           to = JID}),
+              I = send(Config,
+                       #iq{type = get, to = JID,
+                           sub_els = [#disco_info{node = Node}]}),
               #iq{type = result, id = I, sub_els = _} = recv()
       end, Items),
-    Config.
+    disconnect(Config).
 
 private(Config) ->
-    ID1 = randoms:get_string(),
-    ok = send_element(
-           Config,
-           #iq{type = get, id = ID1, sub_els = [#private{}],
-                 to = server_jid(Config)}),
-    #iq{type = error, id = ID1} = recv(),
-    ID2 = randoms:get_string(),
-    Storage = #bookmark_storage{
-      conference = [#bookmark_conference{
-                       name = <<"Some name">>,
-                       autojoin = true,
-                       jid = jlib:make_jid(
-                               <<"some">>,
-                               ?config(server, Config),
-                               <<>>)}]},
-    IQSet = #iq{type = set, id = ID2,
-                  sub_els = [#private{sub_els = [Storage]}]},
-    ok = send_element(Config, IQSet),
-    #iq{type = result, id = ID2, sub_els = []} = recv(),
-    ID3 = randoms:get_string(),
-    IQGet = #iq{type = get, id = ID3,
-                  sub_els = [#private{sub_els = [#bookmark_storage{}]}]},
-    ok = send_element(Config, IQGet),
-    #iq{type = result, id = ID3,
-          sub_els = [#private{sub_els = [Storage]}]} = recv(),
-    Config.
+    I1 = send(Config, #iq{type = get, sub_els = [#private{}],
+                          to = server_jid(Config)}),
+    #iq{type = error, id = I1} = recv(),
+    Conference = #bookmark_conference{name = <<"Some name">>,
+                                      autojoin = true,
+                                      jid = jlib:make_jid(
+                                              <<"some">>,
+                                              <<"some.conference.org">>,
+                                              <<>>)},
+    Storage = #bookmark_storage{conference = [Conference]},
+    I2 = send(Config, #iq{type = set,
+                          sub_els = [#private{sub_els = [Storage]}]}),
+    #iq{type = result, id = I2, sub_els = []} = recv(),
+    I3 = send(Config,
+              #iq{type = get,
+                  sub_els = [#private{sub_els = [#bookmark_storage{}]}]}),
+    #iq{type = result, id = I3,
+        sub_els = [#private{sub_els = [Storage]}]} = recv(),
+    disconnect(Config).
 
 last(Config) ->
-    ID = randoms:get_string(),
-    IQ = #iq{type = get, id = ID, sub_els = [#last{}],
-               to = server_jid(Config)},
-    ok = send_element(Config, IQ),
+    true = is_feature_advertised(Config, ?NS_LAST),
+    ID = send(Config, #iq{type = get, sub_els = [#last{}],
+                          to = server_jid(Config)}),
     #iq{type = result, id = ID, sub_els = [#last{}]} = recv(),
-    Config.
+    disconnect(Config).
 
 privacy(Config) ->
-    I1 = randoms:get_string(),
-    I2 = randoms:get_string(),
-    I3 = randoms:get_string(),
-    I4 = randoms:get_string(),
-    I5 = randoms:get_string(),
-    I6 = randoms:get_string(),
-    I7 = randoms:get_string(),
-    I8 = randoms:get_string(),
-    ok = send_element(
-           Config,
-           #iq{type = get, id = I1, sub_els = [#privacy{}]}),
+    %% BUG: the feature MUST be advertised via disco#info:
+    %%      http://xmpp.org/extensions/xep-0016.html#disco
+    %% It seems like this bug exists because Privacy Lists
+    %% were implemented according to the old RFC where support
+    %% needn't be advertised via service discovery.
+    %% TODO: fix in ejabberd
+    %% true = is_feature_advertised(Config, ?NS_PRIVACY),
+    I1 = send(Config, #iq{type = get, sub_els = [#privacy{}]}),
     #iq{type = result, id = I1, sub_els = [#privacy{}]} = recv(),
     JID = <<"tybalt@example.com">>,
-    ok = send_element(
-           Config,
-           #iq{type = set, id = I2,
-                 sub_els = [#privacy{
-                               list = [#privacy_list{
-                                          name = <<"public">>,
-                                          privacy_item =
-                                              [#privacy_item{
-                                                  type = jid,
-                                                  order = 3,
-                                                  action = deny,
-                                                  stanza = 'presence-in',
-                                                  value = JID}]}]}]}),
+    I2 = send(Config,
+              #iq{type = set,
+                  sub_els = [#privacy{
+                                list = [#privacy_list{
+                                           name = <<"public">>,
+                                           privacy_item =
+                                               [#privacy_item{
+                                                   type = jid,
+                                                   order = 3,
+                                                   action = deny,
+                                                   stanza = 'presence-in',
+                                                   value = JID}]}]}]}),
     #iq{type = result, id = I2, sub_els = []} = recv(),
     _Push1 = #iq{type = set, id = PushI1,
                    sub_els = [#privacy{
@@ -288,79 +295,61 @@ privacy(Config) ->
                                             name = <<"public">>}]}]} = recv(),
     %% BUG: ejabberd replies on this result
     %% TODO: this should be fixed in ejabberd
-    %% ok = send_element(Config, Push1#iq{type = result, sub_els = []}),
-    ok = send_element(
-           Config,
-           #iq{type = set, id = I3,
-                 sub_els = [#privacy{active = <<"public">>}]}),
+    %% _ = send(Config, Push1#iq{type = result, sub_els = []}),
+    I3 = send(Config, #iq{type = set,
+                          sub_els = [#privacy{active = <<"public">>}]}),
     #iq{type = result, id = I3, sub_els = []} = recv(),
-    ok = send_element(
-           Config,
-           #iq{type = set, id = I4,
-                 sub_els = [#privacy{default = <<"public">>}]}),
+    I4 = send(Config, #iq{type = set,
+                          sub_els = [#privacy{default = <<"public">>}]}),
     #iq{type = result, id = I4, sub_els = []} = recv(),
-    ok = send_element(
-           Config,
-           #iq{type = get, id = I5,
-                 sub_els = [#privacy{}]}),
+    I5 = send(Config, #iq{type = get, sub_els = [#privacy{}]}),
     #iq{type = result, id = I5,
-          sub_els = [#privacy{default = <<"public">>,
-                              active = <<"public">>,
-                              list = [#privacy_list{name = <<"public">>}]}]} = recv(),
-    ok = send_element(
-           Config,
-           #iq{type = set, id = I6, sub_els = [#privacy{default = none}]}),
+        sub_els = [#privacy{default = <<"public">>,
+                            active = <<"public">>,
+                            list = [#privacy_list{name = <<"public">>}]}]} = recv(),
+    I6 = send(Config,
+              #iq{type = set, sub_els = [#privacy{default = none}]}),
     #iq{type = result, id = I6, sub_els = []} = recv(),
-    ok = send_element(
-           Config,
-           #iq{type = set, id = I7, sub_els = [#privacy{active = none}]}),
+    I7 = send(Config, #iq{type = set, sub_els = [#privacy{active = none}]}),
     #iq{type = result, id = I7, sub_els = []} = recv(),
-    ok = send_element(
-           Config,
-           #iq{type = set, id = I8,
-                 sub_els = [#privacy{list = [#privacy_list{name = <<"public">>}]}]}),
+    I8 = send(Config, #iq{type = set,
+                          sub_els = [#privacy{
+                                        list =
+                                            [#privacy_list{
+                                                name = <<"public">>}]}]}),
     #iq{type = result, id = I8, sub_els = []} = recv(),
     %% BUG: We should receive this:
-    %% TODO: fix in ejabberd
     %% _Push2 = #iq{type = set, id = PushI2, sub_els = []} = recv(),
+    %% TODO: this should be fixed in ejabberd
     _Push2 = #iq{type = set, id = PushI2,
                    sub_els = [#privacy{
                                  list = [#privacy_list{
                                             name = <<"public">>}]}]} = recv(),
-    Config.
+    disconnect(Config).
 
 blocking(Config) ->
-    I1 = randoms:get_string(),
-    I2 = randoms:get_string(),
-    I3 = randoms:get_string(),
+    true = is_feature_advertised(Config, ?NS_BLOCKING),
     JID = jlib:make_jid(<<"romeo">>, <<"montague.net">>, <<>>),
-    ok = send_element(
-           Config,
-           #iq{type = get, id = I1, sub_els = [#block_list{}]}),
+    I1 = send(Config, #iq{type = get, sub_els = [#block_list{}]}),
     #iq{type = result, id = I1, sub_els = [#block_list{}]} = recv(),
-    ok = send_element(
-           Config,
-           #iq{type = set, id = I2,
-                 sub_els = [#block{block_item = [JID]}]}),
+    I2 = send(Config, #iq{type = set,
+                          sub_els = [#block{block_item = [JID]}]}),
     #iq{type = result, id = I2, sub_els = []} = recv(),
     #iq{type = set, id = _,
           sub_els = [#privacy{list = [#privacy_list{}]}]} = recv(),
     #iq{type = set, id = _,
           sub_els = [#block{block_item = [JID]}]} = recv(),
-    ok = send_element(
-           Config,
-           #iq{type = set, id = I3,
-                 sub_els = [#unblock{block_item = [JID]}]}),
+    I3 = send(Config, #iq{type = set,
+                          sub_els = [#unblock{block_item = [JID]}]}),
     #iq{type = result, id = I3, sub_els = []} = recv(),
     #iq{type = set, id = _,
-          sub_els = [#privacy{list = [#privacy_list{}]}]} = recv(),
+        sub_els = [#privacy{list = [#privacy_list{}]}]} = recv(),
     #iq{type = set, id = _,
-          sub_els = [#unblock{block_item = [JID]}]} = recv(),
-    Config.
+        sub_els = [#unblock{block_item = [JID]}]} = recv(),
+    disconnect(Config).
 
 vcard(Config) ->
-    I1 = randoms:get_string(),
-    I2 = randoms:get_string(),
+    true = is_feature_advertised(Config, ?NS_VCARD),
     VCard =
         #vcard{fn = <<"Peter Saint-Andre">>,
                n = #vcard_name{family = <<"Saint-Andre">>,
@@ -391,56 +380,88 @@ vcard(Config) ->
                url = <<"http://www.xmpp.org/xsf/people/stpeter.shtml">>,
                desc = <<"More information about me is located on my "
                         "personal website: http://www.saint-andre.com/">>},
-    ok = send_element(
-           Config,
-           #iq{type = set, id = I1, sub_els = [VCard]}),
+    I1 = send(Config, #iq{type = set, sub_els = [VCard]}),
     #iq{type = result, id = I1, sub_els = []} = recv(),
-    ok = send_element(
-           Config,
-           #iq{type = get, id = I2, sub_els = [#vcard{}]}),
+    I2 = send(Config, #iq{type = get, sub_els = [#vcard{}]}),
     %% TODO: check if VCard == VCard1.
     #iq{type = result, id = I2, sub_els = [_VCard1]} = recv(),
-    Config.
+    disconnect(Config).
 
 stats(Config) ->
-    ID = randoms:get_string(),
     ServerJID = server_jid(Config),
-    StatsIQ = #iq{type = get, id = ID, sub_els = [#stats{}],
-                    to = server_jid(Config)},
-    ok = send_element(Config, StatsIQ),
+    ID = send(Config, #iq{type = get, sub_els = [#stats{}],
+                          to = server_jid(Config)}),
     #iq{type = result, id = ID, sub_els = [#stats{stat = Stats}]} = recv(),
     lists:foreach(
       fun(#stat{name = Name} = Stat) ->
-              I = randoms:get_string(),
-              IQ = #iq{type = get, id = I,
-                         sub_els = [#stats{stat = [Stat]}],
-                    to = server_jid(Config)},
-              ok = send_element(Config, IQ),
+              I = send(Config, #iq{type = get,
+                                   sub_els = [#stats{stat = [Stat]}],
+                                   to = server_jid(Config)}),
               #iq{type = result, id = I, sub_els = [_|_]} = recv()
       end, Stats),
-    Config.
+    disconnect(Config).
 
-auth_SASL(Config) ->
-    case lists:keytake(mechs, 1, Config) of
-        {value, {mechs, [Mech|Mechs]}, Config1} ->
-            case lists:member(Mech, [<<"DIGEST-MD5">>, <<"PLAIN">>]) of
-                true ->
-                    {Response, SASL} = sasl_new(Mech,
-                                                ?config(user, Config),
-                                                ?config(server, Config),
-                                                ?config(password, Config)),
-                    ok = send_element(
-                           Config1,
-                           #sasl_auth{mechanism = Mech,
-                                      cdata = Response}),
-                    wait_auth_SASL_result(
-                      [{sasl, SASL}, {mechs, Mechs}|Config1]);
-                false ->
-                    auth_SASL([{mechs, Mechs}|Config1])
-            end;
-        {value, {mechs, []}, _} ->
-            ct:fail(no_known_sasl_mechanisms_available)
+pubsub(Config) ->
+    true = is_feature_advertised(Config, ?NS_PUBSUB),
+    %% Get subscriptions
+    %% true = is_feature_advertised(Config, ?PUBSUB("retrieve-subscriptions")),
+    %% I1 = send(Config, #iq{type = get, to = pubsub_jid(Config),
+    %%                       sub_els = [#pubsub{subscriptions = {none, []}}]}),
+    %% #iq{type = result, id = I1,
+    %%     sub_els = [#pubsub{subscriptions = {none, []}}]} = recv(),
+    %% %% Get affiliations
+    %% true = is_feature_advertised(Config, ?PUBSUB("retrieve-affiliations")),
+    %% I2 = send(Config, #iq{type = get, to = pubsub_jid(Config),
+    %%                       sub_els = [#pubsub{affiliations = []}]}),
+    %% #iq{type = result, id = I2,
+    %%     sub_els = [#pubsub{affiliations = []}]} = recv(),
+
+    true = is_feature_advertised(Config, ?NS_PUBSUB),
+    %% Publish <presence/> element within node "presence"
+    ItemID = randoms:get_string(),
+    Node = <<"presence">>,
+    Item = #pubsub_item{id = ItemID, sub_els = [#presence{}]},
+    I1 = send(Config,
+              #iq{type = set, to = pubsub_jid(Config),
+                  sub_els = [#pubsub{publish = {Node, [Item]}}]}),
+    #iq{type = result, id = I1,
+        sub_els = [#pubsub{publish = {<<"presence">>,
+                                      [#pubsub_item{id = ItemID}]}}]} = recv(),
+    %% Subscribe to node "presence"
+    I2 = send(Config,
+              #iq{type = set, to = pubsub_jid(Config),
+                  sub_els = [#pubsub{subscribe = {Node, my_jid(Config)}}]}),
+    #message{sub_els = [#pubsub_event{}, #delay{}]} = recv(),
+    #iq{type = result, id = I2} = recv(),
+    disconnect(Config).
+
+auth_md5(Config) ->
+    Mechs = ?config(mechs, Config),
+    case lists:member(<<"DIGEST-MD5">>, Mechs) of
+        true ->
+            disconnect(auth_SASL(<<"DIGEST-MD5">>, Config));
+        false ->
+            disconnect(Config),
+            {skipped, 'DIGEST-MD5_not_available'}
     end.
+
+auth_plain(Config) ->
+    Mechs = ?config(mechs, Config),
+    case lists:member(<<"PLAIN">>, Mechs) of
+        true ->
+            disconnect(auth_SASL(<<"PLAIN">>, Config));
+        false ->
+            disconnect(Config),
+            {skipped, 'PLAIN_not_available'}
+    end.
+
+auth_SASL(Mech, Config) ->
+    {Response, SASL} = sasl_new(Mech,
+                                ?config(user, Config),
+                                ?config(server, Config),
+                                ?config(password, Config)),
+    send(Config, #sasl_auth{mechanism = Mech, cdata = Response}),
+    wait_auth_SASL_result([{sasl, SASL}|Config]).
 
 wait_auth_SASL_result(Config) ->
     case recv() of
@@ -456,9 +477,7 @@ wait_auth_SASL_result(Config) ->
             Config;
         #sasl_challenge{cdata = ClientIn} ->
             {Response, SASL} = (?config(sasl, Config))(ClientIn),
-            ok = send_element(
-                   Config,
-                   #sasl_response{cdata = Response}),
+            send(Config, #sasl_response{cdata = Response}),
             Config1 = proplists:delete(sasl, Config),
             wait_auth_SASL_result([{sasl, SASL}|Config1]);
         #sasl_failure{} ->
@@ -478,10 +497,8 @@ re_register(Config) ->
 recv() ->
     receive
         {'$gen_event', {xmlstreamelement, El}} ->
-            ct:pal("recv: ~p~n", [El]),
-            Pkt = xmpp_codec:decode(El),
-            %%ct:pal("in: ~p~n", [Pkt]),
-            Pkt;
+            ct:log("recv: ~p", [El]),
+            xmpp_codec:decode(El);
         {'$gen_event', Event} ->
             Event
     end.
@@ -489,18 +506,24 @@ recv() ->
 send_text(Config, Text) ->
     ejabberd_socket:send(?config(socket, Config), Text).
 
-send_element(State, Pkt) ->
-    %%ct:pal("out: ~p~n", [Pkt]),
-    El = xmpp_codec:encode(Pkt),
-    ct:pal("sent: ~p~n", [El]),
-    send_text(State, xml:element_to_binary(El)).
-
-send_iq(State, IQ) ->
-    send_text(State, xml:element_to_binary(jlib:iq_to_xml(IQ))).
-
-send_iq(State, IQ, To) ->
-    El = jlib:replace_from_to(my_jid(State), To, jlib:iq_to_xml(IQ)),
-    send_text(State, xml:element_to_binary(El)).
+send(State, Pkt) ->
+    {NewID, NewPkt} = case Pkt of
+                          #message{id = I} ->
+                              ID = id(I),
+                              {ID, Pkt#message{id = ID}};
+                          #presence{id = I} ->
+                              ID = id(I),
+                              {ID, Pkt#presence{id = ID}};
+                          #iq{id = I} ->
+                              ID = id(I),
+                              {ID, Pkt#iq{id = ID}};
+                          _ ->
+                              {undefined, Pkt}
+                      end,
+    El = xmpp_codec:encode(NewPkt),
+    ct:log("sent: ~p", [El]),
+    ok = send_text(State, xml:element_to_binary(El)),
+    NewID.
 
 sasl_new(<<"PLAIN">>, User, Server, Password) ->
     {<<User/binary, $@, Server/binary, 0, User/binary, 0, Password/binary>>,
@@ -512,7 +535,7 @@ sasl_new(<<"DIGEST-MD5">>, User, Server, Password) ->
 	       bad -> {error, <<"Invalid SASL challenge">>};
 	       KeyVals ->
 		   Nonce = xml:get_attr_s(<<"nonce">>, KeyVals),
-		   CNonce = randoms:get_string(),
+		   CNonce = id(),
 		   DigestURI = <<"xmpp/", Server/binary>>,
 		   Realm = Server,
 		   NC = <<"00000001">>,
@@ -586,3 +609,30 @@ my_jid(Config) ->
 
 server_jid(Config) ->
     jlib:make_jid(<<>>, ?config(server, Config), <<>>).
+
+pubsub_jid(Config) ->
+    Server = ?config(server, Config),
+    jlib:make_jid(<<>>, <<"pubsub.", Server/binary>>, <<>>).
+
+id() ->
+    id(undefined).
+
+id(undefined) ->
+    randoms:get_string();
+id(ID) ->
+    ID.
+
+is_feature_advertised(Config, Feature) ->
+    ID = send(Config, #iq{type = get, sub_els = [#disco_info{}],
+                          to = server_jid(Config)}),
+    #iq{type = result, id = ID,
+        sub_els = [#disco_info{feature = Features}]} = recv(),
+    lists:member(Feature, Features).
+
+bookmark_conference() ->
+    #bookmark_conference{name = <<"Some name">>,
+                         autojoin = true,
+                         jid = jlib:make_jid(
+                                 <<"some">>,
+                                 <<"some.conference.org">>,
+                                 <<>>)}.

@@ -21,7 +21,7 @@
 -record(block_list, {}).
 
 -record(disco_info,
-	{node, identity = [], feature = []}).
+	{node, identity = [], feature = [], xdata = []}).
 
 -record(disco_items, {node, items = []}).
 
@@ -29,12 +29,12 @@
 
 -record(private, {sub_els = []}).
 
+-record(bookmark_conference,
+	{name, jid, autojoin = false, nick, password}).
+
 -record(bookmark_storage, {conference = [], url = []}).
 
 -record(bookmark_url, {name, url}).
-
--record(bookmark_conference,
-	{name, jid, autojoin = false, nick, password}).
 
 -record(stats, {stat = []}).
 
@@ -142,3 +142,27 @@
 	 geo, title, role, logo, org, categories = [], note,
 	 prodid, rev, 'sort-string', sound, uid, url, class, key,
 	 desc}).
+
+-record(xfield,
+	{label, type, var, required = false, desc, values = [],
+	 options = []}).
+
+-record(xdata,
+	{type, instructions = [], title, reported, items = [],
+	 fields = []}).
+
+-record(pubsub_subscription, {jid, node, subid, type}).
+
+-record(pubsub_affiliation, {node, type}).
+
+-record(pubsub_item, {id, sub_els = []}).
+
+-record(pubsub_items,
+	{node, max_items, subid, item = []}).
+
+-record(pubsub_event, {items = []}).
+
+-record(pubsub,
+	{subscriptions, affiliations, publish, subscribe}).
+
+-record(delay, {stamp, from}).

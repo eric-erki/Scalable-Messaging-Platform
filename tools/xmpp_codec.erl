@@ -4,6 +4,22 @@
 
 decode({xmlel, _name, _attrs, _} = _el) ->
     case {_name, xml:get_attr_s(<<"xmlns">>, _attrs)} of
+      {<<"delay">>, <<"urn:xmpp:delay">>} ->
+	  decode_delay_delay(_el);
+      {<<"pubsub">>,
+       <<"http://jabber.org/protocol/pubsub">>} ->
+	  decode_pubsub_pubsub(_el);
+      {<<"event">>,
+       <<"http://jabber.org/protocol/pubsub#event">>} ->
+	  decode_pubsub_event_event(_el);
+      {<<"items">>, <<>>} -> decode_pubsub_items_items(_el);
+      {<<"item">>, <<>>} -> decode_pubsub_item_item(_el);
+      {<<"affiliation">>, <<>>} ->
+	  decode_pubsub_affiliation_affiliation(_el);
+      {<<"subscription">>, <<>>} ->
+	  decode_pubsub_subscription_subscription(_el);
+      {<<"x">>, <<"jabber:x:data">>} -> decode_xdata_x(_el);
+      {<<"field">>, <<>>} -> decode_xfield_field(_el);
       {<<"vCard">>, <<"vcard-temp">>} ->
 	  decode_vcard_vCard(_el);
       {<<"KEY">>, <<>>} -> decode_vcard_key_KEY(_el);
@@ -80,6 +96,8 @@ decode({xmlel, _name, _attrs, _} = _el) ->
 	  decode_stats_query(_el);
       {<<"storage">>, <<"storage:bookmarks">>} ->
 	  decode_storage_bookmarks_storage(_el);
+      {<<"conference">>, <<>>} ->
+	  decode_bookmark_conference_conference(_el);
       {<<"query">>, <<"jabber:iq:private">>} ->
 	  decode_private_query(_el);
       {<<"query">>,
@@ -108,6 +126,24 @@ decode({xmlel, _name, _attrs, _} = _el) ->
 	  erlang:error({unknown_tag, _name, _xmlns})
     end.
 
+encode({delay, _, _} = _r) ->
+    hd(encode_delay_delay(_r, []));
+encode({pubsub, _, _, _, _} = _r) ->
+    hd(encode_pubsub_pubsub(_r, []));
+encode({pubsub_event, _} = _r) ->
+    hd(encode_pubsub_event_event(_r, []));
+encode({pubsub_items, _, _, _, _} = _r) ->
+    hd(encode_pubsub_items_items(_r, []));
+encode({pubsub_item, _, _} = _r) ->
+    hd(encode_pubsub_item_item(_r, []));
+encode({pubsub_affiliation, _, _} = _r) ->
+    hd(encode_pubsub_affiliation_affiliation(_r, []));
+encode({pubsub_subscription, _, _, _, _} = _r) ->
+    hd(encode_pubsub_subscription_subscription(_r, []));
+encode({xdata, _, _, _, _, _, _} = _r) ->
+    hd(encode_xdata_x(_r, []));
+encode({xfield, _, _, _, _, _, _, _} = _r) ->
+    hd(encode_xfield_field(_r, []));
 encode({vcard, _, _, _, _, _, _, _, _, _, _, _, _, _, _,
 	_, _, _, _, _, _, _, _, _, _, _, _, _, _, _} =
 	   _r) ->
@@ -190,11 +226,13 @@ encode({stats, _} = _r) ->
     hd(encode_stats_query(_r, []));
 encode({bookmark_storage, _, _} = _r) ->
     hd(encode_storage_bookmarks_storage(_r, []));
+encode({bookmark_conference, _, _, _, _, _} = _r) ->
+    hd(encode_bookmark_conference_conference(_r, []));
 encode({private, _} = _r) ->
     hd(encode_private_query(_r, []));
 encode({disco_items, _, _} = _r) ->
     hd(encode_disco_items_query(_r, []));
-encode({disco_info, _, _, _} = _r) ->
+encode({disco_info, _, _, _, _} = _r) ->
     hd(encode_disco_info_query(_r, []));
 encode({block_list} = _r) ->
     hd(encode_block_list_blocklist(_r, []));
@@ -1102,42 +1140,61 @@ encode_block_list_blocklist({block_list}, _acc) ->
 
 decode_disco_info_query({xmlel, _, _attrs, _els}) ->
     Node = decode_disco_info_query_attrs(_attrs, undefined),
-    {Feature, Identity} = decode_disco_info_query_els(_els,
-						      [], []),
-    {disco_info, Node, Identity, Feature}.
+    {Xdata, Feature, Identity} =
+	decode_disco_info_query_els(_els, [], [], []),
+    {disco_info, Node, Identity, Feature, Xdata}.
 
+decode_disco_info_query_els([{xmlel, <<"x">>, _attrs,
+			      _} =
+				 _el
+			     | _els],
+			    Xdata, Feature, Identity) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<"jabber:x:data">> ->
+	  decode_disco_info_query_els(_els,
+				      [decode_xdata_x(_el) | Xdata], Feature,
+				      Identity);
+      _ ->
+	  decode_disco_info_query_els(_els, Xdata, Feature,
+				      Identity)
+    end;
 decode_disco_info_query_els([{xmlel, <<"feature">>,
 			      _attrs, _} =
 				 _el
 			     | _els],
-			    Feature, Identity) ->
+			    Xdata, Feature, Identity) ->
     case xml:get_attr_s(<<"xmlns">>, _attrs) of
       <<>> ->
-	  decode_disco_info_query_els(_els,
+	  decode_disco_info_query_els(_els, Xdata,
 				      [decode_disco_info_query_feature(_el)
 				       | Feature],
 				      Identity);
       _ ->
-	  decode_disco_info_query_els(_els, Feature, Identity)
+	  decode_disco_info_query_els(_els, Xdata, Feature,
+				      Identity)
     end;
 decode_disco_info_query_els([{xmlel, <<"identity">>,
 			      _attrs, _} =
 				 _el
 			     | _els],
-			    Feature, Identity) ->
+			    Xdata, Feature, Identity) ->
     case xml:get_attr_s(<<"xmlns">>, _attrs) of
       <<>> ->
-	  decode_disco_info_query_els(_els, Feature,
+	  decode_disco_info_query_els(_els, Xdata, Feature,
 				      [decode_disco_info_query_identity(_el)
 				       | Identity]);
       _ ->
-	  decode_disco_info_query_els(_els, Feature, Identity)
+	  decode_disco_info_query_els(_els, Xdata, Feature,
+				      Identity)
     end;
-decode_disco_info_query_els([_ | _els], Feature,
+decode_disco_info_query_els([_ | _els], Xdata, Feature,
 			    Identity) ->
-    decode_disco_info_query_els(_els, Feature, Identity);
-decode_disco_info_query_els([], Feature, Identity) ->
-    {lists:reverse(Feature), lists:reverse(Identity)}.
+    decode_disco_info_query_els(_els, Xdata, Feature,
+				Identity);
+decode_disco_info_query_els([], Xdata, Feature,
+			    Identity) ->
+    {lists:reverse(Xdata), lists:reverse(Feature),
+     lists:reverse(Identity)}.
 
 decode_disco_info_query_attrs([{<<"node">>, _val}
 			       | _attrs],
@@ -1150,11 +1207,12 @@ decode_disco_info_query_attrs([], Node) ->
 
 encode_disco_info_query(undefined, _acc) -> _acc;
 encode_disco_info_query({disco_info, Node, Identity,
-			 Feature},
+			 Feature, Xdata},
 			_acc) ->
     _els = encode_disco_info_query_identity(Identity,
 					    encode_disco_info_query_feature(Feature,
-									    [])),
+									    encode_xdata_x(Xdata,
+											   []))),
     _attrs = encode_disco_info_query_node(Node,
 					  [{<<"xmlns">>,
 					    <<"http://jabber.org/protocol/disco#info">>}]),
@@ -1418,6 +1476,234 @@ encode_private_query({private, __Els}, _acc) ->
     _attrs = [{<<"xmlns">>, <<"jabber:iq:private">>}],
     [{xmlel, <<"query">>, _attrs, _els} | _acc].
 
+decode_bookmark_conference_conference({xmlel, _, _attrs,
+				       _els}) ->
+    {Autojoin, Jid, Name} =
+	decode_bookmark_conference_conference_attrs(_attrs,
+						    undefined, undefined,
+						    undefined),
+    {Password, Nick} =
+	decode_bookmark_conference_conference_els(_els,
+						  undefined, undefined),
+    {bookmark_conference, Name, Jid, Autojoin, Nick,
+     Password}.
+
+decode_bookmark_conference_conference_els([{xmlel,
+					    <<"password">>, _attrs, _} =
+					       _el
+					   | _els],
+					  Password, Nick) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_bookmark_conference_conference_els(_els,
+						    decode_bookmark_conference_conference_password(_el),
+						    Nick);
+      _ ->
+	  decode_bookmark_conference_conference_els(_els,
+						    Password, Nick)
+    end;
+decode_bookmark_conference_conference_els([{xmlel,
+					    <<"nick">>, _attrs, _} =
+					       _el
+					   | _els],
+					  Password, Nick) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_bookmark_conference_conference_els(_els,
+						    Password,
+						    decode_bookmark_conference_conference_nick(_el));
+      _ ->
+	  decode_bookmark_conference_conference_els(_els,
+						    Password, Nick)
+    end;
+decode_bookmark_conference_conference_els([_ | _els],
+					  Password, Nick) ->
+    decode_bookmark_conference_conference_els(_els,
+					      Password, Nick);
+decode_bookmark_conference_conference_els([], Password,
+					  Nick) ->
+    {Password, Nick}.
+
+decode_bookmark_conference_conference_attrs([{<<"autojoin">>,
+					      _val}
+					     | _attrs],
+					    _Autojoin, Jid, Name) ->
+    decode_bookmark_conference_conference_attrs(_attrs,
+						_val, Jid, Name);
+decode_bookmark_conference_conference_attrs([{<<"jid">>,
+					      _val}
+					     | _attrs],
+					    Autojoin, _Jid, Name) ->
+    decode_bookmark_conference_conference_attrs(_attrs,
+						Autojoin, _val, Name);
+decode_bookmark_conference_conference_attrs([{<<"name">>,
+					      _val}
+					     | _attrs],
+					    Autojoin, Jid, _Name) ->
+    decode_bookmark_conference_conference_attrs(_attrs,
+						Autojoin, Jid, _val);
+decode_bookmark_conference_conference_attrs([_
+					     | _attrs],
+					    Autojoin, Jid, Name) ->
+    decode_bookmark_conference_conference_attrs(_attrs,
+						Autojoin, Jid, Name);
+decode_bookmark_conference_conference_attrs([],
+					    Autojoin, Jid, Name) ->
+    {decode_bookmark_conference_conference_autojoin(Autojoin),
+     decode_bookmark_conference_conference_jid(Jid),
+     decode_bookmark_conference_conference_name(Name)}.
+
+encode_bookmark_conference_conference([], _acc) -> _acc;
+encode_bookmark_conference_conference([{bookmark_conference,
+					Name, Jid, Autojoin, Nick, Password}
+				       | _tail],
+				      _acc) ->
+    _els = encode_bookmark_conference_conference_nick(Nick,
+						      encode_bookmark_conference_conference_password(Password,
+												     [])),
+    _attrs =
+	encode_bookmark_conference_conference_name(Name,
+						   encode_bookmark_conference_conference_jid(Jid,
+											     encode_bookmark_conference_conference_autojoin(Autojoin,
+																	    []))),
+    encode_bookmark_conference_conference(_tail,
+					  [{xmlel, <<"conference">>, _attrs,
+					    _els}
+					   | _acc]).
+
+decode_bookmark_conference_conference_name(undefined) ->
+    erlang:error({missing_attr, <<"name">>,
+		  <<"conference">>, <<>>});
+decode_bookmark_conference_conference_name(_val) ->
+    _val.
+
+encode_bookmark_conference_conference_name(_val,
+					   _acc) ->
+    [{<<"name">>, _val} | _acc].
+
+decode_bookmark_conference_conference_jid(undefined) ->
+    erlang:error({missing_attr, <<"jid">>, <<"conference">>,
+		  <<>>});
+decode_bookmark_conference_conference_jid(_val) ->
+    case catch dec_jid(_val) of
+      {'EXIT', _} ->
+	  erlang:error({bad_attr_value, <<"jid">>,
+			<<"conference">>, <<>>});
+      _res -> _res
+    end.
+
+encode_bookmark_conference_conference_jid(_val, _acc) ->
+    [{<<"jid">>, enc_jid(_val)} | _acc].
+
+decode_bookmark_conference_conference_autojoin(undefined) ->
+    false;
+decode_bookmark_conference_conference_autojoin(_val) ->
+    case catch dec_bool(_val) of
+      {'EXIT', _} ->
+	  erlang:error({bad_attr_value, <<"autojoin">>,
+			<<"conference">>, <<>>});
+      _res -> _res
+    end.
+
+encode_bookmark_conference_conference_autojoin(false,
+					       _acc) ->
+    _acc;
+encode_bookmark_conference_conference_autojoin(_val,
+					       _acc) ->
+    [{<<"autojoin">>, enc_bool(_val)} | _acc].
+
+decode_bookmark_conference_conference_password({xmlel,
+						_, _attrs, _els}) ->
+    Cdata =
+	decode_bookmark_conference_conference_password_els(_els,
+							   <<>>),
+    Cdata.
+
+decode_bookmark_conference_conference_password_els([{xmlcdata,
+						     _data}
+						    | _els],
+						   Cdata) ->
+    decode_bookmark_conference_conference_password_els(_els,
+						       <<Cdata/binary,
+							 _data/binary>>);
+decode_bookmark_conference_conference_password_els([_
+						    | _els],
+						   Cdata) ->
+    decode_bookmark_conference_conference_password_els(_els,
+						       Cdata);
+decode_bookmark_conference_conference_password_els([],
+						   Cdata) ->
+    decode_bookmark_conference_conference_password_cdata(Cdata).
+
+encode_bookmark_conference_conference_password(undefined,
+					       _acc) ->
+    _acc;
+encode_bookmark_conference_conference_password(Cdata,
+					       _acc) ->
+    _els =
+	encode_bookmark_conference_conference_password_cdata(Cdata,
+							     []),
+    _attrs = [],
+    [{xmlel, <<"password">>, _attrs, _els} | _acc].
+
+decode_bookmark_conference_conference_password_cdata(<<>>) ->
+    undefined;
+decode_bookmark_conference_conference_password_cdata(_val) ->
+    _val.
+
+encode_bookmark_conference_conference_password_cdata(undefined,
+						     _acc) ->
+    _acc;
+encode_bookmark_conference_conference_password_cdata(_val,
+						     _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_bookmark_conference_conference_nick({xmlel, _,
+					    _attrs, _els}) ->
+    Cdata =
+	decode_bookmark_conference_conference_nick_els(_els,
+						       <<>>),
+    Cdata.
+
+decode_bookmark_conference_conference_nick_els([{xmlcdata,
+						 _data}
+						| _els],
+					       Cdata) ->
+    decode_bookmark_conference_conference_nick_els(_els,
+						   <<Cdata/binary,
+						     _data/binary>>);
+decode_bookmark_conference_conference_nick_els([_
+						| _els],
+					       Cdata) ->
+    decode_bookmark_conference_conference_nick_els(_els,
+						   Cdata);
+decode_bookmark_conference_conference_nick_els([],
+					       Cdata) ->
+    decode_bookmark_conference_conference_nick_cdata(Cdata).
+
+encode_bookmark_conference_conference_nick(undefined,
+					   _acc) ->
+    _acc;
+encode_bookmark_conference_conference_nick(Cdata,
+					   _acc) ->
+    _els =
+	encode_bookmark_conference_conference_nick_cdata(Cdata,
+							 []),
+    _attrs = [],
+    [{xmlel, <<"nick">>, _attrs, _els} | _acc].
+
+decode_bookmark_conference_conference_nick_cdata(<<>>) ->
+    undefined;
+decode_bookmark_conference_conference_nick_cdata(_val) ->
+    _val.
+
+encode_bookmark_conference_conference_nick_cdata(undefined,
+						 _acc) ->
+    _acc;
+encode_bookmark_conference_conference_nick_cdata(_val,
+						 _acc) ->
+    [{xmlcdata, _val} | _acc].
+
 decode_storage_bookmarks_storage({xmlel, _, _attrs,
 				  _els}) ->
     {Url, Conference} =
@@ -1447,7 +1733,7 @@ decode_storage_bookmarks_storage_els([{xmlel,
     case xml:get_attr_s(<<"xmlns">>, _attrs) of
       <<>> ->
 	  decode_storage_bookmarks_storage_els(_els, Url,
-					       [decode_storage_bookmarks_storage_conference(_el)
+					       [decode_bookmark_conference_conference(_el)
 						| Conference]);
       _ ->
 	  decode_storage_bookmarks_storage_els(_els, Url,
@@ -1466,10 +1752,9 @@ encode_storage_bookmarks_storage(undefined, _acc) ->
 encode_storage_bookmarks_storage({bookmark_storage,
 				  Conference, Url},
 				 _acc) ->
-    _els =
-	encode_storage_bookmarks_storage_conference(Conference,
-						    encode_storage_bookmarks_storage_url(Url,
-											 [])),
+    _els = encode_bookmark_conference_conference(Conference,
+						 encode_storage_bookmarks_storage_url(Url,
+										      [])),
     _attrs = [{<<"xmlns">>, <<"storage:bookmarks">>}],
     [{xmlel, <<"storage">>, _attrs, _els} | _acc].
 
@@ -1529,239 +1814,6 @@ decode_storage_bookmarks_storage_url_url(_val) -> _val.
 
 encode_storage_bookmarks_storage_url_url(_val, _acc) ->
     [{<<"url">>, _val} | _acc].
-
-decode_storage_bookmarks_storage_conference({xmlel, _,
-					     _attrs, _els}) ->
-    {Autojoin, Jid, Name} =
-	decode_storage_bookmarks_storage_conference_attrs(_attrs,
-							  undefined, undefined,
-							  undefined),
-    {Password, Nick} =
-	decode_storage_bookmarks_storage_conference_els(_els,
-							undefined, undefined),
-    {bookmark_conference, Name, Jid, Autojoin, Nick,
-     Password}.
-
-decode_storage_bookmarks_storage_conference_els([{xmlel,
-						  <<"password">>, _attrs, _} =
-						     _el
-						 | _els],
-						Password, Nick) ->
-    case xml:get_attr_s(<<"xmlns">>, _attrs) of
-      <<>> ->
-	  decode_storage_bookmarks_storage_conference_els(_els,
-							  decode_storage_bookmarks_storage_conference_password(_el),
-							  Nick);
-      _ ->
-	  decode_storage_bookmarks_storage_conference_els(_els,
-							  Password, Nick)
-    end;
-decode_storage_bookmarks_storage_conference_els([{xmlel,
-						  <<"nick">>, _attrs, _} =
-						     _el
-						 | _els],
-						Password, Nick) ->
-    case xml:get_attr_s(<<"xmlns">>, _attrs) of
-      <<>> ->
-	  decode_storage_bookmarks_storage_conference_els(_els,
-							  Password,
-							  decode_storage_bookmarks_storage_conference_nick(_el));
-      _ ->
-	  decode_storage_bookmarks_storage_conference_els(_els,
-							  Password, Nick)
-    end;
-decode_storage_bookmarks_storage_conference_els([_
-						 | _els],
-						Password, Nick) ->
-    decode_storage_bookmarks_storage_conference_els(_els,
-						    Password, Nick);
-decode_storage_bookmarks_storage_conference_els([],
-						Password, Nick) ->
-    {Password, Nick}.
-
-decode_storage_bookmarks_storage_conference_attrs([{<<"autojoin">>,
-						    _val}
-						   | _attrs],
-						  _Autojoin, Jid, Name) ->
-    decode_storage_bookmarks_storage_conference_attrs(_attrs,
-						      _val, Jid, Name);
-decode_storage_bookmarks_storage_conference_attrs([{<<"jid">>,
-						    _val}
-						   | _attrs],
-						  Autojoin, _Jid, Name) ->
-    decode_storage_bookmarks_storage_conference_attrs(_attrs,
-						      Autojoin, _val, Name);
-decode_storage_bookmarks_storage_conference_attrs([{<<"name">>,
-						    _val}
-						   | _attrs],
-						  Autojoin, Jid, _Name) ->
-    decode_storage_bookmarks_storage_conference_attrs(_attrs,
-						      Autojoin, Jid, _val);
-decode_storage_bookmarks_storage_conference_attrs([_
-						   | _attrs],
-						  Autojoin, Jid, Name) ->
-    decode_storage_bookmarks_storage_conference_attrs(_attrs,
-						      Autojoin, Jid, Name);
-decode_storage_bookmarks_storage_conference_attrs([],
-						  Autojoin, Jid, Name) ->
-    {decode_storage_bookmarks_storage_conference_autojoin(Autojoin),
-     decode_storage_bookmarks_storage_conference_jid(Jid),
-     decode_storage_bookmarks_storage_conference_name(Name)}.
-
-encode_storage_bookmarks_storage_conference([], _acc) ->
-    _acc;
-encode_storage_bookmarks_storage_conference([{bookmark_conference,
-					      Name, Jid, Autojoin, Nick,
-					      Password}
-					     | _tail],
-					    _acc) ->
-    _els =
-	encode_storage_bookmarks_storage_conference_nick(Nick,
-							 encode_storage_bookmarks_storage_conference_password(Password,
-													      [])),
-    _attrs =
-	encode_storage_bookmarks_storage_conference_name(Name,
-							 encode_storage_bookmarks_storage_conference_jid(Jid,
-													 encode_storage_bookmarks_storage_conference_autojoin(Autojoin,
-																			      []))),
-    encode_storage_bookmarks_storage_conference(_tail,
-						[{xmlel, <<"conference">>,
-						  _attrs, _els}
-						 | _acc]).
-
-decode_storage_bookmarks_storage_conference_name(undefined) ->
-    erlang:error({missing_attr, <<"name">>,
-		  <<"conference">>, <<>>});
-decode_storage_bookmarks_storage_conference_name(_val) ->
-    _val.
-
-encode_storage_bookmarks_storage_conference_name(_val,
-						 _acc) ->
-    [{<<"name">>, _val} | _acc].
-
-decode_storage_bookmarks_storage_conference_jid(undefined) ->
-    erlang:error({missing_attr, <<"jid">>, <<"conference">>,
-		  <<>>});
-decode_storage_bookmarks_storage_conference_jid(_val) ->
-    case catch dec_jid(_val) of
-      {'EXIT', _} ->
-	  erlang:error({bad_attr_value, <<"jid">>,
-			<<"conference">>, <<>>});
-      _res -> _res
-    end.
-
-encode_storage_bookmarks_storage_conference_jid(_val,
-						_acc) ->
-    [{<<"jid">>, enc_jid(_val)} | _acc].
-
-decode_storage_bookmarks_storage_conference_autojoin(undefined) ->
-    false;
-decode_storage_bookmarks_storage_conference_autojoin(_val) ->
-    case catch dec_bool(_val) of
-      {'EXIT', _} ->
-	  erlang:error({bad_attr_value, <<"autojoin">>,
-			<<"conference">>, <<>>});
-      _res -> _res
-    end.
-
-encode_storage_bookmarks_storage_conference_autojoin(false,
-						     _acc) ->
-    _acc;
-encode_storage_bookmarks_storage_conference_autojoin(_val,
-						     _acc) ->
-    [{<<"autojoin">>, enc_bool(_val)} | _acc].
-
-decode_storage_bookmarks_storage_conference_password({xmlel,
-						      _, _attrs, _els}) ->
-    Cdata =
-	decode_storage_bookmarks_storage_conference_password_els(_els,
-								 <<>>),
-    Cdata.
-
-decode_storage_bookmarks_storage_conference_password_els([{xmlcdata,
-							   _data}
-							  | _els],
-							 Cdata) ->
-    decode_storage_bookmarks_storage_conference_password_els(_els,
-							     <<Cdata/binary,
-							       _data/binary>>);
-decode_storage_bookmarks_storage_conference_password_els([_
-							  | _els],
-							 Cdata) ->
-    decode_storage_bookmarks_storage_conference_password_els(_els,
-							     Cdata);
-decode_storage_bookmarks_storage_conference_password_els([],
-							 Cdata) ->
-    decode_storage_bookmarks_storage_conference_password_cdata(Cdata).
-
-encode_storage_bookmarks_storage_conference_password(undefined,
-						     _acc) ->
-    _acc;
-encode_storage_bookmarks_storage_conference_password(Cdata,
-						     _acc) ->
-    _els =
-	encode_storage_bookmarks_storage_conference_password_cdata(Cdata,
-								   []),
-    _attrs = [],
-    [{xmlel, <<"password">>, _attrs, _els} | _acc].
-
-decode_storage_bookmarks_storage_conference_password_cdata(<<>>) ->
-    undefined;
-decode_storage_bookmarks_storage_conference_password_cdata(_val) ->
-    _val.
-
-encode_storage_bookmarks_storage_conference_password_cdata(undefined,
-							   _acc) ->
-    _acc;
-encode_storage_bookmarks_storage_conference_password_cdata(_val,
-							   _acc) ->
-    [{xmlcdata, _val} | _acc].
-
-decode_storage_bookmarks_storage_conference_nick({xmlel,
-						  _, _attrs, _els}) ->
-    Cdata =
-	decode_storage_bookmarks_storage_conference_nick_els(_els,
-							     <<>>),
-    Cdata.
-
-decode_storage_bookmarks_storage_conference_nick_els([{xmlcdata,
-						       _data}
-						      | _els],
-						     Cdata) ->
-    decode_storage_bookmarks_storage_conference_nick_els(_els,
-							 <<Cdata/binary,
-							   _data/binary>>);
-decode_storage_bookmarks_storage_conference_nick_els([_
-						      | _els],
-						     Cdata) ->
-    decode_storage_bookmarks_storage_conference_nick_els(_els,
-							 Cdata);
-decode_storage_bookmarks_storage_conference_nick_els([],
-						     Cdata) ->
-    decode_storage_bookmarks_storage_conference_nick_cdata(Cdata).
-
-encode_storage_bookmarks_storage_conference_nick(undefined,
-						 _acc) ->
-    _acc;
-encode_storage_bookmarks_storage_conference_nick(Cdata,
-						 _acc) ->
-    _els =
-	encode_storage_bookmarks_storage_conference_nick_cdata(Cdata,
-							       []),
-    _attrs = [],
-    [{xmlel, <<"nick">>, _attrs, _els} | _acc].
-
-decode_storage_bookmarks_storage_conference_nick_cdata(<<>>) ->
-    undefined;
-decode_storage_bookmarks_storage_conference_nick_cdata(_val) ->
-    _val.
-
-encode_storage_bookmarks_storage_conference_nick_cdata(undefined,
-						       _acc) ->
-    _acc;
-encode_storage_bookmarks_storage_conference_nick_cdata(_val,
-						       _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 decode_stats_query({xmlel, _, _attrs, _els}) ->
     Stat = decode_stats_query_els(_els, []), {stats, Stat}.
@@ -9069,3 +9121,1181 @@ encode_vcard_vCard_VERSION_cdata(undefined, _acc) ->
     _acc;
 encode_vcard_vCard_VERSION_cdata(_val, _acc) ->
     [{xmlcdata, _val} | _acc].
+
+decode_xfield_field({xmlel, _, _attrs, _els}) ->
+    {Var, Type, Label} = decode_xfield_field_attrs(_attrs,
+						   undefined, undefined,
+						   undefined),
+    {Options, Values, Desc, Required} =
+	decode_xfield_field_els(_els, [], [], undefined, false),
+    {xfield, Label, Type, Var, Required, Desc, Values,
+     Options}.
+
+decode_xfield_field_els([{xmlel, <<"option">>, _attrs,
+			  _} =
+			     _el
+			 | _els],
+			Options, Values, Desc, Required) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_xfield_field_els(_els,
+				  [decode_xfield_field_option(_el) | Options],
+				  Values, Desc, Required);
+      _ ->
+	  decode_xfield_field_els(_els, Options, Values, Desc,
+				  Required)
+    end;
+decode_xfield_field_els([{xmlel, <<"value">>, _attrs,
+			  _} =
+			     _el
+			 | _els],
+			Options, Values, Desc, Required) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_xfield_field_els(_els, Options,
+				  [decode_xfield_field_value(_el) | Values],
+				  Desc, Required);
+      _ ->
+	  decode_xfield_field_els(_els, Options, Values, Desc,
+				  Required)
+    end;
+decode_xfield_field_els([{xmlel, <<"desc">>, _attrs,
+			  _} =
+			     _el
+			 | _els],
+			Options, Values, Desc, Required) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_xfield_field_els(_els, Options, Values,
+				  decode_xfield_field_desc(_el), Required);
+      _ ->
+	  decode_xfield_field_els(_els, Options, Values, Desc,
+				  Required)
+    end;
+decode_xfield_field_els([{xmlel, <<"required">>, _attrs,
+			  _} =
+			     _el
+			 | _els],
+			Options, Values, Desc, Required) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_xfield_field_els(_els, Options, Values, Desc,
+				  decode_xfield_field_required(_el));
+      _ ->
+	  decode_xfield_field_els(_els, Options, Values, Desc,
+				  Required)
+    end;
+decode_xfield_field_els([_ | _els], Options, Values,
+			Desc, Required) ->
+    decode_xfield_field_els(_els, Options, Values, Desc,
+			    Required);
+decode_xfield_field_els([], Options, Values, Desc,
+			Required) ->
+    {lists:reverse(Options), lists:reverse(Values), Desc,
+     Required}.
+
+decode_xfield_field_attrs([{<<"var">>, _val} | _attrs],
+			  _Var, Type, Label) ->
+    decode_xfield_field_attrs(_attrs, _val, Type, Label);
+decode_xfield_field_attrs([{<<"type">>, _val} | _attrs],
+			  Var, _Type, Label) ->
+    decode_xfield_field_attrs(_attrs, Var, _val, Label);
+decode_xfield_field_attrs([{<<"label">>, _val}
+			   | _attrs],
+			  Var, Type, _Label) ->
+    decode_xfield_field_attrs(_attrs, Var, Type, _val);
+decode_xfield_field_attrs([_ | _attrs], Var, Type,
+			  Label) ->
+    decode_xfield_field_attrs(_attrs, Var, Type, Label);
+decode_xfield_field_attrs([], Var, Type, Label) ->
+    {decode_xfield_field_var(Var),
+     decode_xfield_field_type(Type),
+     decode_xfield_field_label(Label)}.
+
+encode_xfield_field([], _acc) -> _acc;
+encode_xfield_field([{xfield, Label, Type, Var,
+		      Required, Desc, Values, Options}
+		     | _tail],
+		    _acc) ->
+    _els = encode_xfield_field_required(Required,
+					encode_xfield_field_desc(Desc,
+								 encode_xfield_field_value(Values,
+											   encode_xfield_field_option(Options,
+														      [])))),
+    _attrs = encode_xfield_field_label(Label,
+				       encode_xfield_field_type(Type,
+								encode_xfield_field_var(Var,
+											[]))),
+    encode_xfield_field(_tail,
+			[{xmlel, <<"field">>, _attrs, _els} | _acc]).
+
+decode_xfield_field_label(undefined) -> undefined;
+decode_xfield_field_label(_val) -> _val.
+
+encode_xfield_field_label(undefined, _acc) -> _acc;
+encode_xfield_field_label(_val, _acc) ->
+    [{<<"label">>, _val} | _acc].
+
+decode_xfield_field_type(undefined) -> undefined;
+decode_xfield_field_type(_val) ->
+    case catch xml_gen:dec_enum(_val,
+				[boolean, fixed, hidden, 'jid-multi',
+				 'jid-single', 'list-multi', 'list-single',
+				 'text-multi', 'text-private', 'text-single'])
+	of
+      {'EXIT', _} ->
+	  erlang:error({bad_attr_value, <<"type">>, <<"field">>,
+			<<>>});
+      _res -> _res
+    end.
+
+encode_xfield_field_type(undefined, _acc) -> _acc;
+encode_xfield_field_type(_val, _acc) ->
+    [{<<"type">>, xml_gen:enc_enum(_val)} | _acc].
+
+decode_xfield_field_var(undefined) -> undefined;
+decode_xfield_field_var(_val) -> _val.
+
+encode_xfield_field_var(undefined, _acc) -> _acc;
+encode_xfield_field_var(_val, _acc) ->
+    [{<<"var">>, _val} | _acc].
+
+decode_xfield_field_option({xmlel, _, _attrs, _els}) ->
+    Value = decode_xfield_field_option_els(_els, []), Value.
+
+decode_xfield_field_option_els([{xmlel, <<"value">>,
+				 _attrs, _} =
+				    _el
+				| _els],
+			       Value) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_xfield_field_option_els(_els,
+					 [decode_xfield_field_option_value(_el)
+					  | Value]);
+      _ -> decode_xfield_field_option_els(_els, Value)
+    end;
+decode_xfield_field_option_els([_ | _els], Value) ->
+    decode_xfield_field_option_els(_els, Value);
+decode_xfield_field_option_els([], [Value]) -> Value.
+
+encode_xfield_field_option([], _acc) -> _acc;
+encode_xfield_field_option([Value | _tail], _acc) ->
+    _els = encode_xfield_field_option_value(Value, []),
+    _attrs = [],
+    encode_xfield_field_option(_tail,
+			       [{xmlel, <<"option">>, _attrs, _els} | _acc]).
+
+decode_xfield_field_option_value({xmlel, _, _attrs,
+				  _els}) ->
+    Cdata = decode_xfield_field_option_value_els(_els,
+						 <<>>),
+    Cdata.
+
+decode_xfield_field_option_value_els([{xmlcdata, _data}
+				      | _els],
+				     Cdata) ->
+    decode_xfield_field_option_value_els(_els,
+					 <<Cdata/binary, _data/binary>>);
+decode_xfield_field_option_value_els([_ | _els],
+				     Cdata) ->
+    decode_xfield_field_option_value_els(_els, Cdata);
+decode_xfield_field_option_value_els([], Cdata) ->
+    decode_xfield_field_option_value_cdata(Cdata).
+
+encode_xfield_field_option_value(Cdata, _acc) ->
+    _els = encode_xfield_field_option_value_cdata(Cdata,
+						  []),
+    _attrs = [],
+    [{xmlel, <<"value">>, _attrs, _els} | _acc].
+
+decode_xfield_field_option_value_cdata(<<>>) ->
+    undefined;
+decode_xfield_field_option_value_cdata(_val) -> _val.
+
+encode_xfield_field_option_value_cdata(undefined,
+				       _acc) ->
+    _acc;
+encode_xfield_field_option_value_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_xfield_field_value({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_xfield_field_value_els(_els, <<>>),
+    Cdata.
+
+decode_xfield_field_value_els([{xmlcdata, _data}
+			       | _els],
+			      Cdata) ->
+    decode_xfield_field_value_els(_els,
+				  <<Cdata/binary, _data/binary>>);
+decode_xfield_field_value_els([_ | _els], Cdata) ->
+    decode_xfield_field_value_els(_els, Cdata);
+decode_xfield_field_value_els([], Cdata) ->
+    decode_xfield_field_value_cdata(Cdata).
+
+encode_xfield_field_value([], _acc) -> _acc;
+encode_xfield_field_value([Cdata | _tail], _acc) ->
+    _els = encode_xfield_field_value_cdata(Cdata, []),
+    _attrs = [],
+    encode_xfield_field_value(_tail,
+			      [{xmlel, <<"value">>, _attrs, _els} | _acc]).
+
+decode_xfield_field_value_cdata(<<>>) -> undefined;
+decode_xfield_field_value_cdata(_val) -> _val.
+
+encode_xfield_field_value_cdata(undefined, _acc) ->
+    _acc;
+encode_xfield_field_value_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_xfield_field_desc({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_xfield_field_desc_els(_els, <<>>), Cdata.
+
+decode_xfield_field_desc_els([{xmlcdata, _data} | _els],
+			     Cdata) ->
+    decode_xfield_field_desc_els(_els,
+				 <<Cdata/binary, _data/binary>>);
+decode_xfield_field_desc_els([_ | _els], Cdata) ->
+    decode_xfield_field_desc_els(_els, Cdata);
+decode_xfield_field_desc_els([], Cdata) ->
+    decode_xfield_field_desc_cdata(Cdata).
+
+encode_xfield_field_desc(undefined, _acc) -> _acc;
+encode_xfield_field_desc(Cdata, _acc) ->
+    _els = encode_xfield_field_desc_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"desc">>, _attrs, _els} | _acc].
+
+decode_xfield_field_desc_cdata(<<>>) -> undefined;
+decode_xfield_field_desc_cdata(_val) -> _val.
+
+encode_xfield_field_desc_cdata(undefined, _acc) -> _acc;
+encode_xfield_field_desc_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_xfield_field_required({xmlel, _, _attrs,
+			      _els}) ->
+    true.
+
+encode_xfield_field_required(false, _acc) -> _acc;
+encode_xfield_field_required(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"required">>, _attrs, _els} | _acc].
+
+decode_xdata_x({xmlel, _, _attrs, _els}) ->
+    Type = decode_xdata_x_attrs(_attrs, undefined),
+    {Fields, Items, Reported, Title, Instructions} =
+	decode_xdata_x_els(_els, [], [], undefined, undefined,
+			   []),
+    {xdata, Type, Instructions, Title, Reported, Items,
+     Fields}.
+
+decode_xdata_x_els([{xmlel, <<"field">>, _attrs, _} =
+			_el
+		    | _els],
+		   Fields, Items, Reported, Title, Instructions) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_xdata_x_els(_els,
+			     [decode_xfield_field(_el) | Fields], Items,
+			     Reported, Title, Instructions);
+      _ ->
+	  decode_xdata_x_els(_els, Fields, Items, Reported, Title,
+			     Instructions)
+    end;
+decode_xdata_x_els([{xmlel, <<"item">>, _attrs, _} = _el
+		    | _els],
+		   Fields, Items, Reported, Title, Instructions) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_xdata_x_els(_els, Fields,
+			     [decode_xdata_x_item(_el) | Items], Reported,
+			     Title, Instructions);
+      _ ->
+	  decode_xdata_x_els(_els, Fields, Items, Reported, Title,
+			     Instructions)
+    end;
+decode_xdata_x_els([{xmlel, <<"reported">>, _attrs, _} =
+			_el
+		    | _els],
+		   Fields, Items, Reported, Title, Instructions) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_xdata_x_els(_els, Fields, Items,
+			     decode_xdata_x_reported(_el), Title, Instructions);
+      _ ->
+	  decode_xdata_x_els(_els, Fields, Items, Reported, Title,
+			     Instructions)
+    end;
+decode_xdata_x_els([{xmlel, <<"title">>, _attrs, _} =
+			_el
+		    | _els],
+		   Fields, Items, Reported, Title, Instructions) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_xdata_x_els(_els, Fields, Items, Reported,
+			     decode_xdata_x_title(_el), Instructions);
+      _ ->
+	  decode_xdata_x_els(_els, Fields, Items, Reported, Title,
+			     Instructions)
+    end;
+decode_xdata_x_els([{xmlel, <<"instructions">>, _attrs,
+		     _} =
+			_el
+		    | _els],
+		   Fields, Items, Reported, Title, Instructions) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_xdata_x_els(_els, Fields, Items, Reported, Title,
+			     [decode_xdata_x_instructions(_el) | Instructions]);
+      _ ->
+	  decode_xdata_x_els(_els, Fields, Items, Reported, Title,
+			     Instructions)
+    end;
+decode_xdata_x_els([_ | _els], Fields, Items, Reported,
+		   Title, Instructions) ->
+    decode_xdata_x_els(_els, Fields, Items, Reported, Title,
+		       Instructions);
+decode_xdata_x_els([], Fields, Items, Reported, Title,
+		   Instructions) ->
+    {lists:reverse(Fields), lists:reverse(Items), Reported,
+     Title, lists:reverse(Instructions)}.
+
+decode_xdata_x_attrs([{<<"type">>, _val} | _attrs],
+		     _Type) ->
+    decode_xdata_x_attrs(_attrs, _val);
+decode_xdata_x_attrs([_ | _attrs], Type) ->
+    decode_xdata_x_attrs(_attrs, Type);
+decode_xdata_x_attrs([], Type) ->
+    decode_xdata_x_type(Type).
+
+encode_xdata_x([], _acc) -> _acc;
+encode_xdata_x([{xdata, Type, Instructions, Title,
+		 Reported, Items, Fields}
+		| _tail],
+	       _acc) ->
+    _els = encode_xdata_x_instructions(Instructions,
+				       encode_xdata_x_title(Title,
+							    encode_xdata_x_reported(Reported,
+										    encode_xdata_x_item(Items,
+													encode_xfield_field(Fields,
+															    []))))),
+    _attrs = encode_xdata_x_type(Type,
+				 [{<<"xmlns">>, <<"jabber:x:data">>}]),
+    encode_xdata_x(_tail,
+		   [{xmlel, <<"x">>, _attrs, _els} | _acc]).
+
+decode_xdata_x_type(undefined) ->
+    erlang:error({missing_attr, <<"type">>, <<"x">>,
+		  <<"jabber:x:data">>});
+decode_xdata_x_type(_val) ->
+    case catch xml_gen:dec_enum(_val,
+				[cancel, form, result, submit])
+	of
+      {'EXIT', _} ->
+	  erlang:error({bad_attr_value, <<"type">>, <<"x">>,
+			<<"jabber:x:data">>});
+      _res -> _res
+    end.
+
+encode_xdata_x_type(_val, _acc) ->
+    [{<<"type">>, xml_gen:enc_enum(_val)} | _acc].
+
+decode_xdata_x_item({xmlel, _, _attrs, _els}) ->
+    Fields = decode_xdata_x_item_els(_els, []), Fields.
+
+decode_xdata_x_item_els([{xmlel, <<"field">>, _attrs,
+			  _} =
+			     _el
+			 | _els],
+			Fields) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_xdata_x_item_els(_els,
+				  [decode_xfield_field(_el) | Fields]);
+      _ -> decode_xdata_x_item_els(_els, Fields)
+    end;
+decode_xdata_x_item_els([_ | _els], Fields) ->
+    decode_xdata_x_item_els(_els, Fields);
+decode_xdata_x_item_els([], Fields) ->
+    lists:reverse(Fields).
+
+encode_xdata_x_item([], _acc) -> _acc;
+encode_xdata_x_item([Fields | _tail], _acc) ->
+    _els = encode_xfield_field(Fields, []),
+    _attrs = [],
+    encode_xdata_x_item(_tail,
+			[{xmlel, <<"item">>, _attrs, _els} | _acc]).
+
+decode_xdata_x_reported({xmlel, _, _attrs, _els}) ->
+    Fields = decode_xdata_x_reported_els(_els, []), Fields.
+
+decode_xdata_x_reported_els([{xmlel, <<"field">>,
+			      _attrs, _} =
+				 _el
+			     | _els],
+			    Fields) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_xdata_x_reported_els(_els,
+				      [decode_xfield_field(_el) | Fields]);
+      _ -> decode_xdata_x_reported_els(_els, Fields)
+    end;
+decode_xdata_x_reported_els([_ | _els], Fields) ->
+    decode_xdata_x_reported_els(_els, Fields);
+decode_xdata_x_reported_els([], Fields) ->
+    lists:reverse(Fields).
+
+encode_xdata_x_reported(undefined, _acc) -> _acc;
+encode_xdata_x_reported(Fields, _acc) ->
+    _els = encode_xfield_field(Fields, []),
+    _attrs = [],
+    [{xmlel, <<"reported">>, _attrs, _els} | _acc].
+
+decode_xdata_x_title({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_xdata_x_title_els(_els, <<>>), Cdata.
+
+decode_xdata_x_title_els([{xmlcdata, _data} | _els],
+			 Cdata) ->
+    decode_xdata_x_title_els(_els,
+			     <<Cdata/binary, _data/binary>>);
+decode_xdata_x_title_els([_ | _els], Cdata) ->
+    decode_xdata_x_title_els(_els, Cdata);
+decode_xdata_x_title_els([], Cdata) ->
+    decode_xdata_x_title_cdata(Cdata).
+
+encode_xdata_x_title(undefined, _acc) -> _acc;
+encode_xdata_x_title(Cdata, _acc) ->
+    _els = encode_xdata_x_title_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"title">>, _attrs, _els} | _acc].
+
+decode_xdata_x_title_cdata(<<>>) -> undefined;
+decode_xdata_x_title_cdata(_val) -> _val.
+
+encode_xdata_x_title_cdata(undefined, _acc) -> _acc;
+encode_xdata_x_title_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_xdata_x_instructions({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_xdata_x_instructions_els(_els, <<>>),
+    Cdata.
+
+decode_xdata_x_instructions_els([{xmlcdata, _data}
+				 | _els],
+				Cdata) ->
+    decode_xdata_x_instructions_els(_els,
+				    <<Cdata/binary, _data/binary>>);
+decode_xdata_x_instructions_els([_ | _els], Cdata) ->
+    decode_xdata_x_instructions_els(_els, Cdata);
+decode_xdata_x_instructions_els([], Cdata) ->
+    decode_xdata_x_instructions_cdata(Cdata).
+
+encode_xdata_x_instructions([], _acc) -> _acc;
+encode_xdata_x_instructions([Cdata | _tail], _acc) ->
+    _els = encode_xdata_x_instructions_cdata(Cdata, []),
+    _attrs = [],
+    encode_xdata_x_instructions(_tail,
+				[{xmlel, <<"instructions">>, _attrs, _els}
+				 | _acc]).
+
+decode_xdata_x_instructions_cdata(<<>>) -> undefined;
+decode_xdata_x_instructions_cdata(_val) -> _val.
+
+encode_xdata_x_instructions_cdata(undefined, _acc) ->
+    _acc;
+encode_xdata_x_instructions_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_pubsub_subscription_subscription({xmlel, _,
+					 _attrs, _els}) ->
+    {Type, Subid, Node, Jid} =
+	decode_pubsub_subscription_subscription_attrs(_attrs,
+						      undefined, undefined,
+						      undefined, undefined),
+    {pubsub_subscription, Jid, Node, Subid, Type}.
+
+decode_pubsub_subscription_subscription_attrs([{<<"subscription">>,
+						_val}
+					       | _attrs],
+					      _Type, Subid, Node, Jid) ->
+    decode_pubsub_subscription_subscription_attrs(_attrs,
+						  _val, Subid, Node, Jid);
+decode_pubsub_subscription_subscription_attrs([{<<"subid">>,
+						_val}
+					       | _attrs],
+					      Type, _Subid, Node, Jid) ->
+    decode_pubsub_subscription_subscription_attrs(_attrs,
+						  Type, _val, Node, Jid);
+decode_pubsub_subscription_subscription_attrs([{<<"node">>,
+						_val}
+					       | _attrs],
+					      Type, Subid, _Node, Jid) ->
+    decode_pubsub_subscription_subscription_attrs(_attrs,
+						  Type, Subid, _val, Jid);
+decode_pubsub_subscription_subscription_attrs([{<<"jid">>,
+						_val}
+					       | _attrs],
+					      Type, Subid, Node, _Jid) ->
+    decode_pubsub_subscription_subscription_attrs(_attrs,
+						  Type, Subid, Node, _val);
+decode_pubsub_subscription_subscription_attrs([_
+					       | _attrs],
+					      Type, Subid, Node, Jid) ->
+    decode_pubsub_subscription_subscription_attrs(_attrs,
+						  Type, Subid, Node, Jid);
+decode_pubsub_subscription_subscription_attrs([], Type,
+					      Subid, Node, Jid) ->
+    {decode_pubsub_subscription_subscription_subscription(Type),
+     decode_pubsub_subscription_subscription_subid(Subid),
+     decode_pubsub_subscription_subscription_node(Node),
+     decode_pubsub_subscription_subscription_jid(Jid)}.
+
+encode_pubsub_subscription_subscription([], _acc) ->
+    _acc;
+encode_pubsub_subscription_subscription([{pubsub_subscription,
+					  Jid, Node, Subid, Type}
+					 | _tail],
+					_acc) ->
+    _els = [],
+    _attrs =
+	encode_pubsub_subscription_subscription_jid(Jid,
+						    encode_pubsub_subscription_subscription_node(Node,
+												 encode_pubsub_subscription_subscription_subid(Subid,
+																	       encode_pubsub_subscription_subscription_subscription(Type,
+																								    [])))),
+    encode_pubsub_subscription_subscription(_tail,
+					    [{xmlel, <<"subscription">>, _attrs,
+					      _els}
+					     | _acc]).
+
+decode_pubsub_subscription_subscription_jid(undefined) ->
+    erlang:error({missing_attr, <<"jid">>,
+		  <<"subscription">>, <<>>});
+decode_pubsub_subscription_subscription_jid(_val) ->
+    case catch dec_jid(_val) of
+      {'EXIT', _} ->
+	  erlang:error({bad_attr_value, <<"jid">>,
+			<<"subscription">>, <<>>});
+      _res -> _res
+    end.
+
+encode_pubsub_subscription_subscription_jid(_val,
+					    _acc) ->
+    [{<<"jid">>, enc_jid(_val)} | _acc].
+
+decode_pubsub_subscription_subscription_node(undefined) ->
+    undefined;
+decode_pubsub_subscription_subscription_node(_val) ->
+    _val.
+
+encode_pubsub_subscription_subscription_node(undefined,
+					     _acc) ->
+    _acc;
+encode_pubsub_subscription_subscription_node(_val,
+					     _acc) ->
+    [{<<"node">>, _val} | _acc].
+
+decode_pubsub_subscription_subscription_subid(undefined) ->
+    undefined;
+decode_pubsub_subscription_subscription_subid(_val) ->
+    _val.
+
+encode_pubsub_subscription_subscription_subid(undefined,
+					      _acc) ->
+    _acc;
+encode_pubsub_subscription_subscription_subid(_val,
+					      _acc) ->
+    [{<<"subid">>, _val} | _acc].
+
+decode_pubsub_subscription_subscription_subscription(undefined) ->
+    undefined;
+decode_pubsub_subscription_subscription_subscription(_val) ->
+    case catch xml_gen:dec_enum(_val,
+				[none, pending, subscribed, unconfigured])
+	of
+      {'EXIT', _} ->
+	  erlang:error({bad_attr_value, <<"subscription">>,
+			<<"subscription">>, <<>>});
+      _res -> _res
+    end.
+
+encode_pubsub_subscription_subscription_subscription(undefined,
+						     _acc) ->
+    _acc;
+encode_pubsub_subscription_subscription_subscription(_val,
+						     _acc) ->
+    [{<<"subscription">>, xml_gen:enc_enum(_val)} | _acc].
+
+decode_pubsub_affiliation_affiliation({xmlel, _, _attrs,
+				       _els}) ->
+    {Type, Node} =
+	decode_pubsub_affiliation_affiliation_attrs(_attrs,
+						    undefined, undefined),
+    {pubsub_affiliation, Node, Type}.
+
+decode_pubsub_affiliation_affiliation_attrs([{<<"affiliation">>,
+					      _val}
+					     | _attrs],
+					    _Type, Node) ->
+    decode_pubsub_affiliation_affiliation_attrs(_attrs,
+						_val, Node);
+decode_pubsub_affiliation_affiliation_attrs([{<<"node">>,
+					      _val}
+					     | _attrs],
+					    Type, _Node) ->
+    decode_pubsub_affiliation_affiliation_attrs(_attrs,
+						Type, _val);
+decode_pubsub_affiliation_affiliation_attrs([_
+					     | _attrs],
+					    Type, Node) ->
+    decode_pubsub_affiliation_affiliation_attrs(_attrs,
+						Type, Node);
+decode_pubsub_affiliation_affiliation_attrs([], Type,
+					    Node) ->
+    {decode_pubsub_affiliation_affiliation_affiliation(Type),
+     decode_pubsub_affiliation_affiliation_node(Node)}.
+
+encode_pubsub_affiliation_affiliation([], _acc) -> _acc;
+encode_pubsub_affiliation_affiliation([{pubsub_affiliation,
+					Node, Type}
+				       | _tail],
+				      _acc) ->
+    _els = [],
+    _attrs =
+	encode_pubsub_affiliation_affiliation_node(Node,
+						   encode_pubsub_affiliation_affiliation_affiliation(Type,
+												     [])),
+    encode_pubsub_affiliation_affiliation(_tail,
+					  [{xmlel, <<"affiliation">>, _attrs,
+					    _els}
+					   | _acc]).
+
+decode_pubsub_affiliation_affiliation_node(undefined) ->
+    erlang:error({missing_attr, <<"node">>,
+		  <<"affiliation">>, <<>>});
+decode_pubsub_affiliation_affiliation_node(_val) ->
+    _val.
+
+encode_pubsub_affiliation_affiliation_node(_val,
+					   _acc) ->
+    [{<<"node">>, _val} | _acc].
+
+decode_pubsub_affiliation_affiliation_affiliation(undefined) ->
+    erlang:error({missing_attr, <<"affiliation">>,
+		  <<"affiliation">>, <<>>});
+decode_pubsub_affiliation_affiliation_affiliation(_val) ->
+    case catch xml_gen:dec_enum(_val,
+				[member, none, outcast, owner, publisher,
+				 'publish-only'])
+	of
+      {'EXIT', _} ->
+	  erlang:error({bad_attr_value, <<"affiliation">>,
+			<<"affiliation">>, <<>>});
+      _res -> _res
+    end.
+
+encode_pubsub_affiliation_affiliation_affiliation(_val,
+						  _acc) ->
+    [{<<"affiliation">>, xml_gen:enc_enum(_val)} | _acc].
+
+decode_pubsub_item_item({xmlel, _, _attrs, _els}) ->
+    Id = decode_pubsub_item_item_attrs(_attrs, undefined),
+    __Els = decode_pubsub_item_item_els(_els, []),
+    {pubsub_item, Id, __Els}.
+
+decode_pubsub_item_item_els([{xmlel, _, _, _} = _el
+			     | _els],
+			    __Els) ->
+    decode_pubsub_item_item_els(_els,
+				[decode(_el) | __Els]);
+decode_pubsub_item_item_els([_ | _els], __Els) ->
+    decode_pubsub_item_item_els(_els, __Els);
+decode_pubsub_item_item_els([], __Els) ->
+    lists:reverse(__Els).
+
+decode_pubsub_item_item_attrs([{<<"id">>, _val}
+			       | _attrs],
+			      _Id) ->
+    decode_pubsub_item_item_attrs(_attrs, _val);
+decode_pubsub_item_item_attrs([_ | _attrs], Id) ->
+    decode_pubsub_item_item_attrs(_attrs, Id);
+decode_pubsub_item_item_attrs([], Id) ->
+    decode_pubsub_item_item_id(Id).
+
+encode_pubsub_item_item([], _acc) -> _acc;
+encode_pubsub_item_item([{pubsub_item, Id, __Els}
+			 | _tail],
+			_acc) ->
+    _els = [encode(_subel) || _subel <- __Els] ++ [],
+    _attrs = encode_pubsub_item_item_id(Id, []),
+    encode_pubsub_item_item(_tail,
+			    [{xmlel, <<"item">>, _attrs, _els} | _acc]).
+
+decode_pubsub_item_item_id(undefined) -> undefined;
+decode_pubsub_item_item_id(_val) -> _val.
+
+encode_pubsub_item_item_id(undefined, _acc) -> _acc;
+encode_pubsub_item_item_id(_val, _acc) ->
+    [{<<"id">>, _val} | _acc].
+
+decode_pubsub_items_items({xmlel, _, _attrs, _els}) ->
+    {Subid, Max_items, Node} =
+	decode_pubsub_items_items_attrs(_attrs, undefined,
+					undefined, undefined),
+    Item = decode_pubsub_items_items_els(_els, []),
+    {pubsub_items, Node, Max_items, Subid, Item}.
+
+decode_pubsub_items_items_els([{xmlel, <<"item">>,
+				_attrs, _} =
+				   _el
+			       | _els],
+			      Item) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_pubsub_items_items_els(_els,
+					[decode_pubsub_item_item(_el) | Item]);
+      _ -> decode_pubsub_items_items_els(_els, Item)
+    end;
+decode_pubsub_items_items_els([_ | _els], Item) ->
+    decode_pubsub_items_items_els(_els, Item);
+decode_pubsub_items_items_els([], Item) ->
+    lists:reverse(Item).
+
+decode_pubsub_items_items_attrs([{<<"subid">>, _val}
+				 | _attrs],
+				_Subid, Max_items, Node) ->
+    decode_pubsub_items_items_attrs(_attrs, _val, Max_items,
+				    Node);
+decode_pubsub_items_items_attrs([{<<"max_items">>, _val}
+				 | _attrs],
+				Subid, _Max_items, Node) ->
+    decode_pubsub_items_items_attrs(_attrs, Subid, _val,
+				    Node);
+decode_pubsub_items_items_attrs([{<<"node">>, _val}
+				 | _attrs],
+				Subid, Max_items, _Node) ->
+    decode_pubsub_items_items_attrs(_attrs, Subid,
+				    Max_items, _val);
+decode_pubsub_items_items_attrs([_ | _attrs], Subid,
+				Max_items, Node) ->
+    decode_pubsub_items_items_attrs(_attrs, Subid,
+				    Max_items, Node);
+decode_pubsub_items_items_attrs([], Subid, Max_items,
+				Node) ->
+    {decode_pubsub_items_items_subid(Subid),
+     decode_pubsub_items_items_max_items(Max_items),
+     decode_pubsub_items_items_node(Node)}.
+
+encode_pubsub_items_items([], _acc) -> _acc;
+encode_pubsub_items_items([{pubsub_items, Node,
+			    Max_items, Subid, Item}
+			   | _tail],
+			  _acc) ->
+    _els = encode_pubsub_item_item(Item, []),
+    _attrs = encode_pubsub_items_items_node(Node,
+					    encode_pubsub_items_items_max_items(Max_items,
+										encode_pubsub_items_items_subid(Subid,
+														[]))),
+    encode_pubsub_items_items(_tail,
+			      [{xmlel, <<"items">>, _attrs, _els} | _acc]).
+
+decode_pubsub_items_items_max_items(undefined) ->
+    undefined;
+decode_pubsub_items_items_max_items(_val) ->
+    case catch xml_gen:dec_int(_val, 0, infinity) of
+      {'EXIT', _} ->
+	  erlang:error({bad_attr_value, <<"max_items">>,
+			<<"items">>, <<>>});
+      _res -> _res
+    end.
+
+encode_pubsub_items_items_max_items(undefined, _acc) ->
+    _acc;
+encode_pubsub_items_items_max_items(_val, _acc) ->
+    [{<<"max_items">>, xml_gen:enc_int(_val)} | _acc].
+
+decode_pubsub_items_items_node(undefined) ->
+    erlang:error({missing_attr, <<"node">>, <<"items">>,
+		  <<>>});
+decode_pubsub_items_items_node(_val) -> _val.
+
+encode_pubsub_items_items_node(_val, _acc) ->
+    [{<<"node">>, _val} | _acc].
+
+decode_pubsub_items_items_subid(undefined) -> undefined;
+decode_pubsub_items_items_subid(_val) -> _val.
+
+encode_pubsub_items_items_subid(undefined, _acc) ->
+    _acc;
+encode_pubsub_items_items_subid(_val, _acc) ->
+    [{<<"subid">>, _val} | _acc].
+
+decode_pubsub_event_event({xmlel, _, _attrs, _els}) ->
+    Items = decode_pubsub_event_event_els(_els, []),
+    {pubsub_event, Items}.
+
+decode_pubsub_event_event_els([{xmlel, <<"items">>,
+				_attrs, _} =
+				   _el
+			       | _els],
+			      Items) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_pubsub_event_event_els(_els,
+					[decode_pubsub_items_items(_el)
+					 | Items]);
+      _ -> decode_pubsub_event_event_els(_els, Items)
+    end;
+decode_pubsub_event_event_els([_ | _els], Items) ->
+    decode_pubsub_event_event_els(_els, Items);
+decode_pubsub_event_event_els([], Items) ->
+    lists:reverse(Items).
+
+encode_pubsub_event_event(undefined, _acc) -> _acc;
+encode_pubsub_event_event({pubsub_event, Items},
+			  _acc) ->
+    _els = encode_pubsub_items_items(Items, []),
+    _attrs = [{<<"xmlns">>,
+	       <<"http://jabber.org/protocol/pubsub#event">>}],
+    [{xmlel, <<"event">>, _attrs, _els} | _acc].
+
+decode_pubsub_pubsub({xmlel, _, _attrs, _els}) ->
+    {Subscribe, Publish, Affiliations, Subscriptions} =
+	decode_pubsub_pubsub_els(_els, undefined, undefined,
+				 undefined, undefined),
+    {pubsub, Subscriptions, Affiliations, Publish,
+     Subscribe}.
+
+decode_pubsub_pubsub_els([{xmlel, <<"subscribe">>,
+			   _attrs, _} =
+			      _el
+			  | _els],
+			 Subscribe, Publish, Affiliations, Subscriptions) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_pubsub_pubsub_els(_els,
+				   decode_pubsub_pubsub_subscribe(_el), Publish,
+				   Affiliations, Subscriptions);
+      _ ->
+	  decode_pubsub_pubsub_els(_els, Subscribe, Publish,
+				   Affiliations, Subscriptions)
+    end;
+decode_pubsub_pubsub_els([{xmlel, <<"publish">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Subscribe, Publish, Affiliations, Subscriptions) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_pubsub_pubsub_els(_els, Subscribe,
+				   decode_pubsub_pubsub_publish(_el),
+				   Affiliations, Subscriptions);
+      _ ->
+	  decode_pubsub_pubsub_els(_els, Subscribe, Publish,
+				   Affiliations, Subscriptions)
+    end;
+decode_pubsub_pubsub_els([{xmlel, <<"affiliations">>,
+			   _attrs, _} =
+			      _el
+			  | _els],
+			 Subscribe, Publish, Affiliations, Subscriptions) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_pubsub_pubsub_els(_els, Subscribe, Publish,
+				   decode_pubsub_pubsub_affiliations(_el),
+				   Subscriptions);
+      _ ->
+	  decode_pubsub_pubsub_els(_els, Subscribe, Publish,
+				   Affiliations, Subscriptions)
+    end;
+decode_pubsub_pubsub_els([{xmlel, <<"subscriptions">>,
+			   _attrs, _} =
+			      _el
+			  | _els],
+			 Subscribe, Publish, Affiliations, Subscriptions) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_pubsub_pubsub_els(_els, Subscribe, Publish,
+				   Affiliations,
+				   decode_pubsub_pubsub_subscriptions(_el));
+      _ ->
+	  decode_pubsub_pubsub_els(_els, Subscribe, Publish,
+				   Affiliations, Subscriptions)
+    end;
+decode_pubsub_pubsub_els([_ | _els], Subscribe, Publish,
+			 Affiliations, Subscriptions) ->
+    decode_pubsub_pubsub_els(_els, Subscribe, Publish,
+			     Affiliations, Subscriptions);
+decode_pubsub_pubsub_els([], Subscribe, Publish,
+			 Affiliations, Subscriptions) ->
+    {Subscribe, Publish, Affiliations, Subscriptions}.
+
+encode_pubsub_pubsub(undefined, _acc) -> _acc;
+encode_pubsub_pubsub({pubsub, Subscriptions,
+		      Affiliations, Publish, Subscribe},
+		     _acc) ->
+    _els = encode_pubsub_pubsub_subscriptions(Subscriptions,
+					      encode_pubsub_pubsub_affiliations(Affiliations,
+										encode_pubsub_pubsub_publish(Publish,
+													     encode_pubsub_pubsub_subscribe(Subscribe,
+																	    [])))),
+    _attrs = [{<<"xmlns">>,
+	       <<"http://jabber.org/protocol/pubsub">>}],
+    [{xmlel, <<"pubsub">>, _attrs, _els} | _acc].
+
+decode_pubsub_pubsub_publish({xmlel, _, _attrs,
+			      _els}) ->
+    Node = decode_pubsub_pubsub_publish_attrs(_attrs,
+					      undefined),
+    Item = decode_pubsub_pubsub_publish_els(_els, []),
+    {Node, Item}.
+
+decode_pubsub_pubsub_publish_els([{xmlel, <<"item">>,
+				   _attrs, _} =
+				      _el
+				  | _els],
+				 Item) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_pubsub_pubsub_publish_els(_els,
+					   [decode_pubsub_item_item(_el)
+					    | Item]);
+      _ -> decode_pubsub_pubsub_publish_els(_els, Item)
+    end;
+decode_pubsub_pubsub_publish_els([_ | _els], Item) ->
+    decode_pubsub_pubsub_publish_els(_els, Item);
+decode_pubsub_pubsub_publish_els([], Item) ->
+    lists:reverse(Item).
+
+decode_pubsub_pubsub_publish_attrs([{<<"node">>, _val}
+				    | _attrs],
+				   _Node) ->
+    decode_pubsub_pubsub_publish_attrs(_attrs, _val);
+decode_pubsub_pubsub_publish_attrs([_ | _attrs],
+				   Node) ->
+    decode_pubsub_pubsub_publish_attrs(_attrs, Node);
+decode_pubsub_pubsub_publish_attrs([], Node) ->
+    decode_pubsub_pubsub_publish_node(Node).
+
+encode_pubsub_pubsub_publish(undefined, _acc) -> _acc;
+encode_pubsub_pubsub_publish({Node, Item}, _acc) ->
+    _els = encode_pubsub_item_item(Item, []),
+    _attrs = encode_pubsub_pubsub_publish_node(Node, []),
+    [{xmlel, <<"publish">>, _attrs, _els} | _acc].
+
+decode_pubsub_pubsub_publish_node(undefined) ->
+    erlang:error({missing_attr, <<"node">>, <<"publish">>,
+		  <<>>});
+decode_pubsub_pubsub_publish_node(_val) -> _val.
+
+encode_pubsub_pubsub_publish_node(_val, _acc) ->
+    [{<<"node">>, _val} | _acc].
+
+decode_pubsub_pubsub_subscribe({xmlel, _, _attrs,
+				_els}) ->
+    {Jid, Node} =
+	decode_pubsub_pubsub_subscribe_attrs(_attrs, undefined,
+					     undefined),
+    {Node, Jid}.
+
+decode_pubsub_pubsub_subscribe_attrs([{<<"jid">>, _val}
+				      | _attrs],
+				     _Jid, Node) ->
+    decode_pubsub_pubsub_subscribe_attrs(_attrs, _val,
+					 Node);
+decode_pubsub_pubsub_subscribe_attrs([{<<"node">>, _val}
+				      | _attrs],
+				     Jid, _Node) ->
+    decode_pubsub_pubsub_subscribe_attrs(_attrs, Jid, _val);
+decode_pubsub_pubsub_subscribe_attrs([_ | _attrs], Jid,
+				     Node) ->
+    decode_pubsub_pubsub_subscribe_attrs(_attrs, Jid, Node);
+decode_pubsub_pubsub_subscribe_attrs([], Jid, Node) ->
+    {decode_pubsub_pubsub_subscribe_jid(Jid),
+     decode_pubsub_pubsub_subscribe_node(Node)}.
+
+encode_pubsub_pubsub_subscribe(undefined, _acc) -> _acc;
+encode_pubsub_pubsub_subscribe({Node, Jid}, _acc) ->
+    _els = [],
+    _attrs = encode_pubsub_pubsub_subscribe_node(Node,
+						 encode_pubsub_pubsub_subscribe_jid(Jid,
+										    [])),
+    [{xmlel, <<"subscribe">>, _attrs, _els} | _acc].
+
+decode_pubsub_pubsub_subscribe_node(undefined) ->
+    undefined;
+decode_pubsub_pubsub_subscribe_node(_val) -> _val.
+
+encode_pubsub_pubsub_subscribe_node(undefined, _acc) ->
+    _acc;
+encode_pubsub_pubsub_subscribe_node(_val, _acc) ->
+    [{<<"node">>, _val} | _acc].
+
+decode_pubsub_pubsub_subscribe_jid(undefined) ->
+    erlang:error({missing_attr, <<"jid">>, <<"subscribe">>,
+		  <<>>});
+decode_pubsub_pubsub_subscribe_jid(_val) ->
+    case catch dec_jid(_val) of
+      {'EXIT', _} ->
+	  erlang:error({bad_attr_value, <<"jid">>,
+			<<"subscribe">>, <<>>});
+      _res -> _res
+    end.
+
+encode_pubsub_pubsub_subscribe_jid(_val, _acc) ->
+    [{<<"jid">>, enc_jid(_val)} | _acc].
+
+decode_pubsub_pubsub_affiliations({xmlel, _, _attrs,
+				   _els}) ->
+    Pubsub_affiliations =
+	decode_pubsub_pubsub_affiliations_els(_els, []),
+    Pubsub_affiliations.
+
+decode_pubsub_pubsub_affiliations_els([{xmlel,
+					<<"affiliation">>, _attrs, _} =
+					   _el
+				       | _els],
+				      Pubsub_affiliations) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_pubsub_pubsub_affiliations_els(_els,
+						[decode_pubsub_affiliation_affiliation(_el)
+						 | Pubsub_affiliations]);
+      _ ->
+	  decode_pubsub_pubsub_affiliations_els(_els,
+						Pubsub_affiliations)
+    end;
+decode_pubsub_pubsub_affiliations_els([_ | _els],
+				      Pubsub_affiliations) ->
+    decode_pubsub_pubsub_affiliations_els(_els,
+					  Pubsub_affiliations);
+decode_pubsub_pubsub_affiliations_els([],
+				      Pubsub_affiliations) ->
+    lists:reverse(Pubsub_affiliations).
+
+encode_pubsub_pubsub_affiliations(undefined, _acc) ->
+    _acc;
+encode_pubsub_pubsub_affiliations(Pubsub_affiliations,
+				  _acc) ->
+    _els =
+	encode_pubsub_affiliation_affiliation(Pubsub_affiliations,
+					      []),
+    _attrs = [],
+    [{xmlel, <<"affiliations">>, _attrs, _els} | _acc].
+
+decode_pubsub_pubsub_subscriptions({xmlel, _, _attrs,
+				    _els}) ->
+    Node = decode_pubsub_pubsub_subscriptions_attrs(_attrs,
+						    undefined),
+    Pubsub_subscriptions =
+	decode_pubsub_pubsub_subscriptions_els(_els, []),
+    {Node, Pubsub_subscriptions}.
+
+decode_pubsub_pubsub_subscriptions_els([{xmlel,
+					 <<"subscription">>, _attrs, _} =
+					    _el
+					| _els],
+				       Pubsub_subscriptions) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_pubsub_pubsub_subscriptions_els(_els,
+						 [decode_pubsub_subscription_subscription(_el)
+						  | Pubsub_subscriptions]);
+      _ ->
+	  decode_pubsub_pubsub_subscriptions_els(_els,
+						 Pubsub_subscriptions)
+    end;
+decode_pubsub_pubsub_subscriptions_els([_ | _els],
+				       Pubsub_subscriptions) ->
+    decode_pubsub_pubsub_subscriptions_els(_els,
+					   Pubsub_subscriptions);
+decode_pubsub_pubsub_subscriptions_els([],
+				       Pubsub_subscriptions) ->
+    lists:reverse(Pubsub_subscriptions).
+
+decode_pubsub_pubsub_subscriptions_attrs([{<<"node">>,
+					   _val}
+					  | _attrs],
+					 _Node) ->
+    decode_pubsub_pubsub_subscriptions_attrs(_attrs, _val);
+decode_pubsub_pubsub_subscriptions_attrs([_ | _attrs],
+					 Node) ->
+    decode_pubsub_pubsub_subscriptions_attrs(_attrs, Node);
+decode_pubsub_pubsub_subscriptions_attrs([], Node) ->
+    decode_pubsub_pubsub_subscriptions_node(Node).
+
+encode_pubsub_pubsub_subscriptions(undefined, _acc) ->
+    _acc;
+encode_pubsub_pubsub_subscriptions({Node,
+				    Pubsub_subscriptions},
+				   _acc) ->
+    _els =
+	encode_pubsub_subscription_subscription(Pubsub_subscriptions,
+						[]),
+    _attrs = encode_pubsub_pubsub_subscriptions_node(Node,
+						     []),
+    [{xmlel, <<"subscriptions">>, _attrs, _els} | _acc].
+
+decode_pubsub_pubsub_subscriptions_node(undefined) ->
+    none;
+decode_pubsub_pubsub_subscriptions_node(_val) -> _val.
+
+encode_pubsub_pubsub_subscriptions_node(none, _acc) ->
+    _acc;
+encode_pubsub_pubsub_subscriptions_node(_val, _acc) ->
+    [{<<"node">>, _val} | _acc].
+
+decode_delay_delay({xmlel, _, _attrs, _els}) ->
+    {From, Stamp} = decode_delay_delay_attrs(_attrs,
+					     undefined, undefined),
+    {delay, Stamp, From}.
+
+decode_delay_delay_attrs([{<<"from">>, _val} | _attrs],
+			 _From, Stamp) ->
+    decode_delay_delay_attrs(_attrs, _val, Stamp);
+decode_delay_delay_attrs([{<<"stamp">>, _val} | _attrs],
+			 From, _Stamp) ->
+    decode_delay_delay_attrs(_attrs, From, _val);
+decode_delay_delay_attrs([_ | _attrs], From, Stamp) ->
+    decode_delay_delay_attrs(_attrs, From, Stamp);
+decode_delay_delay_attrs([], From, Stamp) ->
+    {decode_delay_delay_from(From),
+     decode_delay_delay_stamp(Stamp)}.
+
+encode_delay_delay(undefined, _acc) -> _acc;
+encode_delay_delay({delay, Stamp, From}, _acc) ->
+    _els = [],
+    _attrs = encode_delay_delay_stamp(Stamp,
+				      encode_delay_delay_from(From,
+							      [{<<"xmlns">>,
+								<<"urn:xmpp:delay">>}])),
+    [{xmlel, <<"delay">>, _attrs, _els} | _acc].
+
+decode_delay_delay_stamp(undefined) ->
+    erlang:error({missing_attr, <<"stamp">>, <<"delay">>,
+		  <<"urn:xmpp:delay">>});
+decode_delay_delay_stamp(_val) ->
+    case catch dec_utc(_val) of
+      {'EXIT', _} ->
+	  erlang:error({bad_attr_value, <<"stamp">>, <<"delay">>,
+			<<"urn:xmpp:delay">>});
+      _res -> _res
+    end.
+
+encode_delay_delay_stamp(_val, _acc) ->
+    [{<<"stamp">>, enc_utc(_val)} | _acc].
+
+decode_delay_delay_from(undefined) -> undefined;
+decode_delay_delay_from(_val) ->
+    case catch dec_jid(_val) of
+      {'EXIT', _} ->
+	  erlang:error({bad_attr_value, <<"from">>, <<"delay">>,
+			<<"urn:xmpp:delay">>});
+      _res -> _res
+    end.
+
+encode_delay_delay_from(undefined, _acc) -> _acc;
+encode_delay_delay_from(_val, _acc) ->
+    [{<<"from">>, enc_jid(_val)} | _acc].
