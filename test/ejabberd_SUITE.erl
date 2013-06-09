@@ -83,6 +83,8 @@ end_per_testcase(_TestCase, Config) ->
 groups() ->
     [].
 
+%%all() -> [start_ejabberd, vcard].
+    
 all() -> 
     [start_ejabberd,
      connect,
@@ -100,6 +102,7 @@ all() ->
      private,
      privacy,
      blocking,
+     vcard,
      stop_ejabberd].
 
 start_ejabberd(Config) ->
@@ -138,17 +141,17 @@ auth(Config) ->
 
 bind(Config) ->
     ID = randoms:get_string(),
-    IQ = #'Iq'{id = ID, type = set,
+    IQ = #iq{id = ID, type = set,
                sub_els = [#bind{resource = ?config(resource, Config)}]},
     ok = send_element(Config, IQ),
-    #'Iq'{type = result, id = ID, sub_els = [#bind{}]} = recv(),
+    #iq{type = result, id = ID, sub_els = [#bind{}]} = recv(),
     Config.
 
 open_session(Config) ->
     ID = randoms:get_string(),
-    IQ = #'Iq'{type = set, id = ID, sub_els = [#session{}]},
+    IQ = #iq{type = set, id = ID, sub_els = [#session{}]},
     ok = send_element(Config, IQ),
-    #'Iq'{type = result, id = ID, sub_els = SubEls} = recv(),
+    #iq{type = result, id = ID, sub_els = SubEls} = recv(),
     case SubEls of
         [] ->
             ok;
@@ -160,58 +163,58 @@ open_session(Config) ->
 
 roster_get(Config) ->
     ID = randoms:get_string(),
-    IQ = #'Iq'{type = get, id = ID, sub_els = [#roster{}]},
+    IQ = #iq{type = get, id = ID, sub_els = [#roster{}]},
     ok = send_element(Config, IQ),
-    #'Iq'{type = result, id = ID,
+    #iq{type = result, id = ID,
           sub_els = [#roster{item = []}]} = recv(),
     Config.
 
 presence_broadcast(Config) ->
-    ok = send_element(Config, #'Presence'{}),
+    ok = send_element(Config, #presence{}),
     JID = my_jid(Config),
-    #'Presence'{from = JID, to = JID} = recv(),
+    #presence{from = JID, to = JID} = recv(),
     Config.
 
 ping(Config) ->
     ID = randoms:get_string(),
-    IQ = #'Iq'{type = get, id = ID, sub_els = [#ping{}],
+    IQ = #iq{type = get, id = ID, sub_els = [#ping{}],
                to = server_jid(Config)},
     ok = send_element(Config, IQ),
-    #'Iq'{type = result, id = ID, sub_els = []} = recv(),
+    #iq{type = result, id = ID, sub_els = []} = recv(),
     Config.
 
 version(Config) ->
     ID = randoms:get_string(),
-    IQ = #'Iq'{type = get, id = ID, sub_els = [#version{}],
+    IQ = #iq{type = get, id = ID, sub_els = [#version{}],
                to = server_jid(Config)},
     ok = send_element(Config, IQ),
-    #'Iq'{type = result, id = ID, sub_els = [#version{}]} = recv(),
+    #iq{type = result, id = ID, sub_els = [#version{}]} = recv(),
     Config.
 
 time(Config) ->
     ID = randoms:get_string(),
-    IQ = #'Iq'{type = get, id = ID, sub_els = [#time{}],
+    IQ = #iq{type = get, id = ID, sub_els = [#time{}],
                to = server_jid(Config)},
     ok = send_element(Config, IQ),
-    #'Iq'{type = result, id = ID, sub_els = [#time{}]} = recv(),
+    #iq{type = result, id = ID, sub_els = [#time{}]} = recv(),
     Config.
 
 disco(Config) ->
     I1 = randoms:get_string(),
     ok = send_element(
            Config,
-           #'Iq'{type = get, id = I1, sub_els = [#disco_items{}],
+           #iq{type = get, id = I1, sub_els = [#disco_items{}],
                  to = server_jid(Config)}),
-    #'Iq'{type = result, id = I1, sub_els = [#disco_items{items = Items}]} = recv(),
+    #iq{type = result, id = I1, sub_els = [#disco_items{items = Items}]} = recv(),
     lists:foreach(
       fun(#disco_item{jid = JID, node = Node}) ->
               I = randoms:get_string(),
               ok = send_element(
                      Config,
-                     #'Iq'{type = get, id = I,
+                     #iq{type = get, id = I,
                            sub_els = [#disco_info{node = Node}],
                            to = JID}),
-              #'Iq'{type = result, id = I, sub_els = _} = recv()
+              #iq{type = result, id = I, sub_els = _} = recv()
       end, Items),
     Config.
 
@@ -219,9 +222,9 @@ private(Config) ->
     ID1 = randoms:get_string(),
     ok = send_element(
            Config,
-           #'Iq'{type = get, id = ID1, sub_els = [#private{}],
+           #iq{type = get, id = ID1, sub_els = [#private{}],
                  to = server_jid(Config)}),
-    #'Iq'{type = error, id = ID1} = recv(),
+    #iq{type = error, id = ID1} = recv(),
     ID2 = randoms:get_string(),
     Storage = #bookmark_storage{
       conference = [#bookmark_conference{
@@ -231,24 +234,24 @@ private(Config) ->
                                <<"some">>,
                                ?config(server, Config),
                                <<>>)}]},
-    IQSet = #'Iq'{type = set, id = ID2,
+    IQSet = #iq{type = set, id = ID2,
                   sub_els = [#private{sub_els = [Storage]}]},
     ok = send_element(Config, IQSet),
-    #'Iq'{type = result, id = ID2, sub_els = []} = recv(),
+    #iq{type = result, id = ID2, sub_els = []} = recv(),
     ID3 = randoms:get_string(),
-    IQGet = #'Iq'{type = get, id = ID3,
+    IQGet = #iq{type = get, id = ID3,
                   sub_els = [#private{sub_els = [#bookmark_storage{}]}]},
     ok = send_element(Config, IQGet),
-    #'Iq'{type = result, id = ID3,
+    #iq{type = result, id = ID3,
           sub_els = [#private{sub_els = [Storage]}]} = recv(),
     Config.
 
 last(Config) ->
     ID = randoms:get_string(),
-    IQ = #'Iq'{type = get, id = ID, sub_els = [#last{}],
+    IQ = #iq{type = get, id = ID, sub_els = [#last{}],
                to = server_jid(Config)},
     ok = send_element(Config, IQ),
-    #'Iq'{type = result, id = ID, sub_els = [#last{}]} = recv(),
+    #iq{type = result, id = ID, sub_els = [#last{}]} = recv(),
     Config.
 
 privacy(Config) ->
@@ -262,12 +265,12 @@ privacy(Config) ->
     I8 = randoms:get_string(),
     ok = send_element(
            Config,
-           #'Iq'{type = get, id = I1, sub_els = [#privacy{}]}),
-    #'Iq'{type = result, id = I1, sub_els = [#privacy{}]} = recv(),
+           #iq{type = get, id = I1, sub_els = [#privacy{}]}),
+    #iq{type = result, id = I1, sub_els = [#privacy{}]} = recv(),
     JID = <<"tybalt@example.com">>,
     ok = send_element(
            Config,
-           #'Iq'{type = set, id = I2,
+           #iq{type = set, id = I2,
                  sub_els = [#privacy{
                                list = [#privacy_list{
                                           name = <<"public">>,
@@ -278,49 +281,49 @@ privacy(Config) ->
                                                   action = deny,
                                                   stanza = 'presence-in',
                                                   value = JID}]}]}]}),
-    #'Iq'{type = result, id = I2, sub_els = []} = recv(),
-    _Push1 = #'Iq'{type = set, id = PushI1,
+    #iq{type = result, id = I2, sub_els = []} = recv(),
+    _Push1 = #iq{type = set, id = PushI1,
                    sub_els = [#privacy{
                                  list = [#privacy_list{
                                             name = <<"public">>}]}]} = recv(),
     %% BUG: ejabberd replies on this result
     %% TODO: this should be fixed in ejabberd
-    %% ok = send_element(Config, Push1#'Iq'{type = result, sub_els = []}),
+    %% ok = send_element(Config, Push1#iq{type = result, sub_els = []}),
     ok = send_element(
            Config,
-           #'Iq'{type = set, id = I3,
+           #iq{type = set, id = I3,
                  sub_els = [#privacy{active = <<"public">>}]}),
-    #'Iq'{type = result, id = I3, sub_els = []} = recv(),
+    #iq{type = result, id = I3, sub_els = []} = recv(),
     ok = send_element(
            Config,
-           #'Iq'{type = set, id = I4,
+           #iq{type = set, id = I4,
                  sub_els = [#privacy{default = <<"public">>}]}),
-    #'Iq'{type = result, id = I4, sub_els = []} = recv(),
+    #iq{type = result, id = I4, sub_els = []} = recv(),
     ok = send_element(
            Config,
-           #'Iq'{type = get, id = I5,
+           #iq{type = get, id = I5,
                  sub_els = [#privacy{}]}),
-    #'Iq'{type = result, id = I5,
+    #iq{type = result, id = I5,
           sub_els = [#privacy{default = <<"public">>,
                               active = <<"public">>,
                               list = [#privacy_list{name = <<"public">>}]}]} = recv(),
     ok = send_element(
            Config,
-           #'Iq'{type = set, id = I6, sub_els = [#privacy{default = none}]}),
-    #'Iq'{type = result, id = I6, sub_els = []} = recv(),
+           #iq{type = set, id = I6, sub_els = [#privacy{default = none}]}),
+    #iq{type = result, id = I6, sub_els = []} = recv(),
     ok = send_element(
            Config,
-           #'Iq'{type = set, id = I7, sub_els = [#privacy{active = none}]}),
-    #'Iq'{type = result, id = I7, sub_els = []} = recv(),
+           #iq{type = set, id = I7, sub_els = [#privacy{active = none}]}),
+    #iq{type = result, id = I7, sub_els = []} = recv(),
     ok = send_element(
            Config,
-           #'Iq'{type = set, id = I8,
+           #iq{type = set, id = I8,
                  sub_els = [#privacy{list = [#privacy_list{name = <<"public">>}]}]}),
-    #'Iq'{type = result, id = I8, sub_els = []} = recv(),
+    #iq{type = result, id = I8, sub_els = []} = recv(),
     %% BUG: We should receive this:
     %% TODO: fix in ejabberd
-    %% _Push2 = #'Iq'{type = set, id = PushI2, sub_els = []} = recv(),
-    _Push2 = #'Iq'{type = set, id = PushI2,
+    %% _Push2 = #iq{type = set, id = PushI2, sub_els = []} = recv(),
+    _Push2 = #iq{type = set, id = PushI2,
                    sub_els = [#privacy{
                                  list = [#privacy_list{
                                             name = <<"public">>}]}]} = recv(),
@@ -333,43 +336,87 @@ blocking(Config) ->
     JID = jlib:make_jid(<<"romeo">>, <<"montague.net">>, <<>>),
     ok = send_element(
            Config,
-           #'Iq'{type = get, id = I1, sub_els = [#block_list{}]}),
-    #'Iq'{type = result, id = I1, sub_els = [#block_list{}]} = recv(),
+           #iq{type = get, id = I1, sub_els = [#block_list{}]}),
+    #iq{type = result, id = I1, sub_els = [#block_list{}]} = recv(),
     ok = send_element(
            Config,
-           #'Iq'{type = set, id = I2,
+           #iq{type = set, id = I2,
                  sub_els = [#block{block_item = [JID]}]}),
-    #'Iq'{type = result, id = I2, sub_els = []} = recv(),
-    #'Iq'{type = set, id = _,
+    #iq{type = result, id = I2, sub_els = []} = recv(),
+    #iq{type = set, id = _,
           sub_els = [#privacy{list = [#privacy_list{}]}]} = recv(),
-    #'Iq'{type = set, id = _,
+    #iq{type = set, id = _,
           sub_els = [#block{block_item = [JID]}]} = recv(),
     ok = send_element(
            Config,
-           #'Iq'{type = set, id = I3,
+           #iq{type = set, id = I3,
                  sub_els = [#unblock{block_item = [JID]}]}),
-    #'Iq'{type = result, id = I3, sub_els = []} = recv(),
-    #'Iq'{type = set, id = _,
+    #iq{type = result, id = I3, sub_els = []} = recv(),
+    #iq{type = set, id = _,
           sub_els = [#privacy{list = [#privacy_list{}]}]} = recv(),
-    #'Iq'{type = set, id = _,
+    #iq{type = set, id = _,
           sub_els = [#unblock{block_item = [JID]}]} = recv(),
+    Config.
+
+vcard(Config) ->
+    I1 = randoms:get_string(),
+    I2 = randoms:get_string(),
+    VCard =
+        #vcard{fn = <<"Peter Saint-Andre">>,
+               n = #vcard_name{family = <<"Saint-Andre">>,
+                               given = <<"Peter">>},
+               nickname = <<"stpeter">>,
+               bday = <<"1966-08-06">>,
+               adr = [#vcard_adr{work = true,
+                                 extadd = <<"Suite 600">>,
+                                 street = <<"1899 Wynkoop Street">>,
+                                 locality = <<"Denver">>,
+                                 region = <<"CO">>,
+                                 pcode = <<"80202">>,
+                                 ctry = <<"USA">>},
+                      #vcard_adr{home = true,
+                                 locality = <<"Denver">>,
+                                 region = <<"CO">>,
+                                 pcode = <<"80209">>,
+                                 ctry = <<"USA">>}],
+               tel = [#vcard_tel{work = true,voice = true,
+                                 number = <<"303-308-3282">>},
+                      #vcard_tel{home = true,voice = true,
+                                 number = <<"303-555-1212">>}],
+               email = [#vcard_email{internet = true,pref = true,
+                                     userid = <<"stpeter@jabber.org">>}],
+               jabberid = <<"stpeter@jabber.org">>,
+               title = <<"Executive Director">>,role = <<"Patron Saint">>,
+               org = #vcard_org{name = <<"XMPP Standards Foundation">>},
+               url = <<"http://www.xmpp.org/xsf/people/stpeter.shtml">>,
+               desc = <<"More information about me is located on my "
+                        "personal website: http://www.saint-andre.com/">>},
+    ok = send_element(
+           Config,
+           #iq{type = set, id = I1, sub_els = [VCard]}),
+    #iq{type = result, id = I1, sub_els = []} = recv(),
+    ok = send_element(
+           Config,
+           #iq{type = get, id = I2, sub_els = [#vcard{}]}),
+    %% TODO: check if VCard == VCard1.
+    #iq{type = result, id = I2, sub_els = [_VCard1]} = recv(),
     Config.
 
 stats(Config) ->
     ID = randoms:get_string(),
     ServerJID = server_jid(Config),
-    StatsIQ = #'Iq'{type = get, id = ID, sub_els = [#stats{}],
+    StatsIQ = #iq{type = get, id = ID, sub_els = [#stats{}],
                     to = server_jid(Config)},
     ok = send_element(Config, StatsIQ),
-    #'Iq'{type = result, id = ID, sub_els = [#stats{stat = Stats}]} = recv(),
+    #iq{type = result, id = ID, sub_els = [#stats{stat = Stats}]} = recv(),
     lists:foreach(
       fun(#stat{name = Name} = Stat) ->
               I = randoms:get_string(),
-              IQ = #'Iq'{type = get, id = I,
+              IQ = #iq{type = get, id = I,
                          sub_els = [#stats{stat = [Stat]}],
                     to = server_jid(Config)},
               ok = send_element(Config, IQ),
-              #'Iq'{type = result, id = I, sub_els = [_|_]} = recv()
+              #iq{type = result, id = I, sub_els = [_|_]} = recv()
       end, Stats),
     Config.
 

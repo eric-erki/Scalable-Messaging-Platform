@@ -40,14 +40,14 @@
 
 -record(stat, {name, units, value, error = []}).
 
--record('Iq',
+-record(iq,
 	{id, type, lang, from, to, error, sub_els = []}).
 
--record('Message',
+-record(message,
 	{id, type = normal, lang, from, to, subject = [],
 	 body = [], thread, error, sub_els = []}).
 
--record('Presence',
+-record(presence,
 	{id, type, lang, from, to, show, status = [], priority,
 	 error, sub_els = []}).
 
@@ -100,3 +100,45 @@
 -record(stream_error, {reason, text}).
 
 -record('see-other-host', {cdata}).
+
+-record(vcard_name,
+	{family, given, middle, prefix, suffix}).
+
+-record(vcard_adr,
+	{home = false, work = false, postal = false,
+	 parcel = false, dom = false, intl = false, pref = false,
+	 pobox, extadd, street, locality, region, pcode, ctry}).
+
+-record(vcard_label,
+	{home = false, work = false, postal = false,
+	 parcel = false, dom = false, intl = false, pref = false,
+	 line = []}).
+
+-record(vcard_tel,
+	{home = false, work = false, voice = false, fax = false,
+	 pager = false, msg = false, cell = false, video = false,
+	 bbs = false, modem = false, isdn = false, pcs = false,
+	 pref = false, number}).
+
+-record(vcard_email,
+	{home = false, work = false, internet = false,
+	 pref = false, x400 = false, userid}).
+
+-record(vcard_geo, {lat, lon}).
+
+-record(vcard_logo, {type, binval, extval}).
+
+-record(vcard_photo, {type, binval, extval}).
+
+-record(vcard_org, {name, units = []}).
+
+-record(vcard_sound, {phonetic, binval, extval}).
+
+-record(vcard_key, {type, cred}).
+
+-record(vcard,
+	{version, fn, n, nickname, photo, bday, adr = [],
+	 label = [], tel = [], email = [], jabberid, mailer, tz,
+	 geo, title, role, logo, org, categories = [], note,
+	 prodid, rev, 'sort-string', sound, uid, url, class, key,
+	 desc}).

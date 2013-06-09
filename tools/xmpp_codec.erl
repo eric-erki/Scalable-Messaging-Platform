@@ -1,11 +1,25 @@
 -module(xmpp_codec).
 
--compile([nowarn_unused_function]).
-
 -export([decode/1, encode/1]).
 
 decode({xmlel, _name, _attrs, _} = _el) ->
     case {_name, xml:get_attr_s(<<"xmlns">>, _attrs)} of
+      {<<"vCard">>, <<"vcard-temp">>} ->
+	  decode_vcard_vCard(_el);
+      {<<"KEY">>, <<>>} -> decode_vcard_key_KEY(_el);
+      {<<"SOUND">>, <<>>} -> decode_vcard_sound_SOUND(_el);
+      {<<"ORG">>, <<>>} -> decode_vcard_org_ORG(_el);
+      {<<"PHOTO">>, <<>>} -> decode_vcard_photo_PHOTO(_el);
+      {<<"LOGO">>, <<>>} -> decode_vcard_logo_LOGO(_el);
+      {<<"EXTVAL">>, <<>>} -> decode_vcard_extval_EXTVAL(_el);
+      {<<"BINVAL">>, <<>>} -> decode_vcard_binval_BINVAL(_el);
+      {<<"TYPE">>, <<>>} -> decode_vcard_type_TYPE(_el);
+      {<<"GEO">>, <<>>} -> decode_vcard_geo_GEO(_el);
+      {<<"EMAIL">>, <<>>} -> decode_vcard_email_EMAIL(_el);
+      {<<"TEL">>, <<>>} -> decode_vcard_tel_TEL(_el);
+      {<<"LABEL">>, <<>>} -> decode_vcard_label_LABEL(_el);
+      {<<"ADR">>, <<>>} -> decode_vcard_adr_ADR(_el);
+      {<<"N">>, <<>>} -> decode_vcard_name_N(_el);
       {<<"stream:error">>, <<>>} ->
 	  'decode_stream_error_stream:error'(_el);
       {<<"time">>, <<"urn:xmpp:time">>} ->
@@ -94,6 +108,36 @@ decode({xmlel, _name, _attrs, _} = _el) ->
 	  erlang:error({unknown_tag, _name, _xmlns})
     end.
 
+encode({vcard, _, _, _, _, _, _, _, _, _, _, _, _, _, _,
+	_, _, _, _, _, _, _, _, _, _, _, _, _, _, _} =
+	   _r) ->
+    hd(encode_vcard_vCard(_r, []));
+encode({vcard_key, _, _} = _r) ->
+    hd(encode_vcard_key_KEY(_r, []));
+encode({vcard_sound, _, _, _} = _r) ->
+    hd(encode_vcard_sound_SOUND(_r, []));
+encode({vcard_org, _, _} = _r) ->
+    hd(encode_vcard_org_ORG(_r, []));
+encode({vcard_photo, _, _, _} = _r) ->
+    hd(encode_vcard_photo_PHOTO(_r, []));
+encode({vcard_logo, _, _, _} = _r) ->
+    hd(encode_vcard_logo_LOGO(_r, []));
+encode({vcard_geo, _, _} = _r) ->
+    hd(encode_vcard_geo_GEO(_r, []));
+encode({vcard_email, _, _, _, _, _, _} = _r) ->
+    hd(encode_vcard_email_EMAIL(_r, []));
+encode({vcard_tel, _, _, _, _, _, _, _, _, _, _, _, _,
+	_, _} =
+	   _r) ->
+    hd(encode_vcard_tel_TEL(_r, []));
+encode({vcard_label, _, _, _, _, _, _, _, _} = _r) ->
+    hd(encode_vcard_label_LABEL(_r, []));
+encode({vcard_adr, _, _, _, _, _, _, _, _, _, _, _, _,
+	_, _} =
+	   _r) ->
+    hd(encode_vcard_adr_ADR(_r, []));
+encode({vcard_name, _, _, _, _, _} = _r) ->
+    hd(encode_vcard_name_N(_r, []));
 encode({stream_error, _, _} = _r) ->
     hd('encode_stream_error_stream:error'(_r, []));
 encode({time, _, _} = _r) ->
@@ -136,13 +180,11 @@ encode({bind, _, _} = _r) ->
     hd(encode_bind_bind(_r, []));
 encode({error, _, _, _, _} = _r) ->
     hd(encode_error_error(_r, []));
-encode({'Presence', _, _, _, _, _, _, _, _, _, _} =
-	   _r) ->
+encode({presence, _, _, _, _, _, _, _, _, _, _} = _r) ->
     hd(encode_presence_presence(_r, []));
-encode({'Message', _, _, _, _, _, _, _, _, _, _} =
-	   _r) ->
+encode({message, _, _, _, _, _, _, _, _, _, _} = _r) ->
     hd(encode_message_message(_r, []));
-encode({'Iq', _, _, _, _, _, _, _} = _r) ->
+encode({iq, _, _, _, _, _, _, _} = _r) ->
     hd(encode_iq_iq(_r, []));
 encode({stats, _} = _r) ->
     hd(encode_stats_query(_r, []));
@@ -177,9 +219,6 @@ enc_bool(true) -> <<"true">>.
 dec_bool(<<"false">>) -> false;
 dec_bool(<<"true">>) -> true.
 
-sign(N) when N < 0 -> <<"-">>;
-sign(_) -> <<"+">>.
-
 resourceprep(R) ->
     case jlib:resourceprep(R) of
       error -> erlang:error(badarg);
@@ -199,7 +238,7 @@ enc_utc(Val) -> jlib:now_to_utc_string(Val).
 dec_utc(Val) ->
     {_, _, _} = jlib:datetime_string_to_timestamp(Val).
 
-enc_tzo({Sign, {H, M}}) ->
+enc_tzo({H, M}) ->
     Sign = if H >= 0 -> <<>>;
 	      true -> <<"-">>
 	   end,
@@ -315,13 +354,6 @@ encode_version_query({version, Name, Version, Os},
 											  []))),
     _attrs = [{<<"xmlns">>, <<"jabber:iq:version">>}],
     [{xmlel, <<"query">>, _attrs, _els} | _acc].
-
-decode_version_query_cdata(<<>>) -> undefined;
-decode_version_query_cdata(_val) -> _val.
-
-encode_version_query_cdata(undefined, _acc) -> _acc;
-encode_version_query_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 decode_version_query_os({xmlel, _, _attrs, _els}) ->
     Cdata = decode_version_query_os_els(_els, <<>>), Cdata.
@@ -447,13 +479,6 @@ encode_roster_query_ver(undefined, _acc) -> _acc;
 encode_roster_query_ver(_val, _acc) ->
     [{<<"ver">>, _val} | _acc].
 
-decode_roster_query_cdata(<<>>) -> undefined;
-decode_roster_query_cdata(_val) -> _val.
-
-encode_roster_query_cdata(undefined, _acc) -> _acc;
-encode_roster_query_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 decode_roster_query_item({xmlel, _, _attrs, _els}) ->
     {Ask, Subscription, Name, Jid} =
 	decode_roster_query_item_attrs(_attrs, undefined,
@@ -527,10 +552,16 @@ encode_roster_query_item([{roster_item, Jid, Name,
 decode_roster_query_item_jid(undefined) ->
     erlang:error({missing_attr, <<"jid">>, <<"item">>,
 		  <<>>});
-decode_roster_query_item_jid(_val) -> _val.
+decode_roster_query_item_jid(_val) ->
+    case catch dec_jid(_val) of
+      {'EXIT', _} ->
+	  erlang:error({bad_attr_value, <<"jid">>, <<"item">>,
+			<<>>});
+      _res -> _res
+    end.
 
 encode_roster_query_item_jid(_val, _acc) ->
-    [{<<"jid">>, _val} | _acc].
+    [{<<"jid">>, enc_jid(_val)} | _acc].
 
 decode_roster_query_item_name(undefined) -> undefined;
 decode_roster_query_item_name(_val) -> _val.
@@ -568,13 +599,6 @@ decode_roster_query_item_ask(_val) ->
 encode_roster_query_item_ask(undefined, _acc) -> _acc;
 encode_roster_query_item_ask(_val, _acc) ->
     [{<<"ask">>, xml_gen:enc_enum(_val)} | _acc].
-
-decode_roster_query_item_cdata(<<>>) -> undefined;
-decode_roster_query_item_cdata(_val) -> _val.
-
-encode_roster_query_item_cdata(undefined, _acc) -> _acc;
-encode_roster_query_item_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 decode_roster_query_item_group({xmlel, _, _attrs,
 				_els}) ->
@@ -769,13 +793,6 @@ encode_privacy_item_item_value(undefined, _acc) -> _acc;
 encode_privacy_item_item_value(_val, _acc) ->
     [{<<"value">>, _val} | _acc].
 
-decode_privacy_item_item_cdata(<<>>) -> undefined;
-decode_privacy_item_item_cdata(_val) -> _val.
-
-encode_privacy_item_item_cdata(undefined, _acc) -> _acc;
-encode_privacy_item_item_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_privacy_item_item_presence-out'({xmlel, _,
 					 _attrs, _els}) ->
     'presence-out'.
@@ -788,18 +805,6 @@ encode_privacy_item_item_cdata(_val, _acc) ->
     _els = [],
     _attrs = [],
     [{xmlel, <<"presence-out">>, _attrs, _els} | _acc].
-
-'decode_privacy_item_item_presence-out_cdata'(<<>>) ->
-    undefined;
-'decode_privacy_item_item_presence-out_cdata'(_val) ->
-    _val.
-
-'encode_privacy_item_item_presence-out_cdata'(undefined,
-					      _acc) ->
-    _acc;
-'encode_privacy_item_item_presence-out_cdata'(_val,
-					      _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 'decode_privacy_item_item_presence-in'({xmlel, _,
 					_attrs, _els}) ->
@@ -814,18 +819,6 @@ encode_privacy_item_item_cdata(_val, _acc) ->
     _attrs = [],
     [{xmlel, <<"presence-in">>, _attrs, _els} | _acc].
 
-'decode_privacy_item_item_presence-in_cdata'(<<>>) ->
-    undefined;
-'decode_privacy_item_item_presence-in_cdata'(_val) ->
-    _val.
-
-'encode_privacy_item_item_presence-in_cdata'(undefined,
-					     _acc) ->
-    _acc;
-'encode_privacy_item_item_presence-in_cdata'(_val,
-					     _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 decode_privacy_item_item_iq({xmlel, _, _attrs, _els}) ->
     iq.
 
@@ -834,14 +827,6 @@ encode_privacy_item_item_iq(iq, _acc) ->
     _els = [],
     _attrs = [],
     [{xmlel, <<"iq">>, _attrs, _els} | _acc].
-
-decode_privacy_item_item_iq_cdata(<<>>) -> undefined;
-decode_privacy_item_item_iq_cdata(_val) -> _val.
-
-encode_privacy_item_item_iq_cdata(undefined, _acc) ->
-    _acc;
-encode_privacy_item_item_iq_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 decode_privacy_item_item_message({xmlel, _, _attrs,
 				  _els}) ->
@@ -853,16 +838,6 @@ encode_privacy_item_item_message(message, _acc) ->
     _els = [],
     _attrs = [],
     [{xmlel, <<"message">>, _attrs, _els} | _acc].
-
-decode_privacy_item_item_message_cdata(<<>>) ->
-    undefined;
-decode_privacy_item_item_message_cdata(_val) -> _val.
-
-encode_privacy_item_item_message_cdata(undefined,
-				       _acc) ->
-    _acc;
-encode_privacy_item_item_message_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 decode_privacy_query({xmlel, _, _attrs, _els}) ->
     {Active, Default, List} = decode_privacy_query_els(_els,
@@ -923,13 +898,6 @@ encode_privacy_query({privacy, List, Default, Active},
     _attrs = [{<<"xmlns">>, <<"jabber:iq:privacy">>}],
     [{xmlel, <<"query">>, _attrs, _els} | _acc].
 
-decode_privacy_query_cdata(<<>>) -> undefined;
-decode_privacy_query_cdata(_val) -> _val.
-
-encode_privacy_query_cdata(undefined, _acc) -> _acc;
-encode_privacy_query_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 decode_privacy_query_active({xmlel, _, _attrs, _els}) ->
     Name = decode_privacy_query_active_attrs(_attrs,
 					     undefined),
@@ -956,14 +924,6 @@ decode_privacy_query_active_name(_val) -> _val.
 encode_privacy_query_active_name(none, _acc) -> _acc;
 encode_privacy_query_active_name(_val, _acc) ->
     [{<<"name">>, _val} | _acc].
-
-decode_privacy_query_active_cdata(<<>>) -> undefined;
-decode_privacy_query_active_cdata(_val) -> _val.
-
-encode_privacy_query_active_cdata(undefined, _acc) ->
-    _acc;
-encode_privacy_query_active_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 decode_privacy_query_default({xmlel, _, _attrs,
 			      _els}) ->
@@ -993,14 +953,6 @@ decode_privacy_query_default_name(_val) -> _val.
 encode_privacy_query_default_name(none, _acc) -> _acc;
 encode_privacy_query_default_name(_val, _acc) ->
     [{<<"name">>, _val} | _acc].
-
-decode_privacy_query_default_cdata(<<>>) -> undefined;
-decode_privacy_query_default_cdata(_val) -> _val.
-
-encode_privacy_query_default_cdata(undefined, _acc) ->
-    _acc;
-encode_privacy_query_default_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 decode_privacy_query_list({xmlel, _, _attrs, _els}) ->
     Name = decode_privacy_query_list_attrs(_attrs,
@@ -1053,14 +1005,6 @@ decode_privacy_query_list_name(_val) -> _val.
 encode_privacy_query_list_name(_val, _acc) ->
     [{<<"name">>, _val} | _acc].
 
-decode_privacy_query_list_cdata(<<>>) -> undefined;
-decode_privacy_query_list_cdata(_val) -> _val.
-
-encode_privacy_query_list_cdata(undefined, _acc) ->
-    _acc;
-encode_privacy_query_list_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 decode_block_item_item({xmlel, _, _attrs, _els}) ->
     Jid = decode_block_item_item_attrs(_attrs, undefined),
     Jid.
@@ -1095,13 +1039,6 @@ decode_block_item_item_jid(_val) ->
 encode_block_item_item_jid(_val, _acc) ->
     [{<<"jid">>, enc_jid(_val)} | _acc].
 
-decode_block_item_item_cdata(<<>>) -> undefined;
-decode_block_item_item_cdata(_val) -> _val.
-
-encode_block_item_item_cdata(undefined, _acc) -> _acc;
-encode_block_item_item_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 decode_block_block({xmlel, _, _attrs, _els}) ->
     Block_item = decode_block_block_els(_els, []),
     {block, Block_item}.
@@ -1126,13 +1063,6 @@ encode_block_block({block, Block_item}, _acc) ->
     _els = encode_block_item_item(Block_item, []),
     _attrs = [{<<"xmlns">>, <<"urn:xmpp:blocking">>}],
     [{xmlel, <<"block">>, _attrs, _els} | _acc].
-
-decode_block_block_cdata(<<>>) -> undefined;
-decode_block_block_cdata(_val) -> _val.
-
-encode_block_block_cdata(undefined, _acc) -> _acc;
-encode_block_block_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 decode_unblock_unblock({xmlel, _, _attrs, _els}) ->
     Block_item = decode_unblock_unblock_els(_els, []),
@@ -1161,13 +1091,6 @@ encode_unblock_unblock({unblock, Block_item}, _acc) ->
     _attrs = [{<<"xmlns">>, <<"urn:xmpp:blocking">>}],
     [{xmlel, <<"unblock">>, _attrs, _els} | _acc].
 
-decode_unblock_unblock_cdata(<<>>) -> undefined;
-decode_unblock_unblock_cdata(_val) -> _val.
-
-encode_unblock_unblock_cdata(undefined, _acc) -> _acc;
-encode_unblock_unblock_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 decode_block_list_blocklist({xmlel, _, _attrs, _els}) ->
     {block_list}.
 
@@ -1176,14 +1099,6 @@ encode_block_list_blocklist({block_list}, _acc) ->
     _els = [],
     _attrs = [{<<"xmlns">>, <<"urn:xmpp:blocking">>}],
     [{xmlel, <<"blocklist">>, _attrs, _els} | _acc].
-
-decode_block_list_blocklist_cdata(<<>>) -> undefined;
-decode_block_list_blocklist_cdata(_val) -> _val.
-
-encode_block_list_blocklist_cdata(undefined, _acc) ->
-    _acc;
-encode_block_list_blocklist_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 decode_disco_info_query({xmlel, _, _attrs, _els}) ->
     Node = decode_disco_info_query_attrs(_attrs, undefined),
@@ -1252,13 +1167,6 @@ encode_disco_info_query_node(undefined, _acc) -> _acc;
 encode_disco_info_query_node(_val, _acc) ->
     [{<<"node">>, _val} | _acc].
 
-decode_disco_info_query_cdata(<<>>) -> undefined;
-decode_disco_info_query_cdata(_val) -> _val.
-
-encode_disco_info_query_cdata(undefined, _acc) -> _acc;
-encode_disco_info_query_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 decode_disco_info_query_feature({xmlel, _, _attrs,
 				 _els}) ->
     Var = decode_disco_info_query_feature_attrs(_attrs,
@@ -1290,16 +1198,6 @@ decode_disco_info_query_feature_var(_val) -> _val.
 
 encode_disco_info_query_feature_var(_val, _acc) ->
     [{<<"var">>, _val} | _acc].
-
-decode_disco_info_query_feature_cdata(<<>>) ->
-    undefined;
-decode_disco_info_query_feature_cdata(_val) -> _val.
-
-encode_disco_info_query_feature_cdata(undefined,
-				      _acc) ->
-    _acc;
-encode_disco_info_query_feature_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 decode_disco_info_query_identity({xmlel, _, _attrs,
 				  _els}) ->
@@ -1376,16 +1274,6 @@ encode_disco_info_query_identity_name(undefined,
 encode_disco_info_query_identity_name(_val, _acc) ->
     [{<<"name">>, _val} | _acc].
 
-decode_disco_info_query_identity_cdata(<<>>) ->
-    undefined;
-decode_disco_info_query_identity_cdata(_val) -> _val.
-
-encode_disco_info_query_identity_cdata(undefined,
-				       _acc) ->
-    _acc;
-encode_disco_info_query_identity_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 decode_disco_items_query({xmlel, _, _attrs, _els}) ->
     Node = decode_disco_items_query_attrs(_attrs,
 					  undefined),
@@ -1433,13 +1321,6 @@ decode_disco_items_query_node(_val) -> _val.
 encode_disco_items_query_node(undefined, _acc) -> _acc;
 encode_disco_items_query_node(_val, _acc) ->
     [{<<"node">>, _val} | _acc].
-
-decode_disco_items_query_cdata(<<>>) -> undefined;
-decode_disco_items_query_cdata(_val) -> _val.
-
-encode_disco_items_query_cdata(undefined, _acc) -> _acc;
-encode_disco_items_query_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 decode_disco_items_query_item({xmlel, _, _attrs,
 			       _els}) ->
@@ -1518,14 +1399,6 @@ encode_disco_items_query_item_node(undefined, _acc) ->
 encode_disco_items_query_item_node(_val, _acc) ->
     [{<<"node">>, _val} | _acc].
 
-decode_disco_items_query_item_cdata(<<>>) -> undefined;
-decode_disco_items_query_item_cdata(_val) -> _val.
-
-encode_disco_items_query_item_cdata(undefined, _acc) ->
-    _acc;
-encode_disco_items_query_item_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 decode_private_query({xmlel, _, _attrs, _els}) ->
     __Els = decode_private_query_els(_els, []),
     {private, __Els}.
@@ -1544,13 +1417,6 @@ encode_private_query({private, __Els}, _acc) ->
     _els = [encode(_subel) || _subel <- __Els] ++ [],
     _attrs = [{<<"xmlns">>, <<"jabber:iq:private">>}],
     [{xmlel, <<"query">>, _attrs, _els} | _acc].
-
-decode_private_query_cdata(<<>>) -> undefined;
-decode_private_query_cdata(_val) -> _val.
-
-encode_private_query_cdata(undefined, _acc) -> _acc;
-encode_private_query_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 decode_storage_bookmarks_storage({xmlel, _, _attrs,
 				  _els}) ->
@@ -1606,16 +1472,6 @@ encode_storage_bookmarks_storage({bookmark_storage,
 											 [])),
     _attrs = [{<<"xmlns">>, <<"storage:bookmarks">>}],
     [{xmlel, <<"storage">>, _attrs, _els} | _acc].
-
-decode_storage_bookmarks_storage_cdata(<<>>) ->
-    undefined;
-decode_storage_bookmarks_storage_cdata(_val) -> _val.
-
-encode_storage_bookmarks_storage_cdata(undefined,
-				       _acc) ->
-    _acc;
-encode_storage_bookmarks_storage_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 decode_storage_bookmarks_storage_url({xmlel, _, _attrs,
 				      _els}) ->
@@ -1673,18 +1529,6 @@ decode_storage_bookmarks_storage_url_url(_val) -> _val.
 
 encode_storage_bookmarks_storage_url_url(_val, _acc) ->
     [{<<"url">>, _val} | _acc].
-
-decode_storage_bookmarks_storage_url_cdata(<<>>) ->
-    undefined;
-decode_storage_bookmarks_storage_url_cdata(_val) ->
-    _val.
-
-encode_storage_bookmarks_storage_url_cdata(undefined,
-					   _acc) ->
-    _acc;
-encode_storage_bookmarks_storage_url_cdata(_val,
-					   _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 decode_storage_bookmarks_storage_conference({xmlel, _,
 					     _attrs, _els}) ->
@@ -1827,18 +1671,6 @@ encode_storage_bookmarks_storage_conference_autojoin(_val,
 						     _acc) ->
     [{<<"autojoin">>, enc_bool(_val)} | _acc].
 
-decode_storage_bookmarks_storage_conference_cdata(<<>>) ->
-    undefined;
-decode_storage_bookmarks_storage_conference_cdata(_val) ->
-    _val.
-
-encode_storage_bookmarks_storage_conference_cdata(undefined,
-						  _acc) ->
-    _acc;
-encode_storage_bookmarks_storage_conference_cdata(_val,
-						  _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 decode_storage_bookmarks_storage_conference_password({xmlel,
 						      _, _attrs, _els}) ->
     Cdata =
@@ -1955,13 +1787,6 @@ encode_stats_query({stats, Stat}, _acc) ->
 	       <<"http://jabber.org/protocol/stats">>}],
     [{xmlel, <<"query">>, _attrs, _els} | _acc].
 
-decode_stats_query_cdata(<<>>) -> undefined;
-decode_stats_query_cdata(_val) -> _val.
-
-encode_stats_query_cdata(undefined, _acc) -> _acc;
-encode_stats_query_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 decode_stats_query_stat({xmlel, _, _attrs, _els}) ->
     {Value, Units, Name} =
 	decode_stats_query_stat_attrs(_attrs, undefined,
@@ -2045,13 +1870,6 @@ encode_stats_query_stat_value(undefined, _acc) -> _acc;
 encode_stats_query_stat_value(_val, _acc) ->
     [{<<"value">>, _val} | _acc].
 
-decode_stats_query_stat_cdata(<<>>) -> undefined;
-decode_stats_query_stat_cdata(_val) -> _val.
-
-encode_stats_query_stat_cdata(undefined, _acc) -> _acc;
-encode_stats_query_stat_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 decode_stats_query_stat_error({xmlel, _, _attrs,
 			       _els}) ->
     Code = decode_stats_query_stat_error_attrs(_attrs,
@@ -2115,7 +1933,7 @@ decode_iq_iq({xmlel, _, _attrs, _els}) ->
 						    undefined, undefined,
 						    undefined),
     {__Els, Error} = decode_iq_iq_els(_els, [], undefined),
-    {'Iq', Id, Type, Lang, From, To, Error, __Els}.
+    {iq, Id, Type, Lang, From, To, Error, __Els}.
 
 decode_iq_iq_els([{xmlel, <<"error">>, _attrs, _} = _el
 		  | _els],
@@ -2158,7 +1976,7 @@ decode_iq_iq_attrs([], To, From, Lang, Type, Id) ->
      decode_iq_iq_id(Id)}.
 
 encode_iq_iq(undefined, _acc) -> _acc;
-encode_iq_iq({'Iq', Id, Type, Lang, From, To, Error,
+encode_iq_iq({iq, Id, Type, Lang, From, To, Error,
 	      __Els},
 	     _acc) ->
     _els = encode_error_error(Error,
@@ -2227,13 +2045,6 @@ encode_iq_iq_to(_val, _acc) ->
 'encode_iq_iq_xml:lang'(_val, _acc) ->
     [{<<"xml:lang">>, _val} | _acc].
 
-decode_iq_iq_cdata(<<>>) -> undefined;
-decode_iq_iq_cdata(_val) -> _val.
-
-encode_iq_iq_cdata(undefined, _acc) -> _acc;
-encode_iq_iq_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 decode_message_message({xmlel, _, _attrs, _els}) ->
     {To, From, Lang, Type, Id} =
 	decode_message_message_attrs(_attrs, undefined,
@@ -2242,7 +2053,7 @@ decode_message_message({xmlel, _, _attrs, _els}) ->
     {__Els, Error, Thread, Body, Subject} =
 	decode_message_message_els(_els, [], undefined,
 				   undefined, [], []),
-    {'Message', Id, Type, Lang, From, To, Subject, Body,
+    {message, Id, Type, Lang, From, To, Subject, Body,
      Thread, Error, __Els}.
 
 decode_message_message_els([{xmlel, <<"error">>, _attrs,
@@ -2354,7 +2165,7 @@ decode_message_message_attrs([], To, From, Lang, Type,
      decode_message_message_id(Id)}.
 
 encode_message_message(undefined, _acc) -> _acc;
-encode_message_message({'Message', Id, Type, Lang, From,
+encode_message_message({message, Id, Type, Lang, From,
 			To, Subject, Body, Thread, Error, __Els},
 		       _acc) ->
     _els = encode_message_message_subject(Subject,
@@ -2430,13 +2241,6 @@ encode_message_message_to(_val, _acc) ->
     _acc;
 'encode_message_message_xml:lang'(_val, _acc) ->
     [{<<"xml:lang">>, _val} | _acc].
-
-decode_message_message_cdata(<<>>) -> undefined;
-decode_message_message_cdata(_val) -> _val.
-
-encode_message_message_cdata(undefined, _acc) -> _acc;
-encode_message_message_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 decode_message_message_thread({xmlel, _, _attrs,
 			       _els}) ->
@@ -2590,7 +2394,7 @@ decode_presence_presence({xmlel, _, _attrs, _els}) ->
     {__Els, Error, Priority, Status, Show} =
 	decode_presence_presence_els(_els, [], undefined,
 				     undefined, [], undefined),
-    {'Presence', Id, Type, Lang, From, To, Show, Status,
+    {presence, Id, Type, Lang, From, To, Show, Status,
      Priority, Error, __Els}.
 
 decode_presence_presence_els([{xmlel, <<"error">>,
@@ -2708,7 +2512,7 @@ decode_presence_presence_attrs([], To, From, Lang, Type,
      decode_presence_presence_id(Id)}.
 
 encode_presence_presence(undefined, _acc) -> _acc;
-encode_presence_presence({'Presence', Id, Type, Lang,
+encode_presence_presence({presence, Id, Type, Lang,
 			  From, To, Show, Status, Priority, Error, __Els},
 			 _acc) ->
     _els = encode_presence_presence_show(Show,
@@ -2785,13 +2589,6 @@ encode_presence_presence_to(_val, _acc) ->
     _acc;
 'encode_presence_presence_xml:lang'(_val, _acc) ->
     [{<<"xml:lang">>, _val} | _acc].
-
-decode_presence_presence_cdata(<<>>) -> undefined;
-decode_presence_presence_cdata(_val) -> _val.
-
-encode_presence_presence_cdata(undefined, _acc) -> _acc;
-encode_presence_presence_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 decode_presence_presence_priority({xmlel, _, _attrs,
 				   _els}) ->
@@ -3316,13 +3113,6 @@ encode_error_error_by(undefined, _acc) -> _acc;
 encode_error_error_by(_val, _acc) ->
     [{<<"by">>, _val} | _acc].
 
-decode_error_error_cdata(<<>>) -> undefined;
-decode_error_error_cdata(_val) -> _val.
-
-encode_error_error_cdata(undefined, _acc) -> _acc;
-encode_error_error_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_error_error_unexpected-request'({xmlel, _,
 					 _attrs, _els}) ->
     'unexpected-request'.
@@ -3337,18 +3127,6 @@ encode_error_error_cdata(_val, _acc) ->
 	       <<"urn:ietf:params:xml:ns:xmpp-stanzas">>}],
     [{xmlel, <<"unexpected-request">>, _attrs, _els}
      | _acc].
-
-'decode_error_error_unexpected-request_cdata'(<<>>) ->
-    undefined;
-'decode_error_error_unexpected-request_cdata'(_val) ->
-    _val.
-
-'encode_error_error_unexpected-request_cdata'(undefined,
-					      _acc) ->
-    _acc;
-'encode_error_error_unexpected-request_cdata'(_val,
-					      _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 'decode_error_error_undefined-condition'({xmlel, _,
 					  _attrs, _els}) ->
@@ -3365,18 +3143,6 @@ encode_error_error_cdata(_val, _acc) ->
     [{xmlel, <<"undefined-condition">>, _attrs, _els}
      | _acc].
 
-'decode_error_error_undefined-condition_cdata'(<<>>) ->
-    undefined;
-'decode_error_error_undefined-condition_cdata'(_val) ->
-    _val.
-
-'encode_error_error_undefined-condition_cdata'(undefined,
-					       _acc) ->
-    _acc;
-'encode_error_error_undefined-condition_cdata'(_val,
-					       _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_error_error_subscription-required'({xmlel, _,
 					    _attrs, _els}) ->
     'subscription-required'.
@@ -3391,18 +3157,6 @@ encode_error_error_cdata(_val, _acc) ->
 	       <<"urn:ietf:params:xml:ns:xmpp-stanzas">>}],
     [{xmlel, <<"subscription-required">>, _attrs, _els}
      | _acc].
-
-'decode_error_error_subscription-required_cdata'(<<>>) ->
-    undefined;
-'decode_error_error_subscription-required_cdata'(_val) ->
-    _val.
-
-'encode_error_error_subscription-required_cdata'(undefined,
-						 _acc) ->
-    _acc;
-'encode_error_error_subscription-required_cdata'(_val,
-						 _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 'decode_error_error_service-unavailable'({xmlel, _,
 					  _attrs, _els}) ->
@@ -3419,18 +3173,6 @@ encode_error_error_cdata(_val, _acc) ->
     [{xmlel, <<"service-unavailable">>, _attrs, _els}
      | _acc].
 
-'decode_error_error_service-unavailable_cdata'(<<>>) ->
-    undefined;
-'decode_error_error_service-unavailable_cdata'(_val) ->
-    _val.
-
-'encode_error_error_service-unavailable_cdata'(undefined,
-					       _acc) ->
-    _acc;
-'encode_error_error_service-unavailable_cdata'(_val,
-					       _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_error_error_resource-constraint'({xmlel, _,
 					  _attrs, _els}) ->
     'resource-constraint'.
@@ -3445,18 +3187,6 @@ encode_error_error_cdata(_val, _acc) ->
 	       <<"urn:ietf:params:xml:ns:xmpp-stanzas">>}],
     [{xmlel, <<"resource-constraint">>, _attrs, _els}
      | _acc].
-
-'decode_error_error_resource-constraint_cdata'(<<>>) ->
-    undefined;
-'decode_error_error_resource-constraint_cdata'(_val) ->
-    _val.
-
-'encode_error_error_resource-constraint_cdata'(undefined,
-					       _acc) ->
-    _acc;
-'encode_error_error_resource-constraint_cdata'(_val,
-					       _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 'decode_error_error_remote-server-timeout'({xmlel, _,
 					    _attrs, _els}) ->
@@ -3473,18 +3203,6 @@ encode_error_error_cdata(_val, _acc) ->
     [{xmlel, <<"remote-server-timeout">>, _attrs, _els}
      | _acc].
 
-'decode_error_error_remote-server-timeout_cdata'(<<>>) ->
-    undefined;
-'decode_error_error_remote-server-timeout_cdata'(_val) ->
-    _val.
-
-'encode_error_error_remote-server-timeout_cdata'(undefined,
-						 _acc) ->
-    _acc;
-'encode_error_error_remote-server-timeout_cdata'(_val,
-						 _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_error_error_remote-server-not-found'({xmlel, _,
 					      _attrs, _els}) ->
     'remote-server-not-found'.
@@ -3500,18 +3218,6 @@ encode_error_error_cdata(_val, _acc) ->
     [{xmlel, <<"remote-server-not-found">>, _attrs, _els}
      | _acc].
 
-'decode_error_error_remote-server-not-found_cdata'(<<>>) ->
-    undefined;
-'decode_error_error_remote-server-not-found_cdata'(_val) ->
-    _val.
-
-'encode_error_error_remote-server-not-found_cdata'(undefined,
-						   _acc) ->
-    _acc;
-'encode_error_error_remote-server-not-found_cdata'(_val,
-						   _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_error_error_registration-required'({xmlel, _,
 					    _attrs, _els}) ->
     'registration-required'.
@@ -3526,18 +3232,6 @@ encode_error_error_cdata(_val, _acc) ->
 	       <<"urn:ietf:params:xml:ns:xmpp-stanzas">>}],
     [{xmlel, <<"registration-required">>, _attrs, _els}
      | _acc].
-
-'decode_error_error_registration-required_cdata'(<<>>) ->
-    undefined;
-'decode_error_error_registration-required_cdata'(_val) ->
-    _val.
-
-'encode_error_error_registration-required_cdata'(undefined,
-						 _acc) ->
-    _acc;
-'encode_error_error_registration-required_cdata'(_val,
-						 _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 decode_error_error_redirect({xmlel, _, _attrs, _els}) ->
     Cdata = decode_error_error_redirect_els(_els, <<>>),
@@ -3583,18 +3277,6 @@ encode_error_error_redirect_cdata(_val, _acc) ->
     [{xmlel, <<"recipient-unavailable">>, _attrs, _els}
      | _acc].
 
-'decode_error_error_recipient-unavailable_cdata'(<<>>) ->
-    undefined;
-'decode_error_error_recipient-unavailable_cdata'(_val) ->
-    _val.
-
-'encode_error_error_recipient-unavailable_cdata'(undefined,
-						 _acc) ->
-    _acc;
-'encode_error_error_recipient-unavailable_cdata'(_val,
-						 _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_error_error_policy-violation'({xmlel, _, _attrs,
 				       _els}) ->
     'policy-violation'.
@@ -3609,18 +3291,6 @@ encode_error_error_redirect_cdata(_val, _acc) ->
 	       <<"urn:ietf:params:xml:ns:xmpp-stanzas">>}],
     [{xmlel, <<"policy-violation">>, _attrs, _els} | _acc].
 
-'decode_error_error_policy-violation_cdata'(<<>>) ->
-    undefined;
-'decode_error_error_policy-violation_cdata'(_val) ->
-    _val.
-
-'encode_error_error_policy-violation_cdata'(undefined,
-					    _acc) ->
-    _acc;
-'encode_error_error_policy-violation_cdata'(_val,
-					    _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_error_error_not-authorized'({xmlel, _, _attrs,
 				     _els}) ->
     'not-authorized'.
@@ -3634,16 +3304,6 @@ encode_error_error_redirect_cdata(_val, _acc) ->
 	       <<"urn:ietf:params:xml:ns:xmpp-stanzas">>}],
     [{xmlel, <<"not-authorized">>, _attrs, _els} | _acc].
 
-'decode_error_error_not-authorized_cdata'(<<>>) ->
-    undefined;
-'decode_error_error_not-authorized_cdata'(_val) -> _val.
-
-'encode_error_error_not-authorized_cdata'(undefined,
-					  _acc) ->
-    _acc;
-'encode_error_error_not-authorized_cdata'(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_error_error_not-allowed'({xmlel, _, _attrs,
 				  _els}) ->
     'not-allowed'.
@@ -3655,16 +3315,6 @@ encode_error_error_redirect_cdata(_val, _acc) ->
     _attrs = [{<<"xmlns">>,
 	       <<"urn:ietf:params:xml:ns:xmpp-stanzas">>}],
     [{xmlel, <<"not-allowed">>, _attrs, _els} | _acc].
-
-'decode_error_error_not-allowed_cdata'(<<>>) ->
-    undefined;
-'decode_error_error_not-allowed_cdata'(_val) -> _val.
-
-'encode_error_error_not-allowed_cdata'(undefined,
-				       _acc) ->
-    _acc;
-'encode_error_error_not-allowed_cdata'(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 'decode_error_error_not-acceptable'({xmlel, _, _attrs,
 				     _els}) ->
@@ -3679,16 +3329,6 @@ encode_error_error_redirect_cdata(_val, _acc) ->
 	       <<"urn:ietf:params:xml:ns:xmpp-stanzas">>}],
     [{xmlel, <<"not-acceptable">>, _attrs, _els} | _acc].
 
-'decode_error_error_not-acceptable_cdata'(<<>>) ->
-    undefined;
-'decode_error_error_not-acceptable_cdata'(_val) -> _val.
-
-'encode_error_error_not-acceptable_cdata'(undefined,
-					  _acc) ->
-    _acc;
-'encode_error_error_not-acceptable_cdata'(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_error_error_jid-malformed'({xmlel, _, _attrs,
 				    _els}) ->
     'jid-malformed'.
@@ -3702,16 +3342,6 @@ encode_error_error_redirect_cdata(_val, _acc) ->
 	       <<"urn:ietf:params:xml:ns:xmpp-stanzas">>}],
     [{xmlel, <<"jid-malformed">>, _attrs, _els} | _acc].
 
-'decode_error_error_jid-malformed_cdata'(<<>>) ->
-    undefined;
-'decode_error_error_jid-malformed_cdata'(_val) -> _val.
-
-'encode_error_error_jid-malformed_cdata'(undefined,
-					 _acc) ->
-    _acc;
-'encode_error_error_jid-malformed_cdata'(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_error_error_item-not-found'({xmlel, _, _attrs,
 				     _els}) ->
     'item-not-found'.
@@ -3724,16 +3354,6 @@ encode_error_error_redirect_cdata(_val, _acc) ->
     _attrs = [{<<"xmlns">>,
 	       <<"urn:ietf:params:xml:ns:xmpp-stanzas">>}],
     [{xmlel, <<"item-not-found">>, _attrs, _els} | _acc].
-
-'decode_error_error_item-not-found_cdata'(<<>>) ->
-    undefined;
-'decode_error_error_item-not-found_cdata'(_val) -> _val.
-
-'encode_error_error_item-not-found_cdata'(undefined,
-					  _acc) ->
-    _acc;
-'encode_error_error_item-not-found_cdata'(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 'decode_error_error_internal-server-error'({xmlel, _,
 					    _attrs, _els}) ->
@@ -3749,18 +3369,6 @@ encode_error_error_redirect_cdata(_val, _acc) ->
 	       <<"urn:ietf:params:xml:ns:xmpp-stanzas">>}],
     [{xmlel, <<"internal-server-error">>, _attrs, _els}
      | _acc].
-
-'decode_error_error_internal-server-error_cdata'(<<>>) ->
-    undefined;
-'decode_error_error_internal-server-error_cdata'(_val) ->
-    _val.
-
-'encode_error_error_internal-server-error_cdata'(undefined,
-						 _acc) ->
-    _acc;
-'encode_error_error_internal-server-error_cdata'(_val,
-						 _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 decode_error_error_gone({xmlel, _, _attrs, _els}) ->
     Cdata = decode_error_error_gone_els(_els, <<>>),
@@ -3800,14 +3408,6 @@ encode_error_error_forbidden(forbidden, _acc) ->
 	       <<"urn:ietf:params:xml:ns:xmpp-stanzas">>}],
     [{xmlel, <<"forbidden">>, _attrs, _els} | _acc].
 
-decode_error_error_forbidden_cdata(<<>>) -> undefined;
-decode_error_error_forbidden_cdata(_val) -> _val.
-
-encode_error_error_forbidden_cdata(undefined, _acc) ->
-    _acc;
-encode_error_error_forbidden_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_error_error_feature-not-implemented'({xmlel, _,
 					      _attrs, _els}) ->
     'feature-not-implemented'.
@@ -3823,18 +3423,6 @@ encode_error_error_forbidden_cdata(_val, _acc) ->
     [{xmlel, <<"feature-not-implemented">>, _attrs, _els}
      | _acc].
 
-'decode_error_error_feature-not-implemented_cdata'(<<>>) ->
-    undefined;
-'decode_error_error_feature-not-implemented_cdata'(_val) ->
-    _val.
-
-'encode_error_error_feature-not-implemented_cdata'(undefined,
-						   _acc) ->
-    _acc;
-'encode_error_error_feature-not-implemented_cdata'(_val,
-						   _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 decode_error_error_conflict({xmlel, _, _attrs, _els}) ->
     conflict.
 
@@ -3844,14 +3432,6 @@ encode_error_error_conflict(conflict, _acc) ->
     _attrs = [{<<"xmlns">>,
 	       <<"urn:ietf:params:xml:ns:xmpp-stanzas">>}],
     [{xmlel, <<"conflict">>, _attrs, _els} | _acc].
-
-decode_error_error_conflict_cdata(<<>>) -> undefined;
-decode_error_error_conflict_cdata(_val) -> _val.
-
-encode_error_error_conflict_cdata(undefined, _acc) ->
-    _acc;
-encode_error_error_conflict_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 'decode_error_error_bad-request'({xmlel, _, _attrs,
 				  _els}) ->
@@ -3864,16 +3444,6 @@ encode_error_error_conflict_cdata(_val, _acc) ->
     _attrs = [{<<"xmlns">>,
 	       <<"urn:ietf:params:xml:ns:xmpp-stanzas">>}],
     [{xmlel, <<"bad-request">>, _attrs, _els} | _acc].
-
-'decode_error_error_bad-request_cdata'(<<>>) ->
-    undefined;
-'decode_error_error_bad-request_cdata'(_val) -> _val.
-
-'encode_error_error_bad-request_cdata'(undefined,
-				       _acc) ->
-    _acc;
-'encode_error_error_bad-request_cdata'(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 decode_error_error_text({xmlel, _, _attrs, _els}) ->
     Text_lang = decode_error_error_text_attrs(_attrs,
@@ -3962,13 +3532,6 @@ encode_bind_bind({bind, Jid, Resource}, _acc) ->
     _attrs = [{<<"xmlns">>,
 	       <<"urn:ietf:params:xml:ns:xmpp-bind">>}],
     [{xmlel, <<"bind">>, _attrs, _els} | _acc].
-
-decode_bind_bind_cdata(<<>>) -> undefined;
-decode_bind_bind_cdata(_val) -> _val.
-
-encode_bind_bind_cdata(undefined, _acc) -> _acc;
-encode_bind_bind_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 decode_bind_bind_resource({xmlel, _, _attrs, _els}) ->
     Cdata = decode_bind_bind_resource_els(_els, <<>>),
@@ -4097,13 +3660,6 @@ encode_sasl_abort_abort({sasl_abort}, _acc) ->
     _attrs = [{<<"xmlns">>,
 	       <<"urn:ietf:params:xml:ns:xmpp-sasl">>}],
     [{xmlel, <<"abort">>, _attrs, _els} | _acc].
-
-decode_sasl_abort_abort_cdata(<<>>) -> undefined;
-decode_sasl_abort_abort_cdata(_val) -> _val.
-
-encode_sasl_abort_abort_cdata(undefined, _acc) -> _acc;
-encode_sasl_abort_abort_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 decode_sasl_challenge_challenge({xmlel, _, _attrs,
 				 _els}) ->
@@ -4429,14 +3985,6 @@ encode_sasl_failure_failure({sasl_failure, Reason,
 	       <<"urn:ietf:params:xml:ns:xmpp-sasl">>}],
     [{xmlel, <<"failure">>, _attrs, _els} | _acc].
 
-decode_sasl_failure_failure_cdata(<<>>) -> undefined;
-decode_sasl_failure_failure_cdata(_val) -> _val.
-
-encode_sasl_failure_failure_cdata(undefined, _acc) ->
-    _acc;
-encode_sasl_failure_failure_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_sasl_failure_failure_temporary-auth-failure'({xmlel,
 						      _, _attrs, _els}) ->
     'temporary-auth-failure'.
@@ -4451,18 +3999,6 @@ encode_sasl_failure_failure_cdata(_val, _acc) ->
     [{xmlel, <<"temporary-auth-failure">>, _attrs, _els}
      | _acc].
 
-'decode_sasl_failure_failure_temporary-auth-failure_cdata'(<<>>) ->
-    undefined;
-'decode_sasl_failure_failure_temporary-auth-failure_cdata'(_val) ->
-    _val.
-
-'encode_sasl_failure_failure_temporary-auth-failure_cdata'(undefined,
-							   _acc) ->
-    _acc;
-'encode_sasl_failure_failure_temporary-auth-failure_cdata'(_val,
-							   _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_sasl_failure_failure_not-authorized'({xmlel, _,
 					      _attrs, _els}) ->
     'not-authorized'.
@@ -4475,18 +4011,6 @@ encode_sasl_failure_failure_cdata(_val, _acc) ->
     _els = [],
     _attrs = [],
     [{xmlel, <<"not-authorized">>, _attrs, _els} | _acc].
-
-'decode_sasl_failure_failure_not-authorized_cdata'(<<>>) ->
-    undefined;
-'decode_sasl_failure_failure_not-authorized_cdata'(_val) ->
-    _val.
-
-'encode_sasl_failure_failure_not-authorized_cdata'(undefined,
-						   _acc) ->
-    _acc;
-'encode_sasl_failure_failure_not-authorized_cdata'(_val,
-						   _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 'decode_sasl_failure_failure_mechanism-too-weak'({xmlel,
 						  _, _attrs, _els}) ->
@@ -4502,18 +4026,6 @@ encode_sasl_failure_failure_cdata(_val, _acc) ->
     [{xmlel, <<"mechanism-too-weak">>, _attrs, _els}
      | _acc].
 
-'decode_sasl_failure_failure_mechanism-too-weak_cdata'(<<>>) ->
-    undefined;
-'decode_sasl_failure_failure_mechanism-too-weak_cdata'(_val) ->
-    _val.
-
-'encode_sasl_failure_failure_mechanism-too-weak_cdata'(undefined,
-						       _acc) ->
-    _acc;
-'encode_sasl_failure_failure_mechanism-too-weak_cdata'(_val,
-						       _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_sasl_failure_failure_malformed-request'({xmlel,
 						 _, _attrs, _els}) ->
     'malformed-request'.
@@ -4526,18 +4038,6 @@ encode_sasl_failure_failure_cdata(_val, _acc) ->
     _els = [],
     _attrs = [],
     [{xmlel, <<"malformed-request">>, _attrs, _els} | _acc].
-
-'decode_sasl_failure_failure_malformed-request_cdata'(<<>>) ->
-    undefined;
-'decode_sasl_failure_failure_malformed-request_cdata'(_val) ->
-    _val.
-
-'encode_sasl_failure_failure_malformed-request_cdata'(undefined,
-						      _acc) ->
-    _acc;
-'encode_sasl_failure_failure_malformed-request_cdata'(_val,
-						      _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 'decode_sasl_failure_failure_invalid-mechanism'({xmlel,
 						 _, _attrs, _els}) ->
@@ -4552,18 +4052,6 @@ encode_sasl_failure_failure_cdata(_val, _acc) ->
     _attrs = [],
     [{xmlel, <<"invalid-mechanism">>, _attrs, _els} | _acc].
 
-'decode_sasl_failure_failure_invalid-mechanism_cdata'(<<>>) ->
-    undefined;
-'decode_sasl_failure_failure_invalid-mechanism_cdata'(_val) ->
-    _val.
-
-'encode_sasl_failure_failure_invalid-mechanism_cdata'(undefined,
-						      _acc) ->
-    _acc;
-'encode_sasl_failure_failure_invalid-mechanism_cdata'(_val,
-						      _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_sasl_failure_failure_invalid-authzid'({xmlel, _,
 					       _attrs, _els}) ->
     'invalid-authzid'.
@@ -4576,18 +4064,6 @@ encode_sasl_failure_failure_cdata(_val, _acc) ->
     _els = [],
     _attrs = [],
     [{xmlel, <<"invalid-authzid">>, _attrs, _els} | _acc].
-
-'decode_sasl_failure_failure_invalid-authzid_cdata'(<<>>) ->
-    undefined;
-'decode_sasl_failure_failure_invalid-authzid_cdata'(_val) ->
-    _val.
-
-'encode_sasl_failure_failure_invalid-authzid_cdata'(undefined,
-						    _acc) ->
-    _acc;
-'encode_sasl_failure_failure_invalid-authzid_cdata'(_val,
-						    _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 'decode_sasl_failure_failure_incorrect-encoding'({xmlel,
 						  _, _attrs, _els}) ->
@@ -4603,18 +4079,6 @@ encode_sasl_failure_failure_cdata(_val, _acc) ->
     [{xmlel, <<"incorrect-encoding">>, _attrs, _els}
      | _acc].
 
-'decode_sasl_failure_failure_incorrect-encoding_cdata'(<<>>) ->
-    undefined;
-'decode_sasl_failure_failure_incorrect-encoding_cdata'(_val) ->
-    _val.
-
-'encode_sasl_failure_failure_incorrect-encoding_cdata'(undefined,
-						       _acc) ->
-    _acc;
-'encode_sasl_failure_failure_incorrect-encoding_cdata'(_val,
-						       _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_sasl_failure_failure_encryption-required'({xmlel,
 						   _, _attrs, _els}) ->
     'encryption-required'.
@@ -4628,18 +4092,6 @@ encode_sasl_failure_failure_cdata(_val, _acc) ->
     _attrs = [],
     [{xmlel, <<"encryption-required">>, _attrs, _els}
      | _acc].
-
-'decode_sasl_failure_failure_encryption-required_cdata'(<<>>) ->
-    undefined;
-'decode_sasl_failure_failure_encryption-required_cdata'(_val) ->
-    _val.
-
-'encode_sasl_failure_failure_encryption-required_cdata'(undefined,
-							_acc) ->
-    _acc;
-'encode_sasl_failure_failure_encryption-required_cdata'(_val,
-							_acc) ->
-    [{xmlcdata, _val} | _acc].
 
 'decode_sasl_failure_failure_credentials-expired'({xmlel,
 						   _, _attrs, _els}) ->
@@ -4655,18 +4107,6 @@ encode_sasl_failure_failure_cdata(_val, _acc) ->
     [{xmlel, <<"credentials-expired">>, _attrs, _els}
      | _acc].
 
-'decode_sasl_failure_failure_credentials-expired_cdata'(<<>>) ->
-    undefined;
-'decode_sasl_failure_failure_credentials-expired_cdata'(_val) ->
-    _val.
-
-'encode_sasl_failure_failure_credentials-expired_cdata'(undefined,
-							_acc) ->
-    _acc;
-'encode_sasl_failure_failure_credentials-expired_cdata'(_val,
-							_acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_sasl_failure_failure_account-disabled'({xmlel,
 						_, _attrs, _els}) ->
     'account-disabled'.
@@ -4680,18 +4120,6 @@ encode_sasl_failure_failure_cdata(_val, _acc) ->
     _attrs = [],
     [{xmlel, <<"account-disabled">>, _attrs, _els} | _acc].
 
-'decode_sasl_failure_failure_account-disabled_cdata'(<<>>) ->
-    undefined;
-'decode_sasl_failure_failure_account-disabled_cdata'(_val) ->
-    _val.
-
-'encode_sasl_failure_failure_account-disabled_cdata'(undefined,
-						     _acc) ->
-    _acc;
-'encode_sasl_failure_failure_account-disabled_cdata'(_val,
-						     _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 decode_sasl_failure_failure_aborted({xmlel, _, _attrs,
 				     _els}) ->
     aborted.
@@ -4702,16 +4130,6 @@ encode_sasl_failure_failure_aborted(aborted, _acc) ->
     _els = [],
     _attrs = [],
     [{xmlel, <<"aborted">>, _attrs, _els} | _acc].
-
-decode_sasl_failure_failure_aborted_cdata(<<>>) ->
-    undefined;
-decode_sasl_failure_failure_aborted_cdata(_val) -> _val.
-
-encode_sasl_failure_failure_aborted_cdata(undefined,
-					  _acc) ->
-    _acc;
-encode_sasl_failure_failure_aborted_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 decode_sasl_failure_failure_text({xmlel, _, _attrs,
 				  _els}) ->
@@ -4848,16 +4266,6 @@ encode_sasl_mechanisms_mechanisms({sasl_mechanisms,
 	       <<"urn:ietf:params:xml:ns:xmpp-sasl">>}],
     [{xmlel, <<"mechanisms">>, _attrs, _els} | _acc].
 
-decode_sasl_mechanisms_mechanisms_cdata(<<>>) ->
-    undefined;
-decode_sasl_mechanisms_mechanisms_cdata(_val) -> _val.
-
-encode_sasl_mechanisms_mechanisms_cdata(undefined,
-					_acc) ->
-    _acc;
-encode_sasl_mechanisms_mechanisms_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 decode_starttls_starttls({xmlel, _, _attrs, _els}) ->
     Required = decode_starttls_starttls_els(_els, false),
     {starttls, Required}.
@@ -4884,13 +4292,6 @@ encode_starttls_starttls({starttls, Required}, _acc) ->
 	       <<"urn:ietf:params:xml:ns:xmpp-tls">>}],
     [{xmlel, <<"starttls">>, _attrs, _els} | _acc].
 
-decode_starttls_starttls_cdata(<<>>) -> undefined;
-decode_starttls_starttls_cdata(_val) -> _val.
-
-encode_starttls_starttls_cdata(undefined, _acc) -> _acc;
-encode_starttls_starttls_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 decode_starttls_starttls_required({xmlel, _, _attrs,
 				   _els}) ->
     true.
@@ -4900,16 +4301,6 @@ encode_starttls_starttls_required(true, _acc) ->
     _els = [],
     _attrs = [],
     [{xmlel, <<"required">>, _attrs, _els} | _acc].
-
-decode_starttls_starttls_required_cdata(<<>>) ->
-    undefined;
-decode_starttls_starttls_required_cdata(_val) -> _val.
-
-encode_starttls_starttls_required_cdata(undefined,
-					_acc) ->
-    _acc;
-encode_starttls_starttls_required_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 decode_starttls_proceed_proceed({xmlel, _, _attrs,
 				 _els}) ->
@@ -4924,16 +4315,6 @@ encode_starttls_proceed_proceed({starttls_proceed},
 	       <<"urn:ietf:params:xml:ns:xmpp-tls">>}],
     [{xmlel, <<"proceed">>, _attrs, _els} | _acc].
 
-decode_starttls_proceed_proceed_cdata(<<>>) ->
-    undefined;
-decode_starttls_proceed_proceed_cdata(_val) -> _val.
-
-encode_starttls_proceed_proceed_cdata(undefined,
-				      _acc) ->
-    _acc;
-encode_starttls_proceed_proceed_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 decode_starttls_failure_failure({xmlel, _, _attrs,
 				 _els}) ->
     {starttls_failure}.
@@ -4946,16 +4327,6 @@ encode_starttls_failure_failure({starttls_failure},
     _attrs = [{<<"xmlns">>,
 	       <<"urn:ietf:params:xml:ns:xmpp-tls">>}],
     [{xmlel, <<"failure">>, _attrs, _els} | _acc].
-
-decode_starttls_failure_failure_cdata(<<>>) ->
-    undefined;
-decode_starttls_failure_failure_cdata(_val) -> _val.
-
-encode_starttls_failure_failure_cdata(undefined,
-				      _acc) ->
-    _acc;
-encode_starttls_failure_failure_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 'decode_stream_features_stream:features'({xmlel, _,
 					  _attrs, _els}) ->
@@ -4988,18 +4359,6 @@ encode_starttls_failure_failure_cdata(_val, _acc) ->
     _attrs = [],
     [{xmlel, <<"stream:features">>, _attrs, _els} | _acc].
 
-'decode_stream_features_stream:features_cdata'(<<>>) ->
-    undefined;
-'decode_stream_features_stream:features_cdata'(_val) ->
-    _val.
-
-'encode_stream_features_stream:features_cdata'(undefined,
-					       _acc) ->
-    _acc;
-'encode_stream_features_stream:features_cdata'(_val,
-					       _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 decode_p1_push_push({xmlel, _, _attrs, _els}) ->
     {p1_push}.
 
@@ -5008,13 +4367,6 @@ encode_p1_push_push({p1_push}, _acc) ->
     _els = [],
     _attrs = [{<<"xmlns">>, <<"p1:push">>}],
     [{xmlel, <<"push">>, _attrs, _els} | _acc].
-
-decode_p1_push_push_cdata(<<>>) -> undefined;
-decode_p1_push_push_cdata(_val) -> _val.
-
-encode_p1_push_push_cdata(undefined, _acc) -> _acc;
-encode_p1_push_push_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 decode_p1_rebind_rebind({xmlel, _, _attrs, _els}) ->
     {p1_rebind}.
@@ -5025,13 +4377,6 @@ encode_p1_rebind_rebind({p1_rebind}, _acc) ->
     _attrs = [{<<"xmlns">>, <<"p1:rebind">>}],
     [{xmlel, <<"rebind">>, _attrs, _els} | _acc].
 
-decode_p1_rebind_rebind_cdata(<<>>) -> undefined;
-decode_p1_rebind_rebind_cdata(_val) -> _val.
-
-encode_p1_rebind_rebind_cdata(undefined, _acc) -> _acc;
-encode_p1_rebind_rebind_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 decode_p1_ack_ack({xmlel, _, _attrs, _els}) -> {p1_ack}.
 
 encode_p1_ack_ack(undefined, _acc) -> _acc;
@@ -5039,13 +4384,6 @@ encode_p1_ack_ack({p1_ack}, _acc) ->
     _els = [],
     _attrs = [{<<"xmlns">>, <<"p1:ack">>}],
     [{xmlel, <<"ack">>, _attrs, _els} | _acc].
-
-decode_p1_ack_ack_cdata(<<>>) -> undefined;
-decode_p1_ack_ack_cdata(_val) -> _val.
-
-encode_p1_ack_ack_cdata(undefined, _acc) -> _acc;
-encode_p1_ack_ack_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 decode_caps_c({xmlel, _, _attrs, _els}) ->
     {Ver, Node, Hash} = decode_caps_c_attrs(_attrs,
@@ -5104,13 +4442,6 @@ encode_caps_c_ver(undefined, _acc) -> _acc;
 encode_caps_c_ver(_val, _acc) ->
     [{<<"ver">>, base64:encode(_val)} | _acc].
 
-decode_caps_c_cdata(<<>>) -> undefined;
-decode_caps_c_cdata(_val) -> _val.
-
-encode_caps_c_cdata(undefined, _acc) -> _acc;
-encode_caps_c_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 decode_register_register({xmlel, _, _attrs, _els}) ->
     {register}.
 
@@ -5120,13 +4451,6 @@ encode_register_register({register}, _acc) ->
     _attrs = [{<<"xmlns">>,
 	       <<"http://jabber.org/features/iq-register">>}],
     [{xmlel, <<"register">>, _attrs, _els} | _acc].
-
-decode_register_register_cdata(<<>>) -> undefined;
-decode_register_register_cdata(_val) -> _val.
-
-encode_register_register_cdata(undefined, _acc) -> _acc;
-encode_register_register_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 decode_session_session({xmlel, _, _attrs, _els}) ->
     {session}.
@@ -5138,13 +4462,6 @@ encode_session_session({session}, _acc) ->
 	       <<"urn:ietf:params:xml:ns:xmpp-session">>}],
     [{xmlel, <<"session">>, _attrs, _els} | _acc].
 
-decode_session_session_cdata(<<>>) -> undefined;
-decode_session_session_cdata(_val) -> _val.
-
-encode_session_session_cdata(undefined, _acc) -> _acc;
-encode_session_session_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 decode_ping_ping({xmlel, _, _attrs, _els}) -> {ping}.
 
 encode_ping_ping(undefined, _acc) -> _acc;
@@ -5152,13 +4469,6 @@ encode_ping_ping({ping}, _acc) ->
     _els = [],
     _attrs = [{<<"xmlns">>, <<"urn:xmpp:ping">>}],
     [{xmlel, <<"ping">>, _attrs, _els} | _acc].
-
-decode_ping_ping_cdata(<<>>) -> undefined;
-decode_ping_ping_cdata(_val) -> _val.
-
-encode_ping_ping_cdata(undefined, _acc) -> _acc;
-encode_ping_ping_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 decode_time_time({xmlel, _, _attrs, _els}) ->
     {Utc, Tzo} = decode_time_time_els(_els, undefined,
@@ -5195,13 +4505,6 @@ encode_time_time({time, Tzo, Utc}, _acc) ->
 				encode_time_time_utc(Utc, [])),
     _attrs = [{<<"xmlns">>, <<"urn:xmpp:time">>}],
     [{xmlel, <<"time">>, _attrs, _els} | _acc].
-
-decode_time_time_cdata(<<>>) -> undefined;
-decode_time_time_cdata(_val) -> _val.
-
-encode_time_time_cdata(undefined, _acc) -> _acc;
-encode_time_time_cdata(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 decode_time_time_utc({xmlel, _, _attrs, _els}) ->
     Cdata = decode_time_time_utc_els(_els, <<>>), Cdata.
@@ -5758,16 +5061,6 @@ encode_time_time_tzo_cdata(_val, _acc) ->
     _attrs = [],
     [{xmlel, <<"stream:error">>, _attrs, _els} | _acc].
 
-'decode_stream_error_stream:error_cdata'(<<>>) ->
-    undefined;
-'decode_stream_error_stream:error_cdata'(_val) -> _val.
-
-'encode_stream_error_stream:error_cdata'(undefined,
-					 _acc) ->
-    _acc;
-'encode_stream_error_stream:error_cdata'(_val, _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_stream_error_stream:error_unsupported-version'({xmlel,
 							_, _attrs, _els}) ->
     'unsupported-version'.
@@ -5782,18 +5075,6 @@ encode_time_time_tzo_cdata(_val, _acc) ->
 	       <<"urn:ietf:params:xml:ns:xmpp-streams">>}],
     [{xmlel, <<"unsupported-version">>, _attrs, _els}
      | _acc].
-
-'decode_stream_error_stream:error_unsupported-version_cdata'(<<>>) ->
-    undefined;
-'decode_stream_error_stream:error_unsupported-version_cdata'(_val) ->
-    _val.
-
-'encode_stream_error_stream:error_unsupported-version_cdata'(undefined,
-							     _acc) ->
-    _acc;
-'encode_stream_error_stream:error_unsupported-version_cdata'(_val,
-							     _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 'decode_stream_error_stream:error_unsupported-stanza-type'({xmlel,
 							    _, _attrs, _els}) ->
@@ -5810,18 +5091,6 @@ encode_time_time_tzo_cdata(_val, _acc) ->
     [{xmlel, <<"unsupported-stanza-type">>, _attrs, _els}
      | _acc].
 
-'decode_stream_error_stream:error_unsupported-stanza-type_cdata'(<<>>) ->
-    undefined;
-'decode_stream_error_stream:error_unsupported-stanza-type_cdata'(_val) ->
-    _val.
-
-'encode_stream_error_stream:error_unsupported-stanza-type_cdata'(undefined,
-								 _acc) ->
-    _acc;
-'encode_stream_error_stream:error_unsupported-stanza-type_cdata'(_val,
-								 _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_stream_error_stream:error_unsupported-encoding'({xmlel,
 							 _, _attrs, _els}) ->
     'unsupported-encoding'.
@@ -5836,18 +5105,6 @@ encode_time_time_tzo_cdata(_val, _acc) ->
 	       <<"urn:ietf:params:xml:ns:xmpp-streams">>}],
     [{xmlel, <<"unsupported-encoding">>, _attrs, _els}
      | _acc].
-
-'decode_stream_error_stream:error_unsupported-encoding_cdata'(<<>>) ->
-    undefined;
-'decode_stream_error_stream:error_unsupported-encoding_cdata'(_val) ->
-    _val.
-
-'encode_stream_error_stream:error_unsupported-encoding_cdata'(undefined,
-							      _acc) ->
-    _acc;
-'encode_stream_error_stream:error_unsupported-encoding_cdata'(_val,
-							      _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 'decode_stream_error_stream:error_undefined-condition'({xmlel,
 							_, _attrs, _els}) ->
@@ -5864,18 +5121,6 @@ encode_time_time_tzo_cdata(_val, _acc) ->
     [{xmlel, <<"undefined-condition">>, _attrs, _els}
      | _acc].
 
-'decode_stream_error_stream:error_undefined-condition_cdata'(<<>>) ->
-    undefined;
-'decode_stream_error_stream:error_undefined-condition_cdata'(_val) ->
-    _val.
-
-'encode_stream_error_stream:error_undefined-condition_cdata'(undefined,
-							     _acc) ->
-    _acc;
-'encode_stream_error_stream:error_undefined-condition_cdata'(_val,
-							     _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_stream_error_stream:error_system-shutdown'({xmlel,
 						    _, _attrs, _els}) ->
     'system-shutdown'.
@@ -5889,18 +5134,6 @@ encode_time_time_tzo_cdata(_val, _acc) ->
     _attrs = [{<<"xmlns">>,
 	       <<"urn:ietf:params:xml:ns:xmpp-streams">>}],
     [{xmlel, <<"system-shutdown">>, _attrs, _els} | _acc].
-
-'decode_stream_error_stream:error_system-shutdown_cdata'(<<>>) ->
-    undefined;
-'decode_stream_error_stream:error_system-shutdown_cdata'(_val) ->
-    _val.
-
-'encode_stream_error_stream:error_system-shutdown_cdata'(undefined,
-							 _acc) ->
-    _acc;
-'encode_stream_error_stream:error_system-shutdown_cdata'(_val,
-							 _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 'decode_stream_error_stream:error_see-other-host'({xmlel,
 						   _, _attrs, _els}) ->
@@ -5964,18 +5197,6 @@ encode_time_time_tzo_cdata(_val, _acc) ->
 	       <<"urn:ietf:params:xml:ns:xmpp-streams">>}],
     [{xmlel, <<"restricted-xml">>, _attrs, _els} | _acc].
 
-'decode_stream_error_stream:error_restricted-xml_cdata'(<<>>) ->
-    undefined;
-'decode_stream_error_stream:error_restricted-xml_cdata'(_val) ->
-    _val.
-
-'encode_stream_error_stream:error_restricted-xml_cdata'(undefined,
-							_acc) ->
-    _acc;
-'encode_stream_error_stream:error_restricted-xml_cdata'(_val,
-							_acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_stream_error_stream:error_resource-constraint'({xmlel,
 							_, _attrs, _els}) ->
     'resource-constraint'.
@@ -5991,18 +5212,6 @@ encode_time_time_tzo_cdata(_val, _acc) ->
     [{xmlel, <<"resource-constraint">>, _attrs, _els}
      | _acc].
 
-'decode_stream_error_stream:error_resource-constraint_cdata'(<<>>) ->
-    undefined;
-'decode_stream_error_stream:error_resource-constraint_cdata'(_val) ->
-    _val.
-
-'encode_stream_error_stream:error_resource-constraint_cdata'(undefined,
-							     _acc) ->
-    _acc;
-'encode_stream_error_stream:error_resource-constraint_cdata'(_val,
-							     _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_stream_error_stream:error_reset'({xmlel, _,
 					  _attrs, _els}) ->
     reset.
@@ -6015,18 +5224,6 @@ encode_time_time_tzo_cdata(_val, _acc) ->
     _attrs = [{<<"xmlns">>,
 	       <<"urn:ietf:params:xml:ns:xmpp-streams">>}],
     [{xmlel, <<"reset">>, _attrs, _els} | _acc].
-
-'decode_stream_error_stream:error_reset_cdata'(<<>>) ->
-    undefined;
-'decode_stream_error_stream:error_reset_cdata'(_val) ->
-    _val.
-
-'encode_stream_error_stream:error_reset_cdata'(undefined,
-					       _acc) ->
-    _acc;
-'encode_stream_error_stream:error_reset_cdata'(_val,
-					       _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 'decode_stream_error_stream:error_remote-connection-failed'({xmlel,
 							     _, _attrs,
@@ -6044,18 +5241,6 @@ encode_time_time_tzo_cdata(_val, _acc) ->
     [{xmlel, <<"remote-connection-failed">>, _attrs, _els}
      | _acc].
 
-'decode_stream_error_stream:error_remote-connection-failed_cdata'(<<>>) ->
-    undefined;
-'decode_stream_error_stream:error_remote-connection-failed_cdata'(_val) ->
-    _val.
-
-'encode_stream_error_stream:error_remote-connection-failed_cdata'(undefined,
-								  _acc) ->
-    _acc;
-'encode_stream_error_stream:error_remote-connection-failed_cdata'(_val,
-								  _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_stream_error_stream:error_policy-violation'({xmlel,
 						     _, _attrs, _els}) ->
     'policy-violation'.
@@ -6069,18 +5254,6 @@ encode_time_time_tzo_cdata(_val, _acc) ->
     _attrs = [{<<"xmlns">>,
 	       <<"urn:ietf:params:xml:ns:xmpp-streams">>}],
     [{xmlel, <<"policy-violation">>, _attrs, _els} | _acc].
-
-'decode_stream_error_stream:error_policy-violation_cdata'(<<>>) ->
-    undefined;
-'decode_stream_error_stream:error_policy-violation_cdata'(_val) ->
-    _val.
-
-'encode_stream_error_stream:error_policy-violation_cdata'(undefined,
-							  _acc) ->
-    _acc;
-'encode_stream_error_stream:error_policy-violation_cdata'(_val,
-							  _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 'decode_stream_error_stream:error_not-well-formed'({xmlel,
 						    _, _attrs, _els}) ->
@@ -6096,18 +5269,6 @@ encode_time_time_tzo_cdata(_val, _acc) ->
 	       <<"urn:ietf:params:xml:ns:xmpp-streams">>}],
     [{xmlel, <<"not-well-formed">>, _attrs, _els} | _acc].
 
-'decode_stream_error_stream:error_not-well-formed_cdata'(<<>>) ->
-    undefined;
-'decode_stream_error_stream:error_not-well-formed_cdata'(_val) ->
-    _val.
-
-'encode_stream_error_stream:error_not-well-formed_cdata'(undefined,
-							 _acc) ->
-    _acc;
-'encode_stream_error_stream:error_not-well-formed_cdata'(_val,
-							 _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_stream_error_stream:error_not-authorized'({xmlel,
 						   _, _attrs, _els}) ->
     'not-authorized'.
@@ -6121,18 +5282,6 @@ encode_time_time_tzo_cdata(_val, _acc) ->
     _attrs = [{<<"xmlns">>,
 	       <<"urn:ietf:params:xml:ns:xmpp-streams">>}],
     [{xmlel, <<"not-authorized">>, _attrs, _els} | _acc].
-
-'decode_stream_error_stream:error_not-authorized_cdata'(<<>>) ->
-    undefined;
-'decode_stream_error_stream:error_not-authorized_cdata'(_val) ->
-    _val.
-
-'encode_stream_error_stream:error_not-authorized_cdata'(undefined,
-							_acc) ->
-    _acc;
-'encode_stream_error_stream:error_not-authorized_cdata'(_val,
-							_acc) ->
-    [{xmlcdata, _val} | _acc].
 
 'decode_stream_error_stream:error_invalid-xml'({xmlel,
 						_, _attrs, _els}) ->
@@ -6148,18 +5297,6 @@ encode_time_time_tzo_cdata(_val, _acc) ->
 	       <<"urn:ietf:params:xml:ns:xmpp-streams">>}],
     [{xmlel, <<"invalid-xml">>, _attrs, _els} | _acc].
 
-'decode_stream_error_stream:error_invalid-xml_cdata'(<<>>) ->
-    undefined;
-'decode_stream_error_stream:error_invalid-xml_cdata'(_val) ->
-    _val.
-
-'encode_stream_error_stream:error_invalid-xml_cdata'(undefined,
-						     _acc) ->
-    _acc;
-'encode_stream_error_stream:error_invalid-xml_cdata'(_val,
-						     _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_stream_error_stream:error_invalid-namespace'({xmlel,
 						      _, _attrs, _els}) ->
     'invalid-namespace'.
@@ -6173,18 +5310,6 @@ encode_time_time_tzo_cdata(_val, _acc) ->
     _attrs = [{<<"xmlns">>,
 	       <<"urn:ietf:params:xml:ns:xmpp-streams">>}],
     [{xmlel, <<"invalid-namespace">>, _attrs, _els} | _acc].
-
-'decode_stream_error_stream:error_invalid-namespace_cdata'(<<>>) ->
-    undefined;
-'decode_stream_error_stream:error_invalid-namespace_cdata'(_val) ->
-    _val.
-
-'encode_stream_error_stream:error_invalid-namespace_cdata'(undefined,
-							   _acc) ->
-    _acc;
-'encode_stream_error_stream:error_invalid-namespace_cdata'(_val,
-							   _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 'decode_stream_error_stream:error_invalid-id'({xmlel, _,
 					       _attrs, _els}) ->
@@ -6200,18 +5325,6 @@ encode_time_time_tzo_cdata(_val, _acc) ->
 	       <<"urn:ietf:params:xml:ns:xmpp-streams">>}],
     [{xmlel, <<"invalid-id">>, _attrs, _els} | _acc].
 
-'decode_stream_error_stream:error_invalid-id_cdata'(<<>>) ->
-    undefined;
-'decode_stream_error_stream:error_invalid-id_cdata'(_val) ->
-    _val.
-
-'encode_stream_error_stream:error_invalid-id_cdata'(undefined,
-						    _acc) ->
-    _acc;
-'encode_stream_error_stream:error_invalid-id_cdata'(_val,
-						    _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_stream_error_stream:error_invalid-from'({xmlel,
 						 _, _attrs, _els}) ->
     'invalid-from'.
@@ -6225,18 +5338,6 @@ encode_time_time_tzo_cdata(_val, _acc) ->
     _attrs = [{<<"xmlns">>,
 	       <<"urn:ietf:params:xml:ns:xmpp-streams">>}],
     [{xmlel, <<"invalid-from">>, _attrs, _els} | _acc].
-
-'decode_stream_error_stream:error_invalid-from_cdata'(<<>>) ->
-    undefined;
-'decode_stream_error_stream:error_invalid-from_cdata'(_val) ->
-    _val.
-
-'encode_stream_error_stream:error_invalid-from_cdata'(undefined,
-						      _acc) ->
-    _acc;
-'encode_stream_error_stream:error_invalid-from_cdata'(_val,
-						      _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 'decode_stream_error_stream:error_internal-server-error'({xmlel,
 							  _, _attrs, _els}) ->
@@ -6253,18 +5354,6 @@ encode_time_time_tzo_cdata(_val, _acc) ->
     [{xmlel, <<"internal-server-error">>, _attrs, _els}
      | _acc].
 
-'decode_stream_error_stream:error_internal-server-error_cdata'(<<>>) ->
-    undefined;
-'decode_stream_error_stream:error_internal-server-error_cdata'(_val) ->
-    _val.
-
-'encode_stream_error_stream:error_internal-server-error_cdata'(undefined,
-							       _acc) ->
-    _acc;
-'encode_stream_error_stream:error_internal-server-error_cdata'(_val,
-							       _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_stream_error_stream:error_improper-addressing'({xmlel,
 							_, _attrs, _els}) ->
     'improper-addressing'.
@@ -6280,18 +5369,6 @@ encode_time_time_tzo_cdata(_val, _acc) ->
     [{xmlel, <<"improper-addressing">>, _attrs, _els}
      | _acc].
 
-'decode_stream_error_stream:error_improper-addressing_cdata'(<<>>) ->
-    undefined;
-'decode_stream_error_stream:error_improper-addressing_cdata'(_val) ->
-    _val.
-
-'encode_stream_error_stream:error_improper-addressing_cdata'(undefined,
-							     _acc) ->
-    _acc;
-'encode_stream_error_stream:error_improper-addressing_cdata'(_val,
-							     _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_stream_error_stream:error_host-unknown'({xmlel,
 						 _, _attrs, _els}) ->
     'host-unknown'.
@@ -6306,18 +5383,6 @@ encode_time_time_tzo_cdata(_val, _acc) ->
 	       <<"urn:ietf:params:xml:ns:xmpp-streams">>}],
     [{xmlel, <<"host-unknown">>, _attrs, _els} | _acc].
 
-'decode_stream_error_stream:error_host-unknown_cdata'(<<>>) ->
-    undefined;
-'decode_stream_error_stream:error_host-unknown_cdata'(_val) ->
-    _val.
-
-'encode_stream_error_stream:error_host-unknown_cdata'(undefined,
-						      _acc) ->
-    _acc;
-'encode_stream_error_stream:error_host-unknown_cdata'(_val,
-						      _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_stream_error_stream:error_host-gone'({xmlel, _,
 					      _attrs, _els}) ->
     'host-gone'.
@@ -6331,18 +5396,6 @@ encode_time_time_tzo_cdata(_val, _acc) ->
     _attrs = [{<<"xmlns">>,
 	       <<"urn:ietf:params:xml:ns:xmpp-streams">>}],
     [{xmlel, <<"host-gone">>, _attrs, _els} | _acc].
-
-'decode_stream_error_stream:error_host-gone_cdata'(<<>>) ->
-    undefined;
-'decode_stream_error_stream:error_host-gone_cdata'(_val) ->
-    _val.
-
-'encode_stream_error_stream:error_host-gone_cdata'(undefined,
-						   _acc) ->
-    _acc;
-'encode_stream_error_stream:error_host-gone_cdata'(_val,
-						   _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 'decode_stream_error_stream:error_connection-timeout'({xmlel,
 						       _, _attrs, _els}) ->
@@ -6359,18 +5412,6 @@ encode_time_time_tzo_cdata(_val, _acc) ->
     [{xmlel, <<"connection-timeout">>, _attrs, _els}
      | _acc].
 
-'decode_stream_error_stream:error_connection-timeout_cdata'(<<>>) ->
-    undefined;
-'decode_stream_error_stream:error_connection-timeout_cdata'(_val) ->
-    _val.
-
-'encode_stream_error_stream:error_connection-timeout_cdata'(undefined,
-							    _acc) ->
-    _acc;
-'encode_stream_error_stream:error_connection-timeout_cdata'(_val,
-							    _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_stream_error_stream:error_conflict'({xmlel, _,
 					     _attrs, _els}) ->
     conflict.
@@ -6384,18 +5425,6 @@ encode_time_time_tzo_cdata(_val, _acc) ->
     _attrs = [{<<"xmlns">>,
 	       <<"urn:ietf:params:xml:ns:xmpp-streams">>}],
     [{xmlel, <<"conflict">>, _attrs, _els} | _acc].
-
-'decode_stream_error_stream:error_conflict_cdata'(<<>>) ->
-    undefined;
-'decode_stream_error_stream:error_conflict_cdata'(_val) ->
-    _val.
-
-'encode_stream_error_stream:error_conflict_cdata'(undefined,
-						  _acc) ->
-    _acc;
-'encode_stream_error_stream:error_conflict_cdata'(_val,
-						  _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 'decode_stream_error_stream:error_bad-namespace-prefix'({xmlel,
 							 _, _attrs, _els}) ->
@@ -6412,18 +5441,6 @@ encode_time_time_tzo_cdata(_val, _acc) ->
     [{xmlel, <<"bad-namespace-prefix">>, _attrs, _els}
      | _acc].
 
-'decode_stream_error_stream:error_bad-namespace-prefix_cdata'(<<>>) ->
-    undefined;
-'decode_stream_error_stream:error_bad-namespace-prefix_cdata'(_val) ->
-    _val.
-
-'encode_stream_error_stream:error_bad-namespace-prefix_cdata'(undefined,
-							      _acc) ->
-    _acc;
-'encode_stream_error_stream:error_bad-namespace-prefix_cdata'(_val,
-							      _acc) ->
-    [{xmlcdata, _val} | _acc].
-
 'decode_stream_error_stream:error_bad-format'({xmlel, _,
 					       _attrs, _els}) ->
     'bad-format'.
@@ -6437,18 +5454,6 @@ encode_time_time_tzo_cdata(_val, _acc) ->
     _attrs = [{<<"xmlns">>,
 	       <<"urn:ietf:params:xml:ns:xmpp-streams">>}],
     [{xmlel, <<"bad-format">>, _attrs, _els} | _acc].
-
-'decode_stream_error_stream:error_bad-format_cdata'(<<>>) ->
-    undefined;
-'decode_stream_error_stream:error_bad-format_cdata'(_val) ->
-    _val.
-
-'encode_stream_error_stream:error_bad-format_cdata'(undefined,
-						    _acc) ->
-    _acc;
-'encode_stream_error_stream:error_bad-format_cdata'(_val,
-						    _acc) ->
-    [{xmlcdata, _val} | _acc].
 
 'decode_stream_error_stream:error_text'({xmlel, _,
 					 _attrs, _els}) ->
@@ -6525,4 +5530,3542 @@ encode_time_time_tzo_cdata(_val, _acc) ->
     _acc;
 'encode_stream_error_stream:error_text_cdata'(_val,
 					      _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_name_N({xmlel, _, _attrs, _els}) ->
+    {Suffix, Prefix, Middle, Given, Family} =
+	decode_vcard_name_N_els(_els, undefined, undefined,
+				undefined, undefined, undefined),
+    {vcard_name, Family, Given, Middle, Prefix, Suffix}.
+
+decode_vcard_name_N_els([{xmlel, <<"SUFFIX">>, _attrs,
+			  _} =
+			     _el
+			 | _els],
+			Suffix, Prefix, Middle, Given, Family) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_name_N_els(_els,
+				  decode_vcard_name_N_SUFFIX(_el), Prefix,
+				  Middle, Given, Family);
+      _ ->
+	  decode_vcard_name_N_els(_els, Suffix, Prefix, Middle,
+				  Given, Family)
+    end;
+decode_vcard_name_N_els([{xmlel, <<"PREFIX">>, _attrs,
+			  _} =
+			     _el
+			 | _els],
+			Suffix, Prefix, Middle, Given, Family) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_name_N_els(_els, Suffix,
+				  decode_vcard_name_N_PREFIX(_el), Middle,
+				  Given, Family);
+      _ ->
+	  decode_vcard_name_N_els(_els, Suffix, Prefix, Middle,
+				  Given, Family)
+    end;
+decode_vcard_name_N_els([{xmlel, <<"MIDDLE">>, _attrs,
+			  _} =
+			     _el
+			 | _els],
+			Suffix, Prefix, Middle, Given, Family) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_name_N_els(_els, Suffix, Prefix,
+				  decode_vcard_name_N_MIDDLE(_el), Given,
+				  Family);
+      _ ->
+	  decode_vcard_name_N_els(_els, Suffix, Prefix, Middle,
+				  Given, Family)
+    end;
+decode_vcard_name_N_els([{xmlel, <<"GIVEN">>, _attrs,
+			  _} =
+			     _el
+			 | _els],
+			Suffix, Prefix, Middle, Given, Family) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_name_N_els(_els, Suffix, Prefix, Middle,
+				  decode_vcard_name_N_GIVEN(_el), Family);
+      _ ->
+	  decode_vcard_name_N_els(_els, Suffix, Prefix, Middle,
+				  Given, Family)
+    end;
+decode_vcard_name_N_els([{xmlel, <<"FAMILY">>, _attrs,
+			  _} =
+			     _el
+			 | _els],
+			Suffix, Prefix, Middle, Given, Family) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_name_N_els(_els, Suffix, Prefix, Middle,
+				  Given, decode_vcard_name_N_FAMILY(_el));
+      _ ->
+	  decode_vcard_name_N_els(_els, Suffix, Prefix, Middle,
+				  Given, Family)
+    end;
+decode_vcard_name_N_els([_ | _els], Suffix, Prefix,
+			Middle, Given, Family) ->
+    decode_vcard_name_N_els(_els, Suffix, Prefix, Middle,
+			    Given, Family);
+decode_vcard_name_N_els([], Suffix, Prefix, Middle,
+			Given, Family) ->
+    {Suffix, Prefix, Middle, Given, Family}.
+
+encode_vcard_name_N(undefined, _acc) -> _acc;
+encode_vcard_name_N({vcard_name, Family, Given, Middle,
+		     Prefix, Suffix},
+		    _acc) ->
+    _els = encode_vcard_name_N_FAMILY(Family,
+				      encode_vcard_name_N_GIVEN(Given,
+								encode_vcard_name_N_MIDDLE(Middle,
+											   encode_vcard_name_N_PREFIX(Prefix,
+														      encode_vcard_name_N_SUFFIX(Suffix,
+																		 []))))),
+    _attrs = [],
+    [{xmlel, <<"N">>, _attrs, _els} | _acc].
+
+decode_vcard_name_N_SUFFIX({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_name_N_SUFFIX_els(_els, <<>>),
+    Cdata.
+
+decode_vcard_name_N_SUFFIX_els([{xmlcdata, _data}
+				| _els],
+			       Cdata) ->
+    decode_vcard_name_N_SUFFIX_els(_els,
+				   <<Cdata/binary, _data/binary>>);
+decode_vcard_name_N_SUFFIX_els([_ | _els], Cdata) ->
+    decode_vcard_name_N_SUFFIX_els(_els, Cdata);
+decode_vcard_name_N_SUFFIX_els([], Cdata) ->
+    decode_vcard_name_N_SUFFIX_cdata(Cdata).
+
+encode_vcard_name_N_SUFFIX(undefined, _acc) -> _acc;
+encode_vcard_name_N_SUFFIX(Cdata, _acc) ->
+    _els = encode_vcard_name_N_SUFFIX_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"SUFFIX">>, _attrs, _els} | _acc].
+
+decode_vcard_name_N_SUFFIX_cdata(<<>>) -> undefined;
+decode_vcard_name_N_SUFFIX_cdata(_val) -> _val.
+
+encode_vcard_name_N_SUFFIX_cdata(undefined, _acc) ->
+    _acc;
+encode_vcard_name_N_SUFFIX_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_name_N_PREFIX({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_name_N_PREFIX_els(_els, <<>>),
+    Cdata.
+
+decode_vcard_name_N_PREFIX_els([{xmlcdata, _data}
+				| _els],
+			       Cdata) ->
+    decode_vcard_name_N_PREFIX_els(_els,
+				   <<Cdata/binary, _data/binary>>);
+decode_vcard_name_N_PREFIX_els([_ | _els], Cdata) ->
+    decode_vcard_name_N_PREFIX_els(_els, Cdata);
+decode_vcard_name_N_PREFIX_els([], Cdata) ->
+    decode_vcard_name_N_PREFIX_cdata(Cdata).
+
+encode_vcard_name_N_PREFIX(undefined, _acc) -> _acc;
+encode_vcard_name_N_PREFIX(Cdata, _acc) ->
+    _els = encode_vcard_name_N_PREFIX_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"PREFIX">>, _attrs, _els} | _acc].
+
+decode_vcard_name_N_PREFIX_cdata(<<>>) -> undefined;
+decode_vcard_name_N_PREFIX_cdata(_val) -> _val.
+
+encode_vcard_name_N_PREFIX_cdata(undefined, _acc) ->
+    _acc;
+encode_vcard_name_N_PREFIX_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_name_N_MIDDLE({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_name_N_MIDDLE_els(_els, <<>>),
+    Cdata.
+
+decode_vcard_name_N_MIDDLE_els([{xmlcdata, _data}
+				| _els],
+			       Cdata) ->
+    decode_vcard_name_N_MIDDLE_els(_els,
+				   <<Cdata/binary, _data/binary>>);
+decode_vcard_name_N_MIDDLE_els([_ | _els], Cdata) ->
+    decode_vcard_name_N_MIDDLE_els(_els, Cdata);
+decode_vcard_name_N_MIDDLE_els([], Cdata) ->
+    decode_vcard_name_N_MIDDLE_cdata(Cdata).
+
+encode_vcard_name_N_MIDDLE(undefined, _acc) -> _acc;
+encode_vcard_name_N_MIDDLE(Cdata, _acc) ->
+    _els = encode_vcard_name_N_MIDDLE_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"MIDDLE">>, _attrs, _els} | _acc].
+
+decode_vcard_name_N_MIDDLE_cdata(<<>>) -> undefined;
+decode_vcard_name_N_MIDDLE_cdata(_val) -> _val.
+
+encode_vcard_name_N_MIDDLE_cdata(undefined, _acc) ->
+    _acc;
+encode_vcard_name_N_MIDDLE_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_name_N_GIVEN({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_name_N_GIVEN_els(_els, <<>>),
+    Cdata.
+
+decode_vcard_name_N_GIVEN_els([{xmlcdata, _data}
+			       | _els],
+			      Cdata) ->
+    decode_vcard_name_N_GIVEN_els(_els,
+				  <<Cdata/binary, _data/binary>>);
+decode_vcard_name_N_GIVEN_els([_ | _els], Cdata) ->
+    decode_vcard_name_N_GIVEN_els(_els, Cdata);
+decode_vcard_name_N_GIVEN_els([], Cdata) ->
+    decode_vcard_name_N_GIVEN_cdata(Cdata).
+
+encode_vcard_name_N_GIVEN(undefined, _acc) -> _acc;
+encode_vcard_name_N_GIVEN(Cdata, _acc) ->
+    _els = encode_vcard_name_N_GIVEN_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"GIVEN">>, _attrs, _els} | _acc].
+
+decode_vcard_name_N_GIVEN_cdata(<<>>) -> undefined;
+decode_vcard_name_N_GIVEN_cdata(_val) -> _val.
+
+encode_vcard_name_N_GIVEN_cdata(undefined, _acc) ->
+    _acc;
+encode_vcard_name_N_GIVEN_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_name_N_FAMILY({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_name_N_FAMILY_els(_els, <<>>),
+    Cdata.
+
+decode_vcard_name_N_FAMILY_els([{xmlcdata, _data}
+				| _els],
+			       Cdata) ->
+    decode_vcard_name_N_FAMILY_els(_els,
+				   <<Cdata/binary, _data/binary>>);
+decode_vcard_name_N_FAMILY_els([_ | _els], Cdata) ->
+    decode_vcard_name_N_FAMILY_els(_els, Cdata);
+decode_vcard_name_N_FAMILY_els([], Cdata) ->
+    decode_vcard_name_N_FAMILY_cdata(Cdata).
+
+encode_vcard_name_N_FAMILY(undefined, _acc) -> _acc;
+encode_vcard_name_N_FAMILY(Cdata, _acc) ->
+    _els = encode_vcard_name_N_FAMILY_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"FAMILY">>, _attrs, _els} | _acc].
+
+decode_vcard_name_N_FAMILY_cdata(<<>>) -> undefined;
+decode_vcard_name_N_FAMILY_cdata(_val) -> _val.
+
+encode_vcard_name_N_FAMILY_cdata(undefined, _acc) ->
+    _acc;
+encode_vcard_name_N_FAMILY_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_adr_ADR({xmlel, _, _attrs, _els}) ->
+    {Ctry, Pcode, Region, Locality, Street, Extadd, Pobox,
+     Pref, Intl, Dom, Parcel, Postal, Work, Home} =
+	decode_vcard_adr_ADR_els(_els, undefined, undefined,
+				 undefined, undefined, undefined, undefined,
+				 undefined, false, false, false, false, false,
+				 false, false),
+    {vcard_adr, Home, Work, Postal, Parcel, Dom, Intl, Pref,
+     Pobox, Extadd, Street, Locality, Region, Pcode, Ctry}.
+
+decode_vcard_adr_ADR_els([{xmlel, <<"CTRY">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Ctry, Pcode, Region, Locality, Street, Extadd, Pobox,
+			 Pref, Intl, Dom, Parcel, Postal, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_adr_ADR_els(_els,
+				   decode_vcard_adr_ADR_CTRY(_el), Pcode,
+				   Region, Locality, Street, Extadd, Pobox,
+				   Pref, Intl, Dom, Parcel, Postal, Work, Home);
+      _ ->
+	  decode_vcard_adr_ADR_els(_els, Ctry, Pcode, Region,
+				   Locality, Street, Extadd, Pobox, Pref, Intl,
+				   Dom, Parcel, Postal, Work, Home)
+    end;
+decode_vcard_adr_ADR_els([{xmlel, <<"PCODE">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Ctry, Pcode, Region, Locality, Street, Extadd, Pobox,
+			 Pref, Intl, Dom, Parcel, Postal, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_adr_ADR_els(_els, Ctry,
+				   decode_vcard_adr_ADR_PCODE(_el), Region,
+				   Locality, Street, Extadd, Pobox, Pref, Intl,
+				   Dom, Parcel, Postal, Work, Home);
+      _ ->
+	  decode_vcard_adr_ADR_els(_els, Ctry, Pcode, Region,
+				   Locality, Street, Extadd, Pobox, Pref, Intl,
+				   Dom, Parcel, Postal, Work, Home)
+    end;
+decode_vcard_adr_ADR_els([{xmlel, <<"REGION">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Ctry, Pcode, Region, Locality, Street, Extadd, Pobox,
+			 Pref, Intl, Dom, Parcel, Postal, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_adr_ADR_els(_els, Ctry, Pcode,
+				   decode_vcard_adr_ADR_REGION(_el), Locality,
+				   Street, Extadd, Pobox, Pref, Intl, Dom,
+				   Parcel, Postal, Work, Home);
+      _ ->
+	  decode_vcard_adr_ADR_els(_els, Ctry, Pcode, Region,
+				   Locality, Street, Extadd, Pobox, Pref, Intl,
+				   Dom, Parcel, Postal, Work, Home)
+    end;
+decode_vcard_adr_ADR_els([{xmlel, <<"LOCALITY">>,
+			   _attrs, _} =
+			      _el
+			  | _els],
+			 Ctry, Pcode, Region, Locality, Street, Extadd, Pobox,
+			 Pref, Intl, Dom, Parcel, Postal, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_adr_ADR_els(_els, Ctry, Pcode, Region,
+				   decode_vcard_adr_ADR_LOCALITY(_el), Street,
+				   Extadd, Pobox, Pref, Intl, Dom, Parcel,
+				   Postal, Work, Home);
+      _ ->
+	  decode_vcard_adr_ADR_els(_els, Ctry, Pcode, Region,
+				   Locality, Street, Extadd, Pobox, Pref, Intl,
+				   Dom, Parcel, Postal, Work, Home)
+    end;
+decode_vcard_adr_ADR_els([{xmlel, <<"STREET">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Ctry, Pcode, Region, Locality, Street, Extadd, Pobox,
+			 Pref, Intl, Dom, Parcel, Postal, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_adr_ADR_els(_els, Ctry, Pcode, Region,
+				   Locality, decode_vcard_adr_ADR_STREET(_el),
+				   Extadd, Pobox, Pref, Intl, Dom, Parcel,
+				   Postal, Work, Home);
+      _ ->
+	  decode_vcard_adr_ADR_els(_els, Ctry, Pcode, Region,
+				   Locality, Street, Extadd, Pobox, Pref, Intl,
+				   Dom, Parcel, Postal, Work, Home)
+    end;
+decode_vcard_adr_ADR_els([{xmlel, <<"EXTADD">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Ctry, Pcode, Region, Locality, Street, Extadd, Pobox,
+			 Pref, Intl, Dom, Parcel, Postal, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_adr_ADR_els(_els, Ctry, Pcode, Region,
+				   Locality, Street,
+				   decode_vcard_adr_ADR_EXTADD(_el), Pobox,
+				   Pref, Intl, Dom, Parcel, Postal, Work, Home);
+      _ ->
+	  decode_vcard_adr_ADR_els(_els, Ctry, Pcode, Region,
+				   Locality, Street, Extadd, Pobox, Pref, Intl,
+				   Dom, Parcel, Postal, Work, Home)
+    end;
+decode_vcard_adr_ADR_els([{xmlel, <<"POBOX">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Ctry, Pcode, Region, Locality, Street, Extadd, Pobox,
+			 Pref, Intl, Dom, Parcel, Postal, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_adr_ADR_els(_els, Ctry, Pcode, Region,
+				   Locality, Street, Extadd,
+				   decode_vcard_adr_ADR_POBOX(_el), Pref, Intl,
+				   Dom, Parcel, Postal, Work, Home);
+      _ ->
+	  decode_vcard_adr_ADR_els(_els, Ctry, Pcode, Region,
+				   Locality, Street, Extadd, Pobox, Pref, Intl,
+				   Dom, Parcel, Postal, Work, Home)
+    end;
+decode_vcard_adr_ADR_els([{xmlel, <<"PREF">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Ctry, Pcode, Region, Locality, Street, Extadd, Pobox,
+			 Pref, Intl, Dom, Parcel, Postal, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_adr_ADR_els(_els, Ctry, Pcode, Region,
+				   Locality, Street, Extadd, Pobox,
+				   decode_vcard_adr_ADR_PREF(_el), Intl, Dom,
+				   Parcel, Postal, Work, Home);
+      _ ->
+	  decode_vcard_adr_ADR_els(_els, Ctry, Pcode, Region,
+				   Locality, Street, Extadd, Pobox, Pref, Intl,
+				   Dom, Parcel, Postal, Work, Home)
+    end;
+decode_vcard_adr_ADR_els([{xmlel, <<"INTL">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Ctry, Pcode, Region, Locality, Street, Extadd, Pobox,
+			 Pref, Intl, Dom, Parcel, Postal, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_adr_ADR_els(_els, Ctry, Pcode, Region,
+				   Locality, Street, Extadd, Pobox, Pref,
+				   decode_vcard_adr_ADR_INTL(_el), Dom, Parcel,
+				   Postal, Work, Home);
+      _ ->
+	  decode_vcard_adr_ADR_els(_els, Ctry, Pcode, Region,
+				   Locality, Street, Extadd, Pobox, Pref, Intl,
+				   Dom, Parcel, Postal, Work, Home)
+    end;
+decode_vcard_adr_ADR_els([{xmlel, <<"DOM">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Ctry, Pcode, Region, Locality, Street, Extadd, Pobox,
+			 Pref, Intl, Dom, Parcel, Postal, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_adr_ADR_els(_els, Ctry, Pcode, Region,
+				   Locality, Street, Extadd, Pobox, Pref, Intl,
+				   decode_vcard_adr_ADR_DOM(_el), Parcel,
+				   Postal, Work, Home);
+      _ ->
+	  decode_vcard_adr_ADR_els(_els, Ctry, Pcode, Region,
+				   Locality, Street, Extadd, Pobox, Pref, Intl,
+				   Dom, Parcel, Postal, Work, Home)
+    end;
+decode_vcard_adr_ADR_els([{xmlel, <<"PARCEL">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Ctry, Pcode, Region, Locality, Street, Extadd, Pobox,
+			 Pref, Intl, Dom, Parcel, Postal, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_adr_ADR_els(_els, Ctry, Pcode, Region,
+				   Locality, Street, Extadd, Pobox, Pref, Intl,
+				   Dom, decode_vcard_adr_ADR_PARCEL(_el),
+				   Postal, Work, Home);
+      _ ->
+	  decode_vcard_adr_ADR_els(_els, Ctry, Pcode, Region,
+				   Locality, Street, Extadd, Pobox, Pref, Intl,
+				   Dom, Parcel, Postal, Work, Home)
+    end;
+decode_vcard_adr_ADR_els([{xmlel, <<"POSTAL">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Ctry, Pcode, Region, Locality, Street, Extadd, Pobox,
+			 Pref, Intl, Dom, Parcel, Postal, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_adr_ADR_els(_els, Ctry, Pcode, Region,
+				   Locality, Street, Extadd, Pobox, Pref, Intl,
+				   Dom, Parcel,
+				   decode_vcard_adr_ADR_POSTAL(_el), Work,
+				   Home);
+      _ ->
+	  decode_vcard_adr_ADR_els(_els, Ctry, Pcode, Region,
+				   Locality, Street, Extadd, Pobox, Pref, Intl,
+				   Dom, Parcel, Postal, Work, Home)
+    end;
+decode_vcard_adr_ADR_els([{xmlel, <<"WORK">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Ctry, Pcode, Region, Locality, Street, Extadd, Pobox,
+			 Pref, Intl, Dom, Parcel, Postal, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_adr_ADR_els(_els, Ctry, Pcode, Region,
+				   Locality, Street, Extadd, Pobox, Pref, Intl,
+				   Dom, Parcel, Postal,
+				   decode_vcard_adr_ADR_WORK(_el), Home);
+      _ ->
+	  decode_vcard_adr_ADR_els(_els, Ctry, Pcode, Region,
+				   Locality, Street, Extadd, Pobox, Pref, Intl,
+				   Dom, Parcel, Postal, Work, Home)
+    end;
+decode_vcard_adr_ADR_els([{xmlel, <<"HOME">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Ctry, Pcode, Region, Locality, Street, Extadd, Pobox,
+			 Pref, Intl, Dom, Parcel, Postal, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_adr_ADR_els(_els, Ctry, Pcode, Region,
+				   Locality, Street, Extadd, Pobox, Pref, Intl,
+				   Dom, Parcel, Postal, Work,
+				   decode_vcard_adr_ADR_HOME(_el));
+      _ ->
+	  decode_vcard_adr_ADR_els(_els, Ctry, Pcode, Region,
+				   Locality, Street, Extadd, Pobox, Pref, Intl,
+				   Dom, Parcel, Postal, Work, Home)
+    end;
+decode_vcard_adr_ADR_els([_ | _els], Ctry, Pcode,
+			 Region, Locality, Street, Extadd, Pobox, Pref, Intl,
+			 Dom, Parcel, Postal, Work, Home) ->
+    decode_vcard_adr_ADR_els(_els, Ctry, Pcode, Region,
+			     Locality, Street, Extadd, Pobox, Pref, Intl, Dom,
+			     Parcel, Postal, Work, Home);
+decode_vcard_adr_ADR_els([], Ctry, Pcode, Region,
+			 Locality, Street, Extadd, Pobox, Pref, Intl, Dom,
+			 Parcel, Postal, Work, Home) ->
+    {Ctry, Pcode, Region, Locality, Street, Extadd, Pobox,
+     Pref, Intl, Dom, Parcel, Postal, Work, Home}.
+
+encode_vcard_adr_ADR([], _acc) -> _acc;
+encode_vcard_adr_ADR([{vcard_adr, Home, Work, Postal,
+		       Parcel, Dom, Intl, Pref, Pobox, Extadd, Street,
+		       Locality, Region, Pcode, Ctry}
+		      | _tail],
+		     _acc) ->
+    _els = encode_vcard_adr_ADR_HOME(Home,
+				     encode_vcard_adr_ADR_WORK(Work,
+							       encode_vcard_adr_ADR_POSTAL(Postal,
+											   encode_vcard_adr_ADR_PARCEL(Parcel,
+														       encode_vcard_adr_ADR_DOM(Dom,
+																		encode_vcard_adr_ADR_INTL(Intl,
+																					  encode_vcard_adr_ADR_PREF(Pref,
+																								    encode_vcard_adr_ADR_POBOX(Pobox,
+																											       encode_vcard_adr_ADR_EXTADD(Extadd,
+																															   encode_vcard_adr_ADR_STREET(Street,
+																																		       encode_vcard_adr_ADR_LOCALITY(Locality,
+																																						     encode_vcard_adr_ADR_REGION(Region,
+																																										 encode_vcard_adr_ADR_PCODE(Pcode,
+																																													    encode_vcard_adr_ADR_CTRY(Ctry,
+																																																      [])))))))))))))),
+    _attrs = [],
+    encode_vcard_adr_ADR(_tail,
+			 [{xmlel, <<"ADR">>, _attrs, _els} | _acc]).
+
+decode_vcard_adr_ADR_CTRY({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_adr_ADR_CTRY_els(_els, <<>>),
+    Cdata.
+
+decode_vcard_adr_ADR_CTRY_els([{xmlcdata, _data}
+			       | _els],
+			      Cdata) ->
+    decode_vcard_adr_ADR_CTRY_els(_els,
+				  <<Cdata/binary, _data/binary>>);
+decode_vcard_adr_ADR_CTRY_els([_ | _els], Cdata) ->
+    decode_vcard_adr_ADR_CTRY_els(_els, Cdata);
+decode_vcard_adr_ADR_CTRY_els([], Cdata) ->
+    decode_vcard_adr_ADR_CTRY_cdata(Cdata).
+
+encode_vcard_adr_ADR_CTRY(undefined, _acc) -> _acc;
+encode_vcard_adr_ADR_CTRY(Cdata, _acc) ->
+    _els = encode_vcard_adr_ADR_CTRY_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"CTRY">>, _attrs, _els} | _acc].
+
+decode_vcard_adr_ADR_CTRY_cdata(<<>>) -> undefined;
+decode_vcard_adr_ADR_CTRY_cdata(_val) -> _val.
+
+encode_vcard_adr_ADR_CTRY_cdata(undefined, _acc) ->
+    _acc;
+encode_vcard_adr_ADR_CTRY_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_adr_ADR_PCODE({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_adr_ADR_PCODE_els(_els, <<>>),
+    Cdata.
+
+decode_vcard_adr_ADR_PCODE_els([{xmlcdata, _data}
+				| _els],
+			       Cdata) ->
+    decode_vcard_adr_ADR_PCODE_els(_els,
+				   <<Cdata/binary, _data/binary>>);
+decode_vcard_adr_ADR_PCODE_els([_ | _els], Cdata) ->
+    decode_vcard_adr_ADR_PCODE_els(_els, Cdata);
+decode_vcard_adr_ADR_PCODE_els([], Cdata) ->
+    decode_vcard_adr_ADR_PCODE_cdata(Cdata).
+
+encode_vcard_adr_ADR_PCODE(undefined, _acc) -> _acc;
+encode_vcard_adr_ADR_PCODE(Cdata, _acc) ->
+    _els = encode_vcard_adr_ADR_PCODE_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"PCODE">>, _attrs, _els} | _acc].
+
+decode_vcard_adr_ADR_PCODE_cdata(<<>>) -> undefined;
+decode_vcard_adr_ADR_PCODE_cdata(_val) -> _val.
+
+encode_vcard_adr_ADR_PCODE_cdata(undefined, _acc) ->
+    _acc;
+encode_vcard_adr_ADR_PCODE_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_adr_ADR_REGION({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_adr_ADR_REGION_els(_els, <<>>),
+    Cdata.
+
+decode_vcard_adr_ADR_REGION_els([{xmlcdata, _data}
+				 | _els],
+				Cdata) ->
+    decode_vcard_adr_ADR_REGION_els(_els,
+				    <<Cdata/binary, _data/binary>>);
+decode_vcard_adr_ADR_REGION_els([_ | _els], Cdata) ->
+    decode_vcard_adr_ADR_REGION_els(_els, Cdata);
+decode_vcard_adr_ADR_REGION_els([], Cdata) ->
+    decode_vcard_adr_ADR_REGION_cdata(Cdata).
+
+encode_vcard_adr_ADR_REGION(undefined, _acc) -> _acc;
+encode_vcard_adr_ADR_REGION(Cdata, _acc) ->
+    _els = encode_vcard_adr_ADR_REGION_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"REGION">>, _attrs, _els} | _acc].
+
+decode_vcard_adr_ADR_REGION_cdata(<<>>) -> undefined;
+decode_vcard_adr_ADR_REGION_cdata(_val) -> _val.
+
+encode_vcard_adr_ADR_REGION_cdata(undefined, _acc) ->
+    _acc;
+encode_vcard_adr_ADR_REGION_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_adr_ADR_LOCALITY({xmlel, _, _attrs,
+			       _els}) ->
+    Cdata = decode_vcard_adr_ADR_LOCALITY_els(_els, <<>>),
+    Cdata.
+
+decode_vcard_adr_ADR_LOCALITY_els([{xmlcdata, _data}
+				   | _els],
+				  Cdata) ->
+    decode_vcard_adr_ADR_LOCALITY_els(_els,
+				      <<Cdata/binary, _data/binary>>);
+decode_vcard_adr_ADR_LOCALITY_els([_ | _els], Cdata) ->
+    decode_vcard_adr_ADR_LOCALITY_els(_els, Cdata);
+decode_vcard_adr_ADR_LOCALITY_els([], Cdata) ->
+    decode_vcard_adr_ADR_LOCALITY_cdata(Cdata).
+
+encode_vcard_adr_ADR_LOCALITY(undefined, _acc) -> _acc;
+encode_vcard_adr_ADR_LOCALITY(Cdata, _acc) ->
+    _els = encode_vcard_adr_ADR_LOCALITY_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"LOCALITY">>, _attrs, _els} | _acc].
+
+decode_vcard_adr_ADR_LOCALITY_cdata(<<>>) -> undefined;
+decode_vcard_adr_ADR_LOCALITY_cdata(_val) -> _val.
+
+encode_vcard_adr_ADR_LOCALITY_cdata(undefined, _acc) ->
+    _acc;
+encode_vcard_adr_ADR_LOCALITY_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_adr_ADR_STREET({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_adr_ADR_STREET_els(_els, <<>>),
+    Cdata.
+
+decode_vcard_adr_ADR_STREET_els([{xmlcdata, _data}
+				 | _els],
+				Cdata) ->
+    decode_vcard_adr_ADR_STREET_els(_els,
+				    <<Cdata/binary, _data/binary>>);
+decode_vcard_adr_ADR_STREET_els([_ | _els], Cdata) ->
+    decode_vcard_adr_ADR_STREET_els(_els, Cdata);
+decode_vcard_adr_ADR_STREET_els([], Cdata) ->
+    decode_vcard_adr_ADR_STREET_cdata(Cdata).
+
+encode_vcard_adr_ADR_STREET(undefined, _acc) -> _acc;
+encode_vcard_adr_ADR_STREET(Cdata, _acc) ->
+    _els = encode_vcard_adr_ADR_STREET_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"STREET">>, _attrs, _els} | _acc].
+
+decode_vcard_adr_ADR_STREET_cdata(<<>>) -> undefined;
+decode_vcard_adr_ADR_STREET_cdata(_val) -> _val.
+
+encode_vcard_adr_ADR_STREET_cdata(undefined, _acc) ->
+    _acc;
+encode_vcard_adr_ADR_STREET_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_adr_ADR_EXTADD({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_adr_ADR_EXTADD_els(_els, <<>>),
+    Cdata.
+
+decode_vcard_adr_ADR_EXTADD_els([{xmlcdata, _data}
+				 | _els],
+				Cdata) ->
+    decode_vcard_adr_ADR_EXTADD_els(_els,
+				    <<Cdata/binary, _data/binary>>);
+decode_vcard_adr_ADR_EXTADD_els([_ | _els], Cdata) ->
+    decode_vcard_adr_ADR_EXTADD_els(_els, Cdata);
+decode_vcard_adr_ADR_EXTADD_els([], Cdata) ->
+    decode_vcard_adr_ADR_EXTADD_cdata(Cdata).
+
+encode_vcard_adr_ADR_EXTADD(undefined, _acc) -> _acc;
+encode_vcard_adr_ADR_EXTADD(Cdata, _acc) ->
+    _els = encode_vcard_adr_ADR_EXTADD_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"EXTADD">>, _attrs, _els} | _acc].
+
+decode_vcard_adr_ADR_EXTADD_cdata(<<>>) -> undefined;
+decode_vcard_adr_ADR_EXTADD_cdata(_val) -> _val.
+
+encode_vcard_adr_ADR_EXTADD_cdata(undefined, _acc) ->
+    _acc;
+encode_vcard_adr_ADR_EXTADD_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_adr_ADR_POBOX({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_adr_ADR_POBOX_els(_els, <<>>),
+    Cdata.
+
+decode_vcard_adr_ADR_POBOX_els([{xmlcdata, _data}
+				| _els],
+			       Cdata) ->
+    decode_vcard_adr_ADR_POBOX_els(_els,
+				   <<Cdata/binary, _data/binary>>);
+decode_vcard_adr_ADR_POBOX_els([_ | _els], Cdata) ->
+    decode_vcard_adr_ADR_POBOX_els(_els, Cdata);
+decode_vcard_adr_ADR_POBOX_els([], Cdata) ->
+    decode_vcard_adr_ADR_POBOX_cdata(Cdata).
+
+encode_vcard_adr_ADR_POBOX(undefined, _acc) -> _acc;
+encode_vcard_adr_ADR_POBOX(Cdata, _acc) ->
+    _els = encode_vcard_adr_ADR_POBOX_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"POBOX">>, _attrs, _els} | _acc].
+
+decode_vcard_adr_ADR_POBOX_cdata(<<>>) -> undefined;
+decode_vcard_adr_ADR_POBOX_cdata(_val) -> _val.
+
+encode_vcard_adr_ADR_POBOX_cdata(undefined, _acc) ->
+    _acc;
+encode_vcard_adr_ADR_POBOX_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_adr_ADR_PREF({xmlel, _, _attrs, _els}) ->
+    true.
+
+encode_vcard_adr_ADR_PREF(false, _acc) -> _acc;
+encode_vcard_adr_ADR_PREF(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"PREF">>, _attrs, _els} | _acc].
+
+decode_vcard_adr_ADR_INTL({xmlel, _, _attrs, _els}) ->
+    true.
+
+encode_vcard_adr_ADR_INTL(false, _acc) -> _acc;
+encode_vcard_adr_ADR_INTL(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"INTL">>, _attrs, _els} | _acc].
+
+decode_vcard_adr_ADR_DOM({xmlel, _, _attrs, _els}) ->
+    true.
+
+encode_vcard_adr_ADR_DOM(false, _acc) -> _acc;
+encode_vcard_adr_ADR_DOM(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"DOM">>, _attrs, _els} | _acc].
+
+decode_vcard_adr_ADR_PARCEL({xmlel, _, _attrs, _els}) ->
+    true.
+
+encode_vcard_adr_ADR_PARCEL(false, _acc) -> _acc;
+encode_vcard_adr_ADR_PARCEL(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"PARCEL">>, _attrs, _els} | _acc].
+
+decode_vcard_adr_ADR_POSTAL({xmlel, _, _attrs, _els}) ->
+    true.
+
+encode_vcard_adr_ADR_POSTAL(false, _acc) -> _acc;
+encode_vcard_adr_ADR_POSTAL(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"POSTAL">>, _attrs, _els} | _acc].
+
+decode_vcard_adr_ADR_WORK({xmlel, _, _attrs, _els}) ->
+    true.
+
+encode_vcard_adr_ADR_WORK(false, _acc) -> _acc;
+encode_vcard_adr_ADR_WORK(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"WORK">>, _attrs, _els} | _acc].
+
+decode_vcard_adr_ADR_HOME({xmlel, _, _attrs, _els}) ->
+    true.
+
+encode_vcard_adr_ADR_HOME(false, _acc) -> _acc;
+encode_vcard_adr_ADR_HOME(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"HOME">>, _attrs, _els} | _acc].
+
+decode_vcard_label_LABEL({xmlel, _, _attrs, _els}) ->
+    {Line, Pref, Intl, Dom, Parcel, Postal, Work, Home} =
+	decode_vcard_label_LABEL_els(_els, [], false, false,
+				     false, false, false, false, false),
+    {vcard_label, Home, Work, Postal, Parcel, Dom, Intl,
+     Pref, Line}.
+
+decode_vcard_label_LABEL_els([{xmlel, <<"LINE">>,
+			       _attrs, _} =
+				  _el
+			      | _els],
+			     Line, Pref, Intl, Dom, Parcel, Postal, Work,
+			     Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_label_LABEL_els(_els,
+				       [decode_vcard_label_LABEL_LINE(_el)
+					| Line],
+				       Pref, Intl, Dom, Parcel, Postal, Work,
+				       Home);
+      _ ->
+	  decode_vcard_label_LABEL_els(_els, Line, Pref, Intl,
+				       Dom, Parcel, Postal, Work, Home)
+    end;
+decode_vcard_label_LABEL_els([{xmlel, <<"PREF">>,
+			       _attrs, _} =
+				  _el
+			      | _els],
+			     Line, Pref, Intl, Dom, Parcel, Postal, Work,
+			     Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_label_LABEL_els(_els, Line,
+				       decode_vcard_label_LABEL_PREF(_el), Intl,
+				       Dom, Parcel, Postal, Work, Home);
+      _ ->
+	  decode_vcard_label_LABEL_els(_els, Line, Pref, Intl,
+				       Dom, Parcel, Postal, Work, Home)
+    end;
+decode_vcard_label_LABEL_els([{xmlel, <<"INTL">>,
+			       _attrs, _} =
+				  _el
+			      | _els],
+			     Line, Pref, Intl, Dom, Parcel, Postal, Work,
+			     Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_label_LABEL_els(_els, Line, Pref,
+				       decode_vcard_label_LABEL_INTL(_el), Dom,
+				       Parcel, Postal, Work, Home);
+      _ ->
+	  decode_vcard_label_LABEL_els(_els, Line, Pref, Intl,
+				       Dom, Parcel, Postal, Work, Home)
+    end;
+decode_vcard_label_LABEL_els([{xmlel, <<"DOM">>, _attrs,
+			       _} =
+				  _el
+			      | _els],
+			     Line, Pref, Intl, Dom, Parcel, Postal, Work,
+			     Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_label_LABEL_els(_els, Line, Pref, Intl,
+				       decode_vcard_label_LABEL_DOM(_el),
+				       Parcel, Postal, Work, Home);
+      _ ->
+	  decode_vcard_label_LABEL_els(_els, Line, Pref, Intl,
+				       Dom, Parcel, Postal, Work, Home)
+    end;
+decode_vcard_label_LABEL_els([{xmlel, <<"PARCEL">>,
+			       _attrs, _} =
+				  _el
+			      | _els],
+			     Line, Pref, Intl, Dom, Parcel, Postal, Work,
+			     Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_label_LABEL_els(_els, Line, Pref, Intl,
+				       Dom,
+				       decode_vcard_label_LABEL_PARCEL(_el),
+				       Postal, Work, Home);
+      _ ->
+	  decode_vcard_label_LABEL_els(_els, Line, Pref, Intl,
+				       Dom, Parcel, Postal, Work, Home)
+    end;
+decode_vcard_label_LABEL_els([{xmlel, <<"POSTAL">>,
+			       _attrs, _} =
+				  _el
+			      | _els],
+			     Line, Pref, Intl, Dom, Parcel, Postal, Work,
+			     Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_label_LABEL_els(_els, Line, Pref, Intl,
+				       Dom, Parcel,
+				       decode_vcard_label_LABEL_POSTAL(_el),
+				       Work, Home);
+      _ ->
+	  decode_vcard_label_LABEL_els(_els, Line, Pref, Intl,
+				       Dom, Parcel, Postal, Work, Home)
+    end;
+decode_vcard_label_LABEL_els([{xmlel, <<"WORK">>,
+			       _attrs, _} =
+				  _el
+			      | _els],
+			     Line, Pref, Intl, Dom, Parcel, Postal, Work,
+			     Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_label_LABEL_els(_els, Line, Pref, Intl,
+				       Dom, Parcel, Postal,
+				       decode_vcard_label_LABEL_WORK(_el),
+				       Home);
+      _ ->
+	  decode_vcard_label_LABEL_els(_els, Line, Pref, Intl,
+				       Dom, Parcel, Postal, Work, Home)
+    end;
+decode_vcard_label_LABEL_els([{xmlel, <<"HOME">>,
+			       _attrs, _} =
+				  _el
+			      | _els],
+			     Line, Pref, Intl, Dom, Parcel, Postal, Work,
+			     Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_label_LABEL_els(_els, Line, Pref, Intl,
+				       Dom, Parcel, Postal, Work,
+				       decode_vcard_label_LABEL_HOME(_el));
+      _ ->
+	  decode_vcard_label_LABEL_els(_els, Line, Pref, Intl,
+				       Dom, Parcel, Postal, Work, Home)
+    end;
+decode_vcard_label_LABEL_els([_ | _els], Line, Pref,
+			     Intl, Dom, Parcel, Postal, Work, Home) ->
+    decode_vcard_label_LABEL_els(_els, Line, Pref, Intl,
+				 Dom, Parcel, Postal, Work, Home);
+decode_vcard_label_LABEL_els([], Line, Pref, Intl, Dom,
+			     Parcel, Postal, Work, Home) ->
+    {lists:reverse(Line), Pref, Intl, Dom, Parcel, Postal,
+     Work, Home}.
+
+encode_vcard_label_LABEL([], _acc) -> _acc;
+encode_vcard_label_LABEL([{vcard_label, Home, Work,
+			   Postal, Parcel, Dom, Intl, Pref, Line}
+			  | _tail],
+			 _acc) ->
+    _els = encode_vcard_label_LABEL_HOME(Home,
+					 encode_vcard_label_LABEL_WORK(Work,
+								       encode_vcard_label_LABEL_POSTAL(Postal,
+												       encode_vcard_label_LABEL_PARCEL(Parcel,
+																       encode_vcard_label_LABEL_DOM(Dom,
+																				    encode_vcard_label_LABEL_INTL(Intl,
+																								  encode_vcard_label_LABEL_PREF(Pref,
+																												encode_vcard_label_LABEL_LINE(Line,
+																															      [])))))))),
+    _attrs = [],
+    encode_vcard_label_LABEL(_tail,
+			     [{xmlel, <<"LABEL">>, _attrs, _els} | _acc]).
+
+decode_vcard_label_LABEL_LINE({xmlel, _, _attrs,
+			       _els}) ->
+    Cdata = decode_vcard_label_LABEL_LINE_els(_els, <<>>),
+    Cdata.
+
+decode_vcard_label_LABEL_LINE_els([{xmlcdata, _data}
+				   | _els],
+				  Cdata) ->
+    decode_vcard_label_LABEL_LINE_els(_els,
+				      <<Cdata/binary, _data/binary>>);
+decode_vcard_label_LABEL_LINE_els([_ | _els], Cdata) ->
+    decode_vcard_label_LABEL_LINE_els(_els, Cdata);
+decode_vcard_label_LABEL_LINE_els([], Cdata) ->
+    decode_vcard_label_LABEL_LINE_cdata(Cdata).
+
+encode_vcard_label_LABEL_LINE([], _acc) -> _acc;
+encode_vcard_label_LABEL_LINE([Cdata | _tail], _acc) ->
+    _els = encode_vcard_label_LABEL_LINE_cdata(Cdata, []),
+    _attrs = [],
+    encode_vcard_label_LABEL_LINE(_tail,
+				  [{xmlel, <<"LINE">>, _attrs, _els} | _acc]).
+
+decode_vcard_label_LABEL_LINE_cdata(<<>>) -> undefined;
+decode_vcard_label_LABEL_LINE_cdata(_val) -> _val.
+
+encode_vcard_label_LABEL_LINE_cdata(undefined, _acc) ->
+    _acc;
+encode_vcard_label_LABEL_LINE_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_label_LABEL_PREF({xmlel, _, _attrs,
+			       _els}) ->
+    true.
+
+encode_vcard_label_LABEL_PREF(false, _acc) -> _acc;
+encode_vcard_label_LABEL_PREF(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"PREF">>, _attrs, _els} | _acc].
+
+decode_vcard_label_LABEL_INTL({xmlel, _, _attrs,
+			       _els}) ->
+    true.
+
+encode_vcard_label_LABEL_INTL(false, _acc) -> _acc;
+encode_vcard_label_LABEL_INTL(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"INTL">>, _attrs, _els} | _acc].
+
+decode_vcard_label_LABEL_DOM({xmlel, _, _attrs,
+			      _els}) ->
+    true.
+
+encode_vcard_label_LABEL_DOM(false, _acc) -> _acc;
+encode_vcard_label_LABEL_DOM(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"DOM">>, _attrs, _els} | _acc].
+
+decode_vcard_label_LABEL_PARCEL({xmlel, _, _attrs,
+				 _els}) ->
+    true.
+
+encode_vcard_label_LABEL_PARCEL(false, _acc) -> _acc;
+encode_vcard_label_LABEL_PARCEL(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"PARCEL">>, _attrs, _els} | _acc].
+
+decode_vcard_label_LABEL_POSTAL({xmlel, _, _attrs,
+				 _els}) ->
+    true.
+
+encode_vcard_label_LABEL_POSTAL(false, _acc) -> _acc;
+encode_vcard_label_LABEL_POSTAL(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"POSTAL">>, _attrs, _els} | _acc].
+
+decode_vcard_label_LABEL_WORK({xmlel, _, _attrs,
+			       _els}) ->
+    true.
+
+encode_vcard_label_LABEL_WORK(false, _acc) -> _acc;
+encode_vcard_label_LABEL_WORK(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"WORK">>, _attrs, _els} | _acc].
+
+decode_vcard_label_LABEL_HOME({xmlel, _, _attrs,
+			       _els}) ->
+    true.
+
+encode_vcard_label_LABEL_HOME(false, _acc) -> _acc;
+encode_vcard_label_LABEL_HOME(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"HOME">>, _attrs, _els} | _acc].
+
+decode_vcard_tel_TEL({xmlel, _, _attrs, _els}) ->
+    {Number, Pref, Pcs, Isdn, Modem, Bbs, Video, Cell, Msg,
+     Pager, Fax, Voice, Work, Home} =
+	decode_vcard_tel_TEL_els(_els, [], false, false, false,
+				 false, false, false, false, false, false,
+				 false, false, false, false),
+    {vcard_tel, Home, Work, Voice, Fax, Pager, Msg, Cell,
+     Video, Bbs, Modem, Isdn, Pcs, Pref, Number}.
+
+decode_vcard_tel_TEL_els([{xmlel, <<"NUMBER">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Number, Pref, Pcs, Isdn, Modem, Bbs, Video, Cell, Msg,
+			 Pager, Fax, Voice, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_tel_TEL_els(_els,
+				   [decode_vcard_tel_TEL_NUMBER(_el) | Number],
+				   Pref, Pcs, Isdn, Modem, Bbs, Video, Cell,
+				   Msg, Pager, Fax, Voice, Work, Home);
+      _ ->
+	  decode_vcard_tel_TEL_els(_els, Number, Pref, Pcs, Isdn,
+				   Modem, Bbs, Video, Cell, Msg, Pager, Fax,
+				   Voice, Work, Home)
+    end;
+decode_vcard_tel_TEL_els([{xmlel, <<"PREF">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Number, Pref, Pcs, Isdn, Modem, Bbs, Video, Cell, Msg,
+			 Pager, Fax, Voice, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_tel_TEL_els(_els, Number,
+				   decode_vcard_tel_TEL_PREF(_el), Pcs, Isdn,
+				   Modem, Bbs, Video, Cell, Msg, Pager, Fax,
+				   Voice, Work, Home);
+      _ ->
+	  decode_vcard_tel_TEL_els(_els, Number, Pref, Pcs, Isdn,
+				   Modem, Bbs, Video, Cell, Msg, Pager, Fax,
+				   Voice, Work, Home)
+    end;
+decode_vcard_tel_TEL_els([{xmlel, <<"PCS">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Number, Pref, Pcs, Isdn, Modem, Bbs, Video, Cell, Msg,
+			 Pager, Fax, Voice, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_tel_TEL_els(_els, Number, Pref,
+				   decode_vcard_tel_TEL_PCS(_el), Isdn, Modem,
+				   Bbs, Video, Cell, Msg, Pager, Fax, Voice,
+				   Work, Home);
+      _ ->
+	  decode_vcard_tel_TEL_els(_els, Number, Pref, Pcs, Isdn,
+				   Modem, Bbs, Video, Cell, Msg, Pager, Fax,
+				   Voice, Work, Home)
+    end;
+decode_vcard_tel_TEL_els([{xmlel, <<"ISDN">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Number, Pref, Pcs, Isdn, Modem, Bbs, Video, Cell, Msg,
+			 Pager, Fax, Voice, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_tel_TEL_els(_els, Number, Pref, Pcs,
+				   decode_vcard_tel_TEL_ISDN(_el), Modem, Bbs,
+				   Video, Cell, Msg, Pager, Fax, Voice, Work,
+				   Home);
+      _ ->
+	  decode_vcard_tel_TEL_els(_els, Number, Pref, Pcs, Isdn,
+				   Modem, Bbs, Video, Cell, Msg, Pager, Fax,
+				   Voice, Work, Home)
+    end;
+decode_vcard_tel_TEL_els([{xmlel, <<"MODEM">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Number, Pref, Pcs, Isdn, Modem, Bbs, Video, Cell, Msg,
+			 Pager, Fax, Voice, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_tel_TEL_els(_els, Number, Pref, Pcs, Isdn,
+				   decode_vcard_tel_TEL_MODEM(_el), Bbs, Video,
+				   Cell, Msg, Pager, Fax, Voice, Work, Home);
+      _ ->
+	  decode_vcard_tel_TEL_els(_els, Number, Pref, Pcs, Isdn,
+				   Modem, Bbs, Video, Cell, Msg, Pager, Fax,
+				   Voice, Work, Home)
+    end;
+decode_vcard_tel_TEL_els([{xmlel, <<"BBS">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Number, Pref, Pcs, Isdn, Modem, Bbs, Video, Cell, Msg,
+			 Pager, Fax, Voice, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_tel_TEL_els(_els, Number, Pref, Pcs, Isdn,
+				   Modem, decode_vcard_tel_TEL_BBS(_el), Video,
+				   Cell, Msg, Pager, Fax, Voice, Work, Home);
+      _ ->
+	  decode_vcard_tel_TEL_els(_els, Number, Pref, Pcs, Isdn,
+				   Modem, Bbs, Video, Cell, Msg, Pager, Fax,
+				   Voice, Work, Home)
+    end;
+decode_vcard_tel_TEL_els([{xmlel, <<"VIDEO">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Number, Pref, Pcs, Isdn, Modem, Bbs, Video, Cell, Msg,
+			 Pager, Fax, Voice, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_tel_TEL_els(_els, Number, Pref, Pcs, Isdn,
+				   Modem, Bbs, decode_vcard_tel_TEL_VIDEO(_el),
+				   Cell, Msg, Pager, Fax, Voice, Work, Home);
+      _ ->
+	  decode_vcard_tel_TEL_els(_els, Number, Pref, Pcs, Isdn,
+				   Modem, Bbs, Video, Cell, Msg, Pager, Fax,
+				   Voice, Work, Home)
+    end;
+decode_vcard_tel_TEL_els([{xmlel, <<"CELL">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Number, Pref, Pcs, Isdn, Modem, Bbs, Video, Cell, Msg,
+			 Pager, Fax, Voice, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_tel_TEL_els(_els, Number, Pref, Pcs, Isdn,
+				   Modem, Bbs, Video,
+				   decode_vcard_tel_TEL_CELL(_el), Msg, Pager,
+				   Fax, Voice, Work, Home);
+      _ ->
+	  decode_vcard_tel_TEL_els(_els, Number, Pref, Pcs, Isdn,
+				   Modem, Bbs, Video, Cell, Msg, Pager, Fax,
+				   Voice, Work, Home)
+    end;
+decode_vcard_tel_TEL_els([{xmlel, <<"MSG">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Number, Pref, Pcs, Isdn, Modem, Bbs, Video, Cell, Msg,
+			 Pager, Fax, Voice, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_tel_TEL_els(_els, Number, Pref, Pcs, Isdn,
+				   Modem, Bbs, Video, Cell,
+				   decode_vcard_tel_TEL_MSG(_el), Pager, Fax,
+				   Voice, Work, Home);
+      _ ->
+	  decode_vcard_tel_TEL_els(_els, Number, Pref, Pcs, Isdn,
+				   Modem, Bbs, Video, Cell, Msg, Pager, Fax,
+				   Voice, Work, Home)
+    end;
+decode_vcard_tel_TEL_els([{xmlel, <<"PAGER">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Number, Pref, Pcs, Isdn, Modem, Bbs, Video, Cell, Msg,
+			 Pager, Fax, Voice, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_tel_TEL_els(_els, Number, Pref, Pcs, Isdn,
+				   Modem, Bbs, Video, Cell, Msg,
+				   decode_vcard_tel_TEL_PAGER(_el), Fax, Voice,
+				   Work, Home);
+      _ ->
+	  decode_vcard_tel_TEL_els(_els, Number, Pref, Pcs, Isdn,
+				   Modem, Bbs, Video, Cell, Msg, Pager, Fax,
+				   Voice, Work, Home)
+    end;
+decode_vcard_tel_TEL_els([{xmlel, <<"FAX">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Number, Pref, Pcs, Isdn, Modem, Bbs, Video, Cell, Msg,
+			 Pager, Fax, Voice, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_tel_TEL_els(_els, Number, Pref, Pcs, Isdn,
+				   Modem, Bbs, Video, Cell, Msg, Pager,
+				   decode_vcard_tel_TEL_FAX(_el), Voice, Work,
+				   Home);
+      _ ->
+	  decode_vcard_tel_TEL_els(_els, Number, Pref, Pcs, Isdn,
+				   Modem, Bbs, Video, Cell, Msg, Pager, Fax,
+				   Voice, Work, Home)
+    end;
+decode_vcard_tel_TEL_els([{xmlel, <<"VOICE">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Number, Pref, Pcs, Isdn, Modem, Bbs, Video, Cell, Msg,
+			 Pager, Fax, Voice, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_tel_TEL_els(_els, Number, Pref, Pcs, Isdn,
+				   Modem, Bbs, Video, Cell, Msg, Pager, Fax,
+				   decode_vcard_tel_TEL_VOICE(_el), Work, Home);
+      _ ->
+	  decode_vcard_tel_TEL_els(_els, Number, Pref, Pcs, Isdn,
+				   Modem, Bbs, Video, Cell, Msg, Pager, Fax,
+				   Voice, Work, Home)
+    end;
+decode_vcard_tel_TEL_els([{xmlel, <<"WORK">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Number, Pref, Pcs, Isdn, Modem, Bbs, Video, Cell, Msg,
+			 Pager, Fax, Voice, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_tel_TEL_els(_els, Number, Pref, Pcs, Isdn,
+				   Modem, Bbs, Video, Cell, Msg, Pager, Fax,
+				   Voice, decode_vcard_tel_TEL_WORK(_el), Home);
+      _ ->
+	  decode_vcard_tel_TEL_els(_els, Number, Pref, Pcs, Isdn,
+				   Modem, Bbs, Video, Cell, Msg, Pager, Fax,
+				   Voice, Work, Home)
+    end;
+decode_vcard_tel_TEL_els([{xmlel, <<"HOME">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Number, Pref, Pcs, Isdn, Modem, Bbs, Video, Cell, Msg,
+			 Pager, Fax, Voice, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_tel_TEL_els(_els, Number, Pref, Pcs, Isdn,
+				   Modem, Bbs, Video, Cell, Msg, Pager, Fax,
+				   Voice, Work, decode_vcard_tel_TEL_HOME(_el));
+      _ ->
+	  decode_vcard_tel_TEL_els(_els, Number, Pref, Pcs, Isdn,
+				   Modem, Bbs, Video, Cell, Msg, Pager, Fax,
+				   Voice, Work, Home)
+    end;
+decode_vcard_tel_TEL_els([_ | _els], Number, Pref, Pcs,
+			 Isdn, Modem, Bbs, Video, Cell, Msg, Pager, Fax, Voice,
+			 Work, Home) ->
+    decode_vcard_tel_TEL_els(_els, Number, Pref, Pcs, Isdn,
+			     Modem, Bbs, Video, Cell, Msg, Pager, Fax, Voice,
+			     Work, Home);
+decode_vcard_tel_TEL_els([], [Number], Pref, Pcs, Isdn,
+			 Modem, Bbs, Video, Cell, Msg, Pager, Fax, Voice, Work,
+			 Home) ->
+    {Number, Pref, Pcs, Isdn, Modem, Bbs, Video, Cell, Msg,
+     Pager, Fax, Voice, Work, Home}.
+
+encode_vcard_tel_TEL([], _acc) -> _acc;
+encode_vcard_tel_TEL([{vcard_tel, Home, Work, Voice,
+		       Fax, Pager, Msg, Cell, Video, Bbs, Modem, Isdn, Pcs,
+		       Pref, Number}
+		      | _tail],
+		     _acc) ->
+    _els = encode_vcard_tel_TEL_HOME(Home,
+				     encode_vcard_tel_TEL_WORK(Work,
+							       encode_vcard_tel_TEL_VOICE(Voice,
+											  encode_vcard_tel_TEL_FAX(Fax,
+														   encode_vcard_tel_TEL_PAGER(Pager,
+																	      encode_vcard_tel_TEL_MSG(Msg,
+																				       encode_vcard_tel_TEL_CELL(Cell,
+																								 encode_vcard_tel_TEL_VIDEO(Video,
+																											    encode_vcard_tel_TEL_BBS(Bbs,
+																														     encode_vcard_tel_TEL_MODEM(Modem,
+																																		encode_vcard_tel_TEL_ISDN(Isdn,
+																																					  encode_vcard_tel_TEL_PCS(Pcs,
+																																								   encode_vcard_tel_TEL_PREF(Pref,
+																																											     encode_vcard_tel_TEL_NUMBER(Number,
+																																															 [])))))))))))))),
+    _attrs = [],
+    encode_vcard_tel_TEL(_tail,
+			 [{xmlel, <<"TEL">>, _attrs, _els} | _acc]).
+
+decode_vcard_tel_TEL_NUMBER({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_tel_TEL_NUMBER_els(_els, <<>>),
+    Cdata.
+
+decode_vcard_tel_TEL_NUMBER_els([{xmlcdata, _data}
+				 | _els],
+				Cdata) ->
+    decode_vcard_tel_TEL_NUMBER_els(_els,
+				    <<Cdata/binary, _data/binary>>);
+decode_vcard_tel_TEL_NUMBER_els([_ | _els], Cdata) ->
+    decode_vcard_tel_TEL_NUMBER_els(_els, Cdata);
+decode_vcard_tel_TEL_NUMBER_els([], Cdata) ->
+    decode_vcard_tel_TEL_NUMBER_cdata(Cdata).
+
+encode_vcard_tel_TEL_NUMBER(Cdata, _acc) ->
+    _els = encode_vcard_tel_TEL_NUMBER_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"NUMBER">>, _attrs, _els} | _acc].
+
+decode_vcard_tel_TEL_NUMBER_cdata(<<>>) -> undefined;
+decode_vcard_tel_TEL_NUMBER_cdata(_val) -> _val.
+
+encode_vcard_tel_TEL_NUMBER_cdata(undefined, _acc) ->
+    _acc;
+encode_vcard_tel_TEL_NUMBER_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_tel_TEL_PREF({xmlel, _, _attrs, _els}) ->
+    true.
+
+encode_vcard_tel_TEL_PREF(false, _acc) -> _acc;
+encode_vcard_tel_TEL_PREF(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"PREF">>, _attrs, _els} | _acc].
+
+decode_vcard_tel_TEL_PCS({xmlel, _, _attrs, _els}) ->
+    true.
+
+encode_vcard_tel_TEL_PCS(false, _acc) -> _acc;
+encode_vcard_tel_TEL_PCS(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"PCS">>, _attrs, _els} | _acc].
+
+decode_vcard_tel_TEL_ISDN({xmlel, _, _attrs, _els}) ->
+    true.
+
+encode_vcard_tel_TEL_ISDN(false, _acc) -> _acc;
+encode_vcard_tel_TEL_ISDN(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"ISDN">>, _attrs, _els} | _acc].
+
+decode_vcard_tel_TEL_MODEM({xmlel, _, _attrs, _els}) ->
+    true.
+
+encode_vcard_tel_TEL_MODEM(false, _acc) -> _acc;
+encode_vcard_tel_TEL_MODEM(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"MODEM">>, _attrs, _els} | _acc].
+
+decode_vcard_tel_TEL_BBS({xmlel, _, _attrs, _els}) ->
+    true.
+
+encode_vcard_tel_TEL_BBS(false, _acc) -> _acc;
+encode_vcard_tel_TEL_BBS(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"BBS">>, _attrs, _els} | _acc].
+
+decode_vcard_tel_TEL_VIDEO({xmlel, _, _attrs, _els}) ->
+    true.
+
+encode_vcard_tel_TEL_VIDEO(false, _acc) -> _acc;
+encode_vcard_tel_TEL_VIDEO(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"VIDEO">>, _attrs, _els} | _acc].
+
+decode_vcard_tel_TEL_CELL({xmlel, _, _attrs, _els}) ->
+    true.
+
+encode_vcard_tel_TEL_CELL(false, _acc) -> _acc;
+encode_vcard_tel_TEL_CELL(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"CELL">>, _attrs, _els} | _acc].
+
+decode_vcard_tel_TEL_MSG({xmlel, _, _attrs, _els}) ->
+    true.
+
+encode_vcard_tel_TEL_MSG(false, _acc) -> _acc;
+encode_vcard_tel_TEL_MSG(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"MSG">>, _attrs, _els} | _acc].
+
+decode_vcard_tel_TEL_PAGER({xmlel, _, _attrs, _els}) ->
+    true.
+
+encode_vcard_tel_TEL_PAGER(false, _acc) -> _acc;
+encode_vcard_tel_TEL_PAGER(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"PAGER">>, _attrs, _els} | _acc].
+
+decode_vcard_tel_TEL_FAX({xmlel, _, _attrs, _els}) ->
+    true.
+
+encode_vcard_tel_TEL_FAX(false, _acc) -> _acc;
+encode_vcard_tel_TEL_FAX(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"FAX">>, _attrs, _els} | _acc].
+
+decode_vcard_tel_TEL_VOICE({xmlel, _, _attrs, _els}) ->
+    true.
+
+encode_vcard_tel_TEL_VOICE(false, _acc) -> _acc;
+encode_vcard_tel_TEL_VOICE(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"VOICE">>, _attrs, _els} | _acc].
+
+decode_vcard_tel_TEL_WORK({xmlel, _, _attrs, _els}) ->
+    true.
+
+encode_vcard_tel_TEL_WORK(false, _acc) -> _acc;
+encode_vcard_tel_TEL_WORK(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"WORK">>, _attrs, _els} | _acc].
+
+decode_vcard_tel_TEL_HOME({xmlel, _, _attrs, _els}) ->
+    true.
+
+encode_vcard_tel_TEL_HOME(false, _acc) -> _acc;
+encode_vcard_tel_TEL_HOME(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"HOME">>, _attrs, _els} | _acc].
+
+decode_vcard_email_EMAIL({xmlel, _, _attrs, _els}) ->
+    {Userid, X400, Pref, Internet, Work, Home} =
+	decode_vcard_email_EMAIL_els(_els, [], false, false,
+				     false, false, false),
+    {vcard_email, Home, Work, Internet, Pref, X400, Userid}.
+
+decode_vcard_email_EMAIL_els([{xmlel, <<"USERID">>,
+			       _attrs, _} =
+				  _el
+			      | _els],
+			     Userid, X400, Pref, Internet, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_email_EMAIL_els(_els,
+				       [decode_vcard_email_EMAIL_USERID(_el)
+					| Userid],
+				       X400, Pref, Internet, Work, Home);
+      _ ->
+	  decode_vcard_email_EMAIL_els(_els, Userid, X400, Pref,
+				       Internet, Work, Home)
+    end;
+decode_vcard_email_EMAIL_els([{xmlel, <<"X400">>,
+			       _attrs, _} =
+				  _el
+			      | _els],
+			     Userid, X400, Pref, Internet, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_email_EMAIL_els(_els, Userid,
+				       decode_vcard_email_EMAIL_X400(_el), Pref,
+				       Internet, Work, Home);
+      _ ->
+	  decode_vcard_email_EMAIL_els(_els, Userid, X400, Pref,
+				       Internet, Work, Home)
+    end;
+decode_vcard_email_EMAIL_els([{xmlel, <<"PREF">>,
+			       _attrs, _} =
+				  _el
+			      | _els],
+			     Userid, X400, Pref, Internet, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_email_EMAIL_els(_els, Userid, X400,
+				       decode_vcard_email_EMAIL_PREF(_el),
+				       Internet, Work, Home);
+      _ ->
+	  decode_vcard_email_EMAIL_els(_els, Userid, X400, Pref,
+				       Internet, Work, Home)
+    end;
+decode_vcard_email_EMAIL_els([{xmlel, <<"INTERNET">>,
+			       _attrs, _} =
+				  _el
+			      | _els],
+			     Userid, X400, Pref, Internet, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_email_EMAIL_els(_els, Userid, X400, Pref,
+				       decode_vcard_email_EMAIL_INTERNET(_el),
+				       Work, Home);
+      _ ->
+	  decode_vcard_email_EMAIL_els(_els, Userid, X400, Pref,
+				       Internet, Work, Home)
+    end;
+decode_vcard_email_EMAIL_els([{xmlel, <<"WORK">>,
+			       _attrs, _} =
+				  _el
+			      | _els],
+			     Userid, X400, Pref, Internet, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_email_EMAIL_els(_els, Userid, X400, Pref,
+				       Internet,
+				       decode_vcard_email_EMAIL_WORK(_el),
+				       Home);
+      _ ->
+	  decode_vcard_email_EMAIL_els(_els, Userid, X400, Pref,
+				       Internet, Work, Home)
+    end;
+decode_vcard_email_EMAIL_els([{xmlel, <<"HOME">>,
+			       _attrs, _} =
+				  _el
+			      | _els],
+			     Userid, X400, Pref, Internet, Work, Home) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_email_EMAIL_els(_els, Userid, X400, Pref,
+				       Internet, Work,
+				       decode_vcard_email_EMAIL_HOME(_el));
+      _ ->
+	  decode_vcard_email_EMAIL_els(_els, Userid, X400, Pref,
+				       Internet, Work, Home)
+    end;
+decode_vcard_email_EMAIL_els([_ | _els], Userid, X400,
+			     Pref, Internet, Work, Home) ->
+    decode_vcard_email_EMAIL_els(_els, Userid, X400, Pref,
+				 Internet, Work, Home);
+decode_vcard_email_EMAIL_els([], [Userid], X400, Pref,
+			     Internet, Work, Home) ->
+    {Userid, X400, Pref, Internet, Work, Home}.
+
+encode_vcard_email_EMAIL([], _acc) -> _acc;
+encode_vcard_email_EMAIL([{vcard_email, Home, Work,
+			   Internet, Pref, X400, Userid}
+			  | _tail],
+			 _acc) ->
+    _els = encode_vcard_email_EMAIL_HOME(Home,
+					 encode_vcard_email_EMAIL_WORK(Work,
+								       encode_vcard_email_EMAIL_INTERNET(Internet,
+													 encode_vcard_email_EMAIL_PREF(Pref,
+																       encode_vcard_email_EMAIL_X400(X400,
+																				     encode_vcard_email_EMAIL_USERID(Userid,
+																								     [])))))),
+    _attrs = [],
+    encode_vcard_email_EMAIL(_tail,
+			     [{xmlel, <<"EMAIL">>, _attrs, _els} | _acc]).
+
+decode_vcard_email_EMAIL_USERID({xmlel, _, _attrs,
+				 _els}) ->
+    Cdata = decode_vcard_email_EMAIL_USERID_els(_els, <<>>),
+    Cdata.
+
+decode_vcard_email_EMAIL_USERID_els([{xmlcdata, _data}
+				     | _els],
+				    Cdata) ->
+    decode_vcard_email_EMAIL_USERID_els(_els,
+					<<Cdata/binary, _data/binary>>);
+decode_vcard_email_EMAIL_USERID_els([_ | _els],
+				    Cdata) ->
+    decode_vcard_email_EMAIL_USERID_els(_els, Cdata);
+decode_vcard_email_EMAIL_USERID_els([], Cdata) ->
+    decode_vcard_email_EMAIL_USERID_cdata(Cdata).
+
+encode_vcard_email_EMAIL_USERID(Cdata, _acc) ->
+    _els = encode_vcard_email_EMAIL_USERID_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"USERID">>, _attrs, _els} | _acc].
+
+decode_vcard_email_EMAIL_USERID_cdata(<<>>) ->
+    undefined;
+decode_vcard_email_EMAIL_USERID_cdata(_val) -> _val.
+
+encode_vcard_email_EMAIL_USERID_cdata(undefined,
+				      _acc) ->
+    _acc;
+encode_vcard_email_EMAIL_USERID_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_email_EMAIL_X400({xmlel, _, _attrs,
+			       _els}) ->
+    true.
+
+encode_vcard_email_EMAIL_X400(false, _acc) -> _acc;
+encode_vcard_email_EMAIL_X400(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"X400">>, _attrs, _els} | _acc].
+
+decode_vcard_email_EMAIL_PREF({xmlel, _, _attrs,
+			       _els}) ->
+    true.
+
+encode_vcard_email_EMAIL_PREF(false, _acc) -> _acc;
+encode_vcard_email_EMAIL_PREF(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"PREF">>, _attrs, _els} | _acc].
+
+decode_vcard_email_EMAIL_INTERNET({xmlel, _, _attrs,
+				   _els}) ->
+    true.
+
+encode_vcard_email_EMAIL_INTERNET(false, _acc) -> _acc;
+encode_vcard_email_EMAIL_INTERNET(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"INTERNET">>, _attrs, _els} | _acc].
+
+decode_vcard_email_EMAIL_WORK({xmlel, _, _attrs,
+			       _els}) ->
+    true.
+
+encode_vcard_email_EMAIL_WORK(false, _acc) -> _acc;
+encode_vcard_email_EMAIL_WORK(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"WORK">>, _attrs, _els} | _acc].
+
+decode_vcard_email_EMAIL_HOME({xmlel, _, _attrs,
+			       _els}) ->
+    true.
+
+encode_vcard_email_EMAIL_HOME(false, _acc) -> _acc;
+encode_vcard_email_EMAIL_HOME(true, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"HOME">>, _attrs, _els} | _acc].
+
+decode_vcard_geo_GEO({xmlel, _, _attrs, _els}) ->
+    {Lon, Lat} = decode_vcard_geo_GEO_els(_els, [], []),
+    {vcard_geo, Lat, Lon}.
+
+decode_vcard_geo_GEO_els([{xmlel, <<"LON">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Lon, Lat) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_geo_GEO_els(_els,
+				   [decode_vcard_geo_GEO_LON(_el) | Lon], Lat);
+      _ -> decode_vcard_geo_GEO_els(_els, Lon, Lat)
+    end;
+decode_vcard_geo_GEO_els([{xmlel, <<"LAT">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Lon, Lat) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_geo_GEO_els(_els, Lon,
+				   [decode_vcard_geo_GEO_LAT(_el) | Lat]);
+      _ -> decode_vcard_geo_GEO_els(_els, Lon, Lat)
+    end;
+decode_vcard_geo_GEO_els([_ | _els], Lon, Lat) ->
+    decode_vcard_geo_GEO_els(_els, Lon, Lat);
+decode_vcard_geo_GEO_els([], [Lon], [Lat]) ->
+    {Lon, Lat}.
+
+encode_vcard_geo_GEO(undefined, _acc) -> _acc;
+encode_vcard_geo_GEO({vcard_geo, Lat, Lon}, _acc) ->
+    _els = encode_vcard_geo_GEO_LAT(Lat,
+				    encode_vcard_geo_GEO_LON(Lon, [])),
+    _attrs = [],
+    [{xmlel, <<"GEO">>, _attrs, _els} | _acc].
+
+decode_vcard_geo_GEO_LON({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_geo_GEO_LON_els(_els, <<>>), Cdata.
+
+decode_vcard_geo_GEO_LON_els([{xmlcdata, _data} | _els],
+			     Cdata) ->
+    decode_vcard_geo_GEO_LON_els(_els,
+				 <<Cdata/binary, _data/binary>>);
+decode_vcard_geo_GEO_LON_els([_ | _els], Cdata) ->
+    decode_vcard_geo_GEO_LON_els(_els, Cdata);
+decode_vcard_geo_GEO_LON_els([], Cdata) ->
+    decode_vcard_geo_GEO_LON_cdata(Cdata).
+
+encode_vcard_geo_GEO_LON(Cdata, _acc) ->
+    _els = encode_vcard_geo_GEO_LON_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"LON">>, _attrs, _els} | _acc].
+
+decode_vcard_geo_GEO_LON_cdata(<<>>) -> undefined;
+decode_vcard_geo_GEO_LON_cdata(_val) -> _val.
+
+encode_vcard_geo_GEO_LON_cdata(undefined, _acc) -> _acc;
+encode_vcard_geo_GEO_LON_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_geo_GEO_LAT({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_geo_GEO_LAT_els(_els, <<>>), Cdata.
+
+decode_vcard_geo_GEO_LAT_els([{xmlcdata, _data} | _els],
+			     Cdata) ->
+    decode_vcard_geo_GEO_LAT_els(_els,
+				 <<Cdata/binary, _data/binary>>);
+decode_vcard_geo_GEO_LAT_els([_ | _els], Cdata) ->
+    decode_vcard_geo_GEO_LAT_els(_els, Cdata);
+decode_vcard_geo_GEO_LAT_els([], Cdata) ->
+    decode_vcard_geo_GEO_LAT_cdata(Cdata).
+
+encode_vcard_geo_GEO_LAT(Cdata, _acc) ->
+    _els = encode_vcard_geo_GEO_LAT_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"LAT">>, _attrs, _els} | _acc].
+
+decode_vcard_geo_GEO_LAT_cdata(<<>>) -> undefined;
+decode_vcard_geo_GEO_LAT_cdata(_val) -> _val.
+
+encode_vcard_geo_GEO_LAT_cdata(undefined, _acc) -> _acc;
+encode_vcard_geo_GEO_LAT_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_type_TYPE({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_type_TYPE_els(_els, <<>>), Cdata.
+
+decode_vcard_type_TYPE_els([{xmlcdata, _data} | _els],
+			   Cdata) ->
+    decode_vcard_type_TYPE_els(_els,
+			       <<Cdata/binary, _data/binary>>);
+decode_vcard_type_TYPE_els([_ | _els], Cdata) ->
+    decode_vcard_type_TYPE_els(_els, Cdata);
+decode_vcard_type_TYPE_els([], Cdata) ->
+    decode_vcard_type_TYPE_cdata(Cdata).
+
+encode_vcard_type_TYPE(undefined, _acc) -> _acc;
+encode_vcard_type_TYPE(Cdata, _acc) ->
+    _els = encode_vcard_type_TYPE_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"TYPE">>, _attrs, _els} | _acc].
+
+decode_vcard_type_TYPE_cdata(<<>>) -> undefined;
+decode_vcard_type_TYPE_cdata(_val) -> _val.
+
+encode_vcard_type_TYPE_cdata(undefined, _acc) -> _acc;
+encode_vcard_type_TYPE_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_binval_BINVAL({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_binval_BINVAL_els(_els, <<>>),
+    Cdata.
+
+decode_vcard_binval_BINVAL_els([{xmlcdata, _data}
+				| _els],
+			       Cdata) ->
+    decode_vcard_binval_BINVAL_els(_els,
+				   <<Cdata/binary, _data/binary>>);
+decode_vcard_binval_BINVAL_els([_ | _els], Cdata) ->
+    decode_vcard_binval_BINVAL_els(_els, Cdata);
+decode_vcard_binval_BINVAL_els([], Cdata) ->
+    decode_vcard_binval_BINVAL_cdata(Cdata).
+
+encode_vcard_binval_BINVAL(undefined, _acc) -> _acc;
+encode_vcard_binval_BINVAL(Cdata, _acc) ->
+    _els = encode_vcard_binval_BINVAL_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"BINVAL">>, _attrs, _els} | _acc].
+
+decode_vcard_binval_BINVAL_cdata(<<>>) -> undefined;
+decode_vcard_binval_BINVAL_cdata(_val) ->
+    case catch base64:decode(_val) of
+      {'EXIT', _} ->
+	  erlang:error({bad_cdata_value, <<>>, <<"BINVAL">>,
+			<<>>});
+      _res -> _res
+    end.
+
+encode_vcard_binval_BINVAL_cdata(undefined, _acc) ->
+    _acc;
+encode_vcard_binval_BINVAL_cdata(_val, _acc) ->
+    [{xmlcdata, base64:encode(_val)} | _acc].
+
+decode_vcard_extval_EXTVAL({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_extval_EXTVAL_els(_els, <<>>),
+    Cdata.
+
+decode_vcard_extval_EXTVAL_els([{xmlcdata, _data}
+				| _els],
+			       Cdata) ->
+    decode_vcard_extval_EXTVAL_els(_els,
+				   <<Cdata/binary, _data/binary>>);
+decode_vcard_extval_EXTVAL_els([_ | _els], Cdata) ->
+    decode_vcard_extval_EXTVAL_els(_els, Cdata);
+decode_vcard_extval_EXTVAL_els([], Cdata) ->
+    decode_vcard_extval_EXTVAL_cdata(Cdata).
+
+encode_vcard_extval_EXTVAL(undefined, _acc) -> _acc;
+encode_vcard_extval_EXTVAL(Cdata, _acc) ->
+    _els = encode_vcard_extval_EXTVAL_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"EXTVAL">>, _attrs, _els} | _acc].
+
+decode_vcard_extval_EXTVAL_cdata(<<>>) -> undefined;
+decode_vcard_extval_EXTVAL_cdata(_val) -> _val.
+
+encode_vcard_extval_EXTVAL_cdata(undefined, _acc) ->
+    _acc;
+encode_vcard_extval_EXTVAL_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_logo_LOGO({xmlel, _, _attrs, _els}) ->
+    {Extval, Binval, Type} =
+	decode_vcard_logo_LOGO_els(_els, undefined, undefined,
+				   undefined),
+    {vcard_logo, Type, Binval, Extval}.
+
+decode_vcard_logo_LOGO_els([{xmlel, <<"EXTVAL">>,
+			     _attrs, _} =
+				_el
+			    | _els],
+			   Extval, Binval, Type) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_logo_LOGO_els(_els,
+				     decode_vcard_extval_EXTVAL(_el), Binval,
+				     Type);
+      _ ->
+	  decode_vcard_logo_LOGO_els(_els, Extval, Binval, Type)
+    end;
+decode_vcard_logo_LOGO_els([{xmlel, <<"BINVAL">>,
+			     _attrs, _} =
+				_el
+			    | _els],
+			   Extval, Binval, Type) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_logo_LOGO_els(_els, Extval,
+				     decode_vcard_binval_BINVAL(_el), Type);
+      _ ->
+	  decode_vcard_logo_LOGO_els(_els, Extval, Binval, Type)
+    end;
+decode_vcard_logo_LOGO_els([{xmlel, <<"TYPE">>, _attrs,
+			     _} =
+				_el
+			    | _els],
+			   Extval, Binval, Type) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_logo_LOGO_els(_els, Extval, Binval,
+				     decode_vcard_type_TYPE(_el));
+      _ ->
+	  decode_vcard_logo_LOGO_els(_els, Extval, Binval, Type)
+    end;
+decode_vcard_logo_LOGO_els([_ | _els], Extval, Binval,
+			   Type) ->
+    decode_vcard_logo_LOGO_els(_els, Extval, Binval, Type);
+decode_vcard_logo_LOGO_els([], Extval, Binval, Type) ->
+    {Extval, Binval, Type}.
+
+encode_vcard_logo_LOGO(undefined, _acc) -> _acc;
+encode_vcard_logo_LOGO({vcard_logo, Type, Binval,
+			Extval},
+		       _acc) ->
+    _els = encode_vcard_type_TYPE(Type,
+				  encode_vcard_binval_BINVAL(Binval,
+							     encode_vcard_extval_EXTVAL(Extval,
+											[]))),
+    _attrs = [],
+    [{xmlel, <<"LOGO">>, _attrs, _els} | _acc].
+
+decode_vcard_photo_PHOTO({xmlel, _, _attrs, _els}) ->
+    {Extval, Binval, Type} =
+	decode_vcard_photo_PHOTO_els(_els, undefined, undefined,
+				     undefined),
+    {vcard_photo, Type, Binval, Extval}.
+
+decode_vcard_photo_PHOTO_els([{xmlel, <<"EXTVAL">>,
+			       _attrs, _} =
+				  _el
+			      | _els],
+			     Extval, Binval, Type) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_photo_PHOTO_els(_els,
+				       decode_vcard_extval_EXTVAL(_el), Binval,
+				       Type);
+      _ ->
+	  decode_vcard_photo_PHOTO_els(_els, Extval, Binval, Type)
+    end;
+decode_vcard_photo_PHOTO_els([{xmlel, <<"BINVAL">>,
+			       _attrs, _} =
+				  _el
+			      | _els],
+			     Extval, Binval, Type) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_photo_PHOTO_els(_els, Extval,
+				       decode_vcard_binval_BINVAL(_el), Type);
+      _ ->
+	  decode_vcard_photo_PHOTO_els(_els, Extval, Binval, Type)
+    end;
+decode_vcard_photo_PHOTO_els([{xmlel, <<"TYPE">>,
+			       _attrs, _} =
+				  _el
+			      | _els],
+			     Extval, Binval, Type) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_photo_PHOTO_els(_els, Extval, Binval,
+				       decode_vcard_type_TYPE(_el));
+      _ ->
+	  decode_vcard_photo_PHOTO_els(_els, Extval, Binval, Type)
+    end;
+decode_vcard_photo_PHOTO_els([_ | _els], Extval, Binval,
+			     Type) ->
+    decode_vcard_photo_PHOTO_els(_els, Extval, Binval,
+				 Type);
+decode_vcard_photo_PHOTO_els([], Extval, Binval,
+			     Type) ->
+    {Extval, Binval, Type}.
+
+encode_vcard_photo_PHOTO(undefined, _acc) -> _acc;
+encode_vcard_photo_PHOTO({vcard_photo, Type, Binval,
+			  Extval},
+			 _acc) ->
+    _els = encode_vcard_type_TYPE(Type,
+				  encode_vcard_binval_BINVAL(Binval,
+							     encode_vcard_extval_EXTVAL(Extval,
+											[]))),
+    _attrs = [],
+    [{xmlel, <<"PHOTO">>, _attrs, _els} | _acc].
+
+decode_vcard_org_ORG({xmlel, _, _attrs, _els}) ->
+    {Units, Name} = decode_vcard_org_ORG_els(_els, [], []),
+    {vcard_org, Name, Units}.
+
+decode_vcard_org_ORG_els([{xmlel, <<"ORGUNIT">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Units, Name) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_org_ORG_els(_els,
+				   [decode_vcard_org_ORG_ORGUNIT(_el) | Units],
+				   Name);
+      _ -> decode_vcard_org_ORG_els(_els, Units, Name)
+    end;
+decode_vcard_org_ORG_els([{xmlel, <<"ORGNAME">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Units, Name) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_org_ORG_els(_els, Units,
+				   [decode_vcard_org_ORG_ORGNAME(_el) | Name]);
+      _ -> decode_vcard_org_ORG_els(_els, Units, Name)
+    end;
+decode_vcard_org_ORG_els([_ | _els], Units, Name) ->
+    decode_vcard_org_ORG_els(_els, Units, Name);
+decode_vcard_org_ORG_els([], Units, [Name]) ->
+    {lists:reverse(Units), Name}.
+
+encode_vcard_org_ORG(undefined, _acc) -> _acc;
+encode_vcard_org_ORG({vcard_org, Name, Units}, _acc) ->
+    _els = encode_vcard_org_ORG_ORGNAME(Name,
+					encode_vcard_org_ORG_ORGUNIT(Units,
+								     [])),
+    _attrs = [],
+    [{xmlel, <<"ORG">>, _attrs, _els} | _acc].
+
+decode_vcard_org_ORG_ORGUNIT({xmlel, _, _attrs,
+			      _els}) ->
+    Cdata = decode_vcard_org_ORG_ORGUNIT_els(_els, <<>>),
+    Cdata.
+
+decode_vcard_org_ORG_ORGUNIT_els([{xmlcdata, _data}
+				  | _els],
+				 Cdata) ->
+    decode_vcard_org_ORG_ORGUNIT_els(_els,
+				     <<Cdata/binary, _data/binary>>);
+decode_vcard_org_ORG_ORGUNIT_els([_ | _els], Cdata) ->
+    decode_vcard_org_ORG_ORGUNIT_els(_els, Cdata);
+decode_vcard_org_ORG_ORGUNIT_els([], Cdata) ->
+    decode_vcard_org_ORG_ORGUNIT_cdata(Cdata).
+
+encode_vcard_org_ORG_ORGUNIT([], _acc) -> _acc;
+encode_vcard_org_ORG_ORGUNIT([Cdata | _tail], _acc) ->
+    _els = encode_vcard_org_ORG_ORGUNIT_cdata(Cdata, []),
+    _attrs = [],
+    encode_vcard_org_ORG_ORGUNIT(_tail,
+				 [{xmlel, <<"ORGUNIT">>, _attrs, _els} | _acc]).
+
+decode_vcard_org_ORG_ORGUNIT_cdata(<<>>) -> undefined;
+decode_vcard_org_ORG_ORGUNIT_cdata(_val) -> _val.
+
+encode_vcard_org_ORG_ORGUNIT_cdata(undefined, _acc) ->
+    _acc;
+encode_vcard_org_ORG_ORGUNIT_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_org_ORG_ORGNAME({xmlel, _, _attrs,
+			      _els}) ->
+    Cdata = decode_vcard_org_ORG_ORGNAME_els(_els, <<>>),
+    Cdata.
+
+decode_vcard_org_ORG_ORGNAME_els([{xmlcdata, _data}
+				  | _els],
+				 Cdata) ->
+    decode_vcard_org_ORG_ORGNAME_els(_els,
+				     <<Cdata/binary, _data/binary>>);
+decode_vcard_org_ORG_ORGNAME_els([_ | _els], Cdata) ->
+    decode_vcard_org_ORG_ORGNAME_els(_els, Cdata);
+decode_vcard_org_ORG_ORGNAME_els([], Cdata) ->
+    decode_vcard_org_ORG_ORGNAME_cdata(Cdata).
+
+encode_vcard_org_ORG_ORGNAME(Cdata, _acc) ->
+    _els = encode_vcard_org_ORG_ORGNAME_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"ORGNAME">>, _attrs, _els} | _acc].
+
+decode_vcard_org_ORG_ORGNAME_cdata(<<>>) -> undefined;
+decode_vcard_org_ORG_ORGNAME_cdata(_val) -> _val.
+
+encode_vcard_org_ORG_ORGNAME_cdata(undefined, _acc) ->
+    _acc;
+encode_vcard_org_ORG_ORGNAME_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_sound_SOUND({xmlel, _, _attrs, _els}) ->
+    {Extval, Binval, Phonetic} =
+	decode_vcard_sound_SOUND_els(_els, undefined, undefined,
+				     undefined),
+    {vcard_sound, Phonetic, Binval, Extval}.
+
+decode_vcard_sound_SOUND_els([{xmlel, <<"EXTVAL">>,
+			       _attrs, _} =
+				  _el
+			      | _els],
+			     Extval, Binval, Phonetic) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_sound_SOUND_els(_els,
+				       decode_vcard_extval_EXTVAL(_el), Binval,
+				       Phonetic);
+      _ ->
+	  decode_vcard_sound_SOUND_els(_els, Extval, Binval,
+				       Phonetic)
+    end;
+decode_vcard_sound_SOUND_els([{xmlel, <<"BINVAL">>,
+			       _attrs, _} =
+				  _el
+			      | _els],
+			     Extval, Binval, Phonetic) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_sound_SOUND_els(_els, Extval,
+				       decode_vcard_binval_BINVAL(_el),
+				       Phonetic);
+      _ ->
+	  decode_vcard_sound_SOUND_els(_els, Extval, Binval,
+				       Phonetic)
+    end;
+decode_vcard_sound_SOUND_els([{xmlel, <<"PHONETIC">>,
+			       _attrs, _} =
+				  _el
+			      | _els],
+			     Extval, Binval, Phonetic) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_sound_SOUND_els(_els, Extval, Binval,
+				       decode_vcard_sound_SOUND_PHONETIC(_el));
+      _ ->
+	  decode_vcard_sound_SOUND_els(_els, Extval, Binval,
+				       Phonetic)
+    end;
+decode_vcard_sound_SOUND_els([_ | _els], Extval, Binval,
+			     Phonetic) ->
+    decode_vcard_sound_SOUND_els(_els, Extval, Binval,
+				 Phonetic);
+decode_vcard_sound_SOUND_els([], Extval, Binval,
+			     Phonetic) ->
+    {Extval, Binval, Phonetic}.
+
+encode_vcard_sound_SOUND(undefined, _acc) -> _acc;
+encode_vcard_sound_SOUND({vcard_sound, Phonetic, Binval,
+			  Extval},
+			 _acc) ->
+    _els = encode_vcard_sound_SOUND_PHONETIC(Phonetic,
+					     encode_vcard_binval_BINVAL(Binval,
+									encode_vcard_extval_EXTVAL(Extval,
+												   []))),
+    _attrs = [],
+    [{xmlel, <<"SOUND">>, _attrs, _els} | _acc].
+
+decode_vcard_sound_SOUND_PHONETIC({xmlel, _, _attrs,
+				   _els}) ->
+    Cdata = decode_vcard_sound_SOUND_PHONETIC_els(_els,
+						  <<>>),
+    Cdata.
+
+decode_vcard_sound_SOUND_PHONETIC_els([{xmlcdata, _data}
+				       | _els],
+				      Cdata) ->
+    decode_vcard_sound_SOUND_PHONETIC_els(_els,
+					  <<Cdata/binary, _data/binary>>);
+decode_vcard_sound_SOUND_PHONETIC_els([_ | _els],
+				      Cdata) ->
+    decode_vcard_sound_SOUND_PHONETIC_els(_els, Cdata);
+decode_vcard_sound_SOUND_PHONETIC_els([], Cdata) ->
+    decode_vcard_sound_SOUND_PHONETIC_cdata(Cdata).
+
+encode_vcard_sound_SOUND_PHONETIC(undefined, _acc) ->
+    _acc;
+encode_vcard_sound_SOUND_PHONETIC(Cdata, _acc) ->
+    _els = encode_vcard_sound_SOUND_PHONETIC_cdata(Cdata,
+						   []),
+    _attrs = [],
+    [{xmlel, <<"PHONETIC">>, _attrs, _els} | _acc].
+
+decode_vcard_sound_SOUND_PHONETIC_cdata(<<>>) ->
+    undefined;
+decode_vcard_sound_SOUND_PHONETIC_cdata(_val) -> _val.
+
+encode_vcard_sound_SOUND_PHONETIC_cdata(undefined,
+					_acc) ->
+    _acc;
+encode_vcard_sound_SOUND_PHONETIC_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_key_KEY({xmlel, _, _attrs, _els}) ->
+    {Cred, Type} = decode_vcard_key_KEY_els(_els, [],
+					    undefined),
+    {vcard_key, Type, Cred}.
+
+decode_vcard_key_KEY_els([{xmlel, <<"CRED">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Cred, Type) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_key_KEY_els(_els,
+				   [decode_vcard_key_KEY_CRED(_el) | Cred],
+				   Type);
+      _ -> decode_vcard_key_KEY_els(_els, Cred, Type)
+    end;
+decode_vcard_key_KEY_els([{xmlel, <<"TYPE">>, _attrs,
+			   _} =
+			      _el
+			  | _els],
+			 Cred, Type) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_key_KEY_els(_els, Cred,
+				   decode_vcard_type_TYPE(_el));
+      _ -> decode_vcard_key_KEY_els(_els, Cred, Type)
+    end;
+decode_vcard_key_KEY_els([_ | _els], Cred, Type) ->
+    decode_vcard_key_KEY_els(_els, Cred, Type);
+decode_vcard_key_KEY_els([], [Cred], Type) ->
+    {Cred, Type}.
+
+encode_vcard_key_KEY(undefined, _acc) -> _acc;
+encode_vcard_key_KEY({vcard_key, Type, Cred}, _acc) ->
+    _els = encode_vcard_type_TYPE(Type,
+				  encode_vcard_key_KEY_CRED(Cred, [])),
+    _attrs = [],
+    [{xmlel, <<"KEY">>, _attrs, _els} | _acc].
+
+decode_vcard_key_KEY_CRED({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_key_KEY_CRED_els(_els, <<>>),
+    Cdata.
+
+decode_vcard_key_KEY_CRED_els([{xmlcdata, _data}
+			       | _els],
+			      Cdata) ->
+    decode_vcard_key_KEY_CRED_els(_els,
+				  <<Cdata/binary, _data/binary>>);
+decode_vcard_key_KEY_CRED_els([_ | _els], Cdata) ->
+    decode_vcard_key_KEY_CRED_els(_els, Cdata);
+decode_vcard_key_KEY_CRED_els([], Cdata) ->
+    decode_vcard_key_KEY_CRED_cdata(Cdata).
+
+encode_vcard_key_KEY_CRED(Cdata, _acc) ->
+    _els = encode_vcard_key_KEY_CRED_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"CRED">>, _attrs, _els} | _acc].
+
+decode_vcard_key_KEY_CRED_cdata(<<>>) -> undefined;
+decode_vcard_key_KEY_CRED_cdata(_val) -> _val.
+
+encode_vcard_key_KEY_CRED_cdata(undefined, _acc) ->
+    _acc;
+encode_vcard_key_KEY_CRED_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_vCard({xmlel, _, _attrs, _els}) ->
+    {Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+     Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+     Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+     Photo, Nickname, N, Fn, Version} =
+	decode_vcard_vCard_els(_els, undefined, undefined,
+			       undefined, undefined, undefined, undefined,
+			       undefined, undefined, undefined, undefined, [],
+			       undefined, undefined, undefined, undefined,
+			       undefined, undefined, undefined, undefined, [],
+			       [], [], [], undefined, undefined, undefined,
+			       undefined, undefined, undefined),
+    {vcard, Version, Fn, N, Nickname, Photo, Bday, Adr,
+     Label, Tel, Email, Jabberid, Mailer, Tz, Geo, Title,
+     Role, Logo, Org, Categories, Note, Prodid, Rev,
+     Sort_string, Sound, Uid, Url, Class, Key, Desc}.
+
+decode_vcard_vCard_els([{xmlel, <<"DESC">>, _attrs, _} =
+			    _el
+			| _els],
+		       Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+		       Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+		       Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+		       Photo, Nickname, N, Fn, Version) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_els(_els,
+				 decode_vcard_vCard_DESC(_el), Key, Class, Url,
+				 Uid, Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version);
+      _ ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version)
+    end;
+decode_vcard_vCard_els([{xmlel, <<"KEY">>, _attrs, _} =
+			    _el
+			| _els],
+		       Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+		       Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+		       Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+		       Photo, Nickname, N, Fn, Version) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_els(_els, Desc,
+				 decode_vcard_key_KEY(_el), Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version);
+      _ ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version)
+    end;
+decode_vcard_vCard_els([{xmlel, <<"CLASS">>, _attrs,
+			 _} =
+			    _el
+			| _els],
+		       Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+		       Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+		       Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+		       Photo, Nickname, N, Fn, Version) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_els(_els, Desc, Key,
+				 decode_vcard_vCard_CLASS(_el), Url, Uid, Sound,
+				 Sort_string, Rev, Prodid, Note, Categories,
+				 Org, Logo, Role, Title, Geo, Tz, Mailer,
+				 Jabberid, Email, Tel, Label, Adr, Bday, Photo,
+				 Nickname, N, Fn, Version);
+      _ ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version)
+    end;
+decode_vcard_vCard_els([{xmlel, <<"URL">>, _attrs, _} =
+			    _el
+			| _els],
+		       Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+		       Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+		       Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+		       Photo, Nickname, N, Fn, Version) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class,
+				 decode_vcard_vCard_URL(_el), Uid, Sound,
+				 Sort_string, Rev, Prodid, Note, Categories,
+				 Org, Logo, Role, Title, Geo, Tz, Mailer,
+				 Jabberid, Email, Tel, Label, Adr, Bday, Photo,
+				 Nickname, N, Fn, Version);
+      _ ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version)
+    end;
+decode_vcard_vCard_els([{xmlel, <<"UID">>, _attrs, _} =
+			    _el
+			| _els],
+		       Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+		       Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+		       Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+		       Photo, Nickname, N, Fn, Version) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url,
+				 decode_vcard_vCard_UID(_el), Sound,
+				 Sort_string, Rev, Prodid, Note, Categories,
+				 Org, Logo, Role, Title, Geo, Tz, Mailer,
+				 Jabberid, Email, Tel, Label, Adr, Bday, Photo,
+				 Nickname, N, Fn, Version);
+      _ ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version)
+    end;
+decode_vcard_vCard_els([{xmlel, <<"SOUND">>, _attrs,
+			 _} =
+			    _el
+			| _els],
+		       Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+		       Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+		       Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+		       Photo, Nickname, N, Fn, Version) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 decode_vcard_sound_SOUND(_el), Sort_string,
+				 Rev, Prodid, Note, Categories, Org, Logo, Role,
+				 Title, Geo, Tz, Mailer, Jabberid, Email, Tel,
+				 Label, Adr, Bday, Photo, Nickname, N, Fn,
+				 Version);
+      _ ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version)
+    end;
+decode_vcard_vCard_els([{xmlel, <<"SORT-STRING">>,
+			 _attrs, _} =
+			    _el
+			| _els],
+		       Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+		       Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+		       Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+		       Photo, Nickname, N, Fn, Version) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, 'decode_vcard_vCard_SORT-STRING'(_el),
+				 Rev, Prodid, Note, Categories, Org, Logo, Role,
+				 Title, Geo, Tz, Mailer, Jabberid, Email, Tel,
+				 Label, Adr, Bday, Photo, Nickname, N, Fn,
+				 Version);
+      _ ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version)
+    end;
+decode_vcard_vCard_els([{xmlel, <<"REV">>, _attrs, _} =
+			    _el
+			| _els],
+		       Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+		       Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+		       Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+		       Photo, Nickname, N, Fn, Version) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string,
+				 decode_vcard_vCard_REV(_el), Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version);
+      _ ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version)
+    end;
+decode_vcard_vCard_els([{xmlel, <<"PRODID">>, _attrs,
+			 _} =
+			    _el
+			| _els],
+		       Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+		       Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+		       Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+		       Photo, Nickname, N, Fn, Version) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev,
+				 decode_vcard_vCard_PRODID(_el), Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version);
+      _ ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version)
+    end;
+decode_vcard_vCard_els([{xmlel, <<"NOTE">>, _attrs, _} =
+			    _el
+			| _els],
+		       Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+		       Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+		       Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+		       Photo, Nickname, N, Fn, Version) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid,
+				 decode_vcard_vCard_NOTE(_el), Categories, Org,
+				 Logo, Role, Title, Geo, Tz, Mailer, Jabberid,
+				 Email, Tel, Label, Adr, Bday, Photo, Nickname,
+				 N, Fn, Version);
+      _ ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version)
+    end;
+decode_vcard_vCard_els([{xmlel, <<"CATEGORIES">>,
+			 _attrs, _} =
+			    _el
+			| _els],
+		       Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+		       Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+		       Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+		       Photo, Nickname, N, Fn, Version) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 decode_vcard_vCard_CATEGORIES(_el), Org, Logo,
+				 Role, Title, Geo, Tz, Mailer, Jabberid, Email,
+				 Tel, Label, Adr, Bday, Photo, Nickname, N, Fn,
+				 Version);
+      _ ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version)
+    end;
+decode_vcard_vCard_els([{xmlel, <<"ORG">>, _attrs, _} =
+			    _el
+			| _els],
+		       Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+		       Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+		       Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+		       Photo, Nickname, N, Fn, Version) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, decode_vcard_org_ORG(_el), Logo,
+				 Role, Title, Geo, Tz, Mailer, Jabberid, Email,
+				 Tel, Label, Adr, Bday, Photo, Nickname, N, Fn,
+				 Version);
+      _ ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version)
+    end;
+decode_vcard_vCard_els([{xmlel, <<"LOGO">>, _attrs, _} =
+			    _el
+			| _els],
+		       Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+		       Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+		       Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+		       Photo, Nickname, N, Fn, Version) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, decode_vcard_logo_LOGO(_el),
+				 Role, Title, Geo, Tz, Mailer, Jabberid, Email,
+				 Tel, Label, Adr, Bday, Photo, Nickname, N, Fn,
+				 Version);
+      _ ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version)
+    end;
+decode_vcard_vCard_els([{xmlel, <<"ROLE">>, _attrs, _} =
+			    _el
+			| _els],
+		       Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+		       Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+		       Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+		       Photo, Nickname, N, Fn, Version) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo,
+				 decode_vcard_vCard_ROLE(_el), Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version);
+      _ ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version)
+    end;
+decode_vcard_vCard_els([{xmlel, <<"TITLE">>, _attrs,
+			 _} =
+			    _el
+			| _els],
+		       Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+		       Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+		       Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+		       Photo, Nickname, N, Fn, Version) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role,
+				 decode_vcard_vCard_TITLE(_el), Geo, Tz, Mailer,
+				 Jabberid, Email, Tel, Label, Adr, Bday, Photo,
+				 Nickname, N, Fn, Version);
+      _ ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version)
+    end;
+decode_vcard_vCard_els([{xmlel, <<"GEO">>, _attrs, _} =
+			    _el
+			| _els],
+		       Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+		       Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+		       Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+		       Photo, Nickname, N, Fn, Version) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title,
+				 decode_vcard_geo_GEO(_el), Tz, Mailer,
+				 Jabberid, Email, Tel, Label, Adr, Bday, Photo,
+				 Nickname, N, Fn, Version);
+      _ ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version)
+    end;
+decode_vcard_vCard_els([{xmlel, <<"TZ">>, _attrs, _} =
+			    _el
+			| _els],
+		       Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+		       Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+		       Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+		       Photo, Nickname, N, Fn, Version) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo,
+				 decode_vcard_vCard_TZ(_el), Mailer, Jabberid,
+				 Email, Tel, Label, Adr, Bday, Photo, Nickname,
+				 N, Fn, Version);
+      _ ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version)
+    end;
+decode_vcard_vCard_els([{xmlel, <<"MAILER">>, _attrs,
+			 _} =
+			    _el
+			| _els],
+		       Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+		       Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+		       Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+		       Photo, Nickname, N, Fn, Version) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 decode_vcard_vCard_MAILER(_el), Jabberid,
+				 Email, Tel, Label, Adr, Bday, Photo, Nickname,
+				 N, Fn, Version);
+      _ ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version)
+    end;
+decode_vcard_vCard_els([{xmlel, <<"JABBERID">>, _attrs,
+			 _} =
+			    _el
+			| _els],
+		       Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+		       Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+		       Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+		       Photo, Nickname, N, Fn, Version) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, decode_vcard_vCard_JABBERID(_el),
+				 Email, Tel, Label, Adr, Bday, Photo, Nickname,
+				 N, Fn, Version);
+      _ ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version)
+    end;
+decode_vcard_vCard_els([{xmlel, <<"EMAIL">>, _attrs,
+			 _} =
+			    _el
+			| _els],
+		       Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+		       Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+		       Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+		       Photo, Nickname, N, Fn, Version) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid,
+				 [decode_vcard_email_EMAIL(_el) | Email], Tel,
+				 Label, Adr, Bday, Photo, Nickname, N, Fn,
+				 Version);
+      _ ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version)
+    end;
+decode_vcard_vCard_els([{xmlel, <<"TEL">>, _attrs, _} =
+			    _el
+			| _els],
+		       Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+		       Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+		       Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+		       Photo, Nickname, N, Fn, Version) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email,
+				 [decode_vcard_tel_TEL(_el) | Tel], Label, Adr,
+				 Bday, Photo, Nickname, N, Fn, Version);
+      _ ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version)
+    end;
+decode_vcard_vCard_els([{xmlel, <<"LABEL">>, _attrs,
+			 _} =
+			    _el
+			| _els],
+		       Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+		       Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+		       Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+		       Photo, Nickname, N, Fn, Version) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel,
+				 [decode_vcard_label_LABEL(_el) | Label], Adr,
+				 Bday, Photo, Nickname, N, Fn, Version);
+      _ ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version)
+    end;
+decode_vcard_vCard_els([{xmlel, <<"ADR">>, _attrs, _} =
+			    _el
+			| _els],
+		       Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+		       Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+		       Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+		       Photo, Nickname, N, Fn, Version) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label,
+				 [decode_vcard_adr_ADR(_el) | Adr], Bday, Photo,
+				 Nickname, N, Fn, Version);
+      _ ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version)
+    end;
+decode_vcard_vCard_els([{xmlel, <<"BDAY">>, _attrs, _} =
+			    _el
+			| _els],
+		       Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+		       Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+		       Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+		       Photo, Nickname, N, Fn, Version) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr,
+				 decode_vcard_vCard_BDAY(_el), Photo, Nickname,
+				 N, Fn, Version);
+      _ ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version)
+    end;
+decode_vcard_vCard_els([{xmlel, <<"PHOTO">>, _attrs,
+			 _} =
+			    _el
+			| _els],
+		       Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+		       Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+		       Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+		       Photo, Nickname, N, Fn, Version) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 decode_vcard_photo_PHOTO(_el), Nickname, N, Fn,
+				 Version);
+      _ ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version)
+    end;
+decode_vcard_vCard_els([{xmlel, <<"NICKNAME">>, _attrs,
+			 _} =
+			    _el
+			| _els],
+		       Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+		       Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+		       Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+		       Photo, Nickname, N, Fn, Version) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, decode_vcard_vCard_NICKNAME(_el), N, Fn,
+				 Version);
+      _ ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version)
+    end;
+decode_vcard_vCard_els([{xmlel, <<"N">>, _attrs, _} =
+			    _el
+			| _els],
+		       Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+		       Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+		       Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+		       Photo, Nickname, N, Fn, Version) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, decode_vcard_name_N(_el), Fn,
+				 Version);
+      _ ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version)
+    end;
+decode_vcard_vCard_els([{xmlel, <<"FN">>, _attrs, _} =
+			    _el
+			| _els],
+		       Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+		       Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+		       Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+		       Photo, Nickname, N, Fn, Version) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, decode_vcard_vCard_FN(_el),
+				 Version);
+      _ ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version)
+    end;
+decode_vcard_vCard_els([{xmlel, <<"VERSION">>, _attrs,
+			 _} =
+			    _el
+			| _els],
+		       Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+		       Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+		       Tz, Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+		       Photo, Nickname, N, Fn, Version) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn,
+				 decode_vcard_vCard_VERSION(_el));
+      _ ->
+	  decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+				 Sound, Sort_string, Rev, Prodid, Note,
+				 Categories, Org, Logo, Role, Title, Geo, Tz,
+				 Mailer, Jabberid, Email, Tel, Label, Adr, Bday,
+				 Photo, Nickname, N, Fn, Version)
+    end;
+decode_vcard_vCard_els([_ | _els], Desc, Key, Class,
+		       Url, Uid, Sound, Sort_string, Rev, Prodid, Note,
+		       Categories, Org, Logo, Role, Title, Geo, Tz, Mailer,
+		       Jabberid, Email, Tel, Label, Adr, Bday, Photo, Nickname,
+		       N, Fn, Version) ->
+    decode_vcard_vCard_els(_els, Desc, Key, Class, Url, Uid,
+			   Sound, Sort_string, Rev, Prodid, Note, Categories,
+			   Org, Logo, Role, Title, Geo, Tz, Mailer, Jabberid,
+			   Email, Tel, Label, Adr, Bday, Photo, Nickname, N, Fn,
+			   Version);
+decode_vcard_vCard_els([], Desc, Key, Class, Url, Uid,
+		       Sound, Sort_string, Rev, Prodid, Note, Categories, Org,
+		       Logo, Role, Title, Geo, Tz, Mailer, Jabberid, Email,
+		       Tel, Label, Adr, Bday, Photo, Nickname, N, Fn,
+		       Version) ->
+    {Desc, Key, Class, Url, Uid, Sound, Sort_string, Rev,
+     Prodid, Note, Categories, Org, Logo, Role, Title, Geo,
+     Tz, Mailer, Jabberid, lists:reverse(Email),
+     lists:reverse(Tel), lists:reverse(Label),
+     lists:reverse(Adr), Bday, Photo, Nickname, N, Fn,
+     Version}.
+
+encode_vcard_vCard(undefined, _acc) -> _acc;
+encode_vcard_vCard({vcard, Version, Fn, N, Nickname,
+		    Photo, Bday, Adr, Label, Tel, Email, Jabberid, Mailer,
+		    Tz, Geo, Title, Role, Logo, Org, Categories, Note,
+		    Prodid, Rev, Sort_string, Sound, Uid, Url, Class, Key,
+		    Desc},
+		   _acc) ->
+    _els = encode_vcard_vCard_VERSION(Version,
+				      encode_vcard_vCard_FN(Fn,
+							    encode_vcard_name_N(N,
+										encode_vcard_vCard_NICKNAME(Nickname,
+													    encode_vcard_photo_PHOTO(Photo,
+																     encode_vcard_vCard_BDAY(Bday,
+																			     encode_vcard_adr_ADR(Adr,
+																						  encode_vcard_label_LABEL(Label,
+																									   encode_vcard_tel_TEL(Tel,
+																												encode_vcard_email_EMAIL(Email,
+																															 encode_vcard_vCard_JABBERID(Jabberid,
+																																		     encode_vcard_vCard_MAILER(Mailer,
+																																					       encode_vcard_vCard_TZ(Tz,
+																																								     encode_vcard_geo_GEO(Geo,
+																																											  encode_vcard_vCard_TITLE(Title,
+																																														   encode_vcard_vCard_ROLE(Role,
+																																																	   encode_vcard_logo_LOGO(Logo,
+																																																				  encode_vcard_org_ORG(Org,
+																																																						       encode_vcard_vCard_CATEGORIES(Categories,
+																																																										     encode_vcard_vCard_NOTE(Note,
+																																																													     encode_vcard_vCard_PRODID(Prodid,
+																																																																       encode_vcard_vCard_REV(Rev,
+																																																																			      'encode_vcard_vCard_SORT-STRING'(Sort_string,
+																																																																							       encode_vcard_sound_SOUND(Sound,
+																																																																											encode_vcard_vCard_UID(Uid,
+																																																																													       encode_vcard_vCard_URL(Url,
+																																																																																      encode_vcard_vCard_CLASS(Class,
+																																																																																			       encode_vcard_key_KEY(Key,
+																																																																																						    encode_vcard_vCard_DESC(Desc,
+																																																																																									    []))))))))))))))))))))))))))))),
+    _attrs = [{<<"xmlns">>, <<"vcard-temp">>}],
+    [{xmlel, <<"vCard">>, _attrs, _els} | _acc].
+
+decode_vcard_vCard_DESC({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_vCard_DESC_els(_els, <<>>), Cdata.
+
+decode_vcard_vCard_DESC_els([{xmlcdata, _data} | _els],
+			    Cdata) ->
+    decode_vcard_vCard_DESC_els(_els,
+				<<Cdata/binary, _data/binary>>);
+decode_vcard_vCard_DESC_els([_ | _els], Cdata) ->
+    decode_vcard_vCard_DESC_els(_els, Cdata);
+decode_vcard_vCard_DESC_els([], Cdata) ->
+    decode_vcard_vCard_DESC_cdata(Cdata).
+
+encode_vcard_vCard_DESC(undefined, _acc) -> _acc;
+encode_vcard_vCard_DESC(Cdata, _acc) ->
+    _els = encode_vcard_vCard_DESC_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"DESC">>, _attrs, _els} | _acc].
+
+decode_vcard_vCard_DESC_cdata(<<>>) -> undefined;
+decode_vcard_vCard_DESC_cdata(_val) -> _val.
+
+encode_vcard_vCard_DESC_cdata(undefined, _acc) -> _acc;
+encode_vcard_vCard_DESC_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_vCard_CLASS({xmlel, _, _attrs, _els}) ->
+    Value = decode_vcard_vCard_CLASS_els(_els, undefined),
+    Value.
+
+decode_vcard_vCard_CLASS_els([{xmlel,
+			       <<"CONFIDENTIAL">>, _attrs, _} =
+				  _el
+			      | _els],
+			     Value) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_CLASS_els(_els,
+				       decode_vcard_vCard_CLASS_CONFIDENTIAL(_el));
+      _ -> decode_vcard_vCard_CLASS_els(_els, Value)
+    end;
+decode_vcard_vCard_CLASS_els([{xmlel, <<"PRIVATE">>,
+			       _attrs, _} =
+				  _el
+			      | _els],
+			     Value) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_CLASS_els(_els,
+				       decode_vcard_vCard_CLASS_PRIVATE(_el));
+      _ -> decode_vcard_vCard_CLASS_els(_els, Value)
+    end;
+decode_vcard_vCard_CLASS_els([{xmlel, <<"PUBLIC">>,
+			       _attrs, _} =
+				  _el
+			      | _els],
+			     Value) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_CLASS_els(_els,
+				       decode_vcard_vCard_CLASS_PUBLIC(_el));
+      _ -> decode_vcard_vCard_CLASS_els(_els, Value)
+    end;
+decode_vcard_vCard_CLASS_els([_ | _els], Value) ->
+    decode_vcard_vCard_CLASS_els(_els, Value);
+decode_vcard_vCard_CLASS_els([], Value) -> Value.
+
+'encode_vcard_vCard_CLASS_$value'(undefined, _acc) ->
+    _acc;
+'encode_vcard_vCard_CLASS_$value'(confidential = _r,
+				  _acc) ->
+    encode_vcard_vCard_CLASS_CONFIDENTIAL(_r, _acc);
+'encode_vcard_vCard_CLASS_$value'(private = _r, _acc) ->
+    encode_vcard_vCard_CLASS_PRIVATE(_r, _acc);
+'encode_vcard_vCard_CLASS_$value'(public = _r, _acc) ->
+    encode_vcard_vCard_CLASS_PUBLIC(_r, _acc).
+
+encode_vcard_vCard_CLASS(undefined, _acc) -> _acc;
+encode_vcard_vCard_CLASS(Value, _acc) ->
+    _els = 'encode_vcard_vCard_CLASS_$value'(Value, []),
+    _attrs = [],
+    [{xmlel, <<"CLASS">>, _attrs, _els} | _acc].
+
+decode_vcard_vCard_CLASS_CONFIDENTIAL({xmlel, _, _attrs,
+				       _els}) ->
+    confidential.
+
+encode_vcard_vCard_CLASS_CONFIDENTIAL(undefined,
+				      _acc) ->
+    _acc;
+encode_vcard_vCard_CLASS_CONFIDENTIAL(confidential,
+				      _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"CONFIDENTIAL">>, _attrs, _els} | _acc].
+
+decode_vcard_vCard_CLASS_PRIVATE({xmlel, _, _attrs,
+				  _els}) ->
+    private.
+
+encode_vcard_vCard_CLASS_PRIVATE(undefined, _acc) ->
+    _acc;
+encode_vcard_vCard_CLASS_PRIVATE(private, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"PRIVATE">>, _attrs, _els} | _acc].
+
+decode_vcard_vCard_CLASS_PUBLIC({xmlel, _, _attrs,
+				 _els}) ->
+    public.
+
+encode_vcard_vCard_CLASS_PUBLIC(undefined, _acc) ->
+    _acc;
+encode_vcard_vCard_CLASS_PUBLIC(public, _acc) ->
+    _els = [],
+    _attrs = [],
+    [{xmlel, <<"PUBLIC">>, _attrs, _els} | _acc].
+
+decode_vcard_vCard_URL({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_vCard_URL_els(_els, <<>>), Cdata.
+
+decode_vcard_vCard_URL_els([{xmlcdata, _data} | _els],
+			   Cdata) ->
+    decode_vcard_vCard_URL_els(_els,
+			       <<Cdata/binary, _data/binary>>);
+decode_vcard_vCard_URL_els([_ | _els], Cdata) ->
+    decode_vcard_vCard_URL_els(_els, Cdata);
+decode_vcard_vCard_URL_els([], Cdata) ->
+    decode_vcard_vCard_URL_cdata(Cdata).
+
+encode_vcard_vCard_URL(undefined, _acc) -> _acc;
+encode_vcard_vCard_URL(Cdata, _acc) ->
+    _els = encode_vcard_vCard_URL_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"URL">>, _attrs, _els} | _acc].
+
+decode_vcard_vCard_URL_cdata(<<>>) -> undefined;
+decode_vcard_vCard_URL_cdata(_val) -> _val.
+
+encode_vcard_vCard_URL_cdata(undefined, _acc) -> _acc;
+encode_vcard_vCard_URL_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_vCard_UID({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_vCard_UID_els(_els, <<>>), Cdata.
+
+decode_vcard_vCard_UID_els([{xmlcdata, _data} | _els],
+			   Cdata) ->
+    decode_vcard_vCard_UID_els(_els,
+			       <<Cdata/binary, _data/binary>>);
+decode_vcard_vCard_UID_els([_ | _els], Cdata) ->
+    decode_vcard_vCard_UID_els(_els, Cdata);
+decode_vcard_vCard_UID_els([], Cdata) ->
+    decode_vcard_vCard_UID_cdata(Cdata).
+
+encode_vcard_vCard_UID(undefined, _acc) -> _acc;
+encode_vcard_vCard_UID(Cdata, _acc) ->
+    _els = encode_vcard_vCard_UID_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"UID">>, _attrs, _els} | _acc].
+
+decode_vcard_vCard_UID_cdata(<<>>) -> undefined;
+decode_vcard_vCard_UID_cdata(_val) -> _val.
+
+encode_vcard_vCard_UID_cdata(undefined, _acc) -> _acc;
+encode_vcard_vCard_UID_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+'decode_vcard_vCard_SORT-STRING'({xmlel, _, _attrs,
+				  _els}) ->
+    Cdata = 'decode_vcard_vCard_SORT-STRING_els'(_els,
+						 <<>>),
+    Cdata.
+
+'decode_vcard_vCard_SORT-STRING_els'([{xmlcdata, _data}
+				      | _els],
+				     Cdata) ->
+    'decode_vcard_vCard_SORT-STRING_els'(_els,
+					 <<Cdata/binary, _data/binary>>);
+'decode_vcard_vCard_SORT-STRING_els'([_ | _els],
+				     Cdata) ->
+    'decode_vcard_vCard_SORT-STRING_els'(_els, Cdata);
+'decode_vcard_vCard_SORT-STRING_els'([], Cdata) ->
+    'decode_vcard_vCard_SORT-STRING_cdata'(Cdata).
+
+'encode_vcard_vCard_SORT-STRING'(undefined, _acc) ->
+    _acc;
+'encode_vcard_vCard_SORT-STRING'(Cdata, _acc) ->
+    _els = 'encode_vcard_vCard_SORT-STRING_cdata'(Cdata,
+						  []),
+    _attrs = [],
+    [{xmlel, <<"SORT-STRING">>, _attrs, _els} | _acc].
+
+'decode_vcard_vCard_SORT-STRING_cdata'(<<>>) ->
+    undefined;
+'decode_vcard_vCard_SORT-STRING_cdata'(_val) -> _val.
+
+'encode_vcard_vCard_SORT-STRING_cdata'(undefined,
+				       _acc) ->
+    _acc;
+'encode_vcard_vCard_SORT-STRING_cdata'(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_vCard_REV({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_vCard_REV_els(_els, <<>>), Cdata.
+
+decode_vcard_vCard_REV_els([{xmlcdata, _data} | _els],
+			   Cdata) ->
+    decode_vcard_vCard_REV_els(_els,
+			       <<Cdata/binary, _data/binary>>);
+decode_vcard_vCard_REV_els([_ | _els], Cdata) ->
+    decode_vcard_vCard_REV_els(_els, Cdata);
+decode_vcard_vCard_REV_els([], Cdata) ->
+    decode_vcard_vCard_REV_cdata(Cdata).
+
+encode_vcard_vCard_REV(undefined, _acc) -> _acc;
+encode_vcard_vCard_REV(Cdata, _acc) ->
+    _els = encode_vcard_vCard_REV_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"REV">>, _attrs, _els} | _acc].
+
+decode_vcard_vCard_REV_cdata(<<>>) -> undefined;
+decode_vcard_vCard_REV_cdata(_val) -> _val.
+
+encode_vcard_vCard_REV_cdata(undefined, _acc) -> _acc;
+encode_vcard_vCard_REV_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_vCard_PRODID({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_vCard_PRODID_els(_els, <<>>),
+    Cdata.
+
+decode_vcard_vCard_PRODID_els([{xmlcdata, _data}
+			       | _els],
+			      Cdata) ->
+    decode_vcard_vCard_PRODID_els(_els,
+				  <<Cdata/binary, _data/binary>>);
+decode_vcard_vCard_PRODID_els([_ | _els], Cdata) ->
+    decode_vcard_vCard_PRODID_els(_els, Cdata);
+decode_vcard_vCard_PRODID_els([], Cdata) ->
+    decode_vcard_vCard_PRODID_cdata(Cdata).
+
+encode_vcard_vCard_PRODID(undefined, _acc) -> _acc;
+encode_vcard_vCard_PRODID(Cdata, _acc) ->
+    _els = encode_vcard_vCard_PRODID_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"PRODID">>, _attrs, _els} | _acc].
+
+decode_vcard_vCard_PRODID_cdata(<<>>) -> undefined;
+decode_vcard_vCard_PRODID_cdata(_val) -> _val.
+
+encode_vcard_vCard_PRODID_cdata(undefined, _acc) ->
+    _acc;
+encode_vcard_vCard_PRODID_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_vCard_NOTE({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_vCard_NOTE_els(_els, <<>>), Cdata.
+
+decode_vcard_vCard_NOTE_els([{xmlcdata, _data} | _els],
+			    Cdata) ->
+    decode_vcard_vCard_NOTE_els(_els,
+				<<Cdata/binary, _data/binary>>);
+decode_vcard_vCard_NOTE_els([_ | _els], Cdata) ->
+    decode_vcard_vCard_NOTE_els(_els, Cdata);
+decode_vcard_vCard_NOTE_els([], Cdata) ->
+    decode_vcard_vCard_NOTE_cdata(Cdata).
+
+encode_vcard_vCard_NOTE(undefined, _acc) -> _acc;
+encode_vcard_vCard_NOTE(Cdata, _acc) ->
+    _els = encode_vcard_vCard_NOTE_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"NOTE">>, _attrs, _els} | _acc].
+
+decode_vcard_vCard_NOTE_cdata(<<>>) -> undefined;
+decode_vcard_vCard_NOTE_cdata(_val) -> _val.
+
+encode_vcard_vCard_NOTE_cdata(undefined, _acc) -> _acc;
+encode_vcard_vCard_NOTE_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_vCard_CATEGORIES({xmlel, _, _attrs,
+			       _els}) ->
+    Keywords = decode_vcard_vCard_CATEGORIES_els(_els, []),
+    Keywords.
+
+decode_vcard_vCard_CATEGORIES_els([{xmlel,
+				    <<"KEYWORD">>, _attrs, _} =
+				       _el
+				   | _els],
+				  Keywords) ->
+    case xml:get_attr_s(<<"xmlns">>, _attrs) of
+      <<>> ->
+	  decode_vcard_vCard_CATEGORIES_els(_els,
+					    [decode_vcard_vCard_CATEGORIES_KEYWORD(_el)
+					     | Keywords]);
+      _ -> decode_vcard_vCard_CATEGORIES_els(_els, Keywords)
+    end;
+decode_vcard_vCard_CATEGORIES_els([_ | _els],
+				  Keywords) ->
+    decode_vcard_vCard_CATEGORIES_els(_els, Keywords);
+decode_vcard_vCard_CATEGORIES_els([], Keywords) ->
+    lists:reverse(Keywords).
+
+encode_vcard_vCard_CATEGORIES([], _acc) -> _acc;
+encode_vcard_vCard_CATEGORIES(Keywords, _acc) ->
+    _els = encode_vcard_vCard_CATEGORIES_KEYWORD(Keywords,
+						 []),
+    _attrs = [],
+    [{xmlel, <<"CATEGORIES">>, _attrs, _els} | _acc].
+
+decode_vcard_vCard_CATEGORIES_KEYWORD({xmlel, _, _attrs,
+				       _els}) ->
+    Cdata = decode_vcard_vCard_CATEGORIES_KEYWORD_els(_els,
+						      <<>>),
+    Cdata.
+
+decode_vcard_vCard_CATEGORIES_KEYWORD_els([{xmlcdata,
+					    _data}
+					   | _els],
+					  Cdata) ->
+    decode_vcard_vCard_CATEGORIES_KEYWORD_els(_els,
+					      <<Cdata/binary, _data/binary>>);
+decode_vcard_vCard_CATEGORIES_KEYWORD_els([_ | _els],
+					  Cdata) ->
+    decode_vcard_vCard_CATEGORIES_KEYWORD_els(_els, Cdata);
+decode_vcard_vCard_CATEGORIES_KEYWORD_els([], Cdata) ->
+    decode_vcard_vCard_CATEGORIES_KEYWORD_cdata(Cdata).
+
+encode_vcard_vCard_CATEGORIES_KEYWORD([], _acc) -> _acc;
+encode_vcard_vCard_CATEGORIES_KEYWORD([Cdata | _tail],
+				      _acc) ->
+    _els =
+	encode_vcard_vCard_CATEGORIES_KEYWORD_cdata(Cdata, []),
+    _attrs = [],
+    encode_vcard_vCard_CATEGORIES_KEYWORD(_tail,
+					  [{xmlel, <<"KEYWORD">>, _attrs, _els}
+					   | _acc]).
+
+decode_vcard_vCard_CATEGORIES_KEYWORD_cdata(<<>>) ->
+    undefined;
+decode_vcard_vCard_CATEGORIES_KEYWORD_cdata(_val) ->
+    _val.
+
+encode_vcard_vCard_CATEGORIES_KEYWORD_cdata(undefined,
+					    _acc) ->
+    _acc;
+encode_vcard_vCard_CATEGORIES_KEYWORD_cdata(_val,
+					    _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_vCard_ROLE({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_vCard_ROLE_els(_els, <<>>), Cdata.
+
+decode_vcard_vCard_ROLE_els([{xmlcdata, _data} | _els],
+			    Cdata) ->
+    decode_vcard_vCard_ROLE_els(_els,
+				<<Cdata/binary, _data/binary>>);
+decode_vcard_vCard_ROLE_els([_ | _els], Cdata) ->
+    decode_vcard_vCard_ROLE_els(_els, Cdata);
+decode_vcard_vCard_ROLE_els([], Cdata) ->
+    decode_vcard_vCard_ROLE_cdata(Cdata).
+
+encode_vcard_vCard_ROLE(undefined, _acc) -> _acc;
+encode_vcard_vCard_ROLE(Cdata, _acc) ->
+    _els = encode_vcard_vCard_ROLE_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"ROLE">>, _attrs, _els} | _acc].
+
+decode_vcard_vCard_ROLE_cdata(<<>>) -> undefined;
+decode_vcard_vCard_ROLE_cdata(_val) -> _val.
+
+encode_vcard_vCard_ROLE_cdata(undefined, _acc) -> _acc;
+encode_vcard_vCard_ROLE_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_vCard_TITLE({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_vCard_TITLE_els(_els, <<>>), Cdata.
+
+decode_vcard_vCard_TITLE_els([{xmlcdata, _data} | _els],
+			     Cdata) ->
+    decode_vcard_vCard_TITLE_els(_els,
+				 <<Cdata/binary, _data/binary>>);
+decode_vcard_vCard_TITLE_els([_ | _els], Cdata) ->
+    decode_vcard_vCard_TITLE_els(_els, Cdata);
+decode_vcard_vCard_TITLE_els([], Cdata) ->
+    decode_vcard_vCard_TITLE_cdata(Cdata).
+
+encode_vcard_vCard_TITLE(undefined, _acc) -> _acc;
+encode_vcard_vCard_TITLE(Cdata, _acc) ->
+    _els = encode_vcard_vCard_TITLE_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"TITLE">>, _attrs, _els} | _acc].
+
+decode_vcard_vCard_TITLE_cdata(<<>>) -> undefined;
+decode_vcard_vCard_TITLE_cdata(_val) -> _val.
+
+encode_vcard_vCard_TITLE_cdata(undefined, _acc) -> _acc;
+encode_vcard_vCard_TITLE_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_vCard_TZ({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_vCard_TZ_els(_els, <<>>), Cdata.
+
+decode_vcard_vCard_TZ_els([{xmlcdata, _data} | _els],
+			  Cdata) ->
+    decode_vcard_vCard_TZ_els(_els,
+			      <<Cdata/binary, _data/binary>>);
+decode_vcard_vCard_TZ_els([_ | _els], Cdata) ->
+    decode_vcard_vCard_TZ_els(_els, Cdata);
+decode_vcard_vCard_TZ_els([], Cdata) ->
+    decode_vcard_vCard_TZ_cdata(Cdata).
+
+encode_vcard_vCard_TZ(undefined, _acc) -> _acc;
+encode_vcard_vCard_TZ(Cdata, _acc) ->
+    _els = encode_vcard_vCard_TZ_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"TZ">>, _attrs, _els} | _acc].
+
+decode_vcard_vCard_TZ_cdata(<<>>) -> undefined;
+decode_vcard_vCard_TZ_cdata(_val) -> _val.
+
+encode_vcard_vCard_TZ_cdata(undefined, _acc) -> _acc;
+encode_vcard_vCard_TZ_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_vCard_MAILER({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_vCard_MAILER_els(_els, <<>>),
+    Cdata.
+
+decode_vcard_vCard_MAILER_els([{xmlcdata, _data}
+			       | _els],
+			      Cdata) ->
+    decode_vcard_vCard_MAILER_els(_els,
+				  <<Cdata/binary, _data/binary>>);
+decode_vcard_vCard_MAILER_els([_ | _els], Cdata) ->
+    decode_vcard_vCard_MAILER_els(_els, Cdata);
+decode_vcard_vCard_MAILER_els([], Cdata) ->
+    decode_vcard_vCard_MAILER_cdata(Cdata).
+
+encode_vcard_vCard_MAILER(undefined, _acc) -> _acc;
+encode_vcard_vCard_MAILER(Cdata, _acc) ->
+    _els = encode_vcard_vCard_MAILER_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"MAILER">>, _attrs, _els} | _acc].
+
+decode_vcard_vCard_MAILER_cdata(<<>>) -> undefined;
+decode_vcard_vCard_MAILER_cdata(_val) -> _val.
+
+encode_vcard_vCard_MAILER_cdata(undefined, _acc) ->
+    _acc;
+encode_vcard_vCard_MAILER_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_vCard_JABBERID({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_vCard_JABBERID_els(_els, <<>>),
+    Cdata.
+
+decode_vcard_vCard_JABBERID_els([{xmlcdata, _data}
+				 | _els],
+				Cdata) ->
+    decode_vcard_vCard_JABBERID_els(_els,
+				    <<Cdata/binary, _data/binary>>);
+decode_vcard_vCard_JABBERID_els([_ | _els], Cdata) ->
+    decode_vcard_vCard_JABBERID_els(_els, Cdata);
+decode_vcard_vCard_JABBERID_els([], Cdata) ->
+    decode_vcard_vCard_JABBERID_cdata(Cdata).
+
+encode_vcard_vCard_JABBERID(undefined, _acc) -> _acc;
+encode_vcard_vCard_JABBERID(Cdata, _acc) ->
+    _els = encode_vcard_vCard_JABBERID_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"JABBERID">>, _attrs, _els} | _acc].
+
+decode_vcard_vCard_JABBERID_cdata(<<>>) -> undefined;
+decode_vcard_vCard_JABBERID_cdata(_val) -> _val.
+
+encode_vcard_vCard_JABBERID_cdata(undefined, _acc) ->
+    _acc;
+encode_vcard_vCard_JABBERID_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_vCard_BDAY({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_vCard_BDAY_els(_els, <<>>), Cdata.
+
+decode_vcard_vCard_BDAY_els([{xmlcdata, _data} | _els],
+			    Cdata) ->
+    decode_vcard_vCard_BDAY_els(_els,
+				<<Cdata/binary, _data/binary>>);
+decode_vcard_vCard_BDAY_els([_ | _els], Cdata) ->
+    decode_vcard_vCard_BDAY_els(_els, Cdata);
+decode_vcard_vCard_BDAY_els([], Cdata) ->
+    decode_vcard_vCard_BDAY_cdata(Cdata).
+
+encode_vcard_vCard_BDAY(undefined, _acc) -> _acc;
+encode_vcard_vCard_BDAY(Cdata, _acc) ->
+    _els = encode_vcard_vCard_BDAY_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"BDAY">>, _attrs, _els} | _acc].
+
+decode_vcard_vCard_BDAY_cdata(<<>>) -> undefined;
+decode_vcard_vCard_BDAY_cdata(_val) -> _val.
+
+encode_vcard_vCard_BDAY_cdata(undefined, _acc) -> _acc;
+encode_vcard_vCard_BDAY_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_vCard_NICKNAME({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_vCard_NICKNAME_els(_els, <<>>),
+    Cdata.
+
+decode_vcard_vCard_NICKNAME_els([{xmlcdata, _data}
+				 | _els],
+				Cdata) ->
+    decode_vcard_vCard_NICKNAME_els(_els,
+				    <<Cdata/binary, _data/binary>>);
+decode_vcard_vCard_NICKNAME_els([_ | _els], Cdata) ->
+    decode_vcard_vCard_NICKNAME_els(_els, Cdata);
+decode_vcard_vCard_NICKNAME_els([], Cdata) ->
+    decode_vcard_vCard_NICKNAME_cdata(Cdata).
+
+encode_vcard_vCard_NICKNAME(undefined, _acc) -> _acc;
+encode_vcard_vCard_NICKNAME(Cdata, _acc) ->
+    _els = encode_vcard_vCard_NICKNAME_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"NICKNAME">>, _attrs, _els} | _acc].
+
+decode_vcard_vCard_NICKNAME_cdata(<<>>) -> undefined;
+decode_vcard_vCard_NICKNAME_cdata(_val) -> _val.
+
+encode_vcard_vCard_NICKNAME_cdata(undefined, _acc) ->
+    _acc;
+encode_vcard_vCard_NICKNAME_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_vCard_FN({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_vCard_FN_els(_els, <<>>), Cdata.
+
+decode_vcard_vCard_FN_els([{xmlcdata, _data} | _els],
+			  Cdata) ->
+    decode_vcard_vCard_FN_els(_els,
+			      <<Cdata/binary, _data/binary>>);
+decode_vcard_vCard_FN_els([_ | _els], Cdata) ->
+    decode_vcard_vCard_FN_els(_els, Cdata);
+decode_vcard_vCard_FN_els([], Cdata) ->
+    decode_vcard_vCard_FN_cdata(Cdata).
+
+encode_vcard_vCard_FN(undefined, _acc) -> _acc;
+encode_vcard_vCard_FN(Cdata, _acc) ->
+    _els = encode_vcard_vCard_FN_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"FN">>, _attrs, _els} | _acc].
+
+decode_vcard_vCard_FN_cdata(<<>>) -> undefined;
+decode_vcard_vCard_FN_cdata(_val) -> _val.
+
+encode_vcard_vCard_FN_cdata(undefined, _acc) -> _acc;
+encode_vcard_vCard_FN_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_vcard_vCard_VERSION({xmlel, _, _attrs, _els}) ->
+    Cdata = decode_vcard_vCard_VERSION_els(_els, <<>>),
+    Cdata.
+
+decode_vcard_vCard_VERSION_els([{xmlcdata, _data}
+				| _els],
+			       Cdata) ->
+    decode_vcard_vCard_VERSION_els(_els,
+				   <<Cdata/binary, _data/binary>>);
+decode_vcard_vCard_VERSION_els([_ | _els], Cdata) ->
+    decode_vcard_vCard_VERSION_els(_els, Cdata);
+decode_vcard_vCard_VERSION_els([], Cdata) ->
+    decode_vcard_vCard_VERSION_cdata(Cdata).
+
+encode_vcard_vCard_VERSION(undefined, _acc) -> _acc;
+encode_vcard_vCard_VERSION(Cdata, _acc) ->
+    _els = encode_vcard_vCard_VERSION_cdata(Cdata, []),
+    _attrs = [],
+    [{xmlel, <<"VERSION">>, _attrs, _els} | _acc].
+
+decode_vcard_vCard_VERSION_cdata(<<>>) -> undefined;
+decode_vcard_vCard_VERSION_cdata(_val) -> _val.
+
+encode_vcard_vCard_VERSION_cdata(undefined, _acc) ->
+    _acc;
+encode_vcard_vCard_VERSION_cdata(_val, _acc) ->
     [{xmlcdata, _val} | _acc].
