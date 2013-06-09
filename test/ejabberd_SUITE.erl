@@ -11,7 +11,7 @@
 -compile(export_all).
 
 -include_lib("common_test/include/ct.hrl").
--include("jlib.hrl").
+%%-include("jlib.hrl").
 -include("ejabberd.hrl").
 -include("xmpp_codec.hrl").
 
@@ -223,14 +223,6 @@ private(Config) ->
                  to = server_jid(Config)}),
     #'Iq'{type = error, id = ID1} = recv(),
     ID2 = randoms:get_string(),
-    ConfBookmark = #xmlel{name = <<"conference">>,
-                          attrs = [{<<"name">>,
-                                    <<"The Play's the Thing">>},
-                                   {<<"autojoin">>, <<"true">>},
-                                   {<<"jid">>,
-                                    <<"theplay@conference.shakespeare.lit">>}],
-                          children = [#xmlel{name = <<"nick">>,
-                                             children = [{xmlcdata, <<"JC">>}]}]},
     Storage = #bookmark_storage{
       conference = [#bookmark_conference{
                        name = <<"Some name">>,
