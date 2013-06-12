@@ -27,8 +27,8 @@ main(_) ->
 process(Fd, Tree) ->
     case erl_syntax:type(Tree) of
         record_expr ->
-            case erl_syntax_lib:analyze_record_expr(Tree) of
-                {record_expr, {ejabberd_commands, _}} ->
+            case erl_syntax:atom_value(erl_syntax:record_expr_type(Tree)) of
+                ejabberd_commands ->
                     Fs = erl_syntax:record_expr_fields(Tree),
                     Cmd = lists:foldl(
                             fun(F, C) ->
