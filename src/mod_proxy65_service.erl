@@ -121,6 +121,7 @@ delete_listener(Host) ->
 %%% IQ Processing
 %%%------------------------
 
+%% disco#info request
 process_iq(_,
 	   #iq{type = get, xmlns = ?NS_DISCO_INFO, lang = Lang} =
 	       IQ,
@@ -220,6 +221,9 @@ process_iq(_, #iq{type = Type, sub_el = SubEl} = IQ, _)
 %% IQ "result" or "error".
 process_iq(_, _, _) -> ok.
 
+%%%-------------------------
+%%% Auxiliary functions.
+%%%-------------------------
 -define(FEATURE(Feat),
 	#xmlel{name = <<"feature">>,
 	       attrs = [{<<"var">>, Feat}], children = []}).

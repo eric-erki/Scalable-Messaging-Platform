@@ -166,6 +166,15 @@ parse4([$\s | Cs], Key, Val, Ts) ->
 parse4([C | Cs], Key, Val, Ts) ->
     parse4(Cs, Key, [C | Val], Ts);
 parse4([], Key, Val, Ts) ->
+%% @doc Check if the digest-uri is valid.
+%% RFC-2831 allows to provide the IP address in Host,
+%% however ejabberd doesn't allow that.
+%% If the service (for example jabber.example.org)
+%% is provided by several hosts (being one of them server3.example.org),
+%% then acceptable digest-uris would be:
+%% xmpp/server3.example.org/jabber.example.org, xmpp/server3.example.org and
+%% xmpp/jabber.example.org
+%% The last version is not actually allowed by the RFC, but implemented by popular clients
     parse1([], "", [{list_to_binary(Key), list_to_binary(lists:reverse(Val))} | Ts]).
 
 is_digesturi_valid(DigestURICase, JabberDomain,

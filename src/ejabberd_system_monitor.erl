@@ -45,6 +45,13 @@
 
 -record(state, {}).
 
+%%====================================================================
+%% API
+%%====================================================================
+%%--------------------------------------------------------------------
+%% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
+%% Description: Starts the server
+%%--------------------------------------------------------------------
 start_link() ->
     LH = ejabberd_config:get_local_option(
            watchdog_large_heap,
@@ -82,6 +89,13 @@ process_command(From, To, Packet) ->
 %% gen_server callbacks
 %%====================================================================
 
+%%--------------------------------------------------------------------
+%% Function: init(Args) -> {ok, State} |
+%%                         {ok, State, Timeout} |
+%%                         ignore               |
+%%                         {stop, Reason}
+%% Description: Initiates the server
+%%--------------------------------------------------------------------
 init(Opts) ->
     LH = proplists:get_value(large_heap, Opts),
     process_flag(priority, high),
@@ -93,6 +107,15 @@ init(Opts) ->
 		  ?MYHOSTS),
     {ok, #state{}}.
 
+%%--------------------------------------------------------------------
+%% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
+%%                                      {reply, Reply, State, Timeout} |
+%%                                      {noreply, State} |
+%%                                      {noreply, State, Timeout} |
+%%                                      {stop, Reason, Reply, State} |
+%%                                      {stop, Reason, State}
+%% Description: Handling call messages
+%%--------------------------------------------------------------------
 handle_call({get, large_heap}, _From, State) ->
     {reply, get_large_heap(), State};
 handle_call({set, large_heap, NewValue}, _From,
@@ -113,8 +136,20 @@ get_large_heap(MonSettings) ->
     {_MonitorPid, Options} = MonSettings,
     proplists:get_value(large_heap, Options).
 
+%%--------------------------------------------------------------------
+%% Function: handle_cast(Msg, State) -> {noreply, State} |
+%%                                      {noreply, State, Timeout} |
+%%                                      {stop, Reason, State}
+%% Description: Handling cast messages
+%%--------------------------------------------------------------------
 handle_cast(_Msg, State) -> {noreply, State}.
 
+%%--------------------------------------------------------------------
+%% Function: handle_info(Info, State) -> {noreply, State} |
+%%                                       {noreply, State, Timeout} |
+%%                                       {stop, Reason, State}
+%% Description: Handling all non call/cast messages
+%%--------------------------------------------------------------------
 handle_info({monitor, Pid, large_heap, Info}, State) ->
     spawn(fun () ->
 		  process_flag(priority, high),
@@ -123,8 +158,19 @@ handle_info({monitor, Pid, large_heap, Info}, State) ->
     {noreply, State};
 handle_info(_Info, State) -> {noreply, State}.
 
+%%--------------------------------------------------------------------
+%% Function: terminate(Reason, State) -> void()
+%% Description: This function is called by a gen_server when it is about to
+%% terminate. It should be the opposite of Module:init/1 and do any necessary
+%% cleaning up. When it returns, the gen_server terminates with Reason.
+%% The return value is ignored.
+%%--------------------------------------------------------------------
 terminate(_Reason, _State) -> ok.
 
+%%--------------------------------------------------------------------
+%% Func: code_change(OldVsn, State, Extra) -> {ok, NewState}
+%% Description: Convert process state when code is changed
+%%--------------------------------------------------------------------
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
 %%--------------------------------------------------------------------

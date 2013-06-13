@@ -201,6 +201,8 @@ server_step(State, ClientIn) ->
             {error, Error}
     end.
 
+%% Remove the anonymous mechanism from the list if not enabled for the given
+%% host
 %%
 -spec(filter_anonymous/2 ::
 (

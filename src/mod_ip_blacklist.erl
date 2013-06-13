@@ -52,6 +52,7 @@
 
 -record(state, {timer}).
 
+%% Start once for all vhost
 -record(bl_c2s, {ip = <<"">> :: binary()}).
 
 start(_Host, _Opts) ->
@@ -66,6 +67,7 @@ preinit(Parent, State) ->
       error:_ -> Parent ! {ok, Pid, true}
     end.
 
+%% TODO:
 stop(_Host) -> ok.
 
 init(State) ->
@@ -78,8 +80,12 @@ init(State) ->
 			 ?MODULE, update_bl_c2s, []),
     loop(State).
 
+%% Remove timer when stop is received.
 loop(_State) -> receive stop -> ok end.
 
+%% Download blacklist file from ProcessOne XAAI
+%% and update the table internal table
+%% TODO: Support comment lines starting by %
 update_bl_c2s() ->
     ?INFO_MSG("Updating C2S Blacklist", []),
     case http_p1:get(?BLC2S) of
@@ -97,6 +103,11 @@ update_bl_c2s() ->
 		     [Reason])
     end.
 
+%% Hook is run with:
+%% ejabberd_hooks:run_fold(check_bl_c2s, false, [IP]),
+%% Return: false: IP not blacklisted
+%%         true: IP is blacklisted
+%% IPV4 IP tuple:
 is_ip_in_c2s_blacklist(_Val, IP) when is_tuple(IP) ->
     BinaryIP = jlib:ip_to_list(IP),
     case ets:lookup(bl_c2s, BinaryIP) of

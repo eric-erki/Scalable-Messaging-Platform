@@ -66,6 +66,9 @@
 	 timeout_action = none :: none | kill,
          timers = (?DICT):new() :: dict()}).
 
+%%====================================================================
+%% API
+%%====================================================================
 start_link(Host, Opts) ->
     Proc = gen_mod:get_module_proc(Host, ?MODULE),
     gen_server:start_link({local, Proc}, ?MODULE,
@@ -79,6 +82,9 @@ stop_ping(Host, JID) ->
     Proc = gen_mod:get_module_proc(Host, ?MODULE),
     gen_server:cast(Proc, {stop_ping, JID}).
 
+%%====================================================================
+%% gen_mod callbacks
+%%====================================================================
 start(Host, Opts) ->
     Proc = gen_mod:get_module_proc(Host, ?MODULE),
     PingSpec = {Proc, {?MODULE, start_link, [Host, Opts]},
@@ -90,6 +96,9 @@ stop(Host) ->
     gen_server:call(Proc, stop),
     supervisor:delete_child(?SUPERVISOR, Proc).
 
+%%====================================================================
+%% gen_server callbacks
+%%====================================================================
 init([Host, Opts]) ->
     SendPings = gen_mod:get_opt(send_pings, Opts,
                                 fun(B) when is_boolean(B) -> B end,
@@ -190,6 +199,9 @@ handle_info(_Info, State) -> {noreply, State}.
 
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
+%%====================================================================
+%% Hook callbacks
+%%====================================================================
 iq_ping(_From, _To,
 	#iq{type = Type, sub_el = SubEl} = IQ) ->
     case {Type, SubEl} of
@@ -209,6 +221,9 @@ user_offline(_SID, JID, _Info) ->
 user_send(_DebugFlag, JID, _From, _Packet) ->
     start_ping(JID#jid.lserver, JID).
 
+%%====================================================================
+%% Internal functions
+%%====================================================================
 add_timer(JID, Interval, Timers) ->
     LJID = jlib:jid_tolower(JID),
     NewTimers = case (?DICT):find(LJID, Timers) of

@@ -198,11 +198,8 @@ make_jid(User, Server, Resource) ->
 		case resourceprep(Resource) of
 		  error -> error;
 		  LResource ->
-		      #jid{user = User,
-                           server = Server,
-                           resource = Resource,
-			   luser = LUser,
-                           lserver = LServer,
+		      #jid{user = User, server = Server, resource = Resource,
+			   luser = LUser, lserver = LServer,
 			   lresource = LResource}
 		end
 	  end
@@ -386,6 +383,7 @@ get_iq_namespace(_) -> <<"">>.
     -> iq_request() | 'reply' | 'invalid' | 'not_iq'
 ).
 
+%% @spec (xmlelement()) -> iq() | reply | invalid | not_iq
 iq_query_info(El) -> iq_info_internal(El, request).
 
 %%
@@ -605,6 +603,9 @@ i2l(I) when is_integer(I) -> integer_to_binary(I).
 
 -type tz() :: {binary(), {integer(), integer()}} | {integer(), integer()} | utc.
 
+%% Timezone = utc | {Sign::string(), {Hours, Minutes}} | {Hours, Minutes}
+%% Hours = integer()
+%% Minutes = integer()
 -spec timestamp_to_iso(calendar:datetime(), tz()) -> {binary(), binary()}.
 
 timestamp_to_iso({{Year, Month, Day},
@@ -641,6 +642,7 @@ timestamp_to_xml(DateTime, Timezone, FromJID, Desc) ->
 					     Timezone),
     Text = [{xmlcdata, Desc}],
     From = jlib:jid_to_string(FromJID),
+%% TODO: Remove this function once XEP-0091 is Obsolete
     #xmlel{name = <<"delay">>,
 	   attrs =
 	       [{<<"xmlns">>, ?NS_DELAY}, {<<"from">>, From},
@@ -825,6 +827,7 @@ d($/) -> 63;
 d(_) -> 63.
 
 
+%% Convert Erlang inet IP to list
 -spec encode_base64(binary()) -> binary().
 
 encode_base64(Data) ->
@@ -851,6 +854,7 @@ e(X) -> exit({bad_encode_base64_token, X}).
 
 ip_to_list({IP, _Port}) ->
     ip_to_list(IP);
+%% This function clause could use inet_parse too:
 ip_to_list(undefined) ->
     <<"unknown">>;
 ip_to_list(IP) ->

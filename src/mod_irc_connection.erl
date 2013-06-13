@@ -73,6 +73,9 @@
 
 -define(FSMOPTS, []).
 
+%%%----------------------------------------------------------------------
+%%% API
+%%%----------------------------------------------------------------------
 -endif.
 
 start(From, Host, ServerHost, Server, Username,
@@ -94,6 +97,13 @@ start_link(From, Host, Server, Username, Encoding, Port,
 %%% Callback functions from gen_fsm
 %%%----------------------------------------------------------------------
 
+%%----------------------------------------------------------------------
+%% Func: init/1
+%% Returns: {ok, StateName, StateData}          |
+%%          {ok, StateName, StateData, Timeout} |
+%%          ignore                              |
+%%          {stop, StopReason}
+%%----------------------------------------------------------------------
 init([From, Host, Server, Username, Encoding, Port,
       Password, Mod]) ->
     gen_fsm:send_event(self(), init),
@@ -103,6 +113,12 @@ init([From, Host, Server, Username, Encoding, Port,
 	    user = From, nick = Username, host = Host,
 	    server = Server}}.
 
+%%----------------------------------------------------------------------
+%% Func: StateName/2
+%% Returns: {next_state, NextStateName, NextStateData}          |
+%%          {next_state, NextStateName, NextStateData, Timeout} |
+%%          {stop, Reason, NewStateData}
+%%----------------------------------------------------------------------
 open_socket(init, StateData) ->
     Addr = StateData#state.server,
     Port = StateData#state.port,
@@ -168,9 +184,24 @@ stream_established(closed, StateData) ->
 %    Reply = ok,
 %    {reply, Reply, state_name, StateData}.
 
+%%----------------------------------------------------------------------
+%% Func: handle_event/3
+%% Returns: {next_state, NextStateName, NextStateData}          |
+%%          {next_state, NextStateName, NextStateData, Timeout} |
+%%          {stop, Reason, NewStateData}
+%%----------------------------------------------------------------------
 handle_event(_Event, StateName, StateData) ->
     {next_state, StateName, StateData}.
 
+%%----------------------------------------------------------------------
+%% Func: handle_sync_event/4
+%% Returns: {next_state, NextStateName, NextStateData}            |
+%%          {next_state, NextStateName, NextStateData, Timeout}   |
+%%          {reply, Reply, NextStateName, NextStateData}          |
+%%          {reply, Reply, NextStateName, NextStateData, Timeout} |
+%%          {stop, Reason, NewStateData}                          |
+%%          {stop, Reason, Reply, NewStateData}
+%%----------------------------------------------------------------------
 handle_sync_event(_Event, _From, StateName,
 		  StateData) ->
     Reply = ok, {reply, Reply, StateName, StateData}.
@@ -209,6 +240,12 @@ get_password_from_presence(#xmlel{name = <<"presence">>,
       _ -> false
     end.
 
+%%----------------------------------------------------------------------
+%% Func: handle_info/3
+%% Returns: {next_state, NextStateName, NextStateData}          |
+%%          {next_state, NextStateName, NextStateData, Timeout} |
+%%          {stop, Reason, NewStateData}
+%%----------------------------------------------------------------------
 handle_info({route_chan, Channel, Resource,
 	     #xmlel{name = <<"presence">>, attrs = Attrs} =
 		 Presence},
@@ -645,6 +682,11 @@ handle_info({tcp_error, _Socket, _Reason}, StateName,
     gen_fsm:send_event(self(), closed),
     {next_state, StateName, StateData}.
 
+%%----------------------------------------------------------------------
+%% Func: terminate/3
+%% Purpose: Shutdown the fsm
+%% Returns: any
+%%----------------------------------------------------------------------
 terminate(_Reason, _StateName, FullStateData) ->
     {Error, StateData} = case FullStateData of
 			   {error, SError, SStateData} -> {SError, SStateData};

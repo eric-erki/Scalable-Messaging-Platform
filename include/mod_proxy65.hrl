@@ -21,14 +21,17 @@
 %%%
 %%%----------------------------------------------------------------------
 
+%% Version
 -define(VERSION_5, 5).
 
+%% Authentication methods
 -define(AUTH_ANONYMOUS, 0).
 
 -define(AUTH_GSSAPI, 1).
 
 -define(AUTH_PLAIN, 2).
 
+%% Address Type
 -define(AUTH_NO_METHODS, 255).
 
 -define(ATYP_IPV4, 1).
@@ -37,12 +40,14 @@
 
 -define(ATYP_IPV6, 4).
 
+%% Commands
 -define(CMD_CONNECT, 1).
 
 -define(CMD_BIND, 2).
 
 -define(CMD_UDP, 3).
 
+%% RFC 1928 replies
 -define(SUCCESS, 0).
 
 -define(ERR_GENERAL_FAILURE, 1).
@@ -61,6 +66,7 @@
 
 -define(ERR_ADDRESS_TYPE_NOT_SUPPORTED, 8).
 
+%% RFC 1928 defined timeout.
 -define(SOCKS5_REPLY_TIMEOUT, 10000).
 
 -record(s5_request, {rsv = 0 :: integer(),

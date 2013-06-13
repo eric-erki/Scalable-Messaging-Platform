@@ -89,6 +89,9 @@
 
 -endif.
 
+%%%----------------------------------------------------------------------
+%%% API
+%%%----------------------------------------------------------------------
 start(Host) ->
     (?GEN_FSM):start(ejabberd_odbc, [Host],
 		     fsm_limit_opts() ++ (?FSMOPTS)).
@@ -135,6 +138,7 @@ sql_transaction(Host, Queries)
 sql_transaction(Host, F) when is_function(F) ->
     sql_call(Host, {sql_transaction, F}).
 
+%% SQL bloc, based on a erlang anonymous function (F = fun)
 sql_bloc(Host, F) -> sql_call(Host, {sql_bloc, F}).
 
 sql_call(Host, Msg) ->
@@ -195,6 +199,9 @@ decode_term(Bin) ->
     {ok, Term} = erl_parse:parse_term(Tokens),
     Term.
 
+%%%----------------------------------------------------------------------
+%%% Callback functions from gen_fsm
+%%%----------------------------------------------------------------------
 init([Host, StartInterval]) ->
     case ejabberd_config:get_local_option(
            {odbc_keepalive_interval, Host},
@@ -306,6 +313,8 @@ handle_sync_event(_Event, _From, StateName, State) ->
 code_change(_OldVsn, StateName, State, _Extra) ->
     {ok, StateName, State}.
 
+%% We receive the down signal when we loose the MySQL connection (we are
+%% monitoring the connection)
 handle_info({'DOWN', _MonitorRef, process, _Pid, _Info},
 	    _StateName, State) ->
     (?GEN_FSM):send_event(self(), connect),
@@ -323,6 +332,11 @@ terminate(_Reason, _StateName, State) ->
     end,
     ok.
 
+%%----------------------------------------------------------------------
+%% Func: print_state/1
+%% Purpose: Prepare the state to be printed on error log
+%% Returns: State to print
+%%----------------------------------------------------------------------
 print_state(State) -> State.
 
 %%%----------------------------------------------------------------------
@@ -342,12 +356,16 @@ run_sql_cmd(Command, From, State, Timestamp) ->
 	  {next_state, session_established, State}
     end.
 
+%% Only called by handle_call, only handles top level operations.
+%% @spec outer_op(Op) -> {error, Reason} | {aborted, Reason} | {atomic, Result}
 outer_op({sql_query, Query}) ->
     sql_query_internal(Query);
 outer_op({sql_transaction, F}) ->
     outer_transaction(F, ?MAX_TRANSACTION_RESTARTS, <<"">>);
 outer_op({sql_bloc, F}) -> execute_bloc(F).
 
+%% Called via sql_query/transaction/bloc from client code when inside a
+%% nested operation
 nested_op({sql_query, Query}) ->
     sql_query_internal(Query);
 nested_op({sql_transaction, F}) ->
@@ -358,6 +376,7 @@ nested_op({sql_transaction, F}) ->
     end;
 nested_op({sql_bloc, F}) -> execute_bloc(F).
 
+%% Never retry nested transactions - only outer transactions
 inner_transaction(F) ->
     PreviousNestingLevel = get(?NESTING_KEY),
     case get(?NESTING_KEY) of
@@ -445,6 +464,7 @@ sql_query_internal(Query) ->
       _Else -> Res
     end.
 
+%% Generate the OTP callback return tuple depending on the driver result.
 abort_on_driver_error({error, <<"query timed out">>} =
 			  Reply,
 		      From) ->
@@ -462,12 +482,16 @@ abort_on_driver_error(Reply, From) ->
 
 %% == pure ODBC code
 
+%% part of init/1
+%% Open an ODBC database connection
 odbc_connect(SQLServer) ->
     ejabberd:start_app(odbc),
     odbc:connect(SQLServer, [{scrollable_cursors, off}]).
 
 %% == Native PostgreSQL code
 
+%% part of init/1
+%% Open a database connection to PostgreSQL
 pgsql_connect(Server, Port, DB, Username, Password) ->
     case pgsql:connect([{host, Server},
                         {database, DB},
@@ -483,6 +507,7 @@ pgsql_connect(Server, Port, DB, Username, Password) ->
             Err
     end.
 
+%% Convert PostgreSQL query result to Erlang ODBC result formalism
 pgsql_to_odbc({ok, PGSQLResult}) ->
     case PGSQLResult of
       [Item] -> pgsql_item_to_odbc(Item);
@@ -504,6 +529,8 @@ pgsql_item_to_odbc(_) -> {updated, undefined}.
 
 %% == Native MySQL code
 
+%% part of init/1
+%% Open a database connection to MySQL
 mysql_connect(Server, Port, DB, Username, Password) ->
     case mysql_conn:start(binary_to_list(Server), Port,
                           binary_to_list(Username), binary_to_list(Password),
@@ -518,6 +545,7 @@ mysql_connect(Server, Port, DB, Username, Password) ->
       Err -> Err
     end.
 
+%% Convert MySQL query result to Erlang ODBC result formalism
 mysql_to_odbc({updated, MySQLRes}) ->
     {updated, mysql:get_result_affected_rows(MySQLRes)};
 mysql_to_odbc({data, MySQLRes}) ->
@@ -529,6 +557,7 @@ mysql_to_odbc({error, MySQLRes})
 mysql_to_odbc({error, MySQLRes}) ->
     {error, mysql:get_result_reason(MySQLRes)}.
 
+%% When tabular data is returned, convert it to the ODBC formalism
 mysql_item_to_odbc(Columns, Recs) ->
     {selected, [element(2, Column) || Column <- Columns], Recs}.
 

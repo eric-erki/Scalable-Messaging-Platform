@@ -6,6 +6,7 @@
 %%%           draft-ietf-asid-ldap-c-api-00.txt
 %%%
 %%% Copyright (C) 2000  Torbjorn Tornkvist, tnt@home.se
+%%% 
 %%%
 %%% This program is free software; you can redistribute it and/or modify
 %%% it under the terms of the GNU General Public License as published by
@@ -143,6 +144,9 @@
 	 dict = dict:new()       :: dict(),
          req_q = queue:new()     :: queue()}).
 
+%%%----------------------------------------------------------------------
+%%% API
+%%%----------------------------------------------------------------------
 start_link(Name) ->
     Reg_name = jlib:binary_to_atom(<<"eldap_",
 				       Name/binary>>),
@@ -159,21 +163,41 @@ start_link(Name, Hosts, Port, Rootdn, Passwd, Opts) ->
 
 -spec get_status(handle()) -> any().
 
+%%% --------------------------------------------------------------------
+%%% Get status of connection.
+%%% --------------------------------------------------------------------
 get_status(Handle) ->
     Handle1 = get_handle(Handle),
     gen_fsm:sync_send_all_state_event(Handle1, get_status).
 
+%%% --------------------------------------------------------------------
+%%% Shutdown connection (and process) asynchronous.
+%%% --------------------------------------------------------------------
 -spec close(handle()) -> any().
 
 close(Handle) ->
     Handle1 = get_handle(Handle),
     gen_fsm:send_all_state_event(Handle1, close).
 
+%%% --------------------------------------------------------------------
+%%% Add an entry. The entry field MUST NOT exist for the AddRequest
+%%% to succeed. The parent of the entry MUST exist.
+%%% Example:
+%%%
+%%%  add(Handle, 
+%%%         "cn=Bill Valentine, ou=people, o=Bluetail AB, dc=bluetail, dc=com",
+%%%         [{"objectclass", ["person"]},
+%%%          {"cn", ["Bill Valentine"]},
+%%%          {"sn", ["Valentine"]},
+%%%          {"telephoneNumber", ["545 555 00"]}]
+%%%     )
+%%% --------------------------------------------------------------------
 add(Handle, Entry, Attributes) ->
     Handle1 = get_handle(Handle),
     gen_fsm:sync_send_event(Handle1,
 			    {add, Entry, add_attrs(Attributes)}, ?CALL_TIMEOUT).
 
+%%% Do sanity check !
 add_attrs(Attrs) ->
     F = fun ({Type, Vals}) ->
 		{'AddRequest_attributes', Type, Vals}
@@ -183,11 +207,31 @@ add_attrs(Attrs) ->
       Else -> Else
     end.
 
+%%% --------------------------------------------------------------------
+%%% Delete an entry. The entry consists of the DN of 
+%%% the entry to be deleted.
+%%% Example:
+%%%
+%%%  delete(Handle, 
+%%%         "cn=Bill Valentine, ou=people, o=Bluetail AB, dc=bluetail, dc=com"
+%%%        )
+%%% --------------------------------------------------------------------
 delete(Handle, Entry) ->
     Handle1 = get_handle(Handle),
     gen_fsm:sync_send_event(Handle1, {delete, Entry},
 			    ?CALL_TIMEOUT).
 
+%%% --------------------------------------------------------------------
+%%% Modify an entry. Given an entry a number of modification
+%%% operations can be performed as one atomic operation.
+%%% Example:
+%%%
+%%%  modify(Handle, 
+%%%         "cn=Torbjorn Tornkvist, ou=people, o=Bluetail AB, dc=bluetail, dc=com",
+%%%         [replace("telephoneNumber", ["555 555 00"]),
+%%%          add("description", ["LDAP hacker"])] 
+%%%        )
+%%% --------------------------------------------------------------------
 -spec modify(handle(), any(), [add | delete | replace]) -> any().
 
 modify(Handle, Object, Mods) ->
@@ -195,12 +239,29 @@ modify(Handle, Object, Mods) ->
     gen_fsm:sync_send_event(Handle1, {modify, Object, Mods},
 			    ?CALL_TIMEOUT).
 
+%%%
+%%% Modification operations. 
+%%% Example:
+%%%            replace("telephoneNumber", ["555 555 00"])
+%%%
 mod_add(Type, Values) ->
     m(add, Type, Values).
 
 mod_delete(Type, Values) ->
     m(delete, Type, Values).
 
+%%% --------------------------------------------------------------------
+%%% Modify an entry. Given an entry a number of modification
+%%% operations can be performed as one atomic operation.
+%%% Example:
+%%%
+%%%  modify_dn(Handle, 
+%%%    "cn=Bill Valentine, ou=people, o=Bluetail AB, dc=bluetail, dc=com",
+%%%    "cn=Ben Emerson",
+%%%    true,
+%%%    ""
+%%%        )
+%%% --------------------------------------------------------------------
 mod_replace(Type, Values) ->
     m(replace, Type, Values).
 
@@ -227,6 +288,14 @@ modify_passwd(Handle, DN, Passwd) ->
     gen_fsm:sync_send_event(Handle1,
 			    {modify_passwd, DN, Passwd}, ?CALL_TIMEOUT).
 
+%%% --------------------------------------------------------------------
+%%% Bind.
+%%% Example:
+%%%
+%%%  bind(Handle, 
+%%%    "cn=Bill Valentine, ou=people, o=Bluetail AB, dc=bluetail, dc=com",
+%%%    "secret")
+%%% --------------------------------------------------------------------
 -spec bind(handle(), binary(), binary()) -> any().
  
 bind(Handle, RootDN, Passwd) ->
@@ -241,6 +310,31 @@ bool_p(Bool) when Bool == true; Bool == false -> Bool.
 optional([]) -> asn1_NOVALUE;
 optional(Value) -> Value.
 
+%%% --------------------------------------------------------------------
+%%% Synchronous search of the Directory returning a 
+%%% requested set of attributes.
+%%%
+%%%  Example:
+%%%
+%%%	Filter = eldap:substrings("sn", [{any,"o"}]),
+%%%	eldap:search(S, [{base, "dc=bluetail, dc=com"},
+%%%	                 {filter, Filter},
+%%%			 {attributes,["cn"]}])),
+%%%
+%%% Returned result:  {ok, #eldap_search_result{}}
+%%%
+%%% Example:
+%%%
+%%%  {ok,{eldap_search_result,
+%%%        [{eldap_entry,
+%%%           "cn=Magnus Froberg, dc=bluetail, dc=com",
+%%%           [{"cn",["Magnus Froberg"]}]},
+%%%         {eldap_entry,
+%%%           "cn=Torbjorn Tornkvist, dc=bluetail, dc=com",
+%%%           [{"cn",["Torbjorn Tornkvist"]}]}],
+%%%        []}}
+%%%
+%%% --------------------------------------------------------------------
 -type search_args() :: [{base, binary()} |
                         {filter, filter()} |
                         {scope, scope()} |
@@ -312,12 +406,22 @@ baseObject() -> baseObject.
 
 singleLevel() -> singleLevel.
 
+%%%
+%%% The Scope parameter
+%%%
 wholeSubtree() -> wholeSubtree.
 
+%%%
+%%% Boolean filter operations
+%%%
 -type filter() :: 'and'() | 'or'() | 'not'() | equalityMatch() |
                   greaterOrEqual() | lessOrEqual() | approxMatch() |
                   present() | substrings() | extensibleMatch().
 
+%%%
+%%% The following Filter parameters consist of an attribute
+%%% and an attribute value. Example: F("uid","tobbe")
+%%%
 -type 'and'() :: {'and', [filter()]}.
 -spec 'and'([filter()]) -> 'and'().
 
@@ -369,12 +473,39 @@ av_assert(Desc, Value) ->
     #'AttributeValueAssertion'{attributeDesc = Desc,
 			       assertionValue = Value}.
 
+%%%
+%%% Filter to check for the presence of an attribute
+%%%
 -type present() :: {present, binary()}.
 -spec present(binary()) -> present().
 
+%%%
+%%% A substring filter seem to be based on a pattern:
+%%%
+%%%   InitValue*AnyValue*FinalValue
+%%%
+%%% where all three parts seem to be optional (at least when
+%%% talking with an OpenLDAP server). Thus, the arguments
+%%% to substrings/2 looks like this:
+%%%
+%%% Type   ::= string( <attribute> )
+%%% SubStr ::= listof( {initial,Value} | {any,Value}, {final,Value})
+%%%
+%%% Example: substrings("sn",[{initial,"To"},{any,"kv"},{final,"st"}])
+%%% will match entries containing:  'sn: Tornkvist'
+%%%
 present(Attribute) ->
     {present, Attribute}.
 
+%%%
+%%% extensibleMatch filter.
+%%% FIXME: Describe the purpose of this filter.
+%%%
+%%% Value   ::= string( <attribute> )
+%%% Opts    ::= listof( {matchingRule, Str} | {type, Str} | {dnAttributes, true} )
+%%%
+%%% Example: extensibleMatch("Fred", [{matchingRule, "1.2.3.4.5"}, {type, "cn"}]).
+%%%
 -type substr() :: [{initial | any | final, binary()}].
 -type 'SubstringFilter'() ::
         #'SubstringFilter'{type :: binary(),
@@ -429,6 +560,15 @@ get_handle(Name) when is_binary(Name) ->
 %%% Callback functions from gen_fsm
 %%%----------------------------------------------------------------------
 
+%%----------------------------------------------------------------------
+%% Func: init/1
+%% Returns: {ok, StateName, StateData}          |
+%%          {ok, StateName, StateData, Timeout} |
+%%          ignore                              |
+%%          {stop, StopReason}             
+%% I use the trick of setting a timeout of 0 to pass control into the
+%% process.      
+%%----------------------------------------------------------------------
 init([Hosts, Port, Rootdn, Passwd, Opts]) ->
     Encrypt = case gen_mod:get_opt(encrypt, Opts,
                                    fun(tls) -> tls;
@@ -530,12 +670,29 @@ active_bind(Event, From, S) ->
 active(Event, From, S) ->
     process_command(S, Event, From).
 
+%%----------------------------------------------------------------------
+%% Func: handle_event/3
+%% Called when gen_fsm:send_all_state_event/2 is invoked.
+%% Returns: {next_state, NextStateName, NextStateData}          |
+%%          {next_state, NextStateName, NextStateData, Timeout} |
+%%          {stop, Reason, NewStateData}                         
+%%----------------------------------------------------------------------
 handle_event(close, _StateName, S) ->
     catch (S#eldap.sockmod):close(S#eldap.fd),
     {stop, normal, S};
 handle_event(_Event, StateName, S) ->
     {next_state, StateName, S}.
 
+%%----------------------------------------------------------------------
+%% Func: handle_sync_event/4
+%% Called when gen_fsm:sync_send_all_state_event/2,3 is invoked
+%% Returns: {next_state, NextStateName, NextStateData}            |
+%%          {next_state, NextStateName, NextStateData, Timeout}   |
+%%          {reply, Reply, NextStateName, NextStateData}          |
+%%          {reply, Reply, NextStateName, NextStateData, Timeout} |
+%%          {stop, Reason, NewStateData}                          |
+%%          {stop, Reason, Reply, NewStateData}                    
+%%----------------------------------------------------------------------
 handle_sync_event(_Event, _From, StateName, S) ->
     {reply, {StateName, S}, StateName, S}.
 
@@ -652,11 +809,24 @@ handle_info(Info, StateName, S) ->
 	   [Info, StateName, S]),
     {next_state, StateName, S}.
 
+%%----------------------------------------------------------------------
+%% Func: terminate/3
+%% Purpose: Shutdown the fsm
+%% Returns: any
+%%----------------------------------------------------------------------
 terminate(_Reason, _StateName, _StatData) -> ok.
 
+%%----------------------------------------------------------------------
+%% Func: code_change/4
+%% Purpose: Convert process state when code is changed
+%% Returns: {ok, NewState, NewStateData}
+%%----------------------------------------------------------------------
 code_change(_OldVsn, StateName, S, _Extra) ->
     {ok, StateName, S}.
 
+%%%----------------------------------------------------------------------
+%%% Internal functions
+%%%----------------------------------------------------------------------
 dequeue_commands(S) ->
     case queue:out(S#eldap.req_q) of
       {{value, {Event, From}}, Q} ->
@@ -732,6 +902,16 @@ gen_req({bind, RootDN, Passwd}) ->
      #'BindRequest'{version = ?LDAP_VERSION, name = RootDN,
 		    authentication = {simple, Passwd}}}.
 
+%%-----------------------------------------------------------------------
+%% recvd_packet
+%% Deals with incoming packets in the active state
+%% Will return one of:
+%%  {ok, NewS} - Don't reply to client yet as this is part of a search 
+%%               result and we haven't got all the answers yet.
+%%  {reply, Result, From, NewS} - Reply with result to client From
+%%  {error, Reason}
+%%  {'EXIT', Reason} - Broke
+%%-----------------------------------------------------------------------
 recvd_packet(Pkt, S) ->
     case asn1rt:decode('ELDAPv3', 'LDAPMessage', Pkt) of
       {ok, Msg} ->
@@ -822,6 +1002,8 @@ check_bind_reply(#'BindResponse'{resultCode = Reason},
     {error, Reason};
 check_bind_reply(Other, _From) -> {error, Other}.
 
+%% TODO: process reply depending on requestName:
+%% this requires BER-decoding of #'ExtendedResponse'.response
 check_extended_reply(#'ExtendedResponse'{resultCode =
 					     success},
 		     _From) ->
@@ -839,6 +1021,15 @@ get_op_rec(Id, Dict) ->
       error -> throw({error, unkown_id})
     end.
 
+%%-----------------------------------------------------------------------
+%% recvd_wait_bind_response packet
+%% Deals with incoming packets in the wait_bind_response state
+%% Will return one of:
+%%  bound - Success - move to active state
+%%  {fail_bind, Reason} - Failed
+%%  {error, Reason}
+%%  {'EXIT', Reason} - Broken packet
+%%-----------------------------------------------------------------------
 recvd_wait_bind_response(Pkt, S) ->
     case asn1rt:decode('ELDAPv3', 'LDAPMessage', Pkt) of
       {ok, Msg} ->

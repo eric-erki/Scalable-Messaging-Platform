@@ -41,6 +41,7 @@
 %%% - Server is the server domain you want to convert
 %%% - Output can be either odbc to export to the configured relational
 %%%   database or "Filename" to export to text file.
+
 export(Server, Output) ->
     LServer = jlib:nameprep(iolist_to_binary(Server)),
     Modules = [ejabberd_auth,

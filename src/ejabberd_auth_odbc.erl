@@ -44,12 +44,16 @@
 -include("ejabberd.hrl").
 -include("logger.hrl").
 
+%%%----------------------------------------------------------------------
+%%% API
+%%%----------------------------------------------------------------------
 start(_Host) -> ok.
 
 plain_password_required() -> false.
 
 store_type() -> plain.
 
+%% @spec (User, Server, Password) -> true | false | {error, Error}
 check_password(User, Server, Password) ->
     case jlib:nodeprep(User) of
       error -> false;
@@ -71,6 +75,7 @@ check_password(User, Server, Password) ->
 	  end
     end.
 
+%% @spec (User, Server, Password, Digest, DigestGen) -> true | false | {error, Error}
 check_password(User, Server, Password, Digest,
 	       DigestGen) ->
     case jlib:nodeprep(User) of
@@ -98,6 +103,8 @@ check_password(User, Server, Password, Digest,
 	  end
     end.
 
+%% @spec (User::string(), Server::string(), Password::string()) ->
+%%       ok | {error, invalid_jid}
 set_password(User, Server, Password) ->
     case jlib:nodeprep(User) of
       error -> {error, invalid_jid};
@@ -113,6 +120,7 @@ set_password(User, Server, Password) ->
 	  end
     end.
 
+%% @spec (User, Server, Password) -> {atomic, ok} | {atomic, exists} | {error, invalid_jid}
 try_register(User, Server, Password) ->
     case jlib:nodeprep(User) of
       error -> {error, invalid_jid};
@@ -193,6 +201,7 @@ get_password_s(User, Server) ->
 	  end
     end.
 
+%% @spec (User, Server) -> true | false | {error, Error}
 is_user_exists(User, Server) ->
     case jlib:nodeprep(User) of
       error -> false;
@@ -210,6 +219,9 @@ is_user_exists(User, Server) ->
 	  end
     end.
 
+%% @spec (User, Server) -> ok | error
+%% @doc Remove user.
+%% Note: it may return ok even if there was some problem removing the user.
 remove_user(User, Server) ->
     case jlib:nodeprep(User) of
       error -> error;
@@ -220,6 +232,8 @@ remove_user(User, Server) ->
 	  ok
     end.
 
+%% @spec (User, Server, Password) -> ok | error | not_exists | not_allowed
+%% @doc Remove user if the provided password is correct.
 remove_user(User, Server, Password) ->
     case jlib:nodeprep(User) of
       error -> error;

@@ -337,6 +337,7 @@ try_register_or_set_password(User, Server, Password,
 	  IQ#iq{type = error, sub_el = [SubEl, ?ERR_NOT_ALLOWED]}
     end.
 
+%% @doc Try to change password and return IQ response
 try_set_password(User, Server, Password, IQ, SubEl,
 		 Lang) ->
     case is_strong_password(Server, Password) of
@@ -575,6 +576,7 @@ ip_to_string(undefined) -> <<"undefined">>;
 ip_to_string(_) -> <<"unknown">>.
 
 get_time_string() -> write_time(erlang:localtime()).
+%% Function copied from ejabberd_logger_h.erl and customized
 
 write_time({{Y, Mo, D}, {H, Mi, S}}) ->
     io_lib:format("~w-~.2.0w-~.2.0w ~.2.0w:~.2.0w:~.2.0w",

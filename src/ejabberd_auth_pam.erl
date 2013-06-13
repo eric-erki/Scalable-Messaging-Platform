@@ -30,6 +30,9 @@
 -behaviour(ejabberd_auth).
 
 %% External exports
+%%====================================================================
+%% API
+%%====================================================================
 -export([start/1, set_password/3, check_password/3,
 	 check_password/5, try_register/3,
 	 dirty_get_registered_users/0, get_vh_registered_users/1,
@@ -79,6 +82,8 @@ get_password(_User, _Server) -> false.
 
 get_password_s(_User, _Server) -> <<"">>.
 
+%% @spec (User, Server) -> true | false | {error, Error}
+%% TODO: Improve this function to return an error instead of 'false' when connection to PAM failed
 is_user_exists(User, Host) ->
     Service = get_pam_service(Host),
     UserInfo = case get_pam_userinfotype(Host) of
@@ -98,6 +103,9 @@ plain_password_required() -> true.
 
 store_type() -> external.
 
+%%====================================================================
+%% Internal functions
+%%====================================================================
 get_pam_service(Host) ->
     ejabberd_config:get_local_option(
       {pam_service, Host},

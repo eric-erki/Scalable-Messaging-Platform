@@ -45,6 +45,9 @@
 
 -compile(export_all).
 
+%%====================================================================
+%% API
+%%====================================================================
 init(Host, ServerHost, Opts) ->
     nodetree_tree:init(Host, ServerHost, Opts).
 
@@ -227,8 +230,13 @@ get_subnodes_tree(Host, NodeID, From) ->
     traversal_helper(Pred, Tr, 1, Host, [NodeID],
 		     [{0, [get_node(Host, NodeID, From)]}]).
 
+%%====================================================================
+%% Internal functions
+%%====================================================================
 oid(Key, Name) -> {Key, Name}.
 
+%% Key    = jlib:jid() | host()
+%% NodeID = string()
 -spec(find_node/2 ::
 (
   Key :: mod_pubsub:hostPubsub(),
@@ -241,6 +249,9 @@ find_node(Key, NodeID) ->
       [Node] -> Node
     end.
 
+%% Key     = jlib:jid() | host()
+%% Default = term()
+%% Options = [{Key = atom(), Value = term()}]
 find_opt(Key, Default, Options) ->
     case lists:keysearch(Key, 1, Options) of
       {value, {Key, Val}} -> Val;
@@ -309,6 +320,9 @@ validate_parentage(Key, Owners, [ParentID | T]) ->
 	  end
     end.
 
+%% @spec (Host) -> jid()
+%%	Host = host()
+%% @doc <p>Generate pubsub service JID.</p>
 service_jid(Host) ->
     case Host of
       {U, S, _} -> jlib:make_jid(U, S, <<>>);
