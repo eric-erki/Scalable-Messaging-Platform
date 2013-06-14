@@ -703,8 +703,8 @@ wait_for_auth({xmlstreamelement, El}, StateData) ->
 			    SID = {now(), self()},
 			    Conn = (StateData#state.sockmod):get_conn_type(
                                      StateData#state.socket),
-			    Res1 = jlib:make_result_iq_reply(El),
-			    Res = Res1#xmlel{children = []},
+			    Res = jlib:make_result_iq_reply(
+                                    El#xmlel{children = []}),
 			    send_element(StateData, Res),
 			    change_shaper(StateData, JID),
 			    {Fs, Ts, Bs} =
@@ -1218,7 +1218,7 @@ wait_for_session({xmlstreamelement, El}, StateData) ->
 	    allow ->
 		?INFO_MSG("(~w) Opened session for ~s",
 			  [StateData#state.socket, jlib:jid_to_string(JID)]),
-		Res = jlib:make_result_iq_reply(El),
+		Res = jlib:make_result_iq_reply(El#xmlel{children = []}),
 		send_element(StateData, Res),
 		change_shaper(StateData, JID),
 		{Fs, Ts, Bs} =
