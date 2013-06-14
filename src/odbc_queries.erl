@@ -69,6 +69,9 @@
 -include("ejabberd.hrl").
 -include("logger.hrl").
 
+%% Almost a copy of string:join/2.
+%% We use this version because string:join/2 is relatively
+%% new function (introduced in R12B-0).
 join([], _Sep) -> [];
 join([H | T], Sep) -> [H, [[Sep, X] || X <- T]].
 
@@ -78,6 +81,7 @@ join([H | T], Sep) -> [H, [[Sep, X] || X <- T]].
 
 get_db_type() -> generic.
 
+%% Safe atomic update.
 update_t(Table, Fields, Vals, Where) ->
     UPairs = lists:zipwith(fun (A, B) ->
 				   <<A/binary, "='", B/binary, "'">>
@@ -113,6 +117,9 @@ update(LServer, Table, Fields, Vals, Where) ->
 				   join(Vals, <<"', '">>), <<"');">>])
     end.
 
+%% F can be either a fun or a list of queries
+%% TODO: We should probably move the list of queries transaction
+%% wrapper from the ejabberd_odbc module to this one (odbc_queries)
 sql_transaction(LServer, F) ->
     ejabberd_odbc:sql_transaction(LServer, F).
 
@@ -580,6 +587,8 @@ set_privacy_list(ID, RItems) ->
 		  RItems).
 
 del_privacy_lists(LServer, Server, Username) ->
+%% Characters to escape
+%% Count number of records in a table given a where clause
     ejabberd_odbc:sql_query(LServer,
 			    [<<"delete from privacy_list where username='">>,
 			     Username, <<"';">>]),
@@ -625,6 +634,7 @@ set_roster_version(LUser, Version) ->
 %% MSSQL queries
 -ifdef(mssql).
 
+%% Queries can be either a fun or a list of queries
 get_db_type() -> mssql.
 
 sql_transaction(LServer, Queries)
@@ -912,6 +922,8 @@ set_privacy_list(ID, RItems) ->
 		  RItems).
 
 del_privacy_lists(LServer, Server, Username) ->
+%% Characters to escape
+%% Count number of records in a table given a where clause
     ejabberd_odbc:sql_query(LServer,
 			    [<<"EXECUTE dbo.del_privacy_lists @Server='">>,
 			     Server, <<"' @username='">>, Username, <<"'">>]).

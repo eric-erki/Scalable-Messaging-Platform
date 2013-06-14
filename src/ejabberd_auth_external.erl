@@ -44,6 +44,9 @@
 -include("ejabberd.hrl").
 -include("logger.hrl").
 
+%%%----------------------------------------------------------------------
+%%% API
+%%%----------------------------------------------------------------------
 start(Host) ->
     Cmd = ejabberd_config:get_local_option(
             {extauth_program, Host},
@@ -117,6 +120,7 @@ get_vh_registered_users_number(Server, Data) ->
     ejabberd_auth_internal:get_vh_registered_users_number(Server,
 							  Data).
 
+%% The password can only be returned if cache is enabled, cached info exists and is fresh enough.
 get_password(User, Server) ->
     case get_cache_option(Server) of
       false -> false;
@@ -130,6 +134,7 @@ get_password_s(User, Server) ->
       Other -> Other
     end.
 
+%% @spec (User, Server) -> true | false | {error, Error}
 is_user_exists(User, Server) ->
     try extauth:is_user_exists(User, Server) of
       Res -> Res
@@ -164,6 +169,7 @@ remove_user(User, Server, Password) ->
 %%% Extauth cache management
 %%%
 
+%% @spec (Host::string()) -> false | {true, CacheTime::integer()}
 get_cache_option(Host) ->
     case ejabberd_config:get_local_option(
            {extauth_cache, Host},
@@ -172,10 +178,12 @@ get_cache_option(Host) ->
         CacheTime -> {true, CacheTime}
     end.
 
+%% @spec (User, Server, Password) -> true | false
 check_password_extauth(User, Server, Password) ->
     extauth:check_password(User, Server, Password) andalso
       Password /= <<"">>.
 
+%% @spec (User, Server, Password) -> true | false
 try_register_extauth(User, Server, Password) ->
     extauth:try_register(User, Server, Password).
 
@@ -212,6 +220,7 @@ check_password_cache(User, Server, Password,
 get_password_internal(User, Server) ->
     ejabberd_auth_internal:get_password(User, Server).
 
+%% @spec (User, Server, CacheTime) -> false | Password::string()
 get_password_cache(User, Server, CacheTime) ->
     case get_last_access(User, Server) of
       online -> get_password_internal(User, Server);
@@ -229,6 +238,7 @@ get_password_cache(User, Server, CacheTime) ->
 	  end
     end.
 
+%% Check the password using extauth; if success then cache it
 check_password_external_cache(User, Server, Password) ->
     case check_password_extauth(User, Server, Password) of
       true ->
@@ -236,6 +246,7 @@ check_password_external_cache(User, Server, Password) ->
       false -> false
     end.
 
+%% Try to register using extauth; if success then cache it
 try_register_external_cache(User, Server, Password) ->
     case try_register_extauth(User, Server, Password) of
       {atomic, ok} = R ->
@@ -243,11 +254,16 @@ try_register_external_cache(User, Server, Password) ->
       _ -> {error, not_allowed}
     end.
 
+%% @spec (User, Server, Password) -> true | false
 check_password_internal(User, Server, Password) ->
     ejabberd_auth_internal:check_password(User, Server,
 					  Password).
 
+%% @spec (User, Server, Password) -> ok | {error, invalid_jid}
 set_password_internal(User, Server, Password) ->
+%% @spec (TimeLast, CacheTime) -> true | false
+%%       TimeLast = online | never | integer()
+%%       CacheTime = integer() | false
     ejabberd_auth_internal:set_password(User, Server,
 					Password).
 
@@ -256,6 +272,10 @@ is_fresh_enough(TimeStampLast, CacheTime) ->
     Now = MegaSecs * 1000000 + Secs,
     TimeStampLast + CacheTime > Now.
 
+%% @spec (User, Server) -> online | never | mod_last_required | TimeStamp::integer()
+%% Code copied from mod_configure.erl
+%% Code copied from web/ejabberd_web_admin.erl
+%% TODO: Update time format to XEP-0202: Entity Time
 get_last_access(User, Server) ->
     case ejabberd_sm:get_user_resources(User, Server) of
       [] ->
@@ -267,6 +287,7 @@ get_last_access(User, Server) ->
 	  end;
       _ -> online
     end.
+%% @spec (User, Server) -> {ok, Timestamp, Status} | not_found | mod_last_required
 
 get_last_info(User, Server) ->
     case get_mod_last_enabled(Server) of
@@ -274,6 +295,7 @@ get_last_info(User, Server) ->
       no_mod_last -> mod_last_required
     end.
 
+%% @spec (Server) -> mod_last | no_mod_last
 get_mod_last_enabled(Server) ->
     case gen_mod:is_loaded(Server, mod_last) of
       true -> mod_last;

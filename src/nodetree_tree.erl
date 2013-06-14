@@ -4,11 +4,13 @@
 %%% compliance with the License. You should have received a copy of the
 %%% Erlang Public License along with this software. If not, it can be
 %%% retrieved via the world wide web at http://www.erlang.org/.
+%%% 
 %%%
 %%% Software distributed under the License is distributed on an "AS IS"
 %%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
 %%% the License for the specific language governing rights and limitations
 %%% under the License.
+%%% 
 %%%
 %%% The Initial Developer of the Original Code is ProcessOne.
 %%% Portions created by ProcessOne are Copyright 2006-2013, ProcessOne
@@ -55,6 +57,15 @@
 %% API definition
 %% ================
 
+%% @spec (Host, ServerHost, Options) -> ok
+%%	   Host       = string()
+%%	   ServerHost = string()
+%%	   Options    = [{atom(), term()}]
+%% @doc <p>Called during pubsub modules initialisation. Any pubsub plugin must
+%% implement this function. It can return anything.</p>
+%% <p>This function is mainly used to trigger the setup task necessary for the
+%% plugin. It can be used for example by the developer to create the specific
+%% module database schema if it does not exists yet.</p>
 init(_Host, _ServerHost, _Options) ->
     mnesia:create_table(pubsub_node,
 			[{disc_copies, [node()]},
@@ -67,11 +78,20 @@ init(_Host, _ServerHost, _Options) ->
     end,
     %% mnesia:transform_table(pubsub_state, ignore, StatesFields)
     ok.
+%% @spec (Host, ServerHost) -> ok
+%%	   Host       = string()
+%%	   ServerHost = string()
 
+%% @spec () -> Options
+%%	   Options = [mod_pubsub:nodeOption()]
+%% @doc Returns the default pubsub node tree options.
 terminate(_Host, _ServerHost) -> ok.
 
 options() -> [{virtual_tree, false}].
 
+%% @spec (Node) -> ok | {error, Reason}
+%%     Node   = mod_pubsub:pubsubNode()
+%%  	 Reason = mod_pubsub:stanzaError()
 -spec(set_node/1 ::
 (
   Node::mod_pubsub:pubsubNode())
@@ -83,6 +103,11 @@ set_node(Node) when is_record(Node, pubsub_node) ->
 
 get_node(Host, Node, _From) -> get_node(Host, Node).
 
+%% @spec (Host, NodeId) -> Node | {error, Reason}
+%%     Host   = mod_pubsub:host()
+%%     NodeId = mod_pubsub:nodeId()
+%%     Node   = mod_pubsub:pubsubNode()
+%%  	 Reason = mod_pubsub:stanzaError()
 -spec(get_node/2 ::
 (
   Host   :: mod_pubsub:host(),
@@ -112,6 +137,10 @@ get_node(NodeIdx) ->
 
 get_nodes(Host, _From) -> get_nodes(Host).
 
+%% @spec (Host) -> Nodes | {error, Reason}
+%%     Host   = mod_pubsub:host()
+%%     Nodes  = [mod_pubsub:pubsubNode()]
+%%  	 Reason = {aborted, atom()}
 -spec(get_nodes/1 ::
 (
   Host::mod_pubsub:host())
@@ -120,8 +149,21 @@ get_nodes(Host, _From) -> get_nodes(Host).
 get_nodes(Host) ->
     mnesia:match_object(#pubsub_node{nodeid = {Host, '_'}, _ = '_'}).
 
+%% @spec (Host, Node, From) -> []
+%%     Host   = mod_pubsub:host()
+%%     NodeId = mod_pubsub:nodeId()
+%%     From   = mod_pubsub:jid()
+%% @doc <p>Default node tree does not handle parents, return empty list.</p>
 get_parentnodes(_Host, _NodeId, _From) -> [].
 
+%% @spec (Host, NodeId, From) -> [{Depth, Node}] | []
+%%     Host   = mod_pubsub:host()
+%%     NodeId = mod_pubsub:nodeId()
+%%     From   = mod_pubsub:jid()
+%%     Depth  = integer()
+%%     Node   = mod_pubsub:pubsubNode()
+%% @doc <p>Default node tree does not handle parents, return a list
+%% containing just this node.</p>
 -spec(get_parentnodes_tree/3 ::
 (
   Host   :: mod_pubsub:host(),
@@ -135,6 +177,11 @@ get_parentnodes_tree(Host, NodeId, From) ->
       _Error -> []
     end.
 
+%% @spec (Host, NodeId, From) -> Nodes
+%%     Host   = mod_pubsub:host()
+%%     NodeId = mod_pubsub:nodeId()
+%%     From   = mod_pubsub:jid()
+%%     Nodes  = [mod_pubsub:pubsubNode()]
 get_subnodes(Host, NodeId, _From) ->
     get_subnodes(Host, NodeId).
 
@@ -164,6 +211,10 @@ get_subnodes(Host, Node) ->
 get_subnodes_tree(Host, Node, _From) ->
     get_subnodes_tree(Host, Node).
 
+%% @spec (Host, NodeId) -> Nodes
+%%     Host   = mod_pubsub:host()
+%%     NodeId = mod_pubsub:nodeId()
+%%     Nodes  = [] | [mod_pubsub:pubsubNode()]
 -spec(get_subnodes_tree/2 ::
 (
   Host :: mod_pubsub:host(),
@@ -190,6 +241,16 @@ get_subnodes_tree(Host, NodeId) ->
 		       [], pubsub_node)
     end.
 
+%% @spec (Host, NodeId, Type, Owner, Options, Parents) ->
+%%   {ok, NodeIdx} | {error, Reason}
+%%     Host     = mod_pubsub:host()
+%%     NodeId   = mod_pubsub:nodeId()
+%%     Type     = mod_pubsub:nodeType()
+%%     Owner    = mod_pubsub:jid()
+%%     Options  = [mod_pubsub:nodeOption()]
+%%     Parents  = [] | [mod_pubsub:nodeId()]
+%%     NodeIdx  = mod_pubsub:nodeIdx()
+%%     Reason   = mod_pubsub:stanzaError()
 -spec(create_node/6 ::
 (
   Host    :: mod_pubsub:host(),
@@ -241,6 +302,10 @@ create_node(Host, NodeId, Type, Owner, Options, Parents) ->
       _ -> {error, ?ERR_CONFLICT}
     end.
 
+%% @spec (Host, NodeId) -> Removed
+%%     Host    = mod_pubsub:host()
+%%     NodeId  = mod_pubsub:nodeId()
+%%     Removed = [mod_pubsub:pubsubNode()]
 -spec(delete_node/2 ::
 (
   Host :: mod_pubsub:host(),

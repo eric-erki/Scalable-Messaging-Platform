@@ -57,6 +57,7 @@
          auth_type = anonymous :: plain | anonymous,
          shaper = none :: shaper:shaper()}).
 
+%% Unused callbacks
 handle_event(_Event, StateName, StateData) ->
     {next_state, StateName, StateData}.
 
@@ -106,6 +107,9 @@ terminate(_Reason, StateName, #state{sha1 = SHA1}) ->
        true -> ok
     end.
 
+%%%------------------------------
+%%% API.
+%%%------------------------------
 socket_type() -> raw.
 
 stop(StreamPid) -> StreamPid ! stop.
@@ -127,6 +131,9 @@ activate({P1, J1}, {P2, J2}) ->
       _ -> error
     end.
 
+%%%-----------------------
+%%% States
+%%%-----------------------
 wait_for_init(Packet,
 	      #state{socket = Socket, auth_type = AuthType} =
 		  StateData) ->
@@ -193,6 +200,7 @@ stream_established(_Data, StateData) ->
 %%% Callbacks processing
 %%%-----------------------
 
+%% SOCKS5 packets.
 handle_info({tcp, _S, Data}, StateName, StateData)
     when StateName /= wait_for_activation ->
     erlang:cancel_timer(StateData#state.timer),
@@ -231,6 +239,7 @@ handle_info({'DOWN', _, _, _, _}, _StateName,
 handle_info(_Info, StateName, StateData) ->
     {next_state, StateName, StateData}.
 
+%% Socket request.
 handle_sync_event(get_socket, _From,
 		  wait_for_activation, StateData) ->
     Socket = StateData#state.socket,
@@ -239,6 +248,9 @@ handle_sync_event(_Event, _From, StateName,
 		  StateData) ->
     {reply, error, StateName, StateData}.
 
+%%%-------------------------------------------------
+%%% Relay Process.
+%%%-------------------------------------------------
 relay(MySocket, PeerSocket, Shaper) ->
     case gen_tcp:recv(MySocket, 0) of
       {ok, Data} ->
@@ -251,6 +263,9 @@ relay(MySocket, PeerSocket, Shaper) ->
       _ -> stopped
     end.
 
+%%%------------------------
+%%% Auxiliary functions
+%%%------------------------
 select_auth_method(plain, AuthMethods) ->
     case lists:member(?AUTH_PLAIN, AuthMethods) of
       true -> ?AUTH_PLAIN;
@@ -262,6 +277,7 @@ select_auth_method(anonymous, AuthMethods) ->
       false -> ?AUTH_NO_METHODS
     end.
 
+%% Obviously, we must use shaper with maximum rate.
 find_maxrate(Shaper, JID1, JID2, Host) ->
     MaxRate1 = shaper:new(acl:match_rule(Host, Shaper,
 					 JID1)),

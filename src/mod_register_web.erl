@@ -72,7 +72,7 @@
 %%%----------------------------------------------------------------------
 
 start(_Host, _Opts) ->
-    %% case gen_mod:get_opt(docroot, Opts, undefined) of
+    %% case gen_mod:get_opt(docroot, Opts, fun(A) -> A end, undefined) of
     ok.
 
 stop(_Host) -> ok.
@@ -269,6 +269,8 @@ form_new_get(Host, Lang, IP) ->
       {<<"Content-Type">>, <<"text/html">>}],
      ejabberd_web:make_xhtml(HeadEls, Els)}.
 
+%% Copied from mod_register.erl
+%% Function copied from ejabberd_logger_h.erl and customized
 %%%----------------------------------------------------------------------
 %%% Formulary new POST
 %%%----------------------------------------------------------------------
@@ -392,6 +394,10 @@ form_changepass_post(Q, Host) ->
     end.
 
 get_changepass_parameters(Q) ->
+%% @spec(Username,Host,PasswordOld,Password) -> {atomic, ok} |
+%%                                              {error, account_doesnt_exist} |
+%%                                              {error, password_not_changed} |
+%%                                              {error, password_incorrect}
     lists:map(fun (Key) ->
 		      {value, {_Key, Value}} = lists:keysearch(Key, 1, Q),
 		      Value
@@ -474,6 +480,10 @@ form_del_get(Host, Lang) ->
       {<<"Content-Type">>, <<"text/html">>}],
      ejabberd_web:make_xhtml(HeadEls, Els)}.
 
+%% @spec(Username, Host, Password) -> {success, ok, {Username, Host, Password} |
+%%                                    {success, exists, {Username, Host, Password}} |
+%%                                    {error, not_allowed} |
+%%                                    {error, invalid_jid}
 register_account(Username, Host, Password) ->
     case jlib:make_jid(Username, Host, <<"">>) of
       error -> {error, invalid_jid};
@@ -501,6 +511,10 @@ form_del_post(Q, Host) ->
     end.
 
 get_unregister_parameters(Q) ->
+%% @spec(Username, Host, Password) -> {atomic, ok} |
+%%                                    {error, account_doesnt_exist} |
+%%                                    {error, account_exists} |
+%%                                    {error, password_incorrect}
     lists:map(fun (Key) ->
 		      {value, {_Key, Value}} = lists:keysearch(Key, 1, Q),
 		      Value

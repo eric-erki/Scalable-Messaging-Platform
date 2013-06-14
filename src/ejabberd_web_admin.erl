@@ -56,6 +56,7 @@
 %% @spec (Path::[string()], Method) -> {HostOfRule, [AccessRule]}
 %% where Method = 'GET' | 'POST'
 
+%% All accounts can access those URLs
 get_acl_rule([], _) -> {<<"localhost">>, [all]};
 get_acl_rule([<<"style.css">>], _) ->
     {<<"localhost">>, [all]};
@@ -146,6 +147,10 @@ is_allowed_path(Path, JID) ->
 %%path_to_url(Path) ->
 %%    "/" ++ string:join(Path, "/") ++ "/".
 
+%% @spec(URL) -> Path
+%% where Path = [string()]
+%%       URL = string()
+%% Convert "admin/user/tom" -> ["admin", "user", "tom"]
 url_to_path(URL) -> str:tokens(URL, <<"/">>).
 
 %%%==================================
@@ -280,6 +285,10 @@ get_auth_account(HostOfRule, AccessRule, User, Server,
 make_xhtml(Els, Host, Lang, JID) ->
     make_xhtml(Els, Host, cluster, Lang, JID).
 
+%% @spec (Els, Host, Node, Lang, JID) -> {200, [html], xmlelement()}
+%% where Host = global | string()
+%%       Node = cluster | atom()
+%%       JID = jid()
 make_xhtml(Els, Host, Node, Lang, JID) ->
     Base = get_base_path(Host, cluster),
     MenuItems = make_navigation(Host, Node, Lang, JID),
@@ -1040,12 +1049,14 @@ acl_spec_select(ID, Opt) ->
 			 [user, server, user_regexp, server_regexp, node_regexp,
 			  user_glob, server_glob, node_glob, all, raw])))]).
 
+%% @spec (T::any()) -> StringLine::string()
 term_to_string(T) ->
     StringParagraph =
 	iolist_to_binary(io_lib:format("~1000000p", [T])),
     ejabberd_regexp:greplace(StringParagraph, <<"\\n ">>,
 			     <<"">>).
 
+%% @spec (T::any(), Cols::integer()) -> {NumLines::integer(), Paragraph::string()}
 term_to_paragraph(T, Cols) ->
     P1 = erl_syntax:abstract(T),
     P2 = erl_prettypr:format(P1, [{paper, Cols}]),
@@ -1176,7 +1187,7 @@ acl_parse_delete(ACLs, Query) ->
     NewACLs = lists:filter(fun ({acl, _Name, _Spec} =
 				    ACL) ->
 				   ID = term_to_id(ACL),
-				   not lists:member({"selected", ID}, Query)
+				   not lists:member({<<"selected">>, ID}, Query)
 			   end,
 			   ACLs),
     NewACLs.
@@ -1347,6 +1358,7 @@ list_users(Host, Query, Lang, URLFunc) ->
 				 lists:seq(1, N, M))
 	     end,
     case Res of
+%% Parse user creation query and try register:
       ok -> [?XREST(<<"Submitted">>)];
       error -> [?XREST(<<"Bad format">>)];
       nothing -> []
@@ -2751,10 +2763,18 @@ pretty_string_int(String) when is_binary(String) ->
 %%%==================================
 %%%% navigation menu
 
+%% @spec (Host, Node, Lang, JID::jid()) -> [LI]
 make_navigation(Host, Node, Lang, JID) ->
     Menu = make_navigation_menu(Host, Node, Lang, JID),
     make_menu_items(Lang, Menu).
 
+%% @spec (Host, Node, Lang, JID::jid()) -> Menu
+%% where Host = global | string()
+%%       Node = cluster | string()
+%%       Lang = string()
+%%       Menu = {URL, Title} | {URL, Title, [Menu]}
+%%       URL = string()
+%%       Title = string()
 make_navigation_menu(Host, Node, Lang, JID) ->
     HostNodeMenu = make_host_node_menu(Host, Node, Lang,
 				       JID),
@@ -2763,6 +2783,7 @@ make_navigation_menu(Host, Node, Lang, JID) ->
     NodeMenu = make_node_menu(Host, Node, Lang),
     make_server_menu(HostMenu, NodeMenu, Lang, JID).
 
+%% @spec (Host, Node, Base, Lang) -> [LI]
 make_menu_items(global, cluster, Base, Lang) ->
     HookItems = get_menu_items_hook(server, Lang),
     make_menu_items(Lang, {Base, <<"">>, HookItems});
@@ -2852,6 +2873,9 @@ get_menu_items_hook({node, Node}, Lang) ->
 get_menu_items_hook(server, Lang) ->
     ejabberd_hooks:run_fold(webadmin_menu_main, [], [Lang]).
 
+%% @spec (Lang::string(), Menu) -> [LI]
+%% where Menu = {MURI::string(), MName::string(), Items::[Item]}
+%%       Item = {IURI::string(), IName::string()} | {IURI::string(), IName::string(), Menu}
 make_menu_items(Lang, Menu) ->
     lists:reverse(make_menu_items2(Lang, 1, Menu)).
 

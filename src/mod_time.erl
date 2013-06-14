@@ -1,6 +1,7 @@
 %%%----------------------------------------------------------------------
 %%% File    : mod_time.erl
 %%% Author  : Alexey Shchepin <alexey@process-one.net>
+%%% Purpose : 
 %%% Purpose :
 %%% Created : 18 Jan 2003 by Alexey Shchepin <alexey@process-one.net>
 %%%
@@ -55,6 +56,7 @@ stop(Host) ->
     gen_iq_handler:remove_iq_handler(ejabberd_local, Host,
 				     ?NS_TIME).
 
+%% TODO: Remove this function once XEP-0090 is Obsolete
 process_local_iq90(_From, _To,
 		   #iq{type = Type, sub_el = SubEl} = IQ) ->
     case Type of

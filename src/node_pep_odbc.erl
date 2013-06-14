@@ -4,11 +4,13 @@
 %%% compliance with the License. You should have received a copy of the
 %%% Erlang Public License along with this software. If not, it can be
 %%% retrieved via the world wide web at http://www.erlang.org/.
+%%% 
 %%%
 %%% Software distributed under the License is distributed on an "AS IS"
 %%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
 %%% the License for the specific language governing rights and limitations
 %%% under the License.
+%%% 
 %%%
 %%% The Initial Developer of the Original Code is ProcessOne.
 %%% Portions created by ProcessOne are Copyright 2006-2013, ProcessOne
@@ -67,11 +69,17 @@ terminate(Host, ServerHost) ->
 
 -spec(options/0 :: () -> NodeOptions::mod_pubsub:nodeOptions()).
 options() ->
-    [{odbc, true}, {deliver_payloads, true},
-     {notify_config, false}, {notify_delete, false},
-     {notify_retract, false}, {purge_offline, false},
-     {persist_items, false}, {max_items, ?MAXITEMS},
-     {subscribe, true}, {access_model, presence},
+    [{odbc, true},
+     {node_type, pep},
+     {deliver_payloads, true},
+     {notify_config, false},
+     {notify_delete, false},
+     {notify_retract, false},
+     {purge_offline, false},
+     {persist_items, false},
+     {max_items, ?MAXITEMS},
+     {subscribe, true},
+     {access_model, presence},
      {roster_groups_allowed, []},
      {publish_model, publishers},
      {notification_type, headline},
@@ -421,9 +429,14 @@ path_to_node(Path) -> node_flat_odbc:path_to_node(Path).
 %%% Internal
 %%%
 
+%% @doc Check mod_caps is enabled, otherwise show warning.
+%% The PEP plugin for mod_pubsub requires mod_caps to be enabled in the host.
+%% Check that the mod_caps module is enabled in that Jabber Host
+%% If not, show a warning message in the ejabberd log file.
 complain_if_modcaps_disabled(ServerHost) ->
     Modules = ejabberd_config:get_local_option({modules,
-						ServerHost}),
+						ServerHost},
+			fun(Ms) when is_list(Ms) -> Ms end),
     ModCaps = [mod_caps_enabled
 	       || {mod_caps, _Opts} <- Modules],
     case ModCaps of

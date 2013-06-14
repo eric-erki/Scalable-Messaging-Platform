@@ -39,6 +39,8 @@
 -include("jlib.hrl").
 -include("adhoc.hrl").
 
+%% Parse an ad-hoc request.  Return either an adhoc_request record or
+%% an {error, ErrorType} tuple.
 %%
 -spec(parse_request/1 ::
 (
@@ -69,6 +71,7 @@ parse_request(#iq{type = set, lang = Lang, sub_el = SubEl, xmlns = ?NS_COMMANDS}
     };
 parse_request(_) -> {error, ?ERR_BAD_REQUEST}.
 
+%% Borrowed from mod_vcard.erl
 find_xdata_el(#xmlel{children = SubEls}) ->
     find_xdata_el1(SubEls).
 
@@ -80,6 +83,9 @@ find_xdata_el1([El | Els]) when is_record(El, xmlel) ->
     end;
 find_xdata_el1([_ | Els]) -> find_xdata_el1(Els).
 
+%% Produce a <command/> node to use as response from an adhoc_response
+%% record, filling in values for language, node and session id from
+%% the request.
 %%
 -spec(produce_response/2 ::
 (
@@ -88,6 +94,8 @@ find_xdata_el1([_ | Els]) -> find_xdata_el1(Els).
     -> Xmlel::xmlel()
 ).
 
+%% Produce a <command/> node to use as response from an adhoc_response
+%% record.
 produce_response(#adhoc_request{lang = Lang, node = Node, sessionid = SessionID},
   Adhoc_Response) ->
     produce_response(Adhoc_Response#adhoc_response{

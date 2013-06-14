@@ -52,6 +52,9 @@
 
 -define(SALT_LENGTH, 16).
 
+%%%----------------------------------------------------------------------
+%%% API
+%%%----------------------------------------------------------------------
 start(Host) ->
     mnesia:create_table(passwd,
 			[{disc_copies, [node()]},
@@ -127,6 +130,8 @@ check_password(User, Server, Password, Digest,
       _ -> false
     end.
 
+%% @spec (User::string(), Server::string(), Password::string()) ->
+%%       ok | {error, invalid_jid}
 set_password(User, Server, Password) ->
     LUser = jlib:nodeprep(User),
     LServer = jlib:nameprep(Server),
@@ -146,6 +151,7 @@ set_password(User, Server, Password) ->
 	   ok
     end.
 
+%% @spec (User, Server, Password) -> {atomic, ok} | {atomic, exists} | {error, invalid_jid} | {aborted, Reason}
 try_register(User, Server, PasswordList) ->
     LUser = jlib:nodeprep(User),
     LServer = jlib:nameprep(Server),
@@ -174,6 +180,7 @@ try_register(User, Server, PasswordList) ->
 	   mnesia:transaction(F)
     end.
 
+%% Get all registered users in Mnesia
 dirty_get_registered_users() ->
     mnesia:dirty_all_keys(passwd).
 
@@ -288,6 +295,7 @@ get_password_s(User, Server) ->
       _ -> <<"">>
     end.
 
+%% @spec (User, Server) -> true | false | {error, Error}
 is_user_exists(User, Server) ->
     LUser = jlib:nodeprep(User),
     LServer = jlib:nameprep(Server),
@@ -298,6 +306,9 @@ is_user_exists(User, Server) ->
       Other -> {error, Other}
     end.
 
+%% @spec (User, Server) -> ok
+%% @doc Remove user.
+%% Note: it returns ok even if there was some problem removing the user.
 remove_user(User, Server) ->
     LUser = jlib:nodeprep(User),
     LServer = jlib:nameprep(Server),
@@ -310,6 +321,8 @@ remove_user(User, Server) ->
     mnesia:transaction(F),
     ok.
 
+%% @spec (User, Server, Password) -> ok | not_exists | not_allowed | bad_request
+%% @doc Remove user if the provided password is correct.
 remove_user(User, Server, Password) ->
     LUser = jlib:nodeprep(User),
     LServer = jlib:nameprep(Server),
@@ -377,6 +390,8 @@ convert_to_binary(Fields) ->
 %%% SCRAM
 %%%
 
+%% The passwords are stored scrammed in the table either if the option says so,
+%% or if at least the first password is scrammed.
 is_scrammed() ->
     OptionScram = is_option_scram(),
     FirstElement = mnesia:dirty_read(passwd,

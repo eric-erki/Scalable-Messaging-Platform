@@ -3,11 +3,13 @@
 %% compliance with the License. You should have received a copy of the
 %% Erlang Public License along with this software. If not, it can be
 %% retrieved via the world wide web at http://www.erlang.org/.
+%% 
 %%
 %% Software distributed under the License is distributed on an "AS IS"
 %% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
 %% the License for the specific language governing rights and limitations
 %% under the License.
+%% 
 %%
 %% The Initial Developer of the Original Code is ProcessOne.
 %% Portions created by ProcessOne are Copyright 2006-2013, ProcessOne
@@ -19,6 +21,10 @@
 
 -export([count_records/2]).
 
+%% Return the number of records matching a given match expression.
+%% This function is intended to be used inside a Mnesia transaction.
+%% The count has been written to use the fewest possible memory by
+%% getting the record by small increment and by using continuation.
 -define(BATCHSIZE, 100).
 
 count_records(Tab, MatchExpression) ->

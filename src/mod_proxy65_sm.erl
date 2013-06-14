@@ -51,6 +51,7 @@
 
 -define(PROCNAME, ejabberd_mod_proxy65_sm).
 
+%% Unused callbacks.
 handle_cast(_Request, State) -> {noreply, State}.
 
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
@@ -114,6 +115,15 @@ handle_call({activate, SHA1, IJid}, _From, State) ->
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
+%%%----------------------
+%%% API.
+%%%----------------------
+%%%---------------------------------------------------
+%%% register_stream(SHA1) -> {atomic, ok}      |
+%%%                          {atomic, error}   |
+%%%                          transaction abort
+%%% SHA1 = string()
+%%%---------------------------------------------------
 register_stream(SHA1) when is_binary(SHA1) ->
     StreamPid = self(),
     F = fun () ->
@@ -131,10 +141,24 @@ register_stream(SHA1) when is_binary(SHA1) ->
 	end,
     mnesia:transaction(F).
 
+%%%----------------------------------------------------
+%%% unregister_stream(SHA1) -> ok | transaction abort
+%%% SHA1 = string()
+%%%----------------------------------------------------
 unregister_stream(SHA1) when is_binary(SHA1) ->
     F = fun () -> mnesia:delete({bytestream, SHA1}) end,
     mnesia:transaction(F).
 
+%%%--------------------------------------------------------
+%%% activate_stream(SHA1, IJid, TJid, Host) -> ok       |
+%%%                                            false    |
+%%%                                            limit    |
+%%%                                            conflict |
+%%%                                            error
+%%% SHA1 = string()
+%%% IJid = TJid = jid()
+%%% Host = string()
+%%%--------------------------------------------------------
 activate_stream(SHA1, IJid, TJid, Host)
     when is_binary(SHA1) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),

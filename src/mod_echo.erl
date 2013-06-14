@@ -49,6 +49,13 @@
 
 -define(PROCNAME, ejabberd_mod_echo).
 
+%%====================================================================
+%% API
+%%====================================================================
+%%--------------------------------------------------------------------
+%% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
+%% Description: Starts the server
+%%--------------------------------------------------------------------
 start_link(Host, Opts) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     gen_server:start_link({local, Proc}, ?MODULE,
@@ -70,17 +77,45 @@ stop(Host) ->
 %% gen_server callbacks
 %%====================================================================
 
+%%--------------------------------------------------------------------
+%% Function: init(Args) -> {ok, State} |
+%%                         {ok, State, Timeout} |
+%%                         ignore               |
+%%                         {stop, Reason}
+%% Description: Initiates the server
+%%--------------------------------------------------------------------
 init([Host, Opts]) ->
     MyHost = gen_mod:get_opt_host(Host, Opts,
 				  <<"echo.@HOST@">>),
     ejabberd_router:register_route(MyHost),
     {ok, #state{host = MyHost}}.
 
+%%--------------------------------------------------------------------
+%% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
+%%                                      {reply, Reply, State, Timeout} |
+%%                                      {noreply, State} |
+%%                                      {noreply, State, Timeout} |
+%%                                      {stop, Reason, Reply, State} |
+%%                                      {stop, Reason, State}
+%% Description: Handling call messages
+%%--------------------------------------------------------------------
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State}.
 
+%%--------------------------------------------------------------------
+%% Function: handle_cast(Msg, State) -> {noreply, State} |
+%%                                      {noreply, State, Timeout} |
+%%                                      {stop, Reason, State}
+%% Description: Handling cast messages
+%%--------------------------------------------------------------------
 handle_cast(_Msg, State) -> {noreply, State}.
 
+%%--------------------------------------------------------------------
+%% Function: handle_info(Info, State) -> {noreply, State} |
+%%                                       {noreply, State, Timeout} |
+%%                                       {stop, Reason, State}
+%% Description: Handling all non call/cast messages
+%%--------------------------------------------------------------------
 handle_info({route, From, To, Packet}, State) ->
     Packet2 = case From#jid.user of
 		<<"">> ->
@@ -92,9 +127,20 @@ handle_info({route, From, To, Packet}, State) ->
     {noreply, State};
 handle_info(_Info, State) -> {noreply, State}.
 
+%%--------------------------------------------------------------------
+%% Function: terminate(Reason, State) -> void()
+%% Description: This function is called by a gen_server when it is about to
+%% terminate. It should be the opposite of Module:init/1 and do any necessary
+%% cleaning up. When it returns, the gen_server terminates with Reason.
+%% The return value is ignored.
+%%--------------------------------------------------------------------
 terminate(_Reason, State) ->
     ejabberd_router:unregister_route(State#state.host), ok.
 
+%%--------------------------------------------------------------------
+%% Func: code_change(OldVsn, State, Extra) -> {ok, NewState}
+%% Description: Convert process state when code is changed
+%%--------------------------------------------------------------------
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
 %%--------------------------------------------------------------------
@@ -105,6 +151,21 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %% replace the argument 'disabled' with 'enabled' in the call to the
 %% function do_client_version.
 
+%% ejabberd provides a method to receive XMPP packets using Erlang's 
+%% message passing mechanism. 
+%%
+%% The packets received by ejabberd are sent
+%% to the local destination process by sending an Erlang message.
+%% This means that you can receive XMPP stanzas in an Erlang process 
+%% using Erlang's Receive, as long as this process is registered in
+%% ejabberd as the process which handles the destination JID.
+%%
+%% This example function is called when a client queries the echo service.
+%% This function then sends a query to the client, and waits 5 seconds to
+%% receive an answer. The answer will only be accepted if it was sent
+%% using exactly the same JID. We add a (mostly) random resource to
+%% try to guarantee that the received response matches the request sent.
+%% Finally, the received response is printed in the ejabberd log file.
 do_client_version(disabled, _From, _To) -> ok;
 do_client_version(enabled, From, To) ->
     ToS = jlib:jid_to_string(To),

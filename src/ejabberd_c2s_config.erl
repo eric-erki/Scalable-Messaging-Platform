@@ -31,6 +31,8 @@
 
 -export([get_c2s_limits/0]).
 
+%% Get first c2s configuration limitations to apply it to other c2s
+%% connectors.
 get_c2s_limits() ->
     case ejabberd_config:get_local_option(listen, fun(V) -> V end) of
       undefined -> [];
@@ -41,6 +43,7 @@ get_c2s_limits() ->
 		select_opts_values(Opts)
 	  end
     end.
+%% Only get access, shaper and max_stanza_size values
 
 select_opts_values(Opts) ->
     select_opts_values(Opts, []).

@@ -4,11 +4,13 @@
 %%% compliance with the License. You should have received a copy of the
 %%% Erlang Public License along with this software. If not, it can be
 %%% retrieved via the world wide web at http://www.erlang.org/.
+%%% 
 %%%
 %%% Software distributed under the License is distributed on an "AS IS"
 %%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
 %%% the License for the specific language governing rights and limitations
 %%% under the License.
+%%% 
 %%%
 %%% The Initial Developer of the Original Code is ProcessOne.
 %%% Portions created by ProcessOne are Copyright 2006-2013, ProcessOne
@@ -55,11 +57,17 @@ terminate(Host, ServerHost) ->
     node_hometree_odbc:terminate(Host, ServerHost).
 
 options() ->
-    [{deliver_payloads, true}, {notify_config, false},
-     {notify_delete, false}, {notify_retract, true},
-     {purge_offline, false}, {persist_items, true},
-     {max_items, ?MAXITEMS}, {subscribe, true},
-     {access_model, open}, {roster_groups_allowed, []},
+    [{node_type, flat},
+     {deliver_payloads, true},
+     {notify_config, false},
+     {notify_delete, false},
+     {notify_retract, true},
+     {purge_offline, false},
+     {persist_items, true},
+     {max_items, ?MAXITEMS},
+     {subscribe, true},
+     {access_model, open},
+     {roster_groups_allowed, []},
      {publish_model, publishers},
      {notification_type, headline},
      {max_payload_size, ?MAX_PAYLOAD_SIZE},
@@ -70,6 +78,9 @@ options() ->
 
 features() -> node_hometree_odbc:features().
 
+%% use same code as node_hometree_odbc, but do not limite node to
+%% the home/localhost/user/... hierarchy
+%% any node is allowed
 create_node_permission(Host, ServerHost, _Node,
 		       _ParentNode, Owner, Access) ->
     LOwner = jlib:jid_tolower(Owner),

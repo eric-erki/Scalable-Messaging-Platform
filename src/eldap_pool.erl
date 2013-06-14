@@ -35,6 +35,9 @@
 -include("ejabberd.hrl").
 -include("logger.hrl").
 
+%%====================================================================
+%% API
+%%====================================================================
 bind(PoolName, DN, Passwd) ->
     do_request(PoolName, {bind, [DN, Passwd]}).
 
@@ -62,6 +65,9 @@ start_link(Name, Hosts, Backups, Port, Rootdn, Passwd,
 		  end,
 		  Hosts).
 
+%%====================================================================
+%% Internal functions
+%%====================================================================
 do_request(Name, {F, Args}) ->
     case pg2:get_closest_pid(make_id(Name)) of
       Pid when is_pid(Pid) ->

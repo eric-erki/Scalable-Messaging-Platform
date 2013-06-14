@@ -4,11 +4,13 @@
 %%% compliance with the License. You should have received a copy of the
 %%% Erlang Public License along with this software. If not, it can be
 %%% retrieved via the world wide web at http://www.erlang.org/.
+%%% 
 %%%
 %%% Software distributed under the License is distributed on an "AS IS"
 %%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
 %%% the License for the specific language governing rights and limitations
 %%% under the License.
+%%% 
 %%%
 %%% The Initial Developer of the Original Code is ProcessOne.
 %%% Portions created by ProcessOne are Copyright 2006-2013, ProcessOne
@@ -78,11 +80,22 @@
 -export([iq_sm/3]).
 
 %% exports for console debug manual use
--export([create_node/5, create_node/7, delete_node/3,
-	 subscribe_node/5, unsubscribe_node/5, publish_item/6,
-	 delete_item/4, send_items/6, get_items/2, get_item/3,
-	 get_cached_item/2, get_configure/5, set_configure/5,
-	 tree_action/3, node_action/4]).
+-export([create_node/5,
+	 delete_node/3,
+	 subscribe_node/5,
+	 unsubscribe_node/5,
+	 publish_item/6,
+	 delete_item/4,
+	 send_items/6,
+	 get_items/2,
+	 get_item/3,
+	 get_cached_item/2,
+	 broadcast_stanza/9,
+	 get_configure/5,
+	 set_configure/5,
+	 tree_action/3,
+	 node_action/4
+	]).
 
 %% general helpers for plugins
 -export([subscription_to_string/1, affiliation_to_string/1,
@@ -101,6 +114,13 @@
 
 -define(LOOPNAME, ejabberd_mod_pubsub_loop).
 
+%%====================================================================
+%% API
+%%====================================================================
+%%--------------------------------------------------------------------
+%% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
+%% Description: Starts the server
+%%--------------------------------------------------------------------
 -define(PLUGIN_PREFIX, <<"node_">>).
 
 -define(TREE_PREFIX, <<"nodetree_">>).
@@ -236,6 +256,13 @@ stop(Host) ->
 %% gen_server callbacks
 %%====================================================================
 
+%%--------------------------------------------------------------------
+%% Function: init(Args) -> {ok, State} |
+%%			 {ok, State, Timeout} |
+%%			 ignore	       |
+%%			 {stop, Reason}
+%% Description: Initiates the server
+%%--------------------------------------------------------------------
 -spec(init/1 ::
 (
     _:: _)
@@ -341,6 +368,19 @@ init_send_loop(ServerHost, State) ->
     register(Proc, SendLoop),
     SendLoop.
 
+%% @spec (Host, ServerHost, Opts) -> Plugins
+%%	 Host = mod_pubsub:host()   Opts = [{Key,Value}]
+%%	 ServerHost = host()
+%%	 Key = atom()
+%%	 Value = term()
+%%	 Plugins = [Plugin::string()]
+%% @doc Call the init/1 function for each plugin declared in the config file.
+%% The default plugin module is implicit.
+%% <p>The Erlang code for the plugin is located in a module called
+%% <em>node_plugin</em>. The 'node_' prefix is mandatory.</p>
+%% <p>The modules are initialized in alphetical order and the list is checked
+%% and sorted to ensure that each module is initialized only once.</p>
+%% <p>See {@link node_hometree:init/1} for an example implementation.</p>
 init_plugins(Host, ServerHost, Opts) ->
     TreePlugin =
 	jlib:binary_to_atom(<<(?TREE_PREFIX)/binary,
@@ -968,6 +1008,13 @@ handle_call(nodetree, _From, State) ->
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State}.
 
+%%--------------------------------------------------------------------
+%% Function: handle_cast(Msg, State) -> {noreply, State} |
+%%				      {noreply, State, Timeout} |
+%%				      {stop, Reason, State}
+%% Description: Handling cast messages
+%%--------------------------------------------------------------------
+%% @private
 handle_cast(_Msg, State) -> {noreply, State}.
 
 -spec(handle_info/2 ::
@@ -977,6 +1024,13 @@ handle_cast(_Msg, State) -> {noreply, State}.
     -> {noreply, state()}
 ).
 
+%%--------------------------------------------------------------------
+%% Function: handle_info(Info, State) -> {noreply, State} |
+%%				       {noreply, State, Timeout} |
+%%				       {stop, Reason, State}
+%% Description: Handling all non call/cast messages
+%%--------------------------------------------------------------------
+%% @private
 handle_info({route, From, To, Packet},
 	    #state{server_host = ServerHost, access = Access,
 		   plugins = Plugins} =
@@ -988,8 +1042,17 @@ handle_info({route, From, To, Packet},
       _ -> ok
     end,
     {noreply, State};
-handle_info(_Info, State) -> {noreply, State}.
+handle_info(_Info, State) ->
+    {noreply, State}.
 
+%%--------------------------------------------------------------------
+%% Function: terminate(Reason, State) -> void()
+%% Description: This function is called by a gen_server when it is about to
+%% terminate. It should be the opposite of Module:init/1 and do any necessary
+%% cleaning up. When it returns, the gen_server terminates with Reason.
+%% The return value is ignored.
+%%--------------------------------------------------------------------
+%% @private
 terminate(_Reason,
 	  #state{host = Host, server_host = ServerHost,
 		 nodetree = TreePlugin, plugins = Plugins}) ->
@@ -1033,6 +1096,11 @@ terminate(_Reason,
     terminate_plugins(Host, ServerHost, Plugins,
 		      TreePlugin).
 
+%%--------------------------------------------------------------------
+%% Func: code_change(OldVsn, State, Extra) -> {ok, NewState}
+%% Description: Convert process state when code is changed
+%%--------------------------------------------------------------------
+%% @private
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
 -spec(do_route/7 ::
@@ -1047,6 +1115,9 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
     -> ok
 ).
 
+%%--------------------------------------------------------------------
+%%% Internal functions
+%%--------------------------------------------------------------------
 do_route(ServerHost, Access, Plugins, Host, From, To, Packet) ->
     #xmlel{name = Name, attrs = Attrs} = Packet,
     case To of
@@ -1695,6 +1766,7 @@ iq_command(Host, ServerHost, From, IQ, Access, Plugins) ->
       Err -> Err
     end.
 
+%% @doc <p>Processes an Ad Hoc Command.</p>
 adhoc_request(Host, _ServerHost, Owner,
 	      #adhoc_request{node = ?NS_PUBSUB_GET_PENDING,
 			     lang = Lang, action = <<"execute">>,
@@ -1745,6 +1817,9 @@ adhoc_request(_Host, _ServerHost, _Owner, Other,
     ?DEBUG("Couldn't process ad hoc command:~n~p", [Other]),
     {error, ?ERR_ITEM_NOT_FOUND}.
 
+%% @spec (Host, Owner, Lang, Plugins) -> iqRes()
+%% @doc <p>Sends the process pending subscriptions XForm for Host to
+%% Owner.</p>
 send_pending_node_form(Host, Owner, _Lang, Plugins) ->
     Filter = fun (Plugin) ->
 		     lists:member(<<"get-pending">>, features(Plugin))
@@ -1792,6 +1867,9 @@ get_pending_nodes(Host, Owner, Plugins) ->
       Err -> Err
     end.
 
+%% @spec (Host, Node, Owner) -> iqRes()
+%% @doc <p>Send a subscription approval form to Owner for all pending
+%% subscriptions on Host and Node.</p>
 send_pending_auth_events(Host, Node, Owner) ->
     ?DEBUG("Sending pending auth events for ~s on "
 	   "~s:~s",
@@ -1934,6 +2012,12 @@ find_authorization_response(Packet) ->
 	    _ -> invalid
 	  end
     end.
+%% @spec (Host, JID, Node, Subscription) -> void
+%%	 Host = mod_pubsub:host()
+%%	 JID = jlib:jid()
+%%	 SNode = string()
+%%	 Subscription = atom() | {atom(), mod_pubsub:subid()}
+%% @doc Send a message to JID with the supplied Subscription
 %% TODO : ask Christophe's opinion
 send_authorization_approval(Host, JID, SNode, Subscription) ->
     SubAttrs = case Subscription of
@@ -2071,6 +2155,26 @@ update_auth(Host, Node, Type, NodeId, Subscriber, Allow,
 	?XFIELDOPT(<<"list-single">>, Label, Var, Val, Opts)).
 
 -define(LISTMXFIELD(Label, Var, Vals, Opts),
+%% @spec (Host::host(), ServerHost::host(), Node::pubsubNode(), Owner::jid(), NodeType::nodeType()) ->
+%%		  {error, Reason::stanzaError()} |
+%%		  {result, []}
+%% @doc <p>Create new pubsub nodes</p>
+%%<p>In addition to method-specific error conditions, there are several general reasons why the node creation request might fail:</p>
+%%<ul>
+%%<li>The service does not support node creation.</li>
+%%<li>Only entities that are registered with the service are allowed to create nodes but the requesting entity is not registered.</li>
+%%<li>The requesting entity does not have sufficient privileges to create nodes.</li>
+%%<li>The requested NodeID already exists.</li>
+%%<li>The request did not include a NodeID and "instant nodes" are not supported.</li>
+%%</ul>
+%%<p>ote: node creation is a particular case, error return code is evaluated at many places:</p>
+%%<ul>
+%%<li>iq_pubsub checks if service supports node creation (type exists)</li>
+%%<li>create_node checks if instant nodes are supported</li>
+%%<li>create_node asks node plugin if entity have sufficient privilege</li>
+%%<li>nodetree create_node checks if nodeid already exists</li>
+%%<li>node plugin create_node just sets default affiliation/subscription</li>
+%%</ul>
 	#xmlel{name = <<"field">>,
 	       attrs =
 		   [{<<"type">>, <<"list-multi">>},
@@ -2237,6 +2341,12 @@ create_node(Host, ServerHost, Node, Owner, GivenType, Access, Configuration) ->
       Error -> Error
     end.
 
+%% @spec (Host, Node, Owner) ->
+%%			{error, Reason} | {result, []}
+%%	 Host = host()
+%%	 Node = pubsubNode()
+%%	 Owner = jid()
+%%	 Reason = stanzaError()
 -spec(delete_node/3 ::
 (
   Host  :: mod_pubsub:host(),
@@ -2246,6 +2356,13 @@ create_node(Host, ServerHost, Node, Owner, GivenType, Access, Configuration) ->
     %%%
      | {error, xmlel()}
 ).
+%% @doc <p>Delete specified node and all childs.</p>
+%%<p>There are several reasons why the node deletion request might fail:</p>
+%%<ul>
+%%<li>The requesting entity does not have sufficient privileges to delete the node.</li>
+%%<li>The node is the root collection node, which cannot be deleted.</li>
+%%<li>The specified node does not exist.</li>
+%%</ul>
 delete_node(_Host, <<>>, _Owner) ->
     {error, ?ERR_NOT_ALLOWED};
 delete_node(Host, Node, Owner) ->
@@ -2306,6 +2423,13 @@ delete_node(Host, Node, Owner) ->
       Error -> Error
     end.
 
+%% @spec (Host, Node, From, JID, Configuration) ->
+%%		  {error, Reason::stanzaError()} |
+%%		  {result, []}
+%%	 Host = host()
+%%	 Node = pubsubNode()
+%%	 From = jid()
+%%	 JID = jid()
 -spec(subscribe_node/5 ::
 (
   Host          :: mod_pubsub:host(),
@@ -2317,6 +2441,21 @@ delete_node(Host, Node, Owner) ->
     %%%
      | {error, xmlel()}
 ).
+%% @see node_hometree:subscribe_node/5
+%% @doc <p>Accepts or rejects subcription requests on a PubSub node.</p>
+%%<p>There are several reasons why the subscription request might fail:</p>
+%%<ul>
+%%<li>The bare JID portions of the JIDs do not match.</li>
+%%<li>The node has an access model of "presence" and the requesting entity is not subscribed to the owner's presence.</li>
+%%<li>The node has an access model of "roster" and the requesting entity is not in one of the authorized roster groups.</li>
+%%<li>The node has an access model of "whitelist" and the requesting entity is not on the whitelist.</li>
+%%<li>The service requires payment for subscriptions to the node.</li>
+%%<li>The requesting entity is anonymous and the service does not allow anonymous entities to subscribe.</li>
+%%<li>The requesting entity has a pending subscription.</li>
+%%<li>The requesting entity is blocked from subscribing (e.g., because having an affiliation of outcast).</li>
+%%<li>The node does not support subscriptions.</li>
+%%<li>The node does not exist.</li>
+%%</ul>
 subscribe_node(Host, Node, From, JID, Configuration) ->
     SubOpts = case
 		pubsub_subscription_odbc:parse_options_xform(Configuration)
@@ -2413,6 +2552,22 @@ subscribe_node(Host, Node, From, JID, Configuration) ->
       Error -> Error
     end.
 
+%% @spec (Host, Noce, From, JID, SubId) -> {error, Reason} | {result, []}
+%%	 Host = host()
+%%	 Node = pubsubNode()
+%%	 From = jid()
+%%	 JID = string()
+%%	 SubId = string()
+%%	 Reason = stanzaError()
+%% @doc <p>Unsubscribe <tt>JID</tt> from the <tt>Node</tt>.</p>
+%%<p>There are several reasons why the unsubscribe request might fail:</p>
+%%<ul>
+%%<li>The requesting entity has multiple subscriptions to the node but does not specify a subscription ID.</li>
+%%<li>The request does not specify an existing subscriber.</li>
+%%<li>The requesting entity does not have sufficient privileges to unsubscribe the specified JID.</li>
+%%<li>The node does not exist.</li>
+%%<li>The request specifies a subscription ID that is not valid or current.</li>
+%%</ul>
 -spec(unsubscribe_node/5 ::
 (
   Host  :: mod_pubsub:host(),
@@ -2446,6 +2601,20 @@ unsubscribe_node(Host, Node, From, Subscriber, SubId) ->
       Error -> Error
     end.
 
+%% @spec (Host::host(), ServerHost::host(), JID::jid(), Node::pubsubNode(), ItemId::string(), Payload::term())  ->
+%%		  {error, Reason::stanzaError()} |
+%%		  {result, []}
+%% @doc <p>Publish item to a PubSub node.</p>
+%% <p>The permission to publish an item must be verified by the plugin implementation.</p>
+%%<p>There are several reasons why the publish request might fail:</p>
+%%<ul>
+%%<li>The requesting entity does not have sufficient privileges to publish.</li>
+%%<li>The node does not support item publication.</li>
+%%<li>The node does not exist.</li>
+%%<li>The payload size exceeds a service-defined limit.</li>
+%%<li>The item contains more than one payload element or the namespace of the root payload element does not match the configured namespace for the node.</li>
+%%<li>The request does not match the node configuration.</li>
+%%</ul>
 -spec(publish_item/6 ::
 (
   Host       :: mod_pubsub:host(),
@@ -2576,6 +2745,9 @@ publish_item(Host, ServerHost, Node, Publisher, ItemId, Payload) ->
       Error -> Error
     end.
 
+%% @spec (Host::host(), JID::jid(), Node::pubsubNode(), ItemId::string()) ->
+%%		  {error, Reason::stanzaError()} |
+%%		  {result, []}
 -spec(delete_item/4 ::
 (
   Host      :: mod_pubsub:host(),
@@ -2586,6 +2758,17 @@ publish_item(Host, ServerHost, Node, Publisher, ItemId, Payload) ->
     %%%
      | {error, xmlel()}
 ).
+%% @doc <p>Delete item from a PubSub node.</p>
+%% <p>The permission to delete an item must be verified by the plugin implementation.</p>
+%%<p>There are several reasons why the item retraction request might fail:</p>
+%%<ul>
+%%<li>The publisher does not have sufficient privileges to delete the requested item.</li>
+%%<li>The node or item does not exist.</li>
+%%<li>The request does not specify a node.</li>
+%%<li>The request does not include an <item/> element or the <item/> element does not specify an ItemId.</li>
+%%<li>The node does not support persistent items.</li>
+%%<li>The service does not support the deletion of items.</li>
+%%</ul>
 delete_item(Host, Node, Publisher, ItemId) ->
     delete_item(Host, Node, Publisher, ItemId, false).
 
@@ -2638,6 +2821,20 @@ delete_item(Host, Node, Publisher, ItemId, ForceNotify) ->
       Error -> Error
     end.
 
+%% @spec (Host, JID, Node) ->
+%%			{error, Reason} | {result, []}
+%%	 Host = host()
+%%	 Node = pubsubNode()
+%%	 JID = jid()
+%%	 Reason = stanzaError()
+%% @doc <p>Delete all items of specified node owned by JID.</p>
+%%<p>There are several reasons why the node purge request might fail:</p>
+%%<ul>
+%%<li>The node or service does not support node purging.</li>
+%%<li>The requesting entity does not have sufficient privileges to purge the node.</li>
+%%<li>The node is not configured to persist items.</li>
+%%<li>The specified node does not exist.</li>
+%%</ul>
 -spec(purge_node/3 ::
 (
   Host  :: mod_pubsub:host(),
@@ -2687,6 +2884,11 @@ purge_node(Host, Node, Owner) ->
       Error -> Error
     end.
 
+%% @doc <p>Return the items of a given node.</p>
+%% <p>The number of items to return is limited by MaxItems.</p>
+%% <p>The permission are not checked in this function.</p>
+%% @todo We probably need to check that the user doing the query has the right
+%% to read the items.
 -spec(get_items/7 ::
 (
   Host      :: mod_pubsub:host(),
@@ -2783,29 +2985,33 @@ get_item(Host, Node, ItemId) ->
       Error -> Error
     end.
 
-get_allowed_items_call(Host, NodeIdx, From, Type,
-		       Options, Owners) ->
+get_allowed_items_call(Host, NodeIdx, From, Type, Options, Owners) ->
     case get_allowed_items_call(Host, NodeIdx, From, Type,
 				Options, Owners, none)
 	of
       {result, {I, _}} -> {result, I};
       Error -> Error
     end.
-
-get_allowed_items_call(Host, NodeIdx, From, Type,
-		       Options, Owners, RSM) ->
+get_allowed_items_call(Host, NodeIdx, From, Type, Options, Owners, RSM) ->
     AccessModel = get_option(Options, access_model),
-    AllowedGroups = get_option(Options,
-			       roster_groups_allowed, []),
+    AllowedGroups = get_option(Options, roster_groups_allowed, []),
     {PresenceSubscription, RosterGroup} =
-	get_presence_and_roster_permissions(Host, From, Owners,
-					    AccessModel, AllowedGroups),
+	    get_presence_and_roster_permissions(Host, From, Owners, AccessModel,
+	        AllowedGroups),
     node_call(Type, get_items,
-	      [NodeIdx, From, AccessModel, PresenceSubscription,
-	       RosterGroup, undefined, RSM]).
+	      [NodeIdx, From, AccessModel, PresenceSubscription, RosterGroup,
+	       undefined, RSM]).
 
-send_items(Host, Node, NodeId, Type, {U, S, R} = LJID,
-	   last) ->
+%% @spec (Host, Node, NodeId, Type, LJID, Number) -> any()
+%%	 Host = pubsubHost()
+%%	 Node = pubsubNode()
+%%	 NodeId = pubsubNodeId()
+%%	 Type = pubsubNodeType()
+%%	 LJID = {U, S, []}
+%%	 Number = last | integer()
+%% @doc <p>Resend the items of a node to the user.</p>
+%% @todo use cache-last-item feature
+send_items(Host, Node, NodeId, Type, {U, S, R} = LJID, last) ->
     Stanza = case get_cached_item(Host, NodeId) of
 	       undefined ->
 		   case node_action(Host, Type, get_last_items,
@@ -2889,6 +3095,13 @@ send_items(Host, Node, NodeId, Type, {U, S, R} = LJID,
 	  end
     end.
 
+%% @spec (Host, JID, Plugins) -> {error, Reason} | {result, Response}
+%%	 Host = host()
+%%	 JID = jid()
+%%	 Plugins = [Plugin::string()]
+%%	 Reason = stanzaError()
+%%	 Response = [pubsubIQResponse()]
+%% @doc <p>Return the list of affiliations as an XMPP response.</p>
 -spec(get_affiliations/4 ::
 (
   Host    :: mod_pubsub:host(),
@@ -3277,6 +3490,14 @@ write_sub(Subscriber, NodeID, SubID, Options) ->
 			  <<"invalid-subid">>)}
     end.
 
+%% @spec (Host, Node, JID, Plugins) -> {error, Reason} | {result, Response}
+%%	 Host = host()
+%%	 Node = pubsubNode()
+%%	 JID = jid()
+%%	 Plugins = [Plugin::string()]
+%%	 Reason = stanzaError()
+%%	 Response = [pubsubIQResponse()]
+%% @doc <p>Return the list of subscriptions as an XMPP response.</p>
 get_subscriptions(Host, Node, JID, Plugins)
     when is_list(Plugins) ->
     Result = lists:foldl(fun (Type, {Status, Acc}) ->
@@ -3599,13 +3820,8 @@ affiliation_to_string(_) -> <<"none">>.
 
 subscription_to_string(subscribed) -> <<"subscribed">>;
 subscription_to_string(pending) -> <<"pending">>;
-subscription_to_string(unconfigured) ->
-    <<"unconfigured">>;
+subscription_to_string(unconfigured) -> <<"unconfigured">>;
 subscription_to_string(_) -> <<"none">>.
-
-%node_to_string(Node) -> (Node).
-
-%string_to_node(SNode) -> iolist_to_binary(SNode).
 
 -spec(service_jid/1 ::
 (
@@ -3618,6 +3834,14 @@ service_jid(Host) ->
       _ -> {jid, <<"">>, Host, <<"">>, <<"">>, Host, <<"">>}
     end.
 
+%% @spec (LJID, NotifyType, Depth, NodeOptions, SubOptions) -> boolean()
+%%	LJID = jid()
+%%	NotifyType = items | nodes
+%%	Depth = integer()
+%%	NodeOptions = [{atom(), term()}]
+%%	SubOptions = [{atom(), term()}]
+%% @doc <p>Check if a notification must be delivered or not based on
+%% node and subscription options.</p>
 is_to_deliver(LJID, NotifyType, Depth, NodeOptions,
 	      SubOptions) ->
     sub_to_deliver(LJID, NotifyType, Depth, SubOptions)
@@ -4197,6 +4421,17 @@ node_owners_call(Type, NodeId) ->
       _ -> []
     end.
 
+%% @spec (Host, Options) -> MaxItems
+%%	 Host = host()
+%%	 Options = [Option]
+%%	 Option = {Key::atom(), Value::term()}
+%%	 MaxItems = integer() | unlimited
+%% @doc <p>Return the maximum number of items for a given node.</p>
+%% <p>Unlimited means that there is no limit in the number of items that can
+%% be stored.</p>
+%% @todo In practice, the current data structure means that we cannot manage
+%% millions of items on a given node. This should be addressed in a new
+%% version.
 max_items(Host, Options) ->
     case get_option(Options, persist_items) of
       true ->
@@ -4310,6 +4545,14 @@ get_configure_xfields(_Type, Options, Lang, Groups) ->
 			   "affiliated">>,
 			 collection)].
 
+%%<p>There are several reasons why the node configuration request might fail:</p>
+%%<ul>
+%%<li>The service does not support node configuration.</li>
+%%<li>The requesting entity does not have sufficient privileges to configure the node.</li>
+%%<li>The request did not specify a node.</li>
+%%<li>The node has no configuration options.</li>
+%%<li>The specified node does not exist.</li>
+%%</ul>
 set_configure(Host, Node, From, Els, Lang) ->
     case xml:remove_cdata(Els) of
       [#xmlel{name = <<"x">>} = XEl] ->
@@ -4666,6 +4909,7 @@ features(Host, Node) ->
       _ -> features()
     end.
 
+%% @doc <p>node tree plugin call.</p>
 tree_call({_User, Server, _Resource}, Function, Args) ->
     tree_call(Server, Function, Args);
 tree_call(Host, Function, Args) ->
@@ -4693,6 +4937,7 @@ tree_action(Host, Function, Args) ->
 	  {error, ?ERR_INTERNAL_SERVER_ERROR}
     end.
 
+%% @doc <p>node plugin call.</p>
 node_call(Type, Function, Args) ->
     ?DEBUG("node_call ~p ~p ~p", [Type, Function, Args]),
     Module =
@@ -4719,6 +4964,7 @@ node_action(Host, Type, Function, Args) ->
 		end,
 		sync_dirty).
 
+%% @doc <p>plugin transaction handling.</p>
 transaction(Host, Node, Action, Trans) ->
     transaction(Host, fun () ->
 			case tree_call(Host, get_node, [Host, Node]) of
@@ -4795,11 +5041,13 @@ escape(Value) -> ejabberd_odbc:escape(Value).
 
 %%%% helpers
 
+%% Add pubsub-specific error element
 extended_error(Error, Ext) ->
     extended_error(Error, Ext,
 		   [{<<"xmlns">>, ?NS_PUBSUB_ERRORS}]).
 
 extended_error(Error, unsupported, Feature) ->
+%% Give a uniq identifier
     extended_error(Error, <<"unsupported">>,
 		   [{<<"xmlns">>, ?NS_PUBSUB_ERRORS},
 		    {<<"feature">>, Feature}]);
