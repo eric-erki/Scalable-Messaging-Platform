@@ -80,22 +80,11 @@
 -export([iq_sm/3]).
 
 %% exports for console debug manual use
--export([create_node/5,
-	 delete_node/3,
-	 subscribe_node/5,
-	 unsubscribe_node/5,
-	 publish_item/6,
-	 delete_item/4,
-	 send_items/6,
-	 get_items/2,
-	 get_item/3,
-	 get_cached_item/2,
-	 broadcast_stanza/9,
-	 get_configure/5,
-	 set_configure/5,
-	 tree_action/3,
-	 node_action/4
-	]).
+-export([create_node/5, create_node/7, delete_node/3,
+	 subscribe_node/5, unsubscribe_node/5, publish_item/6,
+	 delete_item/4, send_items/6, get_items/2, get_item/3,
+	 get_cached_item/2, get_configure/5, set_configure/5,
+	 tree_action/3, node_action/4]).
 
 %% general helpers for plugins
 -export([subscription_to_string/1, affiliation_to_string/1,
