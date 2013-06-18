@@ -2724,9 +2724,7 @@ publish_item(Host, ServerHost, Node, Publisher, ItemId, Payload) ->
 			       [#xmlel{name = <<"create">>,
 				       attrs = [{<<"node">>, NewNode}],
 				       children = []}]}]} ->
-		      publish_item(Host, ServerHost,
-				   iolist_to_binary(NewNode), Publisher, ItemId,
-				   Payload);
+		      publish_item(Host, ServerHost, NewNode, Publisher, ItemId, Payload);
 		  _ -> {error, ?ERR_ITEM_NOT_FOUND}
 		end;
 	    false -> {error, ?ERR_ITEM_NOT_FOUND}
