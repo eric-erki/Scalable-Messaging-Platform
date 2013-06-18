@@ -156,6 +156,7 @@ get_sm_commands(Acc, _From, _To, _Node, _Lang) -> Acc.
 
 %-------------------------------------------------------------------------
 
+%% On disco info request to the ad-hoc node, return automation/command-list.
 get_local_identity(Acc, _From, _To, ?NS_COMMANDS,
 		   Lang) ->
     [#xmlel{name = <<"identity">>,
@@ -179,6 +180,7 @@ get_local_identity(Acc, _From, _To, _Node, _Lang) ->
 
 %-------------------------------------------------------------------------
 
+%% On disco info request to the ad-hoc node, return automation/command-list.
 get_sm_identity(Acc, _From, _To, ?NS_COMMANDS, Lang) ->
     [#xmlel{name = <<"identity">>,
 	    attrs =

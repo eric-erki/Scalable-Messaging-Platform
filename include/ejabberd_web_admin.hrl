@@ -86,9 +86,11 @@
 	      {<<"cols">>, Cols}],
 	     Value)).
 
+%% Build an xmlelement for result
 -define(XRES(Text),
 	?XAC(<<"p">>, [{<<"class">>, <<"result">>}], Text)).
 
+%% Guide Link
 -define(XREST(Text), ?XRES((?T(Text)))).
 
 -define(GL(Ref, Title),
@@ -98,5 +100,6 @@
 		    {<<"target">>, <<"_blank">>}],
 		   [?C(<<"[Guide: ", Title/binary, "]">>)])])).
 
+%% h1 with a Guide Link
 -define(H1GL(Name, Ref, Title),
 	[?XC(<<"h1">>, Name), ?GL(Ref, Title)]).

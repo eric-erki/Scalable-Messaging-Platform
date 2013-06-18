@@ -26,6 +26,7 @@
 %%%----------------------------------------------------------------------
 -module(eldap_filter).
 
+%% TODO: remove this when new regexp module will be used
 -export([parse/1, parse/2, do_sub/2]).
 
 %%====================================================================

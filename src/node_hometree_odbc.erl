@@ -4,11 +4,13 @@
 %%% compliance with the License. You should have received a copy of the
 %%% Erlang Public License along with this software. If not, it can be
 %%% retrieved via the world wide web at http://www.erlang.org/.
+%%% 
 %%%
 %%% Software distributed under the License is distributed on an "AS IS"
 %%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
 %%% the License for the specific language governing rights and limitations
 %%% under the License.
+%%% 
 %%%
 %%% The Initial Developer of the Original Code is ProcessOne.
 %%% Portions created by ProcessOne are Copyright 2006-2013, ProcessOne
@@ -75,11 +77,42 @@
 %% API definition
 %% ================
 
+%% @spec (Host, ServerHost, Opts) -> any()
+%%	 Host = mod_pubsub:host()
+%%	 ServerHost = mod_pubsub:host()
+%%	 Opts = list()
+%% @doc <p>Called during pubsub modules initialisation. Any pubsub plugin must
+%% implement this function. It can return anything.</p>
+%% <p>This function is mainly used to trigger the setup task necessary for the
+%% plugin. It can be used for example by the developer to create the specific
+%% module database schema if it does not exists yet.</p>
 init(_Host, _ServerHost, _Opts) ->
     pubsub_subscription_odbc:init(), ok.
 
+%% @spec (Host, ServerHost) -> any()
+%%	 Host = mod_pubsub:host()
+%%	 ServerHost = host()
+%% @doc <p>Called during pubsub modules termination. Any pubsub plugin must
+%% implement this function. It can return anything.</p>
 terminate(_Host, _ServerHost) -> ok.
 
+%% @spec () -> [Option]
+%%	 Option = mod_pubsub:nodeOption()
+%% @doc Returns the default pubsub node options.
+%% <p>Example of function return value:</p>
+%%	```
+%%	 [{deliver_payloads, true},
+%%	  {notify_config, false},
+%%	  {notify_delete, false},
+%%	  {notify_retract, true},
+%%	  {persist_items, true},
+%%	  {max_items, 10},
+%%	  {subscribe, true},
+%%	  {access_model, open},
+%%	  {publish_model, publishers},
+%%	  {max_payload_size, 100000},
+%%	  {send_last_published_item, never},
+%%	  {presence_based_delivery, false}]'''
 -spec(options/0 :: () -> NodeOptions::mod_pubsub:nodeOptions()).
 options() ->
     [{deliver_payloads, true}, {notify_config, false},
@@ -95,6 +128,8 @@ options() ->
      {presence_based_delivery, false}, {odbc, true},
      {rsm, true}].
 
+%% @spec () -> []
+%% @doc Returns the node features
 -spec(features/0 :: () -> Features::[Feature::binary(),...]).
 features() ->
     [<<"create-nodes">>, <<"auto-create">>,
@@ -109,6 +144,25 @@ features() ->
      <<"subscription-notifications">>,
      <<"subscription-options">>, <<"rsm">>].
 
+%% @spec (Host, ServerHost, Node, ParentNode, Owner, Access) -> bool()
+%%	 Host = mod_pubsub:host()
+%%	 ServerHost = mod_pubsub:host()
+%%	 Node = mod_pubsub:pubsubNode()
+%%	 ParentNode = mod_pubsub:pubsubNode()
+%%	 Owner = mod_pubsub:jid()
+%%	 Access = all | atom()
+%% @doc Checks if the current user has the permission to create the requested node
+%% <p>In {@link node_default}, the permission is decided by the place in the
+%% hierarchy where the user is creating the node. The access parameter is also
+%% checked in the default module. This parameter depends on the value of the
+%% <tt>access_createnode</tt> ACL value in ejabberd config file.</p>
+%% <p>This function also check that node can be created a a children of its
+%% parent node</p>
+%% <p>PubSub plugins can redefine the PubSub node creation rights as they
+%% which. They can simply delegate this check to the {@link node_default}
+%% module by implementing this function like this:
+%% ```check_create_user_permission(Host, ServerHost, Node, ParentNode, Owner, Access) ->
+%%	   node_default:check_create_user_permission(Host, ServerHost, Node, ParentNode, Owner, Access).'''</p>
 -spec(create_node_permission/6 ::
 (
   Host        :: mod_pubsub:host(),
@@ -137,6 +191,11 @@ create_node_permission(Host, ServerHost, Node, _ParentNode, Owner, Access) ->
 	      end,
     {result, Allowed}.
 
+%% @spec (NodeId, Owner) ->
+%%		  {result, Result} | exit
+%%	 NodeId = mod_pubsub:pubsubNodeId()
+%%	 Owner = mod_pubsub:jid()
+%% @doc <p></p>
 -spec(create_node/2 ::
 (
   NodeIdx :: mod_pubsub:nodeIdx(),
@@ -152,6 +211,9 @@ create_node(NodeIdx, Owner) ->
 				 state_to_raw(NodeIdx, State), <<");">>]),
     {result, {default, broadcast}}.
 
+%% @spec (Removed) -> ok
+%%	 Removed = [mod_pubsub:pubsubNode()]
+%% @doc <p>purge items of deleted nodes after effective deletion.</p>
 -spec(delete_node/1 ::
 (
   Removed :: [mod_pubsub:pubsubNode(),...])
@@ -183,6 +245,39 @@ delete_node(Removed) ->
 		      Removed),
     {result, {default, broadcast, Reply}}.
 
+%% @spec (NodeId, Sender, Subscriber, AccessModel, SendLast, PresenceSubscription, RosterGroup, Options) ->
+%%		 {error, Reason} | {result, Result}
+%% @doc <p>Accepts or rejects subcription requests on a PubSub node.</p>
+%% <p>The mechanism works as follow:
+%% <ul>
+%% <li>The main PubSub module prepares the subscription and passes the
+%% result of the preparation as a record.</li>
+%% <li>This function gets the prepared record and several other parameters and
+%% can decide to:<ul>
+%%  <li>reject the subscription;</li>
+%%  <li>allow it as is, letting the main module perform the database
+%%  persistance;</li>
+%%  <li>allow it, modifying the record. The main module will store the
+%%  modified record;</li>
+%%  <li>allow it, but perform the needed persistance operations.</li></ul>
+%% </li></ul></p>
+%% <p>The selected behaviour depends on the return parameter:
+%%  <ul>
+%%   <li><tt>{error, Reason}</tt>: an IQ error result will be returned. No
+%%   subscription will actually be performed.</li>
+%%   <li><tt>true</tt>: Subscribe operation is allowed, based on the
+%%   unmodified record passed in parameter <tt>SubscribeResult</tt>. If this
+%%   parameter contains an error, no subscription will be performed.</li>
+%%   <li><tt>{true, PubsubState}</tt>: Subscribe operation is allowed, but
+%%   the {@link mod_pubsub:pubsubState()} record returned replaces the value
+%%   passed in parameter <tt>SubscribeResult</tt>.</li>
+%%   <li><tt>{true, done}</tt>: Subscribe operation is allowed, but the
+%%   {@link mod_pubsub:pubsubState()} will be considered as already stored and
+%%   no further persistance operation will be performed. This case is used,
+%%   when the plugin module is doing the persistance by itself or when it want
+%%   to completly disable persistance.</li></ul>
+%% </p>
+%% <p>In the default plugin module, the record is unchanged.</p>
 -spec(subscribe_node/8 ::
 (
   NodeIdx              :: mod_pubsub:nodeIdx(),
@@ -260,6 +355,14 @@ subscribe_node(NodeId, Sender, Subscriber, AccessModel,
 		 end
     end.
 
+%% @spec (NodeId, Sender, Subscriber, SubId) ->
+%%			{error, Reason} | {result, []}
+%%	 NodeId = mod_pubsub:pubsubNodeId()
+%%	 Sender = mod_pubsub:jid()
+%%	 Subscriber = mod_pubsub:jid()
+%%	 SubId = mod_pubsub:subid()
+%%	 Reason = mod_pubsub:stanzaError()
+%% @doc <p>Unsubscribe the <tt>Subscriber</tt> from the <tt>Node</tt>.</p>
 -spec(unsubscribe_node/4 ::
 (
   NodeIdx    :: mod_pubsub:nodeIdx(),
@@ -353,6 +456,44 @@ delete_subscription(SubKey, NodeIdx,
       _ -> update_subscription(NodeIdx, SubKey, NewSubs)
     end.
 
+%% @spec (NodeId, Publisher, PublishModel, MaxItems, ItemId, Payload) ->
+%%		 {true, PubsubItem} | {result, Reply}
+%%	 NodeId = mod_pubsub:pubsubNodeId()
+%%	 Publisher = mod_pubsub:jid()
+%%	 PublishModel = atom()
+%%	 MaxItems = integer()
+%%	 ItemId = string()
+%%	 Payload = term()
+%% @doc <p>Publishes the item passed as parameter.</p>
+%% <p>The mechanism works as follow:
+%% <ul>
+%% <li>The main PubSub module prepares the item to publish and passes the
+%% result of the preparation as a {@link mod_pubsub:pubsubItem()} record.</li>
+%% <li>This function gets the prepared record and several other parameters and can decide to:<ul>
+%%  <li>reject the publication;</li>
+%%  <li>allow the publication as is, letting the main module perform the database persistance;</li>
+%%  <li>allow the publication, modifying the record. The main module will store the modified record;</li>
+%%  <li>allow it, but perform the needed persistance operations.</li></ul>
+%% </li></ul></p>
+%% <p>The selected behaviour depends on the return parameter:
+%%  <ul>
+%%   <li><tt>{error, Reason}</tt>: an iq error result will be return. No
+%%   publication is actually performed.</li>
+%%   <li><tt>true</tt>: Publication operation is allowed, based on the
+%%   unmodified record passed in parameter <tt>Item</tt>. If the <tt>Item</tt>
+%%   parameter contains an error, no subscription will actually be
+%%   performed.</li>
+%%   <li><tt>{true, Item}</tt>: Publication operation is allowed, but the
+%%   {@link mod_pubsub:pubsubItem()} record returned replaces the value passed
+%%   in parameter <tt>Item</tt>. The persistance will be performed by the main
+%%   module.</li>
+%%   <li><tt>{true, done}</tt>: Publication operation is allowed, but the
+%%   {@link mod_pubsub:pubsubItem()} will be considered as already stored and
+%%   no further persistance operation will be performed. This case is used,
+%%   when the plugin module is doing the persistance by itself or when it want
+%%   to completly disable persistance.</li></ul>
+%% </p>
+%% <p>In the default plugin module, the record is unchanged.</p>
 
 -spec(publish_item/6 ::
 (
@@ -395,6 +536,21 @@ publish_item(NodeIdx, Publisher, PublishModel, MaxItems, ItemId, Payload) ->
 	   end
     end.
 
+%% @spec (NodeId, MaxItems, ItemIds) -> {NewItemIds,OldItemIds}
+%%	 NodeId = mod_pubsub:pubsubNodeId()
+%%	 MaxItems = integer() | unlimited
+%%	 ItemIds = [ItemId::string()]
+%%	 NewItemIds = [ItemId::string()]
+%% @doc <p>This function is used to remove extra items, most notably when the
+%% maximum number of items has been reached.</p>
+%% <p>This function is used internally by the core PubSub module, as no
+%% permission check is performed.</p>
+%% <p>In the default plugin module, the oldest items are removed, but other
+%% rules can be used.</p>
+%% <p>If another PubSub plugin wants to delegate the item removal (and if the
+%% plugin is using the default pubsub storage), it can implements this function like this:
+%% ```remove_extra_items(NodeId, MaxItems, ItemIds) ->
+%%	   node_default:remove_extra_items(NodeId, MaxItems, ItemIds).'''</p>
 remove_extra_items(_NodeId, unlimited, ItemIds) ->
     {result, {ItemIds, []}};
 remove_extra_items(NodeId, MaxItems, ItemIds) ->
@@ -403,6 +559,16 @@ remove_extra_items(NodeId, MaxItems, ItemIds) ->
     del_items(NodeId, OldItems),
     {result, {NewItems, OldItems}}.
 
+%% @spec (NodeId, Publisher, PublishModel, ItemId) ->
+%%		  {error, Reason::stanzaError()} |
+%%		  {result, []}
+%%	 NodeId = mod_pubsub:pubsubNodeId()
+%%	 Publisher = mod_pubsub:jid()
+%%	 PublishModel = atom()
+%%	 ItemId = string()
+%% @doc <p>Triggers item deletion.</p>
+%% <p>Default plugin: The user performing the deletion must be the node owner
+%% or a publisher.</p>
 -spec(delete_item/4 ::
 (
   NodeIdx      :: mod_pubsub:nodeIdx(),
@@ -432,6 +598,11 @@ delete_item(NodeIdx, Publisher, PublishModel, ItemId) ->
 	   end
     end.
 
+%% @spec (NodeId, Owner) ->
+%%		  {error, Reason::stanzaError()} |
+%%		  {result, {default, broadcast}}
+%%	 NodeId = mod_pubsub:pubsubNodeId()
+%%	 Owner = mod_pubsub:jid()
 -spec(purge_node/2 ::
 (
   NodeIdx :: mod_pubsub:nodeIdx(),
@@ -455,6 +626,16 @@ purge_node(NodeIdx, Owner) ->
       _ -> {error, ?ERR_FORBIDDEN}
     end.
 
+%% @spec (Host, JID) -> [{Node,Affiliation}]
+%%	 Host = host()
+%%	 JID = mod_pubsub:jid()
+%% @doc <p>Return the current affiliations for the given user</p>
+%% <p>The default module reads affiliations in the main Mnesia
+%% <tt>pubsub_state</tt> table. If a plugin stores its data in the same
+%% table, it should return an empty list, as the affiliation will be read by
+%% the default PubSub module. Otherwise, it should return its own affiliation,
+%% that will be added to the affiliation stored in the main
+%% <tt>pubsub_state</tt> table.</p>
 -spec(get_entity_affiliations/2 ::
 (
   Host  :: mod_pubsub:hostPubsub(),
@@ -549,6 +730,16 @@ set_affiliation(NodeIdx, Owner, Affiliation) ->
       _ -> update_affiliation(NodeIdx, GenKey, Affiliation)
     end.
 
+%% @spec (Host, Owner) -> [{Node,Subscription}]
+%%	 Host = host()
+%%	 Owner = mod_pubsub:jid()
+%% @doc <p>Return the current subscriptions for the given user</p>
+%% <p>The default module reads subscriptions in the main Mnesia
+%% <tt>pubsub_state</tt> table. If a plugin stores its data in the same
+%% table, it should return an empty list, as the affiliation will be read by
+%% the default PubSub module. Otherwise, it should return its own affiliation,
+%% that will be added to the affiliation stored in the main
+%% <tt>pubsub_state</tt> table.</p>
 
 -spec(get_entity_subscriptions/2 ::
 (
@@ -615,6 +806,9 @@ get_entity_subscriptions(Host, Owner) ->
 	    end,
     {result, Reply}.
 
+%% do the same as get_entity_subscriptions but filter result only to
+%% nodes having send_last_published_item=on_sub_and_presence
+%% as this call avoid seeking node, it must return node and type as well
 -spec(get_entity_subscriptions_for_send_last/2 ::
 (
   Host :: mod_pubsub:hostPubsub(),
@@ -825,6 +1019,12 @@ unsub_with_subid(NodeIdx, SubId, SubState) ->
 	  set_state(SubState#pubsub_state{subscriptions = NewSubs})
     end.
 
+%% @spec (Host, Owner) -> {result, [Node]} | {error, Reason}
+%%       Host = host()
+%%       Owner = jid()
+%%       Node = pubsubNode()
+%% @doc <p>Returns a list of Owner's nodes on Host with pending
+%% subscriptions.</p>
 -spec(get_pending_nodes/2 ::
 (
   Host  :: mod_pubsub:hostPubsub(),
@@ -877,6 +1077,18 @@ get_nodes_helper(NodeTree,
       false -> false
     end.
 
+%% @spec (NodeId) -> [States] | []
+%%	 NodeId = mod_pubsub:pubsubNodeId()
+%% @doc Returns the list of stored states for a given node.
+%% <p>For the default PubSub module, states are stored in Mnesia database.</p>
+%% <p>We can consider that the pubsub_state table have been created by the main
+%% mod_pubsub module.</p>
+%% <p>PubSub plugins can store the states where they wants (for example in a
+%% relational database).</p>
+%% <p>If a PubSub plugin wants to delegate the states storage to the default node,
+%% they can implement this function like this:
+%% ```get_states(NodeId) ->
+%%	   node_default:get_states(NodeId).'''</p>
 -spec(get_states/1 ::
 (
   NodeIdx::mod_pubsub:nodeIdx())
@@ -902,6 +1114,11 @@ get_states(NodeIdx) ->
       _ -> {result, []}
     end.
 
+%% @spec (NodeId, JID) -> [State] | []
+%%	 NodeId = mod_pubsub:pubsubNodeId()
+%%	 JID = mod_pubsub:jid()
+%%	 State = mod_pubsub:pubsubItems()
+%% @doc <p>Returns a state (one state list), given its reference.</p>
 
 -spec(get_state/2 ::
 (
@@ -937,6 +1154,9 @@ get_state_without_itemids(NodeIdx, JID) ->
       _ -> #pubsub_state{stateid = {JID, NodeIdx}}
     end.
 
+%% @spec (State) -> ok | {error, Reason::stanzaError()}
+%%	 State = mod_pubsub:pubsubStates()
+%% @doc <p>Write a state into database.</p>
 
 -spec(set_state/1 ::
 (
@@ -974,6 +1194,10 @@ set_state(NodeIdx, State) ->
     end,
     {result, []}.
 
+%% @spec (NodeId, JID) -> ok | {error, Reason::stanzaError()}
+%%	 NodeId = mod_pubsub:pubsubNodeId()
+%%	 JID = mod_pubsub:jid()
+%% @doc <p>Delete a state from database.</p>
 del_state(NodeId, JID) ->
     J = encode_jid(JID),
     catch
@@ -981,6 +1205,19 @@ del_state(NodeId, JID) ->
 				 J, <<"' and nodeid='">>, NodeId, <<"';">>]),
     ok.
 
+%% @spec (NodeId, From) -> {[Items],RsmOut} | []
+%%	 NodeId = mod_pubsub:pubsubNodeId()
+%%	 Items = mod_pubsub:pubsubItems()
+%% @doc Returns the list of stored items for a given node.
+%% <p>For the default PubSub module, items are stored in Mnesia database.</p>
+%% <p>We can consider that the pubsub_item table have been created by the main
+%% mod_pubsub module.</p>
+%% <p>PubSub plugins can store the items where they wants (for example in a
+%% relational database), or they can even decide not to persist any items.</p>
+%% <p>If a PubSub plugin wants to delegate the item storage to the default node,
+%% they can implement this function like this:
+%% ```get_items(NodeId, From) ->
+%%	   node_default:get_items(NodeId, From).'''</p>
 get_items(NodeId, _From) ->
     case catch
 	   ejabberd_odbc:sql_query_t([<<"select itemid, publisher, creation, "
@@ -1157,6 +1394,11 @@ get_last_items(NodeId, _From, Count) ->
       _ -> {result, []}
     end.
 
+%% @spec (NodeId, ItemId) -> [Item] | []
+%%	 NodeId = mod_pubsub:pubsubNodeId()
+%%	 ItemId = string()
+%%	 Item = mod_pubsub:pubsubItems()
+%% @doc <p>Returns an item (one item list), given its reference.</p>
 get_item(NodeId, ItemId) ->
     I = (?PUBSUB):escape(ItemId),
     case catch
@@ -1210,6 +1452,9 @@ get_item(NodeId, ItemId, JID, AccessModel,
        true -> get_item(NodeId, ItemId)
     end.
 
+%% @spec (Item) -> ok | {error, Reason::stanzaError()}
+%%	 Item = mod_pubsub:pubsubItems()
+%% @doc <p>Write an item into database.</p>
 set_item(Item) ->
     {ItemId, NodeId} = Item#pubsub_item.itemid,
     I = (?PUBSUB):escape(ItemId),
@@ -1245,6 +1490,10 @@ set_item(Item) ->
     end,
     {result, []}.
 
+%% @spec (NodeId, ItemId) -> ok | {error, Reason::stanzaError()}
+%%	 NodeId = mod_pubsub:pubsubNodeId()
+%%	 ItemId = string()
+%% @doc <p>Delete an item from database.</p>
 del_item(NodeId, ItemId) ->
     I = (?PUBSUB):escape(ItemId),
     catch
@@ -1270,6 +1519,11 @@ path_to_node([]) -> <<>>;
 path_to_node(Path) ->
     iolist_to_binary(str:join([<<"">> | Path], <<"/">>)).
 
+%% @spec (Affiliation, Subscription) -> true | false
+%%       Affiliation = owner | member | publisher | outcast | none
+%%       Subscription = subscribed | none
+%% @doc Determines if the combination of Affiliation and Subscribed
+%% are allowed to get items from a node.
 can_fetch_item(owner, _) -> true;
 can_fetch_item(member, _) -> true;
 can_fetch_item(publisher, _) -> true;
@@ -1284,6 +1538,7 @@ is_subscribed(Subscriptions) ->
 	      end,
 	      Subscriptions).
 
+%% Returns the first item where Pred() is true in List
 first_in_list(_Pred, []) -> false;
 first_in_list(Pred, [H | T]) ->
     case Pred(H) of

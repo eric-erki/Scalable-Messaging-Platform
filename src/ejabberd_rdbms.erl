@@ -41,6 +41,7 @@ start() ->
             ok
     end.
 
+%% Start relationnal DB module on the nodes where it is needed
 start_hosts() ->
     lists:foreach(fun (Host) ->
 			  case needs_odbc(Host) of
@@ -50,6 +51,7 @@ start_hosts() ->
 		  end,
 		  ?MYHOSTS).
 
+%% Start the ODBC module on the given host
 start_odbc(Host) ->
     Supervisor_name = gen_mod:get_module_proc(Host,
 					      ejabberd_odbc_sup),
@@ -65,6 +67,7 @@ start_odbc(Host) ->
 	  start_odbc(Host)
     end.
 
+%% Returns true if we have configured odbc_server for the given host
 needs_odbc(Host) ->
     LHost = jlib:nameprep(Host),
     ejabberd_config:get_local_option(

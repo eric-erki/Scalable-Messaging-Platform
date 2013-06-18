@@ -139,6 +139,7 @@ set_password(User, Server, Password) ->
 				   Password)
     end.
 
+%% @spec (User, Server, Password) -> {error, not_allowed}
 try_register(_User, _Server, _Password) ->
     {error, not_allowed}.
 
@@ -168,6 +169,7 @@ get_password(_User, _Server) -> false.
 
 get_password_s(_User, _Server) -> <<"">>.
 
+%% @spec (User, Server) -> true | false | {error, Error}
 is_user_exists(User, Server) ->
     case catch is_user_exists_ldap(User, Server) of
       {'EXIT', Error} -> {error, Error};
@@ -178,6 +180,9 @@ remove_user(_User, _Server) -> {error, not_allowed}.
 
 remove_user(_User, _Server, _Password) -> not_allowed.
 
+%%%----------------------------------------------------------------------
+%%% Internal functions
+%%%----------------------------------------------------------------------
 check_password_ldap(User, Server, Password) ->
     {ok, State} = eldap_utils:get_state(Server, ?MODULE),
     case find_user_dn(User, State) of
@@ -275,12 +280,14 @@ find_user_dn(User, State) ->
       _ -> false
     end.
 
+%% apply the dn filter and the local filter:
 dn_filter(DN, Attrs, State) ->
     case check_local_filter(Attrs, State) of
       false -> false;
       true -> is_valid_dn(DN, Attrs, State)
     end.
 
+%% Check that the DN is valid, based on the dn filter
 is_valid_dn(DN, _, #state{dn_filter = undefined}) -> DN;
 is_valid_dn(DN, Attrs, State) ->
     DNAttrs = State#state.dn_filter_attrs,
@@ -315,6 +322,12 @@ is_valid_dn(DN, Attrs, State) ->
       _ -> false
     end.
 
+%% The local filter is used to check an attribute in ejabberd
+%% and not in LDAP to limit the load on the LDAP directory.
+%% A local rule can be either:
+%%    {equal, {"accountStatus",["active"]}}
+%%    {notequal, {"accountStatus",["disabled"]}}
+%% {ldap_local_filter, {notequal, {"accountStatus",["disabled"]}}}
 check_local_filter(_Attrs,
 		   #state{lfilter = undefined}) ->
     true;
@@ -340,6 +353,9 @@ result_attrs(#state{uids = UIDs,
 		end,
 		DNFilterAttrs, UIDs).
 
+%%%----------------------------------------------------------------------
+%%% Auxiliary functions
+%%%----------------------------------------------------------------------
 parse_options(Host) ->
     Cfg = eldap_utils:get_config(Host, []),
     Eldap_ID = jlib:atom_to_binary(gen_mod:get_module_proc(Host, ?MODULE)),

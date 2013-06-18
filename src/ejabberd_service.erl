@@ -94,6 +94,9 @@
 -define(INVALID_NS_ERR,
 	xml:element_to_binary(?SERR_INVALID_NAMESPACE)).
 
+%%%----------------------------------------------------------------------
+%%% API
+%%%----------------------------------------------------------------------
 start(SockData, Opts) ->
     supervisor:start_child(ejabberd_service_sup,
 			   [SockData, Opts]).
@@ -108,6 +111,13 @@ socket_type() -> xml_stream.
 %%% Callback functions from gen_fsm
 %%%----------------------------------------------------------------------
 
+%%----------------------------------------------------------------------
+%% Func: init/1
+%% Returns: {ok, StateName, StateData}          |
+%%          {ok, StateName, StateData, Timeout} |
+%%          ignore                              |
+%%          {stop, StopReason}
+%%----------------------------------------------------------------------
 init([{SockMod, Socket}, Opts]) ->
     ?INFO_MSG("(~w) External service connected", [Socket]),
     Access = case lists:keysearch(access, 1, Opts) of
@@ -276,9 +286,24 @@ stream_established(closed, StateData) ->
 %    Reply = ok,
 %    {reply, Reply, state_name, StateData}.
 
+%%----------------------------------------------------------------------
+%% Func: handle_event/3
+%% Returns: {next_state, NextStateName, NextStateData}          |
+%%          {next_state, NextStateName, NextStateData, Timeout} |
+%%          {stop, Reason, NewStateData}
+%%----------------------------------------------------------------------
 handle_event(_Event, StateName, StateData) ->
     {next_state, StateName, StateData}.
 
+%%----------------------------------------------------------------------
+%% Func: handle_sync_event/4
+%% Returns: {next_state, NextStateName, NextStateData}            |
+%%          {next_state, NextStateName, NextStateData, Timeout}   |
+%%          {reply, Reply, NextStateName, NextStateData}          |
+%%          {reply, Reply, NextStateName, NextStateData, Timeout} |
+%%          {stop, Reason, NewStateData}                          |
+%%          {stop, Reason, Reply, NewStateData}
+%%----------------------------------------------------------------------
 handle_sync_event(_Event, _From, StateName,
 		  StateData) ->
     Reply = ok, {reply, Reply, StateName, StateData}.
@@ -286,6 +311,12 @@ handle_sync_event(_Event, _From, StateName,
 code_change(_OldVsn, StateName, StateData, _Extra) ->
     {ok, StateName, StateData}.
 
+%%----------------------------------------------------------------------
+%% Func: handle_info/3
+%% Returns: {next_state, NextStateName, NextStateData}          |
+%%          {next_state, NextStateName, NextStateData, Timeout} |
+%%          {stop, Reason, NewStateData}
+%%----------------------------------------------------------------------
 handle_info({send_text, Text}, StateName, StateData) ->
     send_text(StateData, Text),
     {next_state, StateName, StateData};
@@ -315,6 +346,11 @@ handle_info(Info, StateName, StateData) ->
     ?ERROR_MSG("Unexpected info: ~p", [Info]),
     {next_state, StateName, StateData}.
 
+%%----------------------------------------------------------------------
+%% Func: terminate/3
+%% Purpose: Shutdown the fsm
+%% Returns: any
+%%----------------------------------------------------------------------
 terminate(Reason, StateName, StateData) ->
     ?INFO_MSG("terminated: ~p", [Reason]),
     case StateName of
@@ -328,6 +364,11 @@ terminate(Reason, StateName, StateData) ->
     (StateData#state.sockmod):close(StateData#state.socket),
     ok.
 
+%%----------------------------------------------------------------------
+%% Func: print_state/1
+%% Purpose: Prepare the state to be printed on error log
+%% Returns: State to print
+%%----------------------------------------------------------------------
 print_state(State) -> State.
 
 %%%----------------------------------------------------------------------

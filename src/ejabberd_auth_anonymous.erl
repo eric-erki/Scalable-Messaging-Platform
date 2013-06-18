@@ -52,6 +52,8 @@
 
 -include("jlib.hrl").
 
+%% Create the anonymous table if at least one virtual host has anonymous features enabled
+%% Register to login / logout events
 -record(anonymous, {us = {<<"">>, <<"">>} :: {binary(), binary()},
                     sid = {now(), self()} :: ejabberd_sm:sid()}).
 
@@ -70,9 +72,12 @@ start(Host) ->
 		       ?MODULE, unregister_connection, 100),
     ok.
 
+%% Return true if anonymous is allowed for host or false otherwise
 allow_anonymous(Host) ->
     lists:member(?MODULE, ejabberd_auth:auth_modules(Host)).
 
+%% Return true if anonymous mode is enabled and if anonymous protocol is SASL
+%% anonymous protocol can be: sasl_anon|login_anon|both
 is_sasl_anonymous_enabled(Host) ->
     case allow_anonymous(Host) of
       false -> false;
@@ -84,6 +89,9 @@ is_sasl_anonymous_enabled(Host) ->
 	  end
     end.
 
+%% Return true if anonymous login is enabled on the server
+%% anonymous login can be use using standard authentication method (i.e. with
+%% clients that do not support anonymous login)
 is_login_anonymous_enabled(Host) ->
     case allow_anonymous(Host) of
       false -> false;
@@ -95,6 +103,8 @@ is_login_anonymous_enabled(Host) ->
 	  end
     end.
 
+%% Return the anonymous protocol to use: sasl_anon|login_anon|both
+%% defaults to login_anon
 anonymous_protocol(Host) ->
     ejabberd_config:get_local_option(
       {anonymous_protocol, Host},
@@ -104,12 +114,15 @@ anonymous_protocol(Host) ->
       end,
       sasl_anon).
 
+%% Return true if multiple connections have been allowed in the config file
+%% defaults to false
 allow_multiple_connections(Host) ->
     ejabberd_config:get_local_option(
       {allow_multiple_connections, Host},
       fun(V) when is_boolean(V) -> V end,
       false).
 
+%% Check if user exist in the anonymus database
 anonymous_user_exist(User, Server) ->
     LUser = jlib:nodeprep(User),
     LServer = jlib:nameprep(Server),
@@ -124,14 +137,16 @@ anonymous_user_exist(User, Server) ->
     case Ss of
       [_H | _T] -> true;
       _ -> false
-    end.
+     end.
 
+%% Remove connection from Mnesia tables
 remove_connection(SID, LUser, LServer) ->
     US = {LUser, LServer},
     F = fun () -> mnesia:delete_object({anonymous, US, SID})
 	end,
     mnesia:async_dirty(F).
 
+%% Register connection
 register_connection(SID,
 		    #jid{luser = LUser, lserver = LServer}, Info) ->
     AuthModule = list_to_atom(binary_to_list(xml:get_attr_s(<<"auth_module">>, Info))),
@@ -147,12 +162,14 @@ register_connection(SID,
       false -> ok
     end.
 
+%% Remove an anonymous user from the anonymous users table
 unregister_connection(SID,
 		      #jid{luser = LUser, lserver = LServer}, _) ->
     purge_hook(anonymous_user_exist(LUser, LServer), LUser,
 	       LServer),
     remove_connection(SID, LUser, LServer).
 
+%% Launch the hook to purge user data only for anonymous users
 unregister_migrated_connection(SID,
 			       #jid{luser = LUser, lserver = LServer}, _) ->
     remove_connection(SID, LUser, LServer).
@@ -166,6 +183,8 @@ purge_hook(true, LUser, LServer) ->
 %% Specific anonymous auth functions
 %% ---------------------------------
 
+%% When anonymous login is enabled, check the password for permenant users
+%% before allowing access
 check_password(User, Server, Password) ->
     check_password(User, Server, Password, undefined,
 		   undefined).
@@ -197,12 +216,16 @@ login(User, Server) ->
 	  end
     end.
 
+%% When anonymous login is enabled, check that the user is permanent before
+%% changing its password
 set_password(User, Server, _Password) ->
     case anonymous_user_exist(User, Server) of
       true -> ok;
       false -> {error, not_allowed}
     end.
 
+%% When anonymous login is enabled, check if permanent users are allowed on
+%% the server:
 try_register(_User, _Server, _Password) ->
     {error, not_allowed}.
 
@@ -222,6 +245,7 @@ get_vh_registered_users_number(Server) ->
 get_vh_registered_users_number(Server, _) ->
     get_vh_registered_users_number(Server).
 
+%% Return password of permanent user or false for anonymous users
 get_password(User, Server) ->
     get_password(User, Server, <<"">>).
 
@@ -243,6 +267,8 @@ get_password_s(User, Server) ->
             Password
     end.
 
+%% Returns true if the user exists in the DB or if an anonymous user is logged
+%% under the given name
 is_user_exists(User, Server) ->
     anonymous_user_exist(User, Server).
 

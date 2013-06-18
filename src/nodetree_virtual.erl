@@ -4,11 +4,13 @@
 %%% compliance with the License. You should have received a copy of the
 %%% Erlang Public License along with this software. If not, it can be
 %%% retrieved via the world wide web at http://www.erlang.org/.
+%%% 
 %%%
 %%% Software distributed under the License is distributed on an "AS IS"
 %%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
 %%% the License for the specific language governing rights and limitations
 %%% under the License.
+%%% 
 %%%
 %%% The Initial Developer of the Original Code is ProcessOne.
 %%% Portions created by ProcessOne are Copyright 2006-2013, ProcessOne
@@ -50,6 +52,27 @@
 %% API definition
 %% ================
 
+%% @spec (Host, ServerHost, Opts) -> any()
+%%     Host = mod_pubsub:host()
+%%     ServerHost = host()
+%%     Opts = list()
+%% @doc <p>Called during pubsub modules initialisation. Any pubsub plugin must
+%% implement this function. It can return anything.</p>
+%% <p>This function is mainly used to trigger the setup task necessary for the
+%% plugin. It can be used for example by the developer to create the specific
+%% module database schema if it does not exists yet.</p>
+%% @spec () -> [Option]
+%%     Option = mod_pubsub:nodetreeOption()
+%% @doc <p>Returns the default pubsub node tree options.</p>
+%% @spec (NodeRecord) -> ok | {error, Reason}
+%%     NodeRecord = mod_pubsub:pubsub_node()
+%% @doc <p>No node record is stored on database. Just do nothing.</p>
+%% @spec (Host, Node, From) -> pubsubNode()
+%%     Host = mod_pubsub:host()
+%%     Node = mod_pubsub:pubsubNode()
+%%     From = mod_pubsub:jid()
+%% @doc <p>Virtual node tree does not handle a node database. Any node is considered
+%% as existing. Node record contains default values.</p>
 init(_Host, _ServerHost, _Opts) -> ok.
 
 terminate(_Host, _ServerHost) -> ok.
@@ -70,6 +93,26 @@ get_node({Host, _} = NodeId) ->
     Owners = [{<<"">>, Host, <<"">>}],
     Record#pubsub_node{owners = Owners, options = Options}.
 
+%% @spec (Host, From) -> [pubsubNode()]
+%%     Host = mod_pubsub:host() | mod_pubsub:jid()
+%%     From = mod_pubsub:jid()
+%% @doc <p>Virtual node tree does not handle a node database. Any node is considered
+%% as existing. Nodes list can not be determined.</p>
+%% @spec (Host, Node, From) -> [pubsubNode()]
+%%     Host = mod_pubsub:host()
+%%     Node = mod_pubsub:pubsubNode()
+%%     From = mod_pubsub:jid()
+%% @doc <p>Virtual node tree does not handle parent/child. Child list is empty.</p>
+%% @spec (Host, Node, From) -> [pubsubNode()]
+%%     Host = mod_pubsub:host()
+%%     Node = mod_pubsub:pubsubNode()
+%%     From = mod_pubsub:jid()
+%% @doc <p>Virtual node tree does not handle parent/child. Child list is empty.</p>
+%% @spec (Host, Node, From) -> [pubsubNode()]
+%%     Host = mod_pubsub:host()
+%%     Node = mod_pubsub:pubsubNode()
+%%     From = mod_pubsub:jid()
+%% @doc <p>Virtual node tree does not handle parent/child. Child list is empty.</p>
 get_nodes(Host, _From) -> get_nodes(Host).
 
 get_nodes(_Host) -> [].
@@ -80,11 +123,30 @@ get_parentnodes_tree(_Host, _Node, _From) -> [].
 
 get_subnodes(Host, Node, _From) ->
     get_subnodes(Host, Node).
+%% @spec (Host, Node, From) -> [pubsubNode()]
+%%     Host = mod_pubsub:host()
+%%     Node = mod_pubsub:pubsubNode()
+%%     From = mod_pubsub:jid()
+%% @doc <p>Virtual node tree does not handle parent/child. Child list is empty.</p>
 
 get_subnodes(_Host, _Node) -> [].
 
 get_subnodes_tree(Host, Node, _From) ->
     get_subnodes_tree(Host, Node).
+%% @spec (Host, Node, Type, Owner, Options, Parents) -> ok
+%%     Host = mod_pubsub:host()
+%%     Node = mod_pubsub:pubsubNode()
+%%     Type = mod_pubsub:nodeType()
+%%     Owner = mod_pubsub:jid()
+%%     Options = list()
+%% @doc <p>No node record is stored on database. Any valid node
+%% is considered as already created.</p>
+%% <p>default allowed nodes: /home/host/user/any/node/name</p>
+%% @spec (Host, Node) -> [mod_pubsub:node()]
+%%     Host = mod_pubsub:host()
+%%     Node = mod_pubsub:pubsubNode()
+%% @doc <p>Virtual node tree does not handle parent/child.
+%% node deletion just affects the corresponding node.</p>
 
 get_subnodes_tree(_Host, _Node) -> [].
 

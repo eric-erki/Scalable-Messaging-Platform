@@ -1,168 +1,406 @@
--record(last, {seconds, text}).
+%% Created automatically by XML generator (xml_gen.erl)
+%% Source: xmpp_codec.spec
 
--record(version, {name, version, os}).
+-record(feature_register, {}).
 
--record(roster, {item = [], ver}).
+-record(sasl_success, {text :: any()}).
 
--record(roster_item,
-	{jid, name, groups = [], subscription = none, ask}).
+-record(streamhost, {jid :: any(),
+                     host :: binary(),
+                     port = 1080 :: non_neg_integer()}).
 
--record(privacy_item,
-	{order, action, type, value, stanza}).
+-record(ping, {}).
 
--record(privacy, {list = [], default, active}).
+-record(delay, {stamp :: any(),
+                from :: any()}).
 
--record(privacy_list, {name, privacy_item = []}).
+-record(muc_history, {maxchars :: non_neg_integer(),
+                      maxstanzas :: non_neg_integer(),
+                      seconds :: non_neg_integer(),
+                      since :: any()}).
 
--record(block, {block_item = []}).
+-record(pubsub_affiliation, {node :: binary(),
+                             type :: 'member' | 'none' | 'outcast' | 'owner' | 'publish-only' | 'publisher'}).
 
--record(unblock, {block_item = []}).
-
--record(block_list, {}).
-
--record(disco_info,
-	{node, identity = [], feature = [], xdata = []}).
-
--record(disco_items, {node, items = []}).
-
--record(disco_item, {jid, name, node}).
-
--record(private, {sub_els = []}).
-
--record(bookmark_conference,
-	{name, jid, autojoin = false, nick, password}).
-
--record(bookmark_storage, {conference = [], url = []}).
-
--record(bookmark_url, {name, url}).
-
--record(stats, {stat = []}).
-
--record(stat, {name, units, value, error = []}).
-
--record(iq,
-	{id, type, lang, from, to, error, sub_els = []}).
-
--record(message,
-	{id, type = normal, lang, from, to, subject = [],
-	 body = [], thread, error, sub_els = []}).
-
--record(presence,
-	{id, type, lang, from, to, show, status = [], priority,
-	 error, sub_els = []}).
-
--record(error, {error_type, by, reason, text}).
-
--record(redirect, {cdata}).
-
--record(gone, {cdata}).
-
--record(bind, {jid, resource}).
-
--record(sasl_auth, {mechanism, cdata}).
-
--record(sasl_abort, {}).
-
--record(sasl_challenge, {cdata}).
-
--record(sasl_response, {cdata}).
-
--record(sasl_success, {cdata}).
-
--record(sasl_failure, {reason, text}).
-
--record(sasl_mechanisms, {mechanism = []}).
-
--record(starttls, {required = false}).
+-record(muc_decline, {reason :: binary(),
+                      from :: any(),
+                      to :: any()}).
 
 -record(starttls_proceed, {}).
 
 -record(starttls_failure, {}).
 
--record(stream_features, {sub_els = []}).
+-record(sasl_challenge, {text :: any()}).
 
--record(p1_push, {}).
+-record(gone, {uri :: binary()}).
 
--record(p1_rebind, {}).
+-record(private, {sub_els = [] :: [any()]}).
 
 -record(p1_ack, {}).
 
--record(caps, {hash, node, ver}).
+-record(pubsub_item, {id :: binary(),
+                      sub_els = [] :: [any()]}).
 
--record(register, {}).
+-record(roster_item, {jid :: any(),
+                      name :: binary(),
+                      groups = [] :: [binary()],
+                      subscription = none :: 'both' | 'from' | 'none' | 'remove' | 'to',
+                      ask :: 'subscribe'}).
+
+-record(roster, {items = [] :: [#roster_item{}],
+                 ver :: binary()}).
+
+-record(pubsub_event_item, {id :: binary(),
+                            node :: binary(),
+                            publisher :: binary()}).
+
+-record(muc_actor, {jid :: any(),
+                    nick :: binary()}).
+
+-record(stat, {name :: binary(),
+               units :: binary(),
+               value :: binary(),
+               error = [] :: [{integer(),binary()}]}).
+
+-record('see-other-host', {host :: binary()}).
+
+-record(compress, {methods = [] :: [binary()]}).
+
+-record(starttls, {required = false :: boolean()}).
+
+-record(last, {seconds :: non_neg_integer(),
+               text :: binary()}).
+
+-record(pubsub_event_items, {node :: binary(),
+                             retract = [] :: [binary()],
+                             items = [] :: [#pubsub_event_item{}]}).
+
+-record(pubsub_event, {items = [] :: [#pubsub_event_items{}]}).
+
+-record(redirect, {uri :: binary()}).
+
+-record(sasl_response, {text :: any()}).
+
+-record(sasl_auth, {mechanism :: binary(),
+                    text :: any()}).
+
+-record(p1_push, {}).
+
+-record(legacy_delay, {stamp :: binary(),
+                       from :: any()}).
+
+-record(muc_user_destroy, {reason :: binary(),
+                           jid :: any()}).
+
+-record(disco_item, {jid :: any(),
+                     name :: binary(),
+                     node :: binary()}).
+
+-record(disco_items, {node :: binary(),
+                      items = [] :: [#disco_item{}]}).
+
+-record(unblock, {items = [] :: [any()]}).
+
+-record(block, {items = [] :: [any()]}).
 
 -record(session, {}).
 
--record(ping, {}).
+-record(compression, {methods = [] :: [binary()]}).
 
--record(time, {tzo, utc}).
+-record(muc_owner_destroy, {jid :: any(),
+                            reason :: binary(),
+                            password :: binary()}).
 
--record(stream_error, {reason, text}).
+-record(pubsub_subscription, {jid :: any(),
+                              node :: binary(),
+                              subid :: binary(),
+                              type :: 'none' | 'pending' | 'subscribed' | 'unconfigured'}).
 
--record('see-other-host', {cdata}).
+-record(caps, {hash :: binary(),
+               node :: binary(),
+               ver :: any()}).
 
--record(vcard_name,
-	{family, given, middle, prefix, suffix}).
+-record(muc, {history :: #muc_history{},
+              password :: binary()}).
 
--record(vcard_adr,
-	{home = false, work = false, postal = false,
-	 parcel = false, dom = false, intl = false, pref = false,
-	 pobox, extadd, street, locality, region, pcode, ctry}).
+-record(stream_features, {sub_els = [] :: [any()]}).
 
--record(vcard_label,
-	{home = false, work = false, postal = false,
-	 parcel = false, dom = false, intl = false, pref = false,
-	 line = []}).
+-record(stats, {stat = [] :: [#stat{}]}).
 
--record(vcard_tel,
-	{home = false, work = false, voice = false, fax = false,
-	 pager = false, msg = false, cell = false, video = false,
-	 bbs = false, modem = false, isdn = false, pcs = false,
-	 pref = false, number}).
+-record(pubsub, {subscriptions :: {binary(),[#pubsub_subscription{}]},
+                 affiliations :: [#pubsub_affiliation{}],
+                 publish :: {binary(),[#pubsub_item{}]},
+                 subscribe :: {binary(),_}}).
 
--record(vcard_email,
-	{home = false, work = false, internet = false,
-	 pref = false, x400 = false, userid}).
+-record(pubsub_items, {node :: binary(),
+                       max_items :: non_neg_integer(),
+                       subid :: binary(),
+                       items = [] :: [#pubsub_item{}]}).
 
--record(vcard_geo, {lat, lon}).
+-record(p1_rebind, {}).
 
--record(vcard_logo, {type, binval, extval}).
+-record(compress_failure, {reason :: 'processing-failed' | 'setup-failed' | 'unsupported-method'}).
 
--record(vcard_photo, {type, binval, extval}).
+-record(sasl_abort, {}).
 
--record(vcard_org, {name, units = []}).
+-record(vcard_email, {home = false :: boolean(),
+                      work = false :: boolean(),
+                      internet = false :: boolean(),
+                      pref = false :: boolean(),
+                      x400 = false :: boolean(),
+                      userid :: binary()}).
 
--record(vcard_sound, {phonetic, binval, extval}).
+-record(text, {lang :: binary(),
+               data :: binary()}).
 
--record(vcard_key, {type, cred}).
+-record(vcard_geo, {lat :: binary(),
+                    lon :: binary()}).
 
--record(vcard,
-	{version, fn, n, nickname, photo, bday, adr = [],
-	 label = [], tel = [], email = [], jabberid, mailer, tz,
-	 geo, title, role, logo, org, categories = [], note,
-	 prodid, rev, 'sort-string', sound, uid, url, class, key,
-	 desc}).
+-record(compressed, {}).
 
--record(xfield,
-	{label, type, var, required = false, desc, values = [],
-	 options = []}).
+-record(sasl_failure, {reason :: 'aborted' | 'account-disabled' | 'credentials-expired' | 'encryption-required' | 'incorrect-encoding' | 'invalid-authzid' | 'invalid-mechanism' | 'malformed-request' | 'mechanism-too-weak' | 'not-authorized' | 'temporary-auth-failure',
+                       text = [] :: [#text{}]}).
 
--record(xdata,
-	{type, instructions = [], title, reported, items = [],
-	 fields = []}).
+-record(block_list, {}).
 
--record(pubsub_subscription, {jid, node, subid, type}).
+-record(xdata_field, {label :: binary(),
+                      type :: 'boolean' | 'fixed' | 'hidden' | 'jid-multi' | 'jid-single' | 'list-multi' | 'list-single' | 'text-multi' | 'text-private' | 'text-single',
+                      var :: binary(),
+                      required = false :: boolean(),
+                      desc :: binary(),
+                      values = [] :: [binary()],
+                      options = [] :: [binary()]}).
 
--record(pubsub_affiliation, {node, type}).
+-record(version, {version_name :: binary(),
+                  version_ver :: binary(),
+                  version_os :: binary()}).
 
--record(pubsub_item, {id, sub_els = []}).
+-record(muc_invite, {reason :: binary(),
+                     from :: any(),
+                     to :: any()}).
 
--record(pubsub_items,
-	{node, max_items, subid, item = []}).
+-record(bind, {jid :: any(),
+               resource :: any()}).
 
--record(pubsub_event, {items = []}).
+-record(muc_item, {actor :: #muc_actor{},
+                   continue :: binary(),
+                   reason :: binary(),
+                   affiliation :: 'admin' | 'member' | 'none' | 'outcast' | 'owner',
+                   role :: 'moderator' | 'none' | 'participant' | 'visitor',
+                   jid :: any(),
+                   nick :: binary()}).
 
--record(pubsub,
-	{subscriptions, affiliations, publish, subscribe}).
+-record(muc_user, {decline :: #muc_decline{},
+                   destroy :: #muc_user_destroy{},
+                   invites = [] :: [#muc_invite{}],
+                   items = [] :: [#muc_item{}],
+                   status_codes = [] :: [pos_integer()],
+                   password :: binary()}).
 
--record(delay, {stamp, from}).
+-record(bytestreams, {hosts = [] :: [#streamhost{}],
+                      used :: any(),
+                      activate :: any(),
+                      dstaddr :: binary(),
+                      mode = tcp :: 'tcp' | 'udp',
+                      sid :: binary()}).
+
+-record(vcard_org, {name :: binary(),
+                    units = [] :: [binary()]}).
+
+-record(vcard_tel, {home = false :: boolean(),
+                    work = false :: boolean(),
+                    voice = false :: boolean(),
+                    fax = false :: boolean(),
+                    pager = false :: boolean(),
+                    msg = false :: boolean(),
+                    cell = false :: boolean(),
+                    video = false :: boolean(),
+                    bbs = false :: boolean(),
+                    modem = false :: boolean(),
+                    isdn = false :: boolean(),
+                    pcs = false :: boolean(),
+                    pref = false :: boolean(),
+                    number :: binary()}).
+
+-record(vcard_key, {type :: binary(),
+                    cred :: binary()}).
+
+-record(vcard_name, {family :: binary(),
+                     given :: binary(),
+                     middle :: binary(),
+                     prefix :: binary(),
+                     suffix :: binary()}).
+
+-record(identity, {category :: binary(),
+                   type :: binary(),
+                   name :: binary()}).
+
+-record(bookmark_conference, {name :: binary(),
+                              jid :: any(),
+                              autojoin = false :: any(),
+                              nick :: binary(),
+                              password :: binary()}).
+
+-record(register, {registered = false :: boolean(),
+                   remove = false :: boolean(),
+                   instructions :: binary(),
+                   username :: binary(),
+                   nick :: binary(),
+                   password :: binary(),
+                   name :: binary(),
+                   first :: binary(),
+                   last :: binary(),
+                   email :: binary(),
+                   address :: binary(),
+                   city :: binary(),
+                   state :: binary(),
+                   zip :: binary(),
+                   phone :: binary(),
+                   url :: binary(),
+                   date :: binary(),
+                   misc :: binary(),
+                   text :: binary(),
+                   key :: binary()}).
+
+-record(bookmark_url, {name :: binary(),
+                       url :: binary()}).
+
+-record(bookmark_storage, {conference = [] :: [#bookmark_conference{}],
+                           url = [] :: [#bookmark_url{}]}).
+
+-record(vcard_sound, {phonetic :: binary(),
+                      binval :: any(),
+                      extval :: binary()}).
+
+-record(vcard_photo, {type :: binary(),
+                      binval :: any(),
+                      extval :: binary()}).
+
+-record(vcard_label, {home = false :: boolean(),
+                      work = false :: boolean(),
+                      postal = false :: boolean(),
+                      parcel = false :: boolean(),
+                      dom = false :: boolean(),
+                      intl = false :: boolean(),
+                      pref = false :: boolean(),
+                      line = [] :: [binary()]}).
+
+-record(vcard_adr, {home = false :: boolean(),
+                    work = false :: boolean(),
+                    postal = false :: boolean(),
+                    parcel = false :: boolean(),
+                    dom = false :: boolean(),
+                    intl = false :: boolean(),
+                    pref = false :: boolean(),
+                    pobox :: binary(),
+                    extadd :: binary(),
+                    street :: binary(),
+                    locality :: binary(),
+                    region :: binary(),
+                    pcode :: binary(),
+                    ctry :: binary()}).
+
+-record(xdata, {type :: 'cancel' | 'form' | 'result' | 'submit',
+                instructions = [] :: [binary()],
+                title :: binary(),
+                reported :: [#xdata_field{}],
+                items = [] :: [[#xdata_field{}]],
+                fields = [] :: [#xdata_field{}]}).
+
+-record(muc_owner, {destroy :: #muc_owner_destroy{},
+                    config :: #xdata{}}).
+
+-record(disco_info, {node :: binary(),
+                     identity = [] :: [#identity{}],
+                     feature = [] :: [binary()],
+                     xdata = [] :: [#xdata{}]}).
+
+-record(sasl_mechanisms, {list = [] :: [binary()]}).
+
+-record(error, {type :: 'auth' | 'cancel' | 'continue' | 'modify' | 'wait',
+                by :: binary(),
+                reason :: atom() | #gone{} | #redirect{},
+                text :: #text{}}).
+
+-record(presence, {id :: binary(),
+                   type :: 'error' | 'probe' | 'subscribe' | 'subscribed' | 'unavailable' | 'unsubscribe' | 'unsubscribed',
+                   lang :: binary(),
+                   from :: any(),
+                   to :: any(),
+                   show :: 'away' | 'chat' | 'dnd' | 'xa',
+                   status = [] :: [#text{}],
+                   priority :: integer(),
+                   error :: #error{},
+                   sub_els = [] :: [any()]}).
+
+-record(message, {id :: binary(),
+                  type = normal :: 'chat' | 'error' | 'groupchat' | 'headline' | 'normal',
+                  lang :: binary(),
+                  from :: any(),
+                  to :: any(),
+                  subject = [] :: [#text{}],
+                  body = [] :: [#text{}],
+                  thread :: binary(),
+                  error :: #error{},
+                  sub_els = [] :: [any()]}).
+
+-record(iq, {id :: binary(),
+             type :: 'error' | 'get' | 'result' | 'set',
+             lang :: binary(),
+             from :: any(),
+             to :: any(),
+             error :: #error{},
+             sub_els = [] :: [any()]}).
+
+-record(privacy_item, {order :: non_neg_integer(),
+                       action :: 'allow' | 'deny',
+                       type :: 'group' | 'jid' | 'subscription',
+                       value :: binary(),
+                       kinds = [] :: ['iq' | 'message' | 'presence-in' | 'presence-out']}).
+
+-record(privacy_list, {name :: binary(),
+                       items = [] :: [#privacy_item{}]}).
+
+-record(privacy, {lists = [] :: [#privacy_list{}],
+                  default :: binary(),
+                  active :: binary()}).
+
+-record(stream_error, {reason :: atom() | #'see-other-host'{},
+                       text :: #text{}}).
+
+-record(vcard_logo, {type :: binary(),
+                     binval :: any(),
+                     extval :: binary()}).
+
+-record(vcard, {version :: binary(),
+                fn :: binary(),
+                n :: #vcard_name{},
+                nickname :: binary(),
+                photo :: #vcard_photo{},
+                bday :: binary(),
+                adr = [] :: [#vcard_adr{}],
+                label = [] :: [#vcard_label{}],
+                tel = [] :: [#vcard_tel{}],
+                email = [] :: [#vcard_email{}],
+                jabberid :: binary(),
+                mailer :: binary(),
+                tz :: binary(),
+                geo :: #vcard_geo{},
+                title :: binary(),
+                role :: binary(),
+                logo :: #vcard_logo{},
+                org :: #vcard_org{},
+                categories = [] :: [binary()],
+                note :: binary(),
+                prodid :: binary(),
+                rev :: binary(),
+                sort_string :: binary(),
+                sound :: #vcard_sound{},
+                uid :: binary(),
+                url :: binary(),
+                class :: 'confidential' | 'private' | 'public',
+                key :: #vcard_key{},
+                desc :: binary()}).
+
+-record(time, {tzo :: any(),
+               utc :: any()}).

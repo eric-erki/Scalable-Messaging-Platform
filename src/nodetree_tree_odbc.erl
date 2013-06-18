@@ -4,11 +4,13 @@
 %%% compliance with the License. You should have received a copy of the
 %%% Erlang Public License along with this software. If not, it can be
 %%% retrieved via the world wide web at http://www.erlang.org/.
+%%% 
 %%%
 %%% Software distributed under the License is distributed on an "AS IS"
 %%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
 %%% the License for the specific language governing rights and limitations
 %%% under the License.
+%%% 
 %%%
 %%% The Initial Developer of the Original Code is ProcessOne.
 %%% Portions created by ProcessOne are Copyright 2006-2013, ProcessOne
@@ -59,6 +61,21 @@
 %% API definition
 %% ================
 
+%% @spec (Host, ServerHost, Opts) -> any()
+%%     Host = mod_pubsub:host()
+%%     ServerHost = host()
+%%     Opts = list()
+%% @doc <p>Called during pubsub modules initialisation. Any pubsub plugin must
+%% implement this function. It can return anything.</p>
+%% <p>This function is mainly used to trigger the setup task necessary for the
+%% plugin. It can be used for example by the developer to create the specific
+%% module database schema if it does not exists yet.</p>
+%% @spec () -> [Option]
+%%     Option = mod_pubsub:nodetreeOption()
+%% @doc Returns the default pubsub node tree options.
+%% @spec (Host, Node, From) -> pubsubNode() | {error, Reason}
+%%     Host = mod_pubsub:host()
+%%     Node = mod_pubsub:pubsubNode()
 init(_Host, _ServerHost, _Opts) -> ok.
 
 terminate(_Host, _ServerHost) -> ok.
@@ -112,6 +129,8 @@ get_node(NodeIdx) ->
       _ -> {error, ?ERR_ITEM_NOT_FOUND}
     end.
 
+%% @spec (Host, From) -> [pubsubNode()] | {error, Reason}
+%%	 Host = mod_pubsub:host() | mod_pubsub:jid()
 get_nodes(Host, _From) -> get_nodes(Host).
 
 -spec(get_nodes/1 ::
@@ -134,6 +153,21 @@ get_nodes(Host) ->
       _ -> []
     end.
 
+%% @spec (Host, Node, From) -> [{Depth, Record}] | {error, Reason}
+%%     Host   = mod_pubsub:host() | mod_pubsub:jid()
+%%     Node   = mod_pubsub:pubsubNode()
+%%     From   = mod_pubsub:jid()
+%%     Depth  = integer()
+%%     Record = pubsubNode()
+%% @doc <p>Default node tree does not handle parents, return empty list.</p>
+%% @spec (Host, Node, From) -> [{Depth, Record}] | {error, Reason}
+%%     Host   = mod_pubsub:host() | mod_pubsub:jid()
+%%     Node   = mod_pubsub:pubsubNode()
+%%     From   = mod_pubsub:jid()
+%%     Depth  = integer()
+%%     Record = pubsubNode()
+%% @doc <p>Default node tree does not handle parents, return a list
+%% containing just this node.</p>
 get_parentnodes(_Host, _Node, _From) -> [].
 
 -spec(get_parentnodes_tree/3 ::
@@ -153,6 +187,9 @@ get_parentnodes_tree(Host, Node, From) ->
 get_subnodes(Host, Node, _From) ->
     get_subnodes(Host, Node).
 
+%% @spec (Host, Index) -> [pubsubNode()] | {error, Reason}
+%%	 Host = mod_pubsub:host()
+%%	 Node = mod_pubsub:pubsubNode()
 -spec(get_subnodes/2 ::
 (
   Host   :: mod_pubsub:host(),
@@ -178,6 +215,9 @@ get_subnodes(Host, Node) ->
 get_subnodes_tree(Host, Node, _From) ->
     get_subnodes_tree(Host, Node).
 
+%% @spec (Host, Index) -> [pubsubNode()] | {error, Reason}
+%%	 Host = mod_pubsub:host()
+%%	 Node = mod_pubsub:pubsubNode()
 -spec(get_subnodes_tree/2 ::
 (
   Host :: mod_pubsub:host(),
@@ -201,6 +241,13 @@ get_subnodes_tree(Host, Node) ->
       _ -> []
     end.
 
+%% @spec (Host, Node, Type, Owner, Options, Parents) -> ok | {error, Reason}
+%%	 Host = mod_pubsub:host() | mod_pubsub:jid()
+%%	 Node = mod_pubsub:pubsubNode()
+%%	 NodeType = mod_pubsub:nodeType()
+%%	 Owner = mod_pubsub:jid()
+%%	 Options = list()
+%%	 Parents = list()
 
 -spec(create_node/6 ::
 (
@@ -255,6 +302,9 @@ create_node(Host, Node, Type, Owner, Options, Parents) ->
       Error -> Error
     end.
 
+%% @spec (Host, Node) -> [mod_pubsub:node()]
+%%	 Host = mod_pubsub:host() | mod_pubsub:jid()
+%%	 Node = mod_pubsub:pubsubNode()
 -spec(delete_node/2 ::
 (
   Host :: mod_pubsub:host(),
@@ -310,6 +360,8 @@ raw_to_node(Host, {Node, Parent, Type, NodeIdx}) ->
 				StdOpts, DbOpts);
 		_ -> []
 	      end,
+%% @spec (NodeRecord) -> ok | {error, Reason}
+%%	 Record = mod_pubsub:pubsub_node()
     #pubsub_node{nodeid =
 		     {Host, Node},
 		 parents = [Parent],

@@ -116,6 +116,9 @@
 	  "nodes">>).
 
 -define(DB_MOD, pubsub_db_odbc).
+%%====================================================================
+%% API
+%%====================================================================
 
 init() -> ok = create_table().
 
@@ -215,6 +218,9 @@ parse_options_xform(XFields) ->
       _ -> {result, []}
     end.
 
+%%====================================================================
+%% Internal functions
+%%====================================================================
 create_table() -> ok.
 
 -spec(make_subid/0 :: () -> mod_pubsub:subId()).
@@ -226,6 +232,8 @@ make_subid() ->
 %% Subscription XForm processing.
 %%
 
+%% Return processed options, with types converted and so forth, using
+%% Opts as defaults.
 set_xoption([], Opts) -> Opts;
 set_xoption([{Var, Value} | T], Opts) ->
     NewOpts = case var_xfield(Var) of
@@ -236,6 +244,8 @@ set_xoption([{Var, Value} | T], Opts) ->
 	      end,
     set_xoption(T, NewOpts).
 
+%% Return the options list's key for an XForm var.
+%% Convert Values for option list's Key.
 var_xfield(?PUBSUB_DELIVER) -> deliver;
 %var_xfield(?PUBSUB_DIGEST) -> digest;
 %var_xfield(?PUBSUB_DIGEST_FREQUENCY) ->
@@ -266,12 +276,15 @@ val_xfield(subscription_depth, [Depth]) ->
       _ -> {error, ?ERR_NOT_ACCEPTABLE}
     end.
 
+%% Convert XForm booleans to Erlang booleans.
 xopt_to_bool(<<"0">>) -> false;
 xopt_to_bool(<<"1">>) -> true;
 xopt_to_bool(<<"false">>) -> false;
 xopt_to_bool(<<"true">>) -> true;
 xopt_to_bool(_) -> {error, ?ERR_NOT_ACCEPTABLE}.
 
+%% Return a field for an XForm for Key, with data filled in, if
+%% applicable, from Options.
 get_option_xfield(Lang, Key, Options) ->
     Var = xfield_var(Key),
     Label = xfield_label(Key),
@@ -302,6 +315,8 @@ tr_xfield_options({Value, Label}, Lang) ->
 		       children = [{xmlcdata, Value}]}]}.
 
 tr_xfield_values(Value) ->
+%% Return the XForm variable name for a subscription option key.
+%% Return the XForm variable type for a subscription option key.
     #xmlel{name = <<"value">>, attrs = [],
 	   children = [{xmlcdata, Value}]}.
 
@@ -338,6 +353,7 @@ xfield_type(subscription_depth) ->
      [{<<"1">>, ?SUBSCRIPTION_DEPTH_VALUE_ONE_LABEL},
       {<<"all">>, ?SUBSCRIPTION_DEPTH_VALUE_ALL_LABEL}]}.
 
+%% Return the XForm variable label for a subscription option key.
 xfield_label(deliver) -> ?DELIVER_LABEL;
 %xfield_label(digest) -> ?DIGEST_LABEL;
 %xfield_label(digest_frequency) ->
@@ -345,6 +361,8 @@ xfield_label(deliver) -> ?DELIVER_LABEL;
 %xfield_label(expire) -> ?EXPIRE_LABEL;
 %xfield_label(include_body) -> ?INCLUDE_BODY_LABEL;
 xfield_label(show_values) -> ?SHOW_VALUES_LABEL;
+%% Return the XForm value for a subscription option key.
+%% Convert erlang booleans to XForms.
 xfield_label(subscription_type) ->
     ?SUBSCRIPTION_TYPE_LABEL;
 xfield_label(subscription_depth) ->

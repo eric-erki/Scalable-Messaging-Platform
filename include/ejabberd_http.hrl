@@ -21,33 +21,33 @@
 
 -record(request,
 	{method            :: method(),
-         path = []         :: [binary()],
-         q = []            :: [{binary() | nokey, binary()}],
-         us = {<<>>, <<>>} :: {binary(), binary()},
-         auth              :: {binary(), binary()} |
-                              {auth_jid, {binary(), binary()}, jlib:jid()},
-         lang = <<"">>     :: binary(),
+	 path = []         :: [binary()],
+	 q = []            :: [{binary() | nokey, binary()}],
+	 us = {<<>>, <<>>} :: {binary(), binary()},
+	 auth              :: {binary(), binary()} |
+	                      {auth_jid, {binary(), binary()}, jlib:jid()},
+	 lang = <<"">>     :: binary(),
 	 data = <<"">>     :: binary(),
-         ip                :: {inet:ip_address(), inet:port_number()},
-         host = <<"">>     :: binary(),
-         port = 5280       :: inet:port_number(),
-         tp = http         :: protocol(),
-         headers = []      :: [{atom() | binary(), binary()}]}).
+	 ip                :: {inet:ip_address(), inet:port_number()},
+	 host = <<"">>     :: binary(),
+	 port = 5280       :: inet:port_number(),
+	 tp = http         :: protocol(),
+	 headers = []      :: [{atom() | binary(), binary()}]}).
 
 -record(ws,
 	{socket                  :: inet:socket() | tls:tls_socket(),
-         sockmod = gen_tcp       :: gen_tcp | tls,
-         ws_autoexit = false     :: boolean(),
-         ip                      :: {inet:ip_address(), inet:port_number()},
-         vsn                     :: vsn(),
-         origin = <<"">>         :: binary(),
-         host = <<"">>           :: binary(),
+	 sockmod = gen_tcp       :: gen_tcp | tls,
+	 ws_autoexit = false     :: boolean(),
+	 ip                      :: {inet:ip_address(), inet:port_number()},
+	 vsn                     :: vsn(),
+	 origin = <<"">>         :: binary(),
+	 host = <<"">>           :: binary(),
 	 port = 5280             :: inet:port_number(),
-         path = []               :: [binary()],
-         headers = []            :: [{atom() | binary(), binary()}],
-         local_path = []         :: [binary()],
-         q = []                  :: [{binary() | nokey, binary()}],
-         buf                     :: binary()}).
+	 path = []               :: [binary()],
+	 headers = []            :: [{atom() | binary(), binary()}],
+	 local_path = []         :: [binary()],
+	 q = []                  :: [{binary() | nokey, binary()}],
+	 buf                     :: binary()}).
 
 -type method() :: 'GET' | 'HEAD' | 'DELETE' | 'OPTIONS' | 'PUT' | 'POST' | 'TRACE'.
 -type protocol() :: http | https.

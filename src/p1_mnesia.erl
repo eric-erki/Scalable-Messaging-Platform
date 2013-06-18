@@ -24,6 +24,10 @@
 
 -export([count_records/2]).
 
+%% Return the number of records matching a given match expression.
+%% This function is intended to be used inside a Mnesia transaction.
+%% The count has been written to use the fewest possible memory by
+%% getting the record by small increment and by using continuation.
 -define(BATCHSIZE, 100).
 
 count_records(Tab, MatchExpression) ->

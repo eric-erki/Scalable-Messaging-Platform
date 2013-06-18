@@ -29,6 +29,7 @@
 -author('stephen.roettger@googlemail.com').
 
 %% External exports
+%% ejabberd doesn't implement SASLPREP, so we use the similar RESOURCEPREP instead
 -export([salted_password/3, stored_key/1, server_key/1,
 	 server_signature/2, client_signature/2, client_key/1,
 	 client_key/2]).

@@ -76,6 +76,13 @@
 
 -define(PROCNAME, ejabberd_mod_irc).
 
+%%====================================================================
+%% API
+%%====================================================================
+%%--------------------------------------------------------------------
+%% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
+%% Description: Starts the server
+%%--------------------------------------------------------------------
 start_link(Host, Opts) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     gen_server:start_link({local, Proc}, ?MODULE,
@@ -98,6 +105,13 @@ stop(Host) ->
 %% gen_server callbacks
 %%====================================================================
 
+%%--------------------------------------------------------------------
+%% Function: init(Args) -> {ok, State} |
+%%                         {ok, State, Timeout} |
+%%                         ignore               |
+%%                         {stop, Reason}
+%% Description: Initiates the server
+%%--------------------------------------------------------------------
 init([Host, Opts]) ->
     ejabberd:start_app(p1_iconv),
     MyHost = gen_mod:get_opt_host(Host, Opts,
@@ -121,11 +135,32 @@ init([Host, Opts]) ->
      #state{host = MyHost, server_host = Host,
 	    access = Access}}.
 
+%%--------------------------------------------------------------------
+%% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
+%%                                      {reply, Reply, State, Timeout} |
+%%                                      {noreply, State} |
+%%                                      {noreply, State, Timeout} |
+%%                                      {stop, Reason, Reply, State} |
+%%                                      {stop, Reason, State}
+%% Description: Handling call messages
+%%--------------------------------------------------------------------
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State}.
 
+%%--------------------------------------------------------------------
+%% Function: handle_cast(Msg, State) -> {noreply, State} |
+%%                                      {noreply, State, Timeout} |
+%%                                      {stop, Reason, State}
+%% Description: Handling cast messages
+%%--------------------------------------------------------------------
 handle_cast(_Msg, State) -> {noreply, State}.
 
+%%--------------------------------------------------------------------
+%% Function: handle_info(Info, State) -> {noreply, State} |
+%%                                       {noreply, State, Timeout} |
+%%                                       {stop, Reason, State}
+%% Description: Handling all non call/cast messages
+%%--------------------------------------------------------------------
 handle_info({route, From, To, Packet},
 	    #state{host = Host, server_host = ServerHost,
 		   access = Access} =
@@ -139,11 +174,25 @@ handle_info({route, From, To, Packet},
     {noreply, State};
 handle_info(_Info, State) -> {noreply, State}.
 
+%%--------------------------------------------------------------------
+%% Function: terminate(Reason, State) -> void()
+%% Description: This function is called by a gen_server when it is about to
+%% terminate. It should be the opposite of Module:init/1 and do any necessary
+%% cleaning up. When it returns, the gen_server terminates with Reason.
+%% The return value is ignored.
+%%--------------------------------------------------------------------
 terminate(_Reason, State) ->
     ejabberd_router:unregister_route(State#state.host), ok.
 
+%%--------------------------------------------------------------------
+%% Func: code_change(OldVsn, State, Extra) -> {ok, NewState}
+%% Description: Convert process state when code is changed
+%%--------------------------------------------------------------------
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
+%%--------------------------------------------------------------------
+%%% Internal functions
+%%--------------------------------------------------------------------
 start_supervisor(Host) ->
     Proc = gen_mod:get_module_proc(Host,
 				   ejabberd_mod_irc_sup),

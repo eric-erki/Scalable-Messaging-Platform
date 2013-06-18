@@ -48,6 +48,7 @@
 
 -define(T(Lang, Text), translate:translate(Lang, Text)).
 
+%% Copied from ejabberd_sm.erl
 -record(session, {sid, usr, us, priority, info}).
 
 start(Host, _Opts) ->
@@ -515,6 +516,9 @@ get_local_items(Acc, From, #jid{lserver = LServer} = To,
 
 %%%-----------------------------------------------------------------------
 
+%% @spec ({PermissionLevel, Host}, [string()], Server::string(), Lang)
+%%              -> {result, [xmlelement()]}
+%%       PermissionLevel = global | vhost
 get_local_items(_Host, [], Server, Lang) ->
     {result,
      [?NODE(<<"Configuration">>, <<"config">>),

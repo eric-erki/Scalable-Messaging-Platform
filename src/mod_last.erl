@@ -97,6 +97,9 @@ process_local_iq(_From, _To,
 			    children = []}]}
     end.
 
+%% @spec () -> integer()
+%% @doc Get the uptime of the ejabberd node, expressed in seconds.
+%% When ejabberd is starting, ejabberd_config:start/0 stores the datetime.
 get_node_uptime() ->
     case ejabberd_config:get_local_option(
            node_start,
@@ -154,6 +157,8 @@ process_sm_iq(From, To,
 	  end
     end.
 
+%% @spec (LUser::string(), LServer::string()) ->
+%%      {ok, TimeStamp::integer(), Status::string()} | not_found | {error, Reason}
 get_last(LUser, LServer) ->
     get_last(LUser, LServer,
 	     gen_mod:db_type(LServer, ?MODULE)).
@@ -260,6 +265,8 @@ store_last_info(LUser, LServer, TimeStamp, Status,
     odbc_queries:set_last_t(LServer, Username, Seconds,
 			    State).
 
+%% @spec (LUser::string(), LServer::string()) ->
+%%      {ok, TimeStamp::integer(), Status::string()} | not_found
 get_last_info(LUser, LServer) ->
     case get_last(LUser, LServer) of
       {error, _Reason} -> not_found;
