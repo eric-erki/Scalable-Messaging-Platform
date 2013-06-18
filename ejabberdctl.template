@@ -19,7 +19,7 @@ INSTALLUSER={{installuser}}
 #setopt shwordsplit 2>/dev/null
 
 # check the proper system user is used if defined
-if [ "${INSTALLUSER/installuser/}" != "{{}}" ] ; then
+if [ "$INSTALLUSER" != "" ] ; then
     EXEC_CMD="false"
     for GID in `id -G`; do
         if [ $GID -eq 0 ] ; then
