@@ -37,7 +37,7 @@
 	 room_destroyed/4, store_room/4, restore_room/3,
 	 forget_room/3, create_room/5, process_iq_disco_items/4,
 	 broadcast_service_message/2, register_room/3, node_up/1,
-	 node_down/1, migrate/3, get_vh_rooms/1,
+	 node_down/1, migrate/3, get_vh_rooms/1, shutdown_rooms/1,
 	 is_broadcasted/1, moderate_room_history/2,
 	 persist_recent_messages/1, can_use_nick/4]).
 
