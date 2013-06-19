@@ -178,6 +178,17 @@ CREATE TABLE roster_version (
     version text NOT NULL
 );
 
+-- Needed if persistent room history is enabled (recent room history survive server restart)
+CREATE TABLE room_history (
+    room text NOT NULL,
+    nick text NOT NULL,
+    packet text,
+    have_subject boolean,
+    timestamp bigint,
+    size int
+);
+CREATE INDEX i_room_history ON room_history USING btree (room);
+
 -- To update from 0.9.8:
 -- CREATE SEQUENCE spool_seq_seq;
 -- ALTER TABLE spool ADD COLUMN seq integer;
