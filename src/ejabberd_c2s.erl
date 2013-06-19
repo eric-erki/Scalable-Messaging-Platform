@@ -1223,7 +1223,7 @@ wait_for_session({xmlstreamelement, El}, StateData) ->
 		change_shaper(StateData, JID),
 		{Fs, Ts, Bs} =
 		    ejabberd_hooks:run_fold(roster_get_subscription_lists,
-					    StateData#state.server, {[], []},
+					    StateData#state.server, {[], [], []},
 					    [U, StateData#state.server]),
 		LJID = jlib:jid_tolower(jlib:jid_remove_resource(JID)),
 		SharedSet = ?SETS:from_list([LJID|Bs]),
