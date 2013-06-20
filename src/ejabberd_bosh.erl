@@ -776,7 +776,7 @@ bounce_els_from_obuf(State) ->
 
 is_valid_key(<<"">>, <<"">>) -> true;
 is_valid_key(PrevKey, Key) ->
-    sha:sha(Key) == PrevKey.
+    p1_sha:sha(Key) == PrevKey.
 
 is_overactivity(undefined) -> false;
 is_overactivity(PrevPoll) ->
@@ -1015,7 +1015,7 @@ http_error(Status, Reason, Type) ->
             end,
     {Status, Reason, ?HEADER(CType), <<"">>}.
 
-make_sid() -> sha:sha(randoms:get_string()).
+make_sid() -> p1_sha:sha(randoms:get_string()).
 
 -compile({no_auto_import, [{min, 2}]}).
 

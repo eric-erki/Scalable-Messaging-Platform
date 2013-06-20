@@ -177,10 +177,10 @@ handle_call(get_sockmod, _From, State) ->
     Reply = State#socket_state.sockmod,
     {reply, Reply, State, ?HIBERNATE_TIMEOUT};
 handle_call(get_peer_certificate, _From, State) ->
-    Reply = tls:get_peer_certificate(State#socket_state.socket),
+    Reply = p1_tls:get_peer_certificate(State#socket_state.socket),
     {reply, Reply, State, ?HIBERNATE_TIMEOUT};
 handle_call(get_verify_result, _From, State) ->
-    Reply = tls:get_verify_result(State#socket_state.socket),
+    Reply = p1_tls:get_verify_result(State#socket_state.socket),
     {reply, Reply, State, ?HIBERNATE_TIMEOUT};
 handle_call(close, _From, State) ->
     ejabberd_receiver:close(State#socket_state.receiver),

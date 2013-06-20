@@ -568,7 +568,7 @@ process_http_put(#http_put{rid = Rid, attrs = Attrs,
 		     case StateData#state.key of
 		       <<"">> -> true;
 		       OldKey ->
-			   NextKey = sha:sha(Key),
+			   NextKey = p1_sha:sha(Key),
 			   ?DEBUG("Key/OldKey/NextKey: ~s/~s/~s",
 				  [Key, OldKey, NextKey]),
 			   if OldKey == NextKey -> true;
@@ -1205,7 +1205,7 @@ check_bind_module(XmppDomain) ->
     end.
 
 make_sid() ->
-    <<(sha:sha(term_to_binary({now(), make_ref()})))/binary,
+    <<(p1_sha:sha(term_to_binary({now(), make_ref()})))/binary,
       "-", (ejabberd_cluster:node_id())/binary>>.
 
 get_session(SID) ->

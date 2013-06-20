@@ -45,7 +45,7 @@
 -record(state,
 {
     sockmod = gen_tcp          :: gen_tcp | tls,
-    socket                     :: inet:socket() | tls:tls_socket(),
+    socket                     :: inet:socket() | p1_tls:tls_socket(),
     request_method             :: method(),
     request_version = {1, 1}   :: {non_neg_integer(), non_neg_integer()},
     request_path               :: {abs_path, binary()} | binary(),
@@ -94,7 +94,7 @@ init({SockMod, Socket}, Opts) ->
     TLSOpts = [verify_none | TLSOpts1],
     {SockMod1, Socket1} = if TLSEnabled ->
 				 inet:setopts(Socket, [{recbuf, 8192}]),
-				 {ok, TLSSocket} = tls:tcp_to_tls(Socket,
+				 {ok, TLSSocket} = p1_tls:tcp_to_tls(Socket,
 								  TLSOpts),
 				 {tls, TLSSocket};
 			     true -> {SockMod, Socket}

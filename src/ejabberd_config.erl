@@ -67,9 +67,9 @@ start() ->
     add_local_option(node_start, now()),
     SharedKey = case erlang:get_cookie() of
                     nocookie ->
-                        sha:sha(randoms:get_string());
+                        p1_sha:sha(randoms:get_string());
                     Cookie ->
-                        sha:sha(jlib:atom_to_binary(Cookie))
+                        p1_sha:sha(jlib:atom_to_binary(Cookie))
                 end,
     add_local_option(shared_key, SharedKey),
     add_local_option(flash_hack, ?FLASH_HACK),

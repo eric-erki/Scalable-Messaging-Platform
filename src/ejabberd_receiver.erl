@@ -44,7 +44,7 @@
 -include("logger.hrl").
 
 -record(state,
-	{socket :: inet:socket() | tls:tls_socket() | ezlib:zlib_socket(),
+	{socket :: inet:socket() | p1_tls:tls_socket() | ezlib:zlib_socket(),
          sock_mod = gen_tcp :: gen_tcp | tls | ezlib,
          shaper_state = none :: shaper:shaper(),
          c2s_pid :: pid(),
@@ -87,13 +87,13 @@ change_shaper(Pid, Shaper) ->
 
 reset_stream(Pid) -> do_call(Pid, reset_stream).
 
--spec starttls(pid(), iodata()) -> {ok, tls:tls_socket()} | {error, any()}.
+-spec starttls(pid(), iodata()) -> {ok, p1_tls:tls_socket()} | {error, any()}.
 
 starttls(Pid, TLSOpts) ->
     starttls(Pid, TLSOpts, undefined).
 
 -spec starttls(pid(), list(), iodata() | undefined) -> {error, any()} |
-                                                       {ok, tls:tls_socket()}.
+                                                       {ok, p1_tls:tls_socket()}.
 
 starttls(Pid, TLSOpts, Data) ->
     do_call(Pid, {starttls, TLSOpts, Data}).
@@ -150,7 +150,7 @@ handle_call({starttls, TLSOpts, Data}, _From,
 		   c2s_pid = C2SPid, socket = Socket,
 		   max_stanza_size = MaxStanzaSize} =
 		State) ->
-    {ok, TLSSocket} = tls:tcp_to_tls(Socket, TLSOpts),
+    {ok, TLSSocket} = p1_tls:tcp_to_tls(Socket, TLSOpts),
     if Data /= undefined -> do_send(State, Data);
        true -> ok
     end,
@@ -160,7 +160,7 @@ handle_call({starttls, TLSOpts, Data}, _From,
     NewState = State#state{socket = TLSSocket,
 			   sock_mod = tls,
 			   xml_stream_state = NewXMLStreamState},
-    case tls:recv_data(TLSSocket, <<"">>) of
+    case p1_tls:recv_data(TLSSocket, <<"">>) of
       {ok, TLSData} ->
 	  {reply, {ok, TLSSocket},
 	   process_data(TLSData, NewState), ?HIBERNATE_TIMEOUT};
@@ -244,7 +244,7 @@ handle_info({Tag, _TCPSocket, Data},
 	   (Tag == ejabberd_xml) ->
     case SockMod of
       tls ->
-	  case tls:recv_data(Socket, Data) of
+	  case p1_tls:recv_data(Socket, Data) of
 	    {ok, TLSData} ->
 		{noreply, process_data(TLSData, State),
 		 ?HIBERNATE_TIMEOUT};

@@ -384,7 +384,7 @@ handshake(#ws{vsn = {'draft-hybi', _}, headers = Headers} = State) ->
                                 [<<"Sec-Websocket-Protocol:">>, V, <<"\r\n">>]
                         end,
     Hash = jlib:encode_base64(
-             sha:sha1(<<Key/binary, "258EAFA5-E914-47DA-95CA-C5AB0DC85B11">>)),
+             p1_sha:sha1(<<Key/binary, "258EAFA5-E914-47DA-95CA-C5AB0DC85B11">>)),
     {State, [<<"HTTP/1.1 101 Switching Protocols\r\n">>,
              <<"Upgrade: websocket\r\n">>,
              <<"Connection: Upgrade\r\n">>,
@@ -635,7 +635,7 @@ process_hybi_8(#hybi_8_state{unprocessed =
 		   <<UnprocessedPre/binary, Data/binary>>).
 
 handle_data(tcp, Vsn, State, Data, Socket, WsHandleLoopPid, tls, WsAutoExit) ->
-    case tls:recv_data(Socket, Data) of
+    case p1_tls:recv_data(Socket, Data) of
         {ok, NewData} ->
             handle_data(Vsn, State, NewData, Socket, WsHandleLoopPid, tls, WsAutoExit);
         {error, Error} ->

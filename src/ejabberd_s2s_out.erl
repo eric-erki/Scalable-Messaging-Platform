@@ -666,7 +666,7 @@ wait_for_starttls_proceed({xmlstreamelement, El},
       #xmlel{name = <<"proceed">>, attrs = Attrs} ->
 	  case xml:get_attr_s(<<"xmlns">>, Attrs) of
 	    ?NS_TLS ->
-		?DEBUG("starttls: ~p",
+		?DEBUG("startp1_tls: ~p",
 		       [{StateData#state.myname, StateData#state.server}]),
 		Socket = StateData#state.socket,
 		TLSOpts = case

@@ -387,7 +387,7 @@ update_tables() ->
     end.
 
 make_sid() ->
-    <<(sha:sha(term_to_binary({now(), make_ref()})))/binary,
+    <<(p1_sha:sha(term_to_binary({now(), make_ref()})))/binary,
       "-", (ejabberd_cluster:node_id())/binary>>.
 
 get_session(SID) ->
