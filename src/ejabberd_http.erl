@@ -96,7 +96,7 @@ init({SockMod, Socket}, Opts) ->
 				 inet:setopts(Socket, [{recbuf, 8192}]),
 				 {ok, TLSSocket} = p1_tls:tcp_to_tls(Socket,
 								  TLSOpts),
-				 {tls, TLSSocket};
+				 {p1_tls, TLSSocket};
 			     true -> {SockMod, Socket}
 			  end,
     Captcha = case lists:member(captcha, Opts) of
@@ -316,8 +316,8 @@ get_transfer_protocol(SockMod, HostPort) ->
       {gen_tcp, []} -> {Host, 80, http};
       {gen_tcp, [Port]} ->
 	  {Host, jlib:binary_to_integer(Port), http};
-      {tls, []} -> {Host, 443, https};
-      {tls, [Port]} ->
+      {p1_tls, []} -> {Host, 443, https};
+      {p1_tls, [Port]} ->
 	  {Host, jlib:binary_to_integer(Port), https}
     end.
 
