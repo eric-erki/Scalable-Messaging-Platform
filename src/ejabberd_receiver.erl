@@ -158,7 +158,7 @@ handle_call({starttls, TLSOpts, Data}, _From,
     NewXMLStreamState = xml_stream:new(C2SPid,
 				       MaxStanzaSize),
     NewState = State#state{socket = TLSSocket,
-			   sock_mod = tls,
+			   sock_mod = p1_tls,
 			   xml_stream_state = NewXMLStreamState},
     case p1_tls:recv_data(TLSSocket, <<"">>) of
       {ok, TLSData} ->
@@ -243,7 +243,7 @@ handle_info({Tag, _TCPSocket, Data},
     when (Tag == tcp) or (Tag == ssl) or
 	   (Tag == ejabberd_xml) ->
     case SockMod of
-      tls ->
+      p1_tls ->
 	  case p1_tls:recv_data(Socket, Data) of
 	    {ok, TLSData} ->
 		{noreply, process_data(TLSData, State),

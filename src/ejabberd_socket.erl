@@ -43,7 +43,7 @@
 -type sockmod() :: ejabberd_http_poll | ejabberd_bosh |
                    ejabberd_http_bind | ejabberd_http_bindjson |
                    ejabberd_http_ws | ejabberd_http_wsjson |
-                   gen_tcp | tls | ezlib.
+                   gen_tcp | p1_tls | ezlib.
 -type receiver() :: pid () | atom().
 -type socket() :: pid() | inet:socket() |
                   p1_tls:tls_socket() |
@@ -143,7 +143,7 @@ starttls(SocketData, TLSOpts, Data) ->
 	ejabberd_receiver:starttls(SocketData#socket_state.receiver,
 				   TLSOpts, Data),
     SocketData#socket_state{socket = TLSSocket,
-			    sockmod = tls}.
+			    sockmod = p1_tls}.
 
 compress(SocketData) -> compress(SocketData, undefined).
 
@@ -254,11 +254,11 @@ peername(#socket_state{sockmod = SockMod,
 get_conn_type(#socket_state{sockmod = SockMod, socket = Socket}) ->
     case SockMod of
         gen_tcp -> c2s;
-        tls -> c2s_tls;
+        p1_tls -> c2s_tls;
         ezlib ->
             case ezlib:get_sockmod(Socket) of
                 gen_tcp -> c2s_compressed;
-                tls -> c2s_compressed_tls
+                p1_tls -> c2s_compressed_tls
             end;
         ejabberd_http_poll -> http_poll;
         ejabberd_http_ws -> http_ws;

@@ -149,7 +149,7 @@ handle_call({starttls, TLSOpts, Data}, _From, State) ->
 				   TLSOpts, Data),
     Reply = ok,
     {reply, Reply,
-     State#socket_state{socket = TLSSocket, sockmod = tls},
+     State#socket_state{socket = TLSSocket, sockmod = p1_tls},
      ?HIBERNATE_TIMEOUT};
 handle_call({compress, Data}, _From, State) ->
     {ok, ZlibSocket} =
@@ -230,7 +230,7 @@ check_starttls(SockMod, Socket, Receiver, Opts) ->
     if TLSEnabled ->
 	   {ok, TLSSocket} = ejabberd_receiver:starttls(Receiver,
 							TLSOpts),
-	   {tls, TLSSocket};
+	   {p1_tls, TLSSocket};
        true -> {SockMod, Socket}
     end.
 
