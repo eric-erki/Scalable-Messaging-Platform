@@ -44,7 +44,7 @@
 
 -record(state,
 {
-    sockmod = gen_tcp          :: gen_tcp | tls,
+    sockmod = gen_tcp          :: gen_tcp | p1_tls,
     socket                     :: inet:socket() | p1_tls:tls_socket(),
     request_method             :: method(),
     request_version = {1, 1}   :: {non_neg_integer(), non_neg_integer()},

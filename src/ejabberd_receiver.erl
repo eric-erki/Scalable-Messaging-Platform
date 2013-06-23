@@ -45,7 +45,7 @@
 
 -record(state,
 	{socket :: inet:socket() | p1_tls:tls_socket() | ezlib:zlib_socket(),
-         sock_mod = gen_tcp :: gen_tcp | tls | ezlib,
+         sock_mod = gen_tcp :: gen_tcp | p1_tls | ezlib,
          shaper_state = none :: shaper:shaper(),
          c2s_pid :: pid(),
 	 max_stanza_size = infinity :: non_neg_integer() | infinity,
