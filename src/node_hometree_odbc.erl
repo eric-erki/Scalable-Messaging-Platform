@@ -1606,7 +1606,7 @@ update_subscription(NodeId, JID, Subscription) ->
     end.
 
 decode_jid(JID) ->
-    jlib:jid_tolower(jlib:string_to_jid(JID));
+    jlib:jid_tolower(jlib:string_to_jid(JID)).
 
 decode_affiliation(<<"o">>) -> owner;
 decode_affiliation(<<"p">>) -> publisher;
