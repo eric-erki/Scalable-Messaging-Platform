@@ -43,9 +43,22 @@
 % includes
 -include("ejabberd_http.hrl").
 
+-type ws_ref() :: {#ws{}, pid()}.
+-export_type([ws_ref/0]).
+
 % ============================ \/ API ======================================================================
+-spec raw(ws_ref()) -> #ws{}.
 
 raw({Ws, _SocketPid}) -> Ws.
+
+-spec get(ws_ref(), socket) -> inet:socket() | p1_tls:tls_socket();
+         (ws_ref(), socket_mode) -> gen_tcp | p1_tls;
+         (ws_ref(), ip) -> {inet:ip_address(), inet:port_number()};
+         (ws_ref(), vsn) -> vsn();
+         (ws_ref(), origin) -> binary();
+         (ws_ref(), host) -> binary();
+         (ws_ref(), path) -> [binary()];
+         (ws_ref(), headers) -> [{atom() | binary(), binary()}].
 
 get({Ws, _SocketPid}, socket) -> Ws#ws.socket;
 get({Ws, _SocketPid}, socket_mode) -> Ws#ws.sockmod;
@@ -55,6 +68,8 @@ get({Ws, _SocketPid}, origin) -> Ws#ws.origin;
 get({Ws, _SocketPid}, host) -> Ws#ws.host;
 get({Ws, _SocketPid}, path) -> Ws#ws.path;
 get({Ws, _SocketPid}, headers) -> Ws#ws.headers.
+
+-spec send(ws_ref(), any()) -> any().
 
 send({_Ws, SocketPid}, Data) -> SocketPid ! {send, Data}.
 
