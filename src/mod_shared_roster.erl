@@ -1500,10 +1500,7 @@ code_to_restuple({atomic, _}) ->
 code_to_restuple({_, Res}) when is_binary(Res) ->
     {false, binary_to_list(Res)};
 code_to_restuple({_, Res}) ->
-    {false, lists:flatten(io_lib:format("~p", [Res]))};
-code_to_restuple(_) ->
-    {false, ""}.
-
+    {false, lists:flatten(io_lib:format("~p", [Res]))}.
 
 command_group_create(Host, Id, Name, Description, DisplayedGroups) ->
     Opts = [{name, Name},
