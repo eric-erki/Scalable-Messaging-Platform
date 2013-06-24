@@ -28,55 +28,17 @@
                  rescode | restuple.
 
 -record(ejabberd_commands,
-	{name                    :: atom(),
+	{name                    :: atom() | '$1' | '_',
          tags = []               :: [atom()] | '_' | '$2',
          desc = ""               :: string() | '_' | '$3',
          longdesc = ""           :: string() | '_',
-	 module                  :: atom(),
-         function                :: atom(),
+	 module                  :: atom() | '_',
+         function                :: atom() | '_',
          args = []               :: [aterm()] | '_' | '$1' | '$2',
          result = {res, rescode} :: rterm() | '_' | '$2',
-         args_desc = none        :: none | [string()],
-         result_desc = none      :: none | string(),
-         args_example = none     :: [any()],
+         args_desc = none        :: none | [string()] | '_',
+         result_desc = none      :: none | string() | '_',
+         args_example = none     :: none | [any()] | '_',
          result_example = none   :: any()}).
 
--type ejabberd_commands() :: #ejabberd_commands{name :: atom(),
-                                                tags :: [atom()],
-                                                desc :: string(),
-                                                longdesc :: string(),
-                                                module :: atom(),
-                                                function :: atom(),
-                                                args :: [aterm()],
-                                                result :: rterm(),
-                                                args_desc :: none | [string()],
-                                                result_desc :: none | string(),
-                                                args_example :: [any()],
-                                                result_example :: any()}.
-
-%% @type ejabberd_commands() = #ejabberd_commands{
-%%    name = atom(),
-%%    tags = [atom()],
-%%    desc = string(),
-%%    longdesc = string(),
-%%    module = atom(),
-%%    function = atom(),
-%%    args = [aterm()],
-%%    result = rterm()
-%%    }.
-%% desc: Description of the command
-%% args: Describe the accepted arguments.
-%% This way the function that calls the command can format the
-%% arguments before calling.
-
-%% @type atype() = integer | string | {tuple, [aterm()]} | {list, aterm()}.
-%% Allowed types for arguments are integer, string, tuple and list.
-
-%% @type rtype() = integer | string | atom | {tuple, [rterm()]} | {list, rterm()} | rescode | restuple.
-%% A rtype is either an atom or a tuple with two elements.
-
-%% @type aterm() = {Name::atom(), Type::atype()}.
-%% An argument term is a tuple with the term name and the term type.
-
-%% @type rterm() = {Name::atom(), Type::rtype()}.
-%% A result term is a tuple with the term name and the term type.
+-type ejabberd_commands() :: #ejabberd_commands{}.

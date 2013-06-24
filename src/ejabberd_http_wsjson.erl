@@ -53,7 +53,7 @@
          input = []                   :: list(),
 	 waiting_input = false        :: false | pid(),
          last_receiver                :: pid(),
-         ws                           :: atom()}).
+         ws                           :: ejabberd_ws:ws_ref()}).
 
 %-define(DBGFSM, true).
 

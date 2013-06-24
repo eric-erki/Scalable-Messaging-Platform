@@ -35,8 +35,8 @@
 	 headers = []      :: [{atom() | binary(), binary()}]}).
 
 -record(ws,
-	{socket                  :: inet:socket() | tls:tls_socket(),
-	 sockmod = gen_tcp       :: gen_tcp | tls,
+	{socket                  :: inet:socket() | p1_tls:tls_socket(),
+	 sockmod = gen_tcp       :: gen_tcp | p1_tls,
 	 ws_autoexit = false     :: boolean(),
 	 ip                      :: {inet:ip_address(), inet:port_number()},
 	 vsn                     :: vsn(),

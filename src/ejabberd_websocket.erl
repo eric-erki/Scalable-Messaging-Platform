@@ -634,10 +634,10 @@ process_hybi_8(#hybi_8_state{unprocessed =
     process_hybi_8(State#hybi_8_state{unprocessed = <<>>},
 		   <<UnprocessedPre/binary, Data/binary>>).
 
-handle_data(tcp, Vsn, State, Data, Socket, WsHandleLoopPid, tls, WsAutoExit) ->
+handle_data(tcp, Vsn, State, Data, Socket, WsHandleLoopPid, p1_tls, WsAutoExit) ->
     case p1_tls:recv_data(Socket, Data) of
         {ok, NewData} ->
-            handle_data(Vsn, State, NewData, Socket, WsHandleLoopPid, tls, WsAutoExit);
+            handle_data(Vsn, State, NewData, Socket, WsHandleLoopPid, p1_tls, WsAutoExit);
         {error, Error} ->
             {error, Error}
     end;

@@ -1,7 +1,7 @@
 %%%----------------------------------------------------------------------
 %%% File    : mod_carboncopy.erl
 %%% Author  : Eric Cestari <ecestari@process-one.net>
-%%% Purpose : Download blacklists from ProcessOne
+%%% Purpose : Message Carbons XEP-0280 0.8
 %%% Created : 5 May 2008 by Mickael Remond <mremond@process-one.net>
 %%% Usage   : Add the following line in modules section of ejabberd.cfg:
 %%%              {mod_carboncopy, []}
@@ -55,7 +55,7 @@
 -type matchspec_atom() :: '_' | '$1' | '$2' | '$3'.
 -record(carboncopy,{us :: {binary(), binary()} | matchspec_atom(), 
 		    resource :: binary() | matchspec_atom(),
-		    version :: binary() }).
+		    version :: binary() | matchspec_atom()}).
 
 is_carbon_copy(Packet) ->
 	case xml:get_subtag(Packet, <<"sent">>) of
@@ -194,7 +194,7 @@ send_copies(JID, Packet, Direction)->
 build_forward_packet(JID, Packet, Sender, Dest, Direction, ?NS_CC_2) ->
     #xmlel{name = <<"message">>, 
 	   attrs = [{<<"xmlns">>, <<"jabber:client">>},
-		    {<<"type">>, <<"chart">>}, 
+		    {<<"type">>, <<"chat">>}, 
 		    {<<"from">>, jlib:jid_to_string(Sender)},
 		    {<<"to">>, jlib:jid_to_string(Dest)}],
 	   children = [	
@@ -210,7 +210,7 @@ build_forward_packet(JID, Packet, Sender, Dest, Direction, ?NS_CC_2) ->
 build_forward_packet(JID, Packet, Sender, Dest, Direction, ?NS_CC_1) ->
     #xmlel{name = <<"message">>, 
 	   attrs = [{<<"xmlns">>, <<"jabber:client">>},
-		    {<<"type">>, <<"chart">>}, 
+		    {<<"type">>, <<"chat">>}, 
 		    {<<"from">>, jlib:jid_to_string(Sender)},
 		    {<<"to">>, jlib:jid_to_string(Dest)}],
 	   children = [	

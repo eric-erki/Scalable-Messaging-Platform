@@ -234,10 +234,13 @@ init() ->
                            module = ejabberd_commands_doc, function = generate_output,
                            args = [{file, binary}, {regexp, binary}],
                            result = {res, rescode},
-                           args_desc = [<<"Path to file where generated documentation should be stored">>,
-                                        <<"Commands which name or module is matched by it will be included in output">>],
-                           result_desc = <<"0 if command failed, 1 when succedded">>,
-                           args_example = [<<"/home/me/docs/api.html">>, <<"mod_admin">>],
+                           args_desc = ["Path to file where generated "
+                                        "documentation should be stored",
+                                        "Commands which name or module "
+                                        "is matched by it will be included "
+                                        "in output"],
+                           result_desc = "0 if command failed, 1 when succedded",
+                           args_example = ["/home/me/docs/api.html", "mod_admin"],
                            result_example = ok}]).
 
 

@@ -25,7 +25,6 @@
 	 multi_resend_badge/1,
 	 offline_resend_badge/0,
          device_reset_badge/5,
-         apply_on_all_ios_for/3,
 	 remove_user/2,
          process_sm_iq/3]).
 
@@ -797,35 +796,3 @@ get_tokens_by_jid(#jid{luser = LUser, lserver = LServer}) ->
     LUS = {LUser, LServer},
     [erlang:integer_to_list(I, 16) || {applepush_cache,_,I,_} <- 
        mnesia:dirty_read(applepush_cache, LUS)].
-
-
-%% Apply OnlineFun([{DeviceID, Pid}]) on all online or standby, ios, sessions of the given jid
-%% and   OfflineFun([DeviceID]) on all offline sessions of the given jid
-apply_on_all_ios_for(JID, OnlineFun, OfflineFun) when is_binary(JID) ->
-    apply_on_all_ios_for(jlib:string_to_jid(JID), OnlineFun, OfflineFun);
-
-apply_on_all_ios_for(JID = #jid{luser = User, lserver = Server}, OnlineFun, OfflineFun) ->
-    case lookup_cache(JID) of
-	    false ->
-		    ok;
-	    Devices -> 
-		    %% as integer
-		    AlliOSDeviceIdsInt = [ ID || {ID, _AppID, _SendBody, _SendFrom} <- Devices],
-		    Pids = [ejabberd_sm:get_session_pid(User, Server, Resource) || 
-                		Resource <- ejabberd_sm:get_user_resources(User, Server)],
-		     %%catch because the c2s process may have been died
-
-		    %%In HEX format 
-		    OnlineiOSDeviceIDs = [  {D,P} ||  
-			    {D, P} <-  [ {catch ejabberd_c2s:get_ios_clientid(Pid), Pid}  || Pid <- Pids], is_list(D)],
-		    %%As integer
-		    OnlineiOSDevicesIDsInt = [{erlang:list_to_integer(D, 16), P} || {D, P} <- OnlineiOSDeviceIDs],
- 		    OfflineiOSDevicesInt = lists:filter(fun(ID) -> not lists:keymember(ID, 1, OnlineiOSDevicesIDsInt) end, 
-			    AlliOSDeviceIdsInt),
-		    OfflineiOSDevices = [erlang:integer_to_list(I, 16) || I <- OfflineiOSDevicesInt],
-		    OnlineFun(OnlineiOSDeviceIDs),
-		    OfflineFun(OfflineiOSDevices)
-    end.
-
-
-
