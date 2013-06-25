@@ -136,8 +136,9 @@
   options = []
 }).
 
-%% @type pubsubState() = {pubsub_state, StateId, Items, Affiliation, Subscriptions}
+%% @type pubsubState() = {pubsub_state, StateId, NodeIdx, Items, Affiliation, Subscriptions}
 %%    StateId       = {ljid(), nodeIdx()}
+%%    NodeIdx       = nodeIdx(),
 %%    Items         = [itemId()]
 %%    Affiliation   = affiliation()
 %%    Subscriptions = [{subscription(), subId()}].

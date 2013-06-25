@@ -213,6 +213,7 @@ process(LocalPath, Request) ->
     FileName = filename:join(filename:split(DocRoot) ++ LocalPath),
     {FileSize, Code, Headers, Contents} = case file:read_file_info(FileName) of
         {error, enoent}                    -> ?HTTP_ERR_FILE_NOT_FOUND;
+        {error, enotdir}                   -> ?HTTP_ERR_FILE_NOT_FOUND;
         {error, eacces}                    -> ?HTTP_ERR_FORBIDDEN;
         {ok, #file_info{type = directory}} -> serve_index(FileName,
                                                           DirectoryIndices,
