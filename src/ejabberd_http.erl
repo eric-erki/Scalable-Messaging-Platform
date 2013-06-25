@@ -361,8 +361,8 @@ extract_path_query(#state{request_method = Method,
     case catch url_decode_q_split(Path) of
       {'EXIT', _} -> false;
       {NPath, Query} ->
-	  LPath = [path_decode(NPE)
-		   || NPE <- str:tokens(NPath, <<"/">>)],
+	  LPath = normalize_path([NPE
+			  || NPE <- str:tokens(path_decode(NPath), <<"/">>)]),
 	  LQuery = case catch parse_urlencoded(Query) of
 		     {'EXIT', _Reason} -> [];
 		     LQ -> LQ
@@ -381,8 +381,8 @@ extract_path_query(#state{request_method = Method,
     case catch url_decode_q_split(Path) of
       {'EXIT', _} -> false;
       {NPath, _Query} ->
-	  LPath = [path_decode(NPE)
-		   || NPE <- str:tokens(NPath, <<"/">>)],
+	  LPath = normalize_path([NPE
+			  || NPE <- str:tokens(path_decode(NPath), <<"/">>)]),
 	  LQuery = case catch parse_urlencoded(Data) of
 		     {'EXIT', _Reason} -> [];
 		     LQ -> LQ
@@ -816,6 +816,17 @@ normalize_header_name(<<C:8, Rest/binary>>, Acc, true) ->
     normalize_header_name(Rest, [Acc, toupper(C)], false);
 normalize_header_name(<<C:8, Rest/binary>>, Acc, false) ->
     normalize_header_name(Rest, [Acc, tolower(C)], false).
+
+normalize_path(Path) ->
+    normalize_path(Path, []).
+
+normalize_path([], Norm) -> lists:reverse(Norm);
+normalize_path([".."|Path], Norm) ->
+    normalize_path(Path, Norm);
+normalize_path([_Parent, ".."|Path], Norm) ->
+    normalize_path(Path, Norm);
+normalize_path([Part | Path], Norm) ->
+    normalize_path(Path, [Part|Norm]).
 
 send_flash_policy(State) ->
     Listen = ejabberd_config:get_local_option(listen, fun(V) -> V end),

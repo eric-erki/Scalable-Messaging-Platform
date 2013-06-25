@@ -289,9 +289,9 @@ serve_index(FileName, [Index | T], CH,
 	    DefaultContentType, ContentTypes, Static) ->
     IndexFileName = filename:join([FileName] ++ [Index]),
     case file:read_file_info(IndexFileName) of
-      {error, _Error} ->
-	  serve_index(FileName, T, CH, DefaultContentType,
-		      ContentTypes, Static);
+      {error, enoent}                    -> ?HTTP_ERR_FILE_NOT_FOUND;
+      {error, enotdir}                   -> ?HTTP_ERR_FILE_NOT_FOUND;
+      {error, eacces}                    -> ?HTTP_ERR_FORBIDDEN;
       {ok, #file_info{type = directory}} ->
 	  serve_index(FileName, T, CH, DefaultContentType,
 		      ContentTypes, Static);
