@@ -1025,9 +1025,14 @@ process_groupchat_message(From,
 			      StateData#state.server_host,
 			      StateData#state.users,
 			      Packet),
-		       NewStateData2 = add_message_to_history(FromNick, From,
+		       NewStateData2 = case has_body_or_subject(Packet) of
+			   true ->
+				add_message_to_history(FromNick, From,
 							      Packet,
-							      NewStateData1),
+							      NewStateData1);
+			   false ->
+				NewStateData1
+			 end,
 		       {next_state, normal_state, NewStateData2};
 		   _ ->
 		       Err = case
@@ -4516,3 +4521,13 @@ route_stanza(From, To, El) ->
 send_multiple(From, Server, Users, Packet) ->
     JIDs = [ User#user.jid || {_, User} <- ?DICT:to_list(Users)],
     ejabberd_router_multicast:route_multicast(From, Server, JIDs, Packet).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Detect messange stanzas that don't have meaninful content
+
+has_body_or_subject(Packet) ->
+    [] /= lists:dropwhile(fun
+	(#xmlel{name = <<"body">>}) -> false;
+	(#xmlel{name = <<"subject">>}) -> false;
+	(_) -> true
+    end, Packet#xmlel.children).
