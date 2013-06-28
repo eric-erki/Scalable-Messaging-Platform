@@ -104,6 +104,7 @@
     just_created            = false :: boolean(),
     activity                = treap:empty() :: treap:treap(),
     room_shaper             = none :: shaper:shaper(),
+    shutdown_reason         :: atom(),
     room_queue              = queue:new() :: queue()
 }).
 

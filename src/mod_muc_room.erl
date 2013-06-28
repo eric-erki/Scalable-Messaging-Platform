@@ -723,7 +723,7 @@ handle_event({destroy, Reason}, _StateName,
     ?INFO_MSG("Destroyed MUC room ~s with reason: ~p",
 	      [jlib:jid_to_string(StateData#state.jid), Reason]),
     add_to_log(room_existence, destroyed, StateData),
-    {stop, shutdown, StateData};
+    {stop, normal, StateData#state{shutdown_reason = destroyed}};
 handle_event(destroy, StateName, StateData) ->
     ?INFO_MSG("Destroyed MUC room ~s",
 	      [jlib:jid_to_string(StateData#state.jid)]),
@@ -861,8 +861,8 @@ handle_info({migrate, Node}, StateName, StateData) ->
 	    {Node, ?MODULE, start, [StateName, StateData]}, 0};
        true -> {next_state, StateName, StateData}
     end;
-handle_info(shutdown, _StateName, StateData) ->
-    {stop, shutdown, StateData};
+handle_info(system_shutdown, _StateName, StateData) ->
+    {stop, normal, StateData#state{shutdown_reason = system_shutdown}};
 handle_info(_Info, StateName, StateData) ->
     {next_state, StateName, StateData}.
 
@@ -874,13 +874,16 @@ terminate({migrated, Clone}, _StateName, StateData) ->
 			   StateData#state.room, self(),
 			   StateData#state.server_host),
     ok;
-terminate(Reason, _StateName, StateData) ->
+terminate(_Reason, _StateName, StateData) ->
+    Reason = StateData#state.shutdown_reason,
     ?INFO_MSG("Stopping MUC room ~s@~s",
 	      [StateData#state.room, StateData#state.host]),
     ReasonT = case Reason of
-		shutdown ->
+		system_shutdown ->
 		    <<"You are being removed from the room "
 		      "because of a system shutdown">>;
+                destroyed ->
+                    <<"The room has been destroyed">>;
 		_ -> <<"Room terminates">>
 	      end,
     ItemAttrs = [{<<"affiliation">>, <<"none">>},
@@ -901,18 +904,17 @@ terminate(Reason, _StateName, StateData) ->
 					    children = []}]}]},
     (?DICT):fold(fun (LJID, Info, _) ->
 			 Nick = Info#user.nick,
-			 case Reason of
-			   shutdown ->
+			 if Reason == system_shutdown; Reason == destroyed ->
 			       route_stanza(jlib:jid_replace_resource(StateData#state.jid,
 								      Nick),
 					    Info#user.jid, Packet);
-			   _ -> ok
+			   true -> ok
 			 end,
 			 tab_remove_online_user(LJID, StateData)
 		 end,
 		 [], StateData#state.users),
     add_to_log(room_existence, stopped, StateData),
-    if Reason == shutdown -> persist_muc_history(StateData);
+    if Reason == system_shutdown -> persist_muc_history(StateData);
        true -> ok
     end,
     mod_muc:room_destroyed(StateData#state.host,

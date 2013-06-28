@@ -101,7 +101,7 @@ shutdown_rooms(Host) ->
 						   pid = '$2'},
 				  [{'==', {element, 2, '$1'}, MyHost}],
 				  ['$2']}]),
-    [Pid ! shutdown || Pid <- Rooms],
+    [Pid ! system_shutdown || Pid <- Rooms],
     Rooms.
 
 persist_recent_messages(Host) ->
