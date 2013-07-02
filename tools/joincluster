@@ -128,9 +128,16 @@ set_tables([Table | Tables]) ->
 
 start() ->
     io:format("~n",[]),
-    set_table_copy(schema, node(), disc_copies),
-    set_tables(rpc:call('$REMOTE', mnesia, system_info, [tables])),
-    halt(0).
+    R = case net_adm:ping('$REMOTE') of
+        pong ->
+            set_table_copy(schema, node(), disc_copies),
+            set_tables(rpc:call('$REMOTE', mnesia, system_info, [tables])),
+            0;
+        pang ->
+            io:format("node ~p is not reachable, please check epmd port, and FIREWALL_WINDOW ports~n", ['$REMOTE']),
+            1
+    end,
+    halt(R).
 EOF
 erlc -o $PA $CLUSTERSETUP_ERL
 erl $NAME $ERLANG_NODE -pa $PA $KERNEL_OPTS -mnesia extra_db_nodes "['$REMOTE']" dir "\"$EJABBERD_DB\"" -s mnesia -s $CLUSTERSETUP start
