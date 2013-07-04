@@ -178,8 +178,8 @@ db_tests() ->
        roster_remove_slave]}].
 
 %% db_tests() ->
-%%     [{single_user, [sequence],
-%%       [test_register, pubsub]}].
+%%     [{test_mam, [parallel],
+%%       [mam_master, mam_slave]}].
 
 ldap_tests() ->
     [{ldap_tests, [sequence],
@@ -898,6 +898,88 @@ offline_slave(Config) ->
          (#delay{}) -> ok
       end, SubEls),
     disconnect(Config).
+
+mam_master(Config) ->
+    true = is_feature_advertised(Config, ?NS_MAM),
+    ServerJID = server_jid(Config),
+    MyJID = my_jid(Config),
+    Peer = ?config(slave, Config),
+    send(Config, #presence{}),
+    #presence{} = recv(),
+    Body1 = #text{data = <<"1">>},
+    Body2 = #text{data = <<"2">>},
+    #message{from = MyJID,
+             body = [Body1],
+             sub_els = [#mam_archived{by = ServerJID}]} =
+        send_recv(Config, #message{to = MyJID, body = [Body1]}),
+    wait_for_slave(Config),
+    send(Config, #message{to = Peer, body = [Body2]}),
+    mam_query_all(Config),
+    mam_query_with(Config, Peer),
+    mam_query_with(Config, jlib:jid_remove_resource(Peer)),
+    disconnect(Config).
+
+mam_slave(Config) ->
+    Peer = ?config(master, Config),
+    ServerJID = server_jid(Config),
+    send(Config, #presence{}),
+    #presence{} = recv(),
+    wait_for_master(Config),
+    #message{from = Peer, body = [#text{data = <<"2">>}],
+             sub_els = [#mam_archived{by = ServerJID}]} = recv(),
+    disconnect(Config).
+
+mam_query_all(Config) ->
+    Body1 = #text{data = <<"1">>},
+    Body2 = #text{data = <<"2">>},
+    QID = randoms:get_string(),
+    MyJID = my_jid(Config),
+    Peer = ?config(slave, Config),
+    I = send(Config, #iq{type = get, sub_els = [#mam_query{id = QID}]}),
+    ?recv3(
+       #message{to = MyJID,
+                sub_els =
+                    [#mam_result{
+                        queryid = QID,
+                        sub_els = [#forwarded{
+                                      delay = #delay{},
+                                      sub_els = [#message{
+                                                    from = MyJID, to = MyJID,
+                                                    body = [Body1]}]}]}]},
+       #message{to = MyJID,
+                sub_els =
+                    [#mam_result{
+                        queryid = QID,
+                        sub_els = [#forwarded{
+                                      delay = #delay{},
+                                      sub_els = [#message{
+                                                    from = MyJID, to = MyJID,
+                                                    body = [Body1]}]}]}]},
+       #message{to = MyJID,
+                sub_els =
+                    [#mam_result{
+                        queryid = QID,
+                        sub_els = [#forwarded{
+                                      delay = #delay{},
+                                      sub_els = [#message{
+                                                    from = MyJID, to = Peer,
+                                                    body = [Body2]}]}]}]}),
+    #iq{type = result, id = I, sub_els = []} = recv().
+
+mam_query_with(Config, JID) ->
+    MyJID = my_jid(Config),
+    Peer = ?config(slave, Config),
+    Body2 = #text{data = <<"2">>},
+    I = send(Config, #iq{type = get, sub_els = [#mam_query{with = JID}]}),
+    #message{to = MyJID,
+             sub_els =
+                 [#mam_result{
+                     sub_els = [#forwarded{
+                                   delay = #delay{},
+                                   sub_els = [#message{
+                                                 from = MyJID, to = Peer,
+                                                 body = [Body2]}]}]}]} = recv(),
+    #iq{type = result, id = I, sub_els = []} = recv().
 
 %%%===================================================================
 %%% Aux functions

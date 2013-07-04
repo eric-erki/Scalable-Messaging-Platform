@@ -203,9 +203,16 @@ send(State, Pkt) ->
     ok = send_text(State, xml:element_to_binary(El)),
     NewID.
 
-send_recv(State, IQ) ->
-    ID = send(State, IQ),
-    #iq{id = ID} = recv().
+send_recv(State, El) ->
+    ID = send(State, El),
+    case El of
+        #message{} ->
+            #message{id = ID} = recv();
+        #presence{} ->
+            #presence{id = ID} = recv();
+        #iq{} ->
+            #iq{id = ID} = recv()
+    end.
 
 sasl_new(<<"PLAIN">>, User, Server, Password) ->
     {<<User/binary, $@, Server/binary, 0, User/binary, 0, Password/binary>>,

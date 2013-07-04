@@ -5,6 +5,13 @@
 
 -record(sasl_success, {text :: any()}).
 
+-record(mam_result, {queryid :: binary(),
+                     id :: binary(),
+                     sub_els = [] :: [any()]}).
+
+-record(rsm_first, {index :: non_neg_integer(),
+                    data :: binary()}).
+
 -record(streamhost, {jid :: any(),
                      host :: binary(),
                      port = 1080 :: non_neg_integer()}).
@@ -31,6 +38,9 @@
                       to :: any()}).
 
 -record(starttls_proceed, {}).
+
+-record(forwarded, {delay :: #delay{},
+                    sub_els = [] :: [any()]}).
 
 -record(starttls_failure, {}).
 
@@ -128,6 +138,10 @@
 
 -record(shim, {headers = [] :: [{binary(),'undefined' | binary()}]}).
 
+-record(mam_prefs, {default :: 'always' | 'never' | 'roster',
+                    always = [] :: [[any(),...]],
+                    never = [] :: [[any(),...]]}).
+
 -record(caps, {hash :: binary(),
                node :: binary(),
                ver :: any()}).
@@ -143,6 +157,9 @@
                        max_items :: non_neg_integer(),
                        subid :: binary(),
                        items = [] :: [#pubsub_item{}]}).
+
+-record(mam_archived, {by :: any(),
+                       id :: binary()}).
 
 -record(p1_rebind, {}).
 
@@ -217,6 +234,20 @@
 
 -record(vcard_org, {name :: binary(),
                     units = [] :: [binary()]}).
+
+-record(rsm_set, {'after' :: binary(),
+                  before :: binary(),
+                  count :: non_neg_integer(),
+                  first :: #rsm_first{},
+                  index :: non_neg_integer(),
+                  last :: binary(),
+                  max :: non_neg_integer()}).
+
+-record(mam_query, {id :: binary(),
+                    start :: any(),
+                    'end' :: any(),
+                    with :: any(),
+                    rsm :: #rsm_set{}}).
 
 -record(vcard_tel, {home = false :: boolean(),
                     work = false :: boolean(),

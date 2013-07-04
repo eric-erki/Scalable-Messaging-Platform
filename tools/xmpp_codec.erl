@@ -12,6 +12,44 @@
 
 decode({xmlel, _name, _attrs, _} = _el) ->
     case {_name, get_attr(<<"xmlns">>, _attrs)} of
+      {<<"forwarded">>, <<"urn:xmpp:forward:0">>} ->
+	  decode_forwarded(_el);
+      {<<"prefs">>, <<"urn:xmpp:mam:tmp">>} ->
+	  decode_mam_prefs(_el);
+      {<<"always">>, <<"urn:xmpp:mam:tmp">>} ->
+	  decode_mam_always(_el);
+      {<<"never">>, <<"urn:xmpp:mam:tmp">>} ->
+	  decode_mam_never(_el);
+      {<<"jid">>, <<"urn:xmpp:mam:tmp">>} ->
+	  decode_mam_jid(_el);
+      {<<"result">>, <<"urn:xmpp:mam:tmp">>} ->
+	  decode_mam_result(_el);
+      {<<"archived">>, <<"urn:xmpp:mam:tmp">>} ->
+	  decode_mam_archived(_el);
+      {<<"query">>, <<"urn:xmpp:mam:tmp">>} ->
+	  decode_mam_query(_el);
+      {<<"with">>, <<"urn:xmpp:mam:tmp">>} ->
+	  decode_mam_with(_el);
+      {<<"end">>, <<"urn:xmpp:mam:tmp">>} ->
+	  decode_mam_end(_el);
+      {<<"start">>, <<"urn:xmpp:mam:tmp">>} ->
+	  decode_mam_start(_el);
+      {<<"rsm">>, <<"http://jabber.org/protocol/rsm">>} ->
+	  decode_rsm_set(_el);
+      {<<"first">>, <<"http://jabber.org/protocol/rsm">>} ->
+	  decode_rsm_first(_el);
+      {<<"max">>, <<"http://jabber.org/protocol/rsm">>} ->
+	  decode_rsm_max(_el);
+      {<<"index">>, <<"http://jabber.org/protocol/rsm">>} ->
+	  decode_rsm_index(_el);
+      {<<"count">>, <<"http://jabber.org/protocol/rsm">>} ->
+	  decode_rsm_count(_el);
+      {<<"last">>, <<"http://jabber.org/protocol/rsm">>} ->
+	  decode_rsm_last(_el);
+      {<<"before">>, <<"http://jabber.org/protocol/rsm">>} ->
+	  decode_rsm_before(_el);
+      {<<"after">>, <<"http://jabber.org/protocol/rsm">>} ->
+	  decode_rsm_after(_el);
       {<<"x">>, <<"http://jabber.org/protocol/muc">>} ->
 	  decode_muc(_el);
       {<<"query">>,
@@ -690,6 +728,33 @@ decode({xmlel, _name, _attrs, _} = _el) ->
 
 is_known_tag({xmlel, _name, _attrs, _} = _el) ->
     case {_name, get_attr(<<"xmlns">>, _attrs)} of
+      {<<"forwarded">>, <<"urn:xmpp:forward:0">>} -> true;
+      {<<"prefs">>, <<"urn:xmpp:mam:tmp">>} -> true;
+      {<<"always">>, <<"urn:xmpp:mam:tmp">>} -> true;
+      {<<"never">>, <<"urn:xmpp:mam:tmp">>} -> true;
+      {<<"jid">>, <<"urn:xmpp:mam:tmp">>} -> true;
+      {<<"result">>, <<"urn:xmpp:mam:tmp">>} -> true;
+      {<<"archived">>, <<"urn:xmpp:mam:tmp">>} -> true;
+      {<<"query">>, <<"urn:xmpp:mam:tmp">>} -> true;
+      {<<"with">>, <<"urn:xmpp:mam:tmp">>} -> true;
+      {<<"end">>, <<"urn:xmpp:mam:tmp">>} -> true;
+      {<<"start">>, <<"urn:xmpp:mam:tmp">>} -> true;
+      {<<"rsm">>, <<"http://jabber.org/protocol/rsm">>} ->
+	  true;
+      {<<"first">>, <<"http://jabber.org/protocol/rsm">>} ->
+	  true;
+      {<<"max">>, <<"http://jabber.org/protocol/rsm">>} ->
+	  true;
+      {<<"index">>, <<"http://jabber.org/protocol/rsm">>} ->
+	  true;
+      {<<"count">>, <<"http://jabber.org/protocol/rsm">>} ->
+	  true;
+      {<<"last">>, <<"http://jabber.org/protocol/rsm">>} ->
+	  true;
+      {<<"before">>, <<"http://jabber.org/protocol/rsm">>} ->
+	  true;
+      {<<"after">>, <<"http://jabber.org/protocol/rsm">>} ->
+	  true;
       {<<"x">>, <<"http://jabber.org/protocol/muc">>} -> true;
       {<<"query">>,
        <<"http://jabber.org/protocol/muc#owner">>} ->
@@ -1237,6 +1302,27 @@ is_known_tag({xmlel, _name, _attrs, _} = _el) ->
       _ -> false
     end.
 
+encode({forwarded, _, _} = Forwarded) ->
+    encode_forwarded(Forwarded,
+		     [{<<"xmlns">>, <<"urn:xmpp:forward:0">>}]);
+encode({mam_prefs, _, _, _} = Prefs) ->
+    encode_mam_prefs(Prefs,
+		     [{<<"xmlns">>, <<"urn:xmpp:mam:tmp">>}]);
+encode({mam_result, _, _, _} = Result) ->
+    encode_mam_result(Result,
+		      [{<<"xmlns">>, <<"urn:xmpp:mam:tmp">>}]);
+encode({mam_archived, _, _} = Archived) ->
+    encode_mam_archived(Archived,
+			[{<<"xmlns">>, <<"urn:xmpp:mam:tmp">>}]);
+encode({mam_query, _, _, _, _, _} = Query) ->
+    encode_mam_query(Query,
+		     [{<<"xmlns">>, <<"urn:xmpp:mam:tmp">>}]);
+encode({rsm_set, _, _, _, _, _, _, _} = Rsm) ->
+    encode_rsm_set(Rsm,
+		   [{<<"xmlns">>, <<"http://jabber.org/protocol/rsm">>}]);
+encode({rsm_first, _, _} = First) ->
+    encode_rsm_first(First,
+		     [{<<"xmlns">>, <<"http://jabber.org/protocol/rsm">>}]);
 encode({muc, _, _} = X) ->
     encode_muc(X,
 	       [{<<"xmlns">>, <<"http://jabber.org/protocol/muc">>}]);
@@ -1751,6 +1837,14 @@ pp(muc_user, 6) ->
 pp(muc_owner_destroy, 3) -> [jid, reason, password];
 pp(muc_owner, 2) -> [destroy, config];
 pp(muc, 2) -> [history, password];
+pp(rsm_first, 2) -> [index, data];
+pp(rsm_set, 7) ->
+    ['after', before, count, first, index, last, max];
+pp(mam_query, 5) -> [id, start, 'end', with, rsm];
+pp(mam_archived, 2) -> [by, id];
+pp(mam_result, 3) -> [queryid, id, sub_els];
+pp(mam_prefs, 3) -> [default, always, never];
+pp(forwarded, 2) -> [delay, sub_els];
 pp(_, _) -> no.
 
 enc_bool(false) -> <<"false">>;
@@ -1790,6 +1884,881 @@ dec_tzo(Val) ->
     H = erlang:binary_to_integer(H1),
     M = erlang:binary_to_integer(M1),
     if H >= -12, H =< 12, M >= 0, M < 60 -> {H, M} end.
+
+decode_forwarded({xmlel, <<"forwarded">>, _attrs,
+		  _els}) ->
+    {Delay, __Els} = decode_forwarded_els(_els, undefined,
+					  []),
+    {forwarded, Delay, __Els}.
+
+decode_forwarded_els([], Delay, __Els) ->
+    {Delay, lists:reverse(__Els)};
+decode_forwarded_els([{xmlel, <<"delay">>, _attrs, _} =
+			  _el
+		      | _els],
+		     Delay, __Els) ->
+    _xmlns = get_attr(<<"xmlns">>, _attrs),
+    if _xmlns == <<"urn:xmpp:delay">> ->
+	   decode_forwarded_els(_els, decode_delay(_el), __Els);
+       true -> decode_forwarded_els(_els, Delay, __Els)
+    end;
+decode_forwarded_els([{xmlel, _, _, _} = _el | _els],
+		     Delay, __Els) ->
+    case is_known_tag(_el) of
+      true ->
+	  decode_forwarded_els(_els, Delay,
+			       [decode(_el) | __Els]);
+      false -> decode_forwarded_els(_els, Delay, __Els)
+    end;
+decode_forwarded_els([_ | _els], Delay, __Els) ->
+    decode_forwarded_els(_els, Delay, __Els).
+
+encode_forwarded({forwarded, Delay, __Els},
+		 _xmlns_attrs) ->
+    _els = 'encode_forwarded_$delay'(Delay,
+				     [encode(_el) || _el <- __Els]),
+    _attrs = _xmlns_attrs,
+    {xmlel, <<"forwarded">>, _attrs, _els}.
+
+'encode_forwarded_$delay'(undefined, _acc) -> _acc;
+'encode_forwarded_$delay'(Delay, _acc) ->
+    [encode_delay(Delay,
+		  [{<<"xmlns">>, <<"urn:xmpp:delay">>}])
+     | _acc].
+
+decode_mam_prefs({xmlel, <<"prefs">>, _attrs, _els}) ->
+    {Never, Always} = decode_mam_prefs_els(_els, [], []),
+    Default = decode_mam_prefs_attrs(_attrs, undefined),
+    {mam_prefs, Default, Always, Never}.
+
+decode_mam_prefs_els([], Never, Always) ->
+    {lists:reverse(Never), lists:reverse(Always)};
+decode_mam_prefs_els([{xmlel, <<"always">>, _attrs, _} =
+			  _el
+		      | _els],
+		     Never, Always) ->
+    _xmlns = get_attr(<<"xmlns">>, _attrs),
+    if _xmlns == <<>>; _xmlns == <<"urn:xmpp:mam:tmp">> ->
+	   decode_mam_prefs_els(_els, Never,
+				case decode_mam_always(_el) of
+				  [] -> Always;
+				  _new_el -> [_new_el | Always]
+				end);
+       true -> decode_mam_prefs_els(_els, Never, Always)
+    end;
+decode_mam_prefs_els([{xmlel, <<"never">>, _attrs, _} =
+			  _el
+		      | _els],
+		     Never, Always) ->
+    _xmlns = get_attr(<<"xmlns">>, _attrs),
+    if _xmlns == <<>>; _xmlns == <<"urn:xmpp:mam:tmp">> ->
+	   decode_mam_prefs_els(_els,
+				case decode_mam_never(_el) of
+				  [] -> Never;
+				  _new_el -> [_new_el | Never]
+				end,
+				Always);
+       true -> decode_mam_prefs_els(_els, Never, Always)
+    end;
+decode_mam_prefs_els([_ | _els], Never, Always) ->
+    decode_mam_prefs_els(_els, Never, Always).
+
+decode_mam_prefs_attrs([{<<"default">>, _val} | _attrs],
+		       _Default) ->
+    decode_mam_prefs_attrs(_attrs, _val);
+decode_mam_prefs_attrs([_ | _attrs], Default) ->
+    decode_mam_prefs_attrs(_attrs, Default);
+decode_mam_prefs_attrs([], Default) ->
+    decode_mam_prefs_attr_default(Default).
+
+encode_mam_prefs({mam_prefs, Default, Always, Never},
+		 _xmlns_attrs) ->
+    _els = 'encode_mam_prefs_$always'(Always,
+				      'encode_mam_prefs_$never'(Never, [])),
+    _attrs = encode_mam_prefs_attr_default(Default,
+					   _xmlns_attrs),
+    {xmlel, <<"prefs">>, _attrs, _els}.
+
+'encode_mam_prefs_$never'([], _acc) -> _acc;
+'encode_mam_prefs_$never'([Never | _els], _acc) ->
+    'encode_mam_prefs_$never'(_els,
+			      [encode_mam_never(Never, []) | _acc]).
+
+'encode_mam_prefs_$always'([], _acc) -> _acc;
+'encode_mam_prefs_$always'([Always | _els], _acc) ->
+    'encode_mam_prefs_$always'(_els,
+			       [encode_mam_always(Always, []) | _acc]).
+
+decode_mam_prefs_attr_default(undefined) -> undefined;
+decode_mam_prefs_attr_default(_val) ->
+    case catch dec_enum(_val, [always, never, roster]) of
+      {'EXIT', _} ->
+	  erlang:error({xmpp_codec,
+			{bad_attr_value, <<"default">>, <<"prefs">>,
+			 <<"urn:xmpp:mam:tmp">>}});
+      _res -> _res
+    end.
+
+encode_mam_prefs_attr_default(undefined, _acc) -> _acc;
+encode_mam_prefs_attr_default(_val, _acc) ->
+    [{<<"default">>, enc_enum(_val)} | _acc].
+
+decode_mam_always({xmlel, <<"always">>, _attrs,
+		   _els}) ->
+    Jids = decode_mam_always_els(_els, []), Jids.
+
+decode_mam_always_els([], Jids) -> lists:reverse(Jids);
+decode_mam_always_els([{xmlel, <<"jid">>, _attrs, _} =
+			   _el
+		       | _els],
+		      Jids) ->
+    _xmlns = get_attr(<<"xmlns">>, _attrs),
+    if _xmlns == <<>>; _xmlns == <<"urn:xmpp:mam:tmp">> ->
+	   decode_mam_always_els(_els,
+				 case decode_mam_jid(_el) of
+				   [] -> Jids;
+				   _new_el -> [_new_el | Jids]
+				 end);
+       true -> decode_mam_always_els(_els, Jids)
+    end;
+decode_mam_always_els([_ | _els], Jids) ->
+    decode_mam_always_els(_els, Jids).
+
+encode_mam_always(Jids, _xmlns_attrs) ->
+    _els = 'encode_mam_always_$jids'(Jids, []),
+    _attrs = _xmlns_attrs,
+    {xmlel, <<"always">>, _attrs, _els}.
+
+'encode_mam_always_$jids'([], _acc) -> _acc;
+'encode_mam_always_$jids'([Jids | _els], _acc) ->
+    'encode_mam_always_$jids'(_els,
+			      [encode_mam_jid(Jids, []) | _acc]).
+
+decode_mam_never({xmlel, <<"never">>, _attrs, _els}) ->
+    Jids = decode_mam_never_els(_els, []), Jids.
+
+decode_mam_never_els([], Jids) -> lists:reverse(Jids);
+decode_mam_never_els([{xmlel, <<"jid">>, _attrs, _} =
+			  _el
+		      | _els],
+		     Jids) ->
+    _xmlns = get_attr(<<"xmlns">>, _attrs),
+    if _xmlns == <<>>; _xmlns == <<"urn:xmpp:mam:tmp">> ->
+	   decode_mam_never_els(_els,
+				case decode_mam_jid(_el) of
+				  [] -> Jids;
+				  _new_el -> [_new_el | Jids]
+				end);
+       true -> decode_mam_never_els(_els, Jids)
+    end;
+decode_mam_never_els([_ | _els], Jids) ->
+    decode_mam_never_els(_els, Jids).
+
+encode_mam_never(Jids, _xmlns_attrs) ->
+    _els = 'encode_mam_never_$jids'(Jids, []),
+    _attrs = _xmlns_attrs,
+    {xmlel, <<"never">>, _attrs, _els}.
+
+'encode_mam_never_$jids'([], _acc) -> _acc;
+'encode_mam_never_$jids'([Jids | _els], _acc) ->
+    'encode_mam_never_$jids'(_els,
+			     [encode_mam_jid(Jids, []) | _acc]).
+
+decode_mam_jid({xmlel, <<"jid">>, _attrs, _els}) ->
+    Cdata = decode_mam_jid_els(_els, <<>>), Cdata.
+
+decode_mam_jid_els([], Cdata) ->
+    decode_mam_jid_cdata(Cdata);
+decode_mam_jid_els([{xmlcdata, _data} | _els], Cdata) ->
+    decode_mam_jid_els(_els,
+		       <<Cdata/binary, _data/binary>>);
+decode_mam_jid_els([_ | _els], Cdata) ->
+    decode_mam_jid_els(_els, Cdata).
+
+encode_mam_jid(Cdata, _xmlns_attrs) ->
+    _els = encode_mam_jid_cdata(Cdata, []),
+    _attrs = _xmlns_attrs,
+    {xmlel, <<"jid">>, _attrs, _els}.
+
+decode_mam_jid_cdata(<<>>) ->
+    erlang:error({xmpp_codec,
+		  {missing_cdata, <<>>, <<"jid">>,
+		   <<"urn:xmpp:mam:tmp">>}});
+decode_mam_jid_cdata(_val) ->
+    case catch dec_jid(_val) of
+      {'EXIT', _} ->
+	  erlang:error({xmpp_codec,
+			{bad_cdata_value, <<>>, <<"jid">>,
+			 <<"urn:xmpp:mam:tmp">>}});
+      _res -> _res
+    end.
+
+encode_mam_jid_cdata(_val, _acc) ->
+    [{xmlcdata, enc_jid(_val)} | _acc].
+
+decode_mam_result({xmlel, <<"result">>, _attrs,
+		   _els}) ->
+    __Els = decode_mam_result_els(_els, []),
+    {Queryid, Id} = decode_mam_result_attrs(_attrs,
+					    undefined, undefined),
+    {mam_result, Queryid, Id, __Els}.
+
+decode_mam_result_els([], __Els) ->
+    lists:reverse(__Els);
+decode_mam_result_els([{xmlel, _, _, _} = _el | _els],
+		      __Els) ->
+    case is_known_tag(_el) of
+      true ->
+	  decode_mam_result_els(_els, [decode(_el) | __Els]);
+      false -> decode_mam_result_els(_els, __Els)
+    end;
+decode_mam_result_els([_ | _els], __Els) ->
+    decode_mam_result_els(_els, __Els).
+
+decode_mam_result_attrs([{<<"queryid">>, _val}
+			 | _attrs],
+			_Queryid, Id) ->
+    decode_mam_result_attrs(_attrs, _val, Id);
+decode_mam_result_attrs([{<<"id">>, _val} | _attrs],
+			Queryid, _Id) ->
+    decode_mam_result_attrs(_attrs, Queryid, _val);
+decode_mam_result_attrs([_ | _attrs], Queryid, Id) ->
+    decode_mam_result_attrs(_attrs, Queryid, Id);
+decode_mam_result_attrs([], Queryid, Id) ->
+    {decode_mam_result_attr_queryid(Queryid),
+     decode_mam_result_attr_id(Id)}.
+
+encode_mam_result({mam_result, Queryid, Id, __Els},
+		  _xmlns_attrs) ->
+    _els = [encode(_el) || _el <- __Els],
+    _attrs = encode_mam_result_attr_id(Id,
+				       encode_mam_result_attr_queryid(Queryid,
+								      _xmlns_attrs)),
+    {xmlel, <<"result">>, _attrs, _els}.
+
+decode_mam_result_attr_queryid(undefined) -> undefined;
+decode_mam_result_attr_queryid(_val) -> _val.
+
+encode_mam_result_attr_queryid(undefined, _acc) -> _acc;
+encode_mam_result_attr_queryid(_val, _acc) ->
+    [{<<"queryid">>, _val} | _acc].
+
+decode_mam_result_attr_id(undefined) -> undefined;
+decode_mam_result_attr_id(_val) -> _val.
+
+encode_mam_result_attr_id(undefined, _acc) -> _acc;
+encode_mam_result_attr_id(_val, _acc) ->
+    [{<<"id">>, _val} | _acc].
+
+decode_mam_archived({xmlel, <<"archived">>, _attrs,
+		     _els}) ->
+    {Id, By} = decode_mam_archived_attrs(_attrs, undefined,
+					 undefined),
+    {mam_archived, By, Id}.
+
+decode_mam_archived_attrs([{<<"id">>, _val} | _attrs],
+			  _Id, By) ->
+    decode_mam_archived_attrs(_attrs, _val, By);
+decode_mam_archived_attrs([{<<"by">>, _val} | _attrs],
+			  Id, _By) ->
+    decode_mam_archived_attrs(_attrs, Id, _val);
+decode_mam_archived_attrs([_ | _attrs], Id, By) ->
+    decode_mam_archived_attrs(_attrs, Id, By);
+decode_mam_archived_attrs([], Id, By) ->
+    {decode_mam_archived_attr_id(Id),
+     decode_mam_archived_attr_by(By)}.
+
+encode_mam_archived({mam_archived, By, Id},
+		    _xmlns_attrs) ->
+    _els = [],
+    _attrs = encode_mam_archived_attr_by(By,
+					 encode_mam_archived_attr_id(Id,
+								     _xmlns_attrs)),
+    {xmlel, <<"archived">>, _attrs, _els}.
+
+decode_mam_archived_attr_id(undefined) -> undefined;
+decode_mam_archived_attr_id(_val) -> _val.
+
+encode_mam_archived_attr_id(undefined, _acc) -> _acc;
+encode_mam_archived_attr_id(_val, _acc) ->
+    [{<<"id">>, _val} | _acc].
+
+decode_mam_archived_attr_by(undefined) ->
+    erlang:error({xmpp_codec,
+		  {missing_attr, <<"by">>, <<"archived">>,
+		   <<"urn:xmpp:mam:tmp">>}});
+decode_mam_archived_attr_by(_val) ->
+    case catch dec_jid(_val) of
+      {'EXIT', _} ->
+	  erlang:error({xmpp_codec,
+			{bad_attr_value, <<"by">>, <<"archived">>,
+			 <<"urn:xmpp:mam:tmp">>}});
+      _res -> _res
+    end.
+
+encode_mam_archived_attr_by(_val, _acc) ->
+    [{<<"by">>, enc_jid(_val)} | _acc].
+
+decode_mam_query({xmlel, <<"query">>, _attrs, _els}) ->
+    {End, Start, With, Rsm} = decode_mam_query_els(_els,
+						   undefined, undefined,
+						   undefined, undefined),
+    Id = decode_mam_query_attrs(_attrs, undefined),
+    {mam_query, Id, Start, End, With, Rsm}.
+
+decode_mam_query_els([], End, Start, With, Rsm) ->
+    {End, Start, With, Rsm};
+decode_mam_query_els([{xmlel, <<"start">>, _attrs, _} =
+			  _el
+		      | _els],
+		     End, Start, With, Rsm) ->
+    _xmlns = get_attr(<<"xmlns">>, _attrs),
+    if _xmlns == <<>>; _xmlns == <<"urn:xmpp:mam:tmp">> ->
+	   decode_mam_query_els(_els, End, decode_mam_start(_el),
+				With, Rsm);
+       true ->
+	   decode_mam_query_els(_els, End, Start, With, Rsm)
+    end;
+decode_mam_query_els([{xmlel, <<"end">>, _attrs, _} =
+			  _el
+		      | _els],
+		     End, Start, With, Rsm) ->
+    _xmlns = get_attr(<<"xmlns">>, _attrs),
+    if _xmlns == <<>>; _xmlns == <<"urn:xmpp:mam:tmp">> ->
+	   decode_mam_query_els(_els, decode_mam_end(_el), Start,
+				With, Rsm);
+       true ->
+	   decode_mam_query_els(_els, End, Start, With, Rsm)
+    end;
+decode_mam_query_els([{xmlel, <<"with">>, _attrs, _} =
+			  _el
+		      | _els],
+		     End, Start, With, Rsm) ->
+    _xmlns = get_attr(<<"xmlns">>, _attrs),
+    if _xmlns == <<>>; _xmlns == <<"urn:xmpp:mam:tmp">> ->
+	   decode_mam_query_els(_els, End, Start,
+				decode_mam_with(_el), Rsm);
+       true ->
+	   decode_mam_query_els(_els, End, Start, With, Rsm)
+    end;
+decode_mam_query_els([{xmlel, <<"rsm">>, _attrs, _} =
+			  _el
+		      | _els],
+		     End, Start, With, Rsm) ->
+    _xmlns = get_attr(<<"xmlns">>, _attrs),
+    if _xmlns == <<"http://jabber.org/protocol/rsm">> ->
+	   decode_mam_query_els(_els, End, Start, With,
+				decode_rsm_set(_el));
+       true ->
+	   decode_mam_query_els(_els, End, Start, With, Rsm)
+    end;
+decode_mam_query_els([_ | _els], End, Start, With,
+		     Rsm) ->
+    decode_mam_query_els(_els, End, Start, With, Rsm).
+
+decode_mam_query_attrs([{<<"queryid">>, _val} | _attrs],
+		       _Id) ->
+    decode_mam_query_attrs(_attrs, _val);
+decode_mam_query_attrs([_ | _attrs], Id) ->
+    decode_mam_query_attrs(_attrs, Id);
+decode_mam_query_attrs([], Id) ->
+    decode_mam_query_attr_queryid(Id).
+
+encode_mam_query({mam_query, Id, Start, End, With, Rsm},
+		 _xmlns_attrs) ->
+    _els = 'encode_mam_query_$rsm'(Rsm,
+				   'encode_mam_query_$with'(With,
+							    'encode_mam_query_$start'(Start,
+										      'encode_mam_query_$end'(End,
+													      [])))),
+    _attrs = encode_mam_query_attr_queryid(Id,
+					   _xmlns_attrs),
+    {xmlel, <<"query">>, _attrs, _els}.
+
+'encode_mam_query_$end'(undefined, _acc) -> _acc;
+'encode_mam_query_$end'(End, _acc) ->
+    [encode_mam_end(End, []) | _acc].
+
+'encode_mam_query_$start'(undefined, _acc) -> _acc;
+'encode_mam_query_$start'(Start, _acc) ->
+    [encode_mam_start(Start, []) | _acc].
+
+'encode_mam_query_$with'(undefined, _acc) -> _acc;
+'encode_mam_query_$with'(With, _acc) ->
+    [encode_mam_with(With, []) | _acc].
+
+'encode_mam_query_$rsm'(undefined, _acc) -> _acc;
+'encode_mam_query_$rsm'(Rsm, _acc) ->
+    [encode_rsm_set(Rsm,
+		    [{<<"xmlns">>, <<"http://jabber.org/protocol/rsm">>}])
+     | _acc].
+
+decode_mam_query_attr_queryid(undefined) -> undefined;
+decode_mam_query_attr_queryid(_val) -> _val.
+
+encode_mam_query_attr_queryid(undefined, _acc) -> _acc;
+encode_mam_query_attr_queryid(_val, _acc) ->
+    [{<<"queryid">>, _val} | _acc].
+
+decode_mam_with({xmlel, <<"with">>, _attrs, _els}) ->
+    Cdata = decode_mam_with_els(_els, <<>>), Cdata.
+
+decode_mam_with_els([], Cdata) ->
+    decode_mam_with_cdata(Cdata);
+decode_mam_with_els([{xmlcdata, _data} | _els],
+		    Cdata) ->
+    decode_mam_with_els(_els,
+			<<Cdata/binary, _data/binary>>);
+decode_mam_with_els([_ | _els], Cdata) ->
+    decode_mam_with_els(_els, Cdata).
+
+encode_mam_with(Cdata, _xmlns_attrs) ->
+    _els = encode_mam_with_cdata(Cdata, []),
+    _attrs = _xmlns_attrs,
+    {xmlel, <<"with">>, _attrs, _els}.
+
+decode_mam_with_cdata(<<>>) ->
+    erlang:error({xmpp_codec,
+		  {missing_cdata, <<>>, <<"with">>,
+		   <<"urn:xmpp:mam:tmp">>}});
+decode_mam_with_cdata(_val) ->
+    case catch dec_jid(_val) of
+      {'EXIT', _} ->
+	  erlang:error({xmpp_codec,
+			{bad_cdata_value, <<>>, <<"with">>,
+			 <<"urn:xmpp:mam:tmp">>}});
+      _res -> _res
+    end.
+
+encode_mam_with_cdata(_val, _acc) ->
+    [{xmlcdata, enc_jid(_val)} | _acc].
+
+decode_mam_end({xmlel, <<"end">>, _attrs, _els}) ->
+    Cdata = decode_mam_end_els(_els, <<>>), Cdata.
+
+decode_mam_end_els([], Cdata) ->
+    decode_mam_end_cdata(Cdata);
+decode_mam_end_els([{xmlcdata, _data} | _els], Cdata) ->
+    decode_mam_end_els(_els,
+		       <<Cdata/binary, _data/binary>>);
+decode_mam_end_els([_ | _els], Cdata) ->
+    decode_mam_end_els(_els, Cdata).
+
+encode_mam_end(Cdata, _xmlns_attrs) ->
+    _els = encode_mam_end_cdata(Cdata, []),
+    _attrs = _xmlns_attrs,
+    {xmlel, <<"end">>, _attrs, _els}.
+
+decode_mam_end_cdata(<<>>) ->
+    erlang:error({xmpp_codec,
+		  {missing_cdata, <<>>, <<"end">>,
+		   <<"urn:xmpp:mam:tmp">>}});
+decode_mam_end_cdata(_val) ->
+    case catch dec_utc(_val) of
+      {'EXIT', _} ->
+	  erlang:error({xmpp_codec,
+			{bad_cdata_value, <<>>, <<"end">>,
+			 <<"urn:xmpp:mam:tmp">>}});
+      _res -> _res
+    end.
+
+encode_mam_end_cdata(_val, _acc) ->
+    [{xmlcdata, enc_utc(_val)} | _acc].
+
+decode_mam_start({xmlel, <<"start">>, _attrs, _els}) ->
+    Cdata = decode_mam_start_els(_els, <<>>), Cdata.
+
+decode_mam_start_els([], Cdata) ->
+    decode_mam_start_cdata(Cdata);
+decode_mam_start_els([{xmlcdata, _data} | _els],
+		     Cdata) ->
+    decode_mam_start_els(_els,
+			 <<Cdata/binary, _data/binary>>);
+decode_mam_start_els([_ | _els], Cdata) ->
+    decode_mam_start_els(_els, Cdata).
+
+encode_mam_start(Cdata, _xmlns_attrs) ->
+    _els = encode_mam_start_cdata(Cdata, []),
+    _attrs = _xmlns_attrs,
+    {xmlel, <<"start">>, _attrs, _els}.
+
+decode_mam_start_cdata(<<>>) ->
+    erlang:error({xmpp_codec,
+		  {missing_cdata, <<>>, <<"start">>,
+		   <<"urn:xmpp:mam:tmp">>}});
+decode_mam_start_cdata(_val) ->
+    case catch dec_utc(_val) of
+      {'EXIT', _} ->
+	  erlang:error({xmpp_codec,
+			{bad_cdata_value, <<>>, <<"start">>,
+			 <<"urn:xmpp:mam:tmp">>}});
+      _res -> _res
+    end.
+
+encode_mam_start_cdata(_val, _acc) ->
+    [{xmlcdata, enc_utc(_val)} | _acc].
+
+decode_rsm_set({xmlel, <<"rsm">>, _attrs, _els}) ->
+    {After, Last, First, Count, Before, Max, Index} =
+	decode_rsm_set_els(_els, undefined, undefined,
+			   undefined, undefined, undefined, undefined,
+			   undefined),
+    {rsm_set, After, Before, Count, First, Index, Last,
+     Max}.
+
+decode_rsm_set_els([], After, Last, First, Count,
+		   Before, Max, Index) ->
+    {After, Last, First, Count, Before, Max, Index};
+decode_rsm_set_els([{xmlel, <<"after">>, _attrs, _} =
+			_el
+		    | _els],
+		   After, Last, First, Count, Before, Max, Index) ->
+    _xmlns = get_attr(<<"xmlns">>, _attrs),
+    if _xmlns == <<>>;
+       _xmlns == <<"http://jabber.org/protocol/rsm">> ->
+	   decode_rsm_set_els(_els, decode_rsm_after(_el), Last,
+			      First, Count, Before, Max, Index);
+       true ->
+	   decode_rsm_set_els(_els, After, Last, First, Count,
+			      Before, Max, Index)
+    end;
+decode_rsm_set_els([{xmlel, <<"before">>, _attrs, _} =
+			_el
+		    | _els],
+		   After, Last, First, Count, Before, Max, Index) ->
+    _xmlns = get_attr(<<"xmlns">>, _attrs),
+    if _xmlns == <<>>;
+       _xmlns == <<"http://jabber.org/protocol/rsm">> ->
+	   decode_rsm_set_els(_els, After, Last, First, Count,
+			      decode_rsm_before(_el), Max, Index);
+       true ->
+	   decode_rsm_set_els(_els, After, Last, First, Count,
+			      Before, Max, Index)
+    end;
+decode_rsm_set_els([{xmlel, <<"count">>, _attrs, _} =
+			_el
+		    | _els],
+		   After, Last, First, Count, Before, Max, Index) ->
+    _xmlns = get_attr(<<"xmlns">>, _attrs),
+    if _xmlns == <<>>;
+       _xmlns == <<"http://jabber.org/protocol/rsm">> ->
+	   decode_rsm_set_els(_els, After, Last, First,
+			      decode_rsm_count(_el), Before, Max, Index);
+       true ->
+	   decode_rsm_set_els(_els, After, Last, First, Count,
+			      Before, Max, Index)
+    end;
+decode_rsm_set_els([{xmlel, <<"first">>, _attrs, _} =
+			_el
+		    | _els],
+		   After, Last, First, Count, Before, Max, Index) ->
+    _xmlns = get_attr(<<"xmlns">>, _attrs),
+    if _xmlns == <<>>;
+       _xmlns == <<"http://jabber.org/protocol/rsm">> ->
+	   decode_rsm_set_els(_els, After, Last,
+			      decode_rsm_first(_el), Count, Before, Max, Index);
+       true ->
+	   decode_rsm_set_els(_els, After, Last, First, Count,
+			      Before, Max, Index)
+    end;
+decode_rsm_set_els([{xmlel, <<"index">>, _attrs, _} =
+			_el
+		    | _els],
+		   After, Last, First, Count, Before, Max, Index) ->
+    _xmlns = get_attr(<<"xmlns">>, _attrs),
+    if _xmlns == <<>>;
+       _xmlns == <<"http://jabber.org/protocol/rsm">> ->
+	   decode_rsm_set_els(_els, After, Last, First, Count,
+			      Before, Max, decode_rsm_index(_el));
+       true ->
+	   decode_rsm_set_els(_els, After, Last, First, Count,
+			      Before, Max, Index)
+    end;
+decode_rsm_set_els([{xmlel, <<"last">>, _attrs, _} = _el
+		    | _els],
+		   After, Last, First, Count, Before, Max, Index) ->
+    _xmlns = get_attr(<<"xmlns">>, _attrs),
+    if _xmlns == <<>>;
+       _xmlns == <<"http://jabber.org/protocol/rsm">> ->
+	   decode_rsm_set_els(_els, After, decode_rsm_last(_el),
+			      First, Count, Before, Max, Index);
+       true ->
+	   decode_rsm_set_els(_els, After, Last, First, Count,
+			      Before, Max, Index)
+    end;
+decode_rsm_set_els([{xmlel, <<"max">>, _attrs, _} = _el
+		    | _els],
+		   After, Last, First, Count, Before, Max, Index) ->
+    _xmlns = get_attr(<<"xmlns">>, _attrs),
+    if _xmlns == <<>>;
+       _xmlns == <<"http://jabber.org/protocol/rsm">> ->
+	   decode_rsm_set_els(_els, After, Last, First, Count,
+			      Before, decode_rsm_max(_el), Index);
+       true ->
+	   decode_rsm_set_els(_els, After, Last, First, Count,
+			      Before, Max, Index)
+    end;
+decode_rsm_set_els([_ | _els], After, Last, First,
+		   Count, Before, Max, Index) ->
+    decode_rsm_set_els(_els, After, Last, First, Count,
+		       Before, Max, Index).
+
+encode_rsm_set({rsm_set, After, Before, Count, First,
+		Index, Last, Max},
+	       _xmlns_attrs) ->
+    _els = 'encode_rsm_set_$index'(Index,
+				   'encode_rsm_set_$max'(Max,
+							 'encode_rsm_set_$before'(Before,
+										  'encode_rsm_set_$count'(Count,
+													  'encode_rsm_set_$first'(First,
+																  'encode_rsm_set_$last'(Last,
+																			 'encode_rsm_set_$after'(After,
+																						 []))))))),
+    _attrs = _xmlns_attrs,
+    {xmlel, <<"rsm">>, _attrs, _els}.
+
+'encode_rsm_set_$after'(undefined, _acc) -> _acc;
+'encode_rsm_set_$after'(After, _acc) ->
+    [encode_rsm_after(After, []) | _acc].
+
+'encode_rsm_set_$last'(undefined, _acc) -> _acc;
+'encode_rsm_set_$last'(Last, _acc) ->
+    [encode_rsm_last(Last, []) | _acc].
+
+'encode_rsm_set_$first'(undefined, _acc) -> _acc;
+'encode_rsm_set_$first'(First, _acc) ->
+    [encode_rsm_first(First, []) | _acc].
+
+'encode_rsm_set_$count'(undefined, _acc) -> _acc;
+'encode_rsm_set_$count'(Count, _acc) ->
+    [encode_rsm_count(Count, []) | _acc].
+
+'encode_rsm_set_$before'(undefined, _acc) -> _acc;
+'encode_rsm_set_$before'(Before, _acc) ->
+    [encode_rsm_before(Before, []) | _acc].
+
+'encode_rsm_set_$max'(undefined, _acc) -> _acc;
+'encode_rsm_set_$max'(Max, _acc) ->
+    [encode_rsm_max(Max, []) | _acc].
+
+'encode_rsm_set_$index'(undefined, _acc) -> _acc;
+'encode_rsm_set_$index'(Index, _acc) ->
+    [encode_rsm_index(Index, []) | _acc].
+
+decode_rsm_first({xmlel, <<"first">>, _attrs, _els}) ->
+    Data = decode_rsm_first_els(_els, <<>>),
+    Index = decode_rsm_first_attrs(_attrs, undefined),
+    {rsm_first, Index, Data}.
+
+decode_rsm_first_els([], Data) ->
+    decode_rsm_first_cdata(Data);
+decode_rsm_first_els([{xmlcdata, _data} | _els],
+		     Data) ->
+    decode_rsm_first_els(_els,
+			 <<Data/binary, _data/binary>>);
+decode_rsm_first_els([_ | _els], Data) ->
+    decode_rsm_first_els(_els, Data).
+
+decode_rsm_first_attrs([{<<"index">>, _val} | _attrs],
+		       _Index) ->
+    decode_rsm_first_attrs(_attrs, _val);
+decode_rsm_first_attrs([_ | _attrs], Index) ->
+    decode_rsm_first_attrs(_attrs, Index);
+decode_rsm_first_attrs([], Index) ->
+    decode_rsm_first_attr_index(Index).
+
+encode_rsm_first({rsm_first, Index, Data},
+		 _xmlns_attrs) ->
+    _els = encode_rsm_first_cdata(Data, []),
+    _attrs = encode_rsm_first_attr_index(Index,
+					 _xmlns_attrs),
+    {xmlel, <<"first">>, _attrs, _els}.
+
+decode_rsm_first_attr_index(undefined) -> undefined;
+decode_rsm_first_attr_index(_val) ->
+    case catch dec_int(_val, 0, infinity) of
+      {'EXIT', _} ->
+	  erlang:error({xmpp_codec,
+			{bad_attr_value, <<"index">>, <<"first">>,
+			 <<"http://jabber.org/protocol/rsm">>}});
+      _res -> _res
+    end.
+
+encode_rsm_first_attr_index(undefined, _acc) -> _acc;
+encode_rsm_first_attr_index(_val, _acc) ->
+    [{<<"index">>, enc_int(_val)} | _acc].
+
+decode_rsm_first_cdata(<<>>) -> undefined;
+decode_rsm_first_cdata(_val) -> _val.
+
+encode_rsm_first_cdata(undefined, _acc) -> _acc;
+encode_rsm_first_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_rsm_max({xmlel, <<"max">>, _attrs, _els}) ->
+    Cdata = decode_rsm_max_els(_els, <<>>), Cdata.
+
+decode_rsm_max_els([], Cdata) ->
+    decode_rsm_max_cdata(Cdata);
+decode_rsm_max_els([{xmlcdata, _data} | _els], Cdata) ->
+    decode_rsm_max_els(_els,
+		       <<Cdata/binary, _data/binary>>);
+decode_rsm_max_els([_ | _els], Cdata) ->
+    decode_rsm_max_els(_els, Cdata).
+
+encode_rsm_max(Cdata, _xmlns_attrs) ->
+    _els = encode_rsm_max_cdata(Cdata, []),
+    _attrs = _xmlns_attrs,
+    {xmlel, <<"max">>, _attrs, _els}.
+
+decode_rsm_max_cdata(<<>>) -> undefined;
+decode_rsm_max_cdata(_val) ->
+    case catch dec_int(_val, 0, infinity) of
+      {'EXIT', _} ->
+	  erlang:error({xmpp_codec,
+			{bad_cdata_value, <<>>, <<"max">>,
+			 <<"http://jabber.org/protocol/rsm">>}});
+      _res -> _res
+    end.
+
+encode_rsm_max_cdata(undefined, _acc) -> _acc;
+encode_rsm_max_cdata(_val, _acc) ->
+    [{xmlcdata, enc_int(_val)} | _acc].
+
+decode_rsm_index({xmlel, <<"index">>, _attrs, _els}) ->
+    Cdata = decode_rsm_index_els(_els, <<>>), Cdata.
+
+decode_rsm_index_els([], Cdata) ->
+    decode_rsm_index_cdata(Cdata);
+decode_rsm_index_els([{xmlcdata, _data} | _els],
+		     Cdata) ->
+    decode_rsm_index_els(_els,
+			 <<Cdata/binary, _data/binary>>);
+decode_rsm_index_els([_ | _els], Cdata) ->
+    decode_rsm_index_els(_els, Cdata).
+
+encode_rsm_index(Cdata, _xmlns_attrs) ->
+    _els = encode_rsm_index_cdata(Cdata, []),
+    _attrs = _xmlns_attrs,
+    {xmlel, <<"index">>, _attrs, _els}.
+
+decode_rsm_index_cdata(<<>>) -> undefined;
+decode_rsm_index_cdata(_val) ->
+    case catch dec_int(_val, 0, infinity) of
+      {'EXIT', _} ->
+	  erlang:error({xmpp_codec,
+			{bad_cdata_value, <<>>, <<"index">>,
+			 <<"http://jabber.org/protocol/rsm">>}});
+      _res -> _res
+    end.
+
+encode_rsm_index_cdata(undefined, _acc) -> _acc;
+encode_rsm_index_cdata(_val, _acc) ->
+    [{xmlcdata, enc_int(_val)} | _acc].
+
+decode_rsm_count({xmlel, <<"count">>, _attrs, _els}) ->
+    Cdata = decode_rsm_count_els(_els, <<>>), Cdata.
+
+decode_rsm_count_els([], Cdata) ->
+    decode_rsm_count_cdata(Cdata);
+decode_rsm_count_els([{xmlcdata, _data} | _els],
+		     Cdata) ->
+    decode_rsm_count_els(_els,
+			 <<Cdata/binary, _data/binary>>);
+decode_rsm_count_els([_ | _els], Cdata) ->
+    decode_rsm_count_els(_els, Cdata).
+
+encode_rsm_count(Cdata, _xmlns_attrs) ->
+    _els = encode_rsm_count_cdata(Cdata, []),
+    _attrs = _xmlns_attrs,
+    {xmlel, <<"count">>, _attrs, _els}.
+
+decode_rsm_count_cdata(<<>>) -> undefined;
+decode_rsm_count_cdata(_val) ->
+    case catch dec_int(_val, 0, infinity) of
+      {'EXIT', _} ->
+	  erlang:error({xmpp_codec,
+			{bad_cdata_value, <<>>, <<"count">>,
+			 <<"http://jabber.org/protocol/rsm">>}});
+      _res -> _res
+    end.
+
+encode_rsm_count_cdata(undefined, _acc) -> _acc;
+encode_rsm_count_cdata(_val, _acc) ->
+    [{xmlcdata, enc_int(_val)} | _acc].
+
+decode_rsm_last({xmlel, <<"last">>, _attrs, _els}) ->
+    Cdata = decode_rsm_last_els(_els, <<>>), Cdata.
+
+decode_rsm_last_els([], Cdata) ->
+    decode_rsm_last_cdata(Cdata);
+decode_rsm_last_els([{xmlcdata, _data} | _els],
+		    Cdata) ->
+    decode_rsm_last_els(_els,
+			<<Cdata/binary, _data/binary>>);
+decode_rsm_last_els([_ | _els], Cdata) ->
+    decode_rsm_last_els(_els, Cdata).
+
+encode_rsm_last(Cdata, _xmlns_attrs) ->
+    _els = encode_rsm_last_cdata(Cdata, []),
+    _attrs = _xmlns_attrs,
+    {xmlel, <<"last">>, _attrs, _els}.
+
+decode_rsm_last_cdata(<<>>) -> undefined;
+decode_rsm_last_cdata(_val) -> _val.
+
+encode_rsm_last_cdata(undefined, _acc) -> _acc;
+encode_rsm_last_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_rsm_before({xmlel, <<"before">>, _attrs,
+		   _els}) ->
+    Cdata = decode_rsm_before_els(_els, <<>>), Cdata.
+
+decode_rsm_before_els([], Cdata) ->
+    decode_rsm_before_cdata(Cdata);
+decode_rsm_before_els([{xmlcdata, _data} | _els],
+		      Cdata) ->
+    decode_rsm_before_els(_els,
+			  <<Cdata/binary, _data/binary>>);
+decode_rsm_before_els([_ | _els], Cdata) ->
+    decode_rsm_before_els(_els, Cdata).
+
+encode_rsm_before(Cdata, _xmlns_attrs) ->
+    _els = encode_rsm_before_cdata(Cdata, []),
+    _attrs = _xmlns_attrs,
+    {xmlel, <<"before">>, _attrs, _els}.
+
+decode_rsm_before_cdata(<<>>) -> undefined;
+decode_rsm_before_cdata(_val) -> _val.
+
+encode_rsm_before_cdata(undefined, _acc) -> _acc;
+encode_rsm_before_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_rsm_after({xmlel, <<"after">>, _attrs, _els}) ->
+    Cdata = decode_rsm_after_els(_els, <<>>), Cdata.
+
+decode_rsm_after_els([], Cdata) ->
+    decode_rsm_after_cdata(Cdata);
+decode_rsm_after_els([{xmlcdata, _data} | _els],
+		     Cdata) ->
+    decode_rsm_after_els(_els,
+			 <<Cdata/binary, _data/binary>>);
+decode_rsm_after_els([_ | _els], Cdata) ->
+    decode_rsm_after_els(_els, Cdata).
+
+encode_rsm_after(Cdata, _xmlns_attrs) ->
+    _els = encode_rsm_after_cdata(Cdata, []),
+    _attrs = _xmlns_attrs,
+    {xmlel, <<"after">>, _attrs, _els}.
+
+decode_rsm_after_cdata(<<>>) -> undefined;
+decode_rsm_after_cdata(_val) -> _val.
+
+encode_rsm_after_cdata(undefined, _acc) -> _acc;
+encode_rsm_after_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
 
 decode_muc({xmlel, <<"x">>, _attrs, _els}) ->
     History = decode_muc_els(_els, undefined),

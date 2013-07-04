@@ -1373,46 +1373,42 @@ session_established2(El, StateData) ->
 			       ejabberd_hooks:run_fold(c2s_update_presence,
 						       Server, NewEl,
 						       [User, Server]),
-			   ejabberd_hooks:run(user_send_packet, Server,
-					      [StateData#state.debug, FromJID,
-					       ToJID, PresenceEl]),
+                           PresEl = fix_packet(StateData, FromJID,
+                                               ToJID, PresenceEl),
 			   case ToJID of
 			     #jid{user = User, server = Server,
 				  resource = <<"">>} ->
 				 ?DEBUG("presence_update(~p,~n\t~p,~n\t~p)",
 					[FromJID, PresenceEl, StateData]),
-				 presence_update(FromJID, PresenceEl,
+				 presence_update(FromJID, PresEl,
 						 StateData);
 			     _ ->
-				 presence_track(FromJID, ToJID, PresenceEl,
+				 presence_track(FromJID, ToJID, PresEl,
 						StateData)
 			   end;
 		       <<"iq">> ->
 			   case jlib:iq_query_info(NewEl) of
-			     #iq{xmlns = Xmlns} = IQ
+			     #iq{xmlns = Xmlns}
 				 when Xmlns == (?NS_PRIVACY);
 				      Xmlns == (?NS_BLOCKING) ->
-				 ejabberd_hooks:run(user_send_packet, Server,
-						    [StateData#state.debug,
-						     FromJID, ToJID, NewEl]),
-				 process_privacy_iq(FromJID, ToJID, IQ,
-						    StateData);
+                                   NewIQEl = fix_packet(StateData, FromJID,
+                                                        ToJID, NewEl),
+                                   IQ = jlib:iq_query_info(NewIQEl),
+                                   process_privacy_iq(FromJID, ToJID,
+                                                      IQ, StateData);
 			     #iq{xmlns = ?NS_P1_PUSH} = IQ ->
 				 process_push_iq(FromJID, ToJID, IQ, StateData);
 			     _ ->
-				 ejabberd_hooks:run(user_send_packet, Server,
-						    [StateData#state.debug,
-						     FromJID, ToJID, NewEl]),
-				 check_privacy_route(FromJID, StateData,
-						     FromJID, ToJID, NewEl),
+                                 NewIQEl = fix_packet(StateData, FromJID,
+                                                      ToJID, NewEl),
+                                 check_privacy_route(FromJID, StateData,
+                                                     FromJID, ToJID, NewIQEl),
 				 StateData
 			   end;
 		       <<"message">> ->
-			   ejabberd_hooks:run(user_send_packet, Server,
-					      [StateData#state.debug, FromJID,
-					       ToJID, NewEl]),
+			   MsgEl = fix_packet(StateData, FromJID, ToJID, NewEl),
 			   check_privacy_route(FromJID, StateData, FromJID,
-					       ToJID, NewEl),
+					       ToJID, MsgEl),
 			   StateData;
 		       <<"standby">> ->
 			   StandBy = xml:get_tag_cdata(NewEl) == <<"true">>,
@@ -1808,13 +1804,18 @@ handle_info({route, From, To,
 	   Attrs2 =
 	       jlib:replace_from_to_attrs(jlib:jid_to_string(From),
 					  jlib:jid_to_string(To), NewAttrs),
-	   FixedPacket = #xmlel{name = Name, attrs = Attrs2,
-				children = Els},
+           FixedPkt = #xmlel{name = Name, attrs = Attrs2, children = Els},
+	   FixedPacket = case ejabberd_hooks:run_fold(
+                                user_receive_packet,
+                                StateData#state.server,
+                                StateData#state.debug,
+                                [StateData#state.jid, From, To, FixedPkt]) of
+                             #xmlel{} = Pkt ->
+                                 Pkt;
+                             _ ->
+                                 FixedPkt
+                         end,
 	   NewState2 = send_or_enqueue_packet(NewState, From, To, FixedPacket),
-	   ejabberd_hooks:run(user_receive_packet,
-			      StateData#state.server,
-			      [StateData#state.debug, StateData#state.jid, From,
-			       To, FixedPacket]),
 	   ejabberd_hooks:run(c2s_loop_debug,
 			      [{route, From, To, Packet}]),
 	   fsm_next_state(StateName, NewState2);
@@ -3439,6 +3440,23 @@ route_blocking(What, StateData) ->
     %% blocking pushes are always accompanied by
     %% Privacy List pushes
     ok.
+
+fix_packet(StateData, FromJID, ToJID, El) ->
+    %% Initially user_send_packet wasn't a run_fold hook,
+    %% i.e. the returned value was simply ignored and no
+    %% accumulator was provided.
+    %% Now we do this check to maintain backward compatibility.
+    %% Why there is a need to pass the "debug flag" into this hook
+    %% is beyond me, because there is c2s_loop_debug hook.
+    %% TODO: all this stuff should be fixed ASAP.
+    case ejabberd_hooks:run_fold(
+           user_send_packet, StateData#state.server,
+           StateData#state.debug, [FromJID, ToJID, El]) of
+        #xmlel{} = NewEl ->
+            NewEl;
+        _ ->
+            El
+    end.
 
 %%%----------------------------------------------------------------------
 %%% JID Set memory footprint reduction code

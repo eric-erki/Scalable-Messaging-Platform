@@ -145,4 +145,5 @@
 -define(NS_CAPTCHA, <<"urn:xmpp:captcha">>).
 -define(NS_MEDIA, <<"urn:xmpp:media-element">>).
 -define(NS_BOB, <<"urn:xmpp:bob">>).
+-define(NS_MAM, <<"urn:xmpp:mam:tmp">>).
 -define(NS_PING, <<"urn:xmpp:ping">>).
