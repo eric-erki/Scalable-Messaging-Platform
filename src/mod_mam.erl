@@ -74,7 +74,7 @@ stop(Host) ->
     gen_iq_handler:remove_iq_handler(ejabberd_sm, Host, ?NS_MAM),
     ok.
 
-user_receive_packet(Acc, JID, Peer, _To, Pkt) ->
+user_receive_packet(Pkt, _C2SState, JID, Peer, _To) ->
     LUser = JID#jid.luser,
     LServer = JID#jid.lserver,
     case should_archive(Pkt) of
@@ -92,10 +92,10 @@ user_receive_packet(Acc, JID, Peer, _To, Pkt) ->
                     NewPkt
             end;
         false ->
-            Acc
+            Pkt
     end.
 
-user_send_packet(Acc, JID, Peer, Pkt) ->
+user_send_packet(Pkt, _C2SState, JID, Peer) ->
     LUser = JID#jid.luser,
     LServer = JID#jid.lserver,
     case should_archive(Pkt) of
@@ -105,7 +105,7 @@ user_send_packet(Acc, JID, Peer, Pkt) ->
                   LUser, LServer, Peer),
             NewPkt;
         false ->
-            Acc
+            Pkt
     end.
 
 process_iq(#jid{lserver = LServer} = From,

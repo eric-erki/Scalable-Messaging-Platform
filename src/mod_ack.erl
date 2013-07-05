@@ -91,8 +91,8 @@ stop(Host) ->
     supervisor:terminate_child(ejabberd_sup, Proc),
     supervisor:delete_child(ejabberd_sup, Proc).
 
-user_send_packet(_Debug, From, To,
-		 #xmlel{name = <<"message">>} = Packet) ->
+user_send_packet(#xmlel{name = <<"message">>} = Packet,
+                 _C2SState, From, To) ->
     case has_receipt_request(Packet) of
       {true, _} ->
 	  process_ack_request(<<"on-sender-server">>, From, To,
@@ -104,16 +104,19 @@ user_send_packet(_Debug, From, To,
 		del_timer(Server, {message, ID}, From);
 	    false -> do_nothing
 	  end
-    end;
-user_send_packet(_Debug, From, _To,
-		 #xmlel{name = <<"iq">>, attrs = Attrs}) ->
+    end,
+    Packet;
+user_send_packet(#xmlel{name = <<"iq">>, attrs = Attrs} = Packet,
+                 _C2SState, From, _To) ->
     case xml:get_attr_s(<<"id">>, Attrs) of
       <<"">> -> ok;
       ID ->
 	  Server = From#jid.lserver,
 	  del_timer(Server, {iq, ID}, From)
-    end;
-user_send_packet(_Debug, _From, _To, _Packet) -> do_nothing.
+    end,
+    Packet;
+user_send_packet(Packet, _C2SState, _From, _To) ->
+    Packet.
 
 offline_message(From, To, Packet) ->
     process_ack_request(<<"offline">>, From, To, Packet),

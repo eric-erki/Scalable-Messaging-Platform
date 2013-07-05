@@ -218,8 +218,9 @@ user_online(_SID, JID, _Info) ->
 user_offline(_SID, JID, _Info) ->
     stop_ping(JID#jid.lserver, JID).
 
-user_send(_DebugFlag, JID, _From, _Packet) ->
-    start_ping(JID#jid.lserver, JID).
+user_send(Packet, _C2SState, JID, _From) ->
+    start_ping(JID#jid.lserver, JID),
+    Packet.
 
 %%====================================================================
 %% Internal functions

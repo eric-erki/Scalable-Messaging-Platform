@@ -128,17 +128,19 @@ iq_handler(From, _To,  #iq{type=set, sub_el = #xmlel{name = Operation, children 
 iq_handler(_From, _To, IQ, _CC)->
     IQ#iq{type=error, sub_el = [?ERR_NOT_ALLOWED]}.
 
-user_send_packet(_Debug, From, _To, Packet) ->
-    check_and_forward(From, Packet, sent).
+user_send_packet(Packet, _C2SState, From, _To) ->
+    check_and_forward(From, Packet, sent),
+    Packet.
 
 %% Only make carbon copies if the original destination was not a bare jid. 
 %% If the original destination was a bare jid, the message is going to be delivered to all
 %% connected resources anyway. Avoid duplicate delivery. "XEP-0280 : 3.5 Receiving Messages"
-user_receive_packet(_Debug, JID, _From, #jid{resource=Resource} = _To, Packet) when Resource /= <<>> ->
-    check_and_forward(JID, Packet, received);
-user_receive_packet(_Debug, _JID, _From, _To, _Packet) ->
-	ok.
-    
+user_receive_packet(Packet, _C2SState, JID, _From, #jid{resource=Resource} = _To) when Resource /= <<>> ->
+    check_and_forward(JID, Packet, received),
+    Packet;
+user_receive_packet(Packet, _C2SState, _JID, _From, _To) ->
+    Packet.
+
 % verifier si le trafic est local
 % Modified from original version: 
 %    - registered to the user_send_packet hook, to be called only once even for multicast

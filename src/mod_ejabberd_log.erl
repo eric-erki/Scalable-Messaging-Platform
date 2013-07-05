@@ -100,14 +100,16 @@ reopen_log(Host) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     gen_server:cast(Proc, reopen).
 
-packet(_DebugFlag, JID, To, #xmlel{name = <<"message">>, attrs = Attrs}) ->
+packet(#xmlel{name = <<"message">>, attrs = Attrs} = Pkt, _C2SState, JID, To) ->
     case xml:get_attr_s(<<"type">>, Attrs) of
 	<<"normal">> -> log(JID#jid.lserver, JID, chat, [jlib:jid_to_string(To)]);
 	<<"chat">> -> log(JID#jid.lserver, JID, chat, [jlib:jid_to_string(To)]);
 	<<"groupchat">> -> log(JID#jid.lserver, JID, groupchat, [jlib:jid_to_string(To)]);
 	_ -> ok
-    end;
-packet(_, _, _, _) -> ok.
+    end,
+    Pkt;
+packet(Pkt, _, _, _) ->
+    Pkt.
 
 %%====================================================================
 %% gen_server callbacks

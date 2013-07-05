@@ -1805,16 +1805,11 @@ handle_info({route, From, To,
 	       jlib:replace_from_to_attrs(jlib:jid_to_string(From),
 					  jlib:jid_to_string(To), NewAttrs),
            FixedPkt = #xmlel{name = Name, attrs = Attrs2, children = Els},
-	   FixedPacket = case ejabberd_hooks:run_fold(
-                                user_receive_packet,
-                                StateData#state.server,
-                                StateData#state.debug,
-                                [StateData#state.jid, From, To, FixedPkt]) of
-                             #xmlel{} = Pkt ->
-                                 Pkt;
-                             _ ->
-                                 FixedPkt
-                         end,
+	   FixedPacket = ejabberd_hooks:run_fold(
+                           user_receive_packet,
+                           StateData#state.server,
+                           FixedPkt,
+                           [StateData, StateData#state.jid, From, To]),
 	   NewState2 = send_or_enqueue_packet(NewState, From, To, FixedPacket),
 	   ejabberd_hooks:run(c2s_loop_debug,
 			      [{route, From, To, Packet}]),
@@ -3442,21 +3437,9 @@ route_blocking(What, StateData) ->
     ok.
 
 fix_packet(StateData, FromJID, ToJID, El) ->
-    %% Initially user_send_packet wasn't a run_fold hook,
-    %% i.e. the returned value was simply ignored and no
-    %% accumulator was provided.
-    %% Now we do this check to maintain backward compatibility.
-    %% Why there is a need to pass the "debug flag" into this hook
-    %% is beyond me, because there is c2s_loop_debug hook.
-    %% TODO: all this stuff should be fixed ASAP.
-    case ejabberd_hooks:run_fold(
-           user_send_packet, StateData#state.server,
-           StateData#state.debug, [FromJID, ToJID, El]) of
-        #xmlel{} = NewEl ->
-            NewEl;
-        _ ->
-            El
-    end.
+    ejabberd_hooks:run_fold(
+      user_send_packet, StateData#state.server,
+      El, [StateData, FromJID, ToJID]).
 
 %%%----------------------------------------------------------------------
 %%% JID Set memory footprint reduction code

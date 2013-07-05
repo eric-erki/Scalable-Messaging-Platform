@@ -141,12 +141,12 @@ read_caps([_ | Tail], Result) ->
     read_caps(Tail, Result);
 read_caps([], Result) -> Result.
 
-user_send_packet(_DebugFlag,
+user_send_packet(#xmlel{name = <<"presence">>, attrs = Attrs,
+			children = Els} = Pkt,
+                 _C2SState,
 		 #jid{luser = User, lserver = Server} = From,
 		 #jid{luser = User, lserver = Server,
-		      lresource = <<"">>},
-		 #xmlel{name = <<"presence">>, attrs = Attrs,
-			children = Els}) ->
+		      lresource = <<"">>}) ->
     Type = xml:get_attr_s(<<"type">>, Attrs),
     if Type == <<"">>; Type == <<"available">> ->
 	   case read_caps(Els) of
@@ -155,13 +155,15 @@ user_send_packet(_DebugFlag,
 		 feature_request(Server, From, Caps, [Version | Exts])
 	   end;
        true -> ok
-    end;
-user_send_packet(_DebugFlag, _From, _To, _Packet) -> ok.
+    end,
+    Pkt;
+user_send_packet(Pkt, _C2SState, _From, _To) ->
+    Pkt.
 
-user_receive_packet(_DebugFlag, #jid{lserver = Server},
-		    From, _To,
-		    #xmlel{name = <<"presence">>, attrs = Attrs,
-			   children = Els}) ->
+user_receive_packet(#xmlel{name = <<"presence">>, attrs = Attrs,
+			   children = Els} = Pkt,
+                    _C2SState, #jid{lserver = Server},
+		    From, _To) ->
     Type = xml:get_attr_s(<<"type">>, Attrs),
     IsRemote = not lists:member(From#jid.lserver, ?MYHOSTS),
     if IsRemote and
@@ -172,10 +174,10 @@ user_receive_packet(_DebugFlag, #jid{lserver = Server},
 		 feature_request(Server, From, Caps, [Version | Exts])
 	   end;
        true -> ok
-    end;
-user_receive_packet(_DebugFlag, _JID, _From, _To,
-		    _Packet) ->
-    ok.
+    end,
+    Pkt;
+user_receive_packet(Pkt, _C2SState, _JID, _From, _To) ->
+    Pkt.
 
 -spec caps_stream_features([xmlel()], binary()) -> [xmlel()].
 

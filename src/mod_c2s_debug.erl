@@ -75,20 +75,23 @@ debug_stop(Pid, C2SState) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     gen_server:cast(Proc, {debug_stop, Pid}).
 
-log_packet(false, _FromJID, _ToJID, _Packet) -> ok;
-log_packet(true, FromJID, ToJID, Packet) ->
+log_packet(Packet, #state{debug = false}, _FromJID, _ToJID) ->
+    Packet;
+log_packet(Packet, #state{debug = true}, FromJID, ToJID) ->
     Host = FromJID#jid.lserver,
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     gen_server:cast(Proc,
-		    {addlog, {<<"Send">>, FromJID, ToJID, Packet}}).
+		    {addlog, {<<"Send">>, FromJID, ToJID, Packet}}),
+    Packet.
 
-log_packet(false, _JID, _FromJID, _ToJID, _Packet) ->
-    ok;
-log_packet(true, JID, FromJID, ToJID, Packet) ->
+log_packet(Packet, #state{debug = false}, _JID, _FromJID, _ToJID) ->
+    Packet;
+log_packet(Packet, #state{debug = true}, JID, FromJID, ToJID) ->
     Host = JID#jid.lserver,
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     gen_server:cast(Proc,
-		    {addlog, {<<"Receive">>, FromJID, ToJID, Packet}}).
+		    {addlog, {<<"Receive">>, FromJID, ToJID, Packet}}),
+    Packet.
 
 init([Host, Opts]) ->
     ?INFO_MSG("Starting c2s debug module for: ~p", [Host]),
