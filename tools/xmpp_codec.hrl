@@ -139,8 +139,8 @@
 -record(shim, {headers = [] :: [{binary(),'undefined' | binary()}]}).
 
 -record(mam_prefs, {default :: 'always' | 'never' | 'roster',
-                    always = [] :: [[any(),...]],
-                    never = [] :: [[any(),...]]}).
+                    always = [] :: [any()],
+                    never = [] :: [any()]}).
 
 -record(caps, {hash :: binary(),
                node :: binary(),

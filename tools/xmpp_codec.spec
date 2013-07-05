@@ -2117,8 +2117,10 @@
            attrs = [#attr{name = <<"default">>,
                           dec = {dec_enum, [[always, never, roster]]},
                           enc = {enc_enum, []}}],
-           refs = [#ref{name = mam_always, label = '$always', default = []},
-                   #ref{name = mam_never, label = '$never', default = []}]}).
+           refs = [#ref{name = mam_always, label = '$always',
+                        min = 0, max = 1, default = []},
+                   #ref{name = mam_never, label = '$never',
+                        min = 0, max = 1, default = []}]}).
 
 -xml(forwarded,
      #elem{name = <<"forwarded">>,

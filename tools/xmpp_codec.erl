@@ -1932,7 +1932,7 @@ decode_mam_prefs({xmlel, <<"prefs">>, _attrs, _els}) ->
     {mam_prefs, Default, Always, Never}.
 
 decode_mam_prefs_els([], Never, Always) ->
-    {lists:reverse(Never), lists:reverse(Always)};
+    {Never, Always};
 decode_mam_prefs_els([{xmlel, <<"always">>, _attrs, _} =
 			  _el
 		      | _els],
@@ -1940,10 +1940,7 @@ decode_mam_prefs_els([{xmlel, <<"always">>, _attrs, _} =
     _xmlns = get_attr(<<"xmlns">>, _attrs),
     if _xmlns == <<>>; _xmlns == <<"urn:xmpp:mam:tmp">> ->
 	   decode_mam_prefs_els(_els, Never,
-				case decode_mam_always(_el) of
-				  [] -> Always;
-				  _new_el -> [_new_el | Always]
-				end);
+				decode_mam_always(_el));
        true -> decode_mam_prefs_els(_els, Never, Always)
     end;
 decode_mam_prefs_els([{xmlel, <<"never">>, _attrs, _} =
@@ -1952,11 +1949,7 @@ decode_mam_prefs_els([{xmlel, <<"never">>, _attrs, _} =
 		     Never, Always) ->
     _xmlns = get_attr(<<"xmlns">>, _attrs),
     if _xmlns == <<>>; _xmlns == <<"urn:xmpp:mam:tmp">> ->
-	   decode_mam_prefs_els(_els,
-				case decode_mam_never(_el) of
-				  [] -> Never;
-				  _new_el -> [_new_el | Never]
-				end,
+	   decode_mam_prefs_els(_els, decode_mam_never(_el),
 				Always);
        true -> decode_mam_prefs_els(_els, Never, Always)
     end;
@@ -1980,14 +1973,12 @@ encode_mam_prefs({mam_prefs, Default, Always, Never},
     {xmlel, <<"prefs">>, _attrs, _els}.
 
 'encode_mam_prefs_$never'([], _acc) -> _acc;
-'encode_mam_prefs_$never'([Never | _els], _acc) ->
-    'encode_mam_prefs_$never'(_els,
-			      [encode_mam_never(Never, []) | _acc]).
+'encode_mam_prefs_$never'(Never, _acc) ->
+    [encode_mam_never(Never, []) | _acc].
 
 'encode_mam_prefs_$always'([], _acc) -> _acc;
-'encode_mam_prefs_$always'([Always | _els], _acc) ->
-    'encode_mam_prefs_$always'(_els,
-			       [encode_mam_always(Always, []) | _acc]).
+'encode_mam_prefs_$always'(Always, _acc) ->
+    [encode_mam_always(Always, []) | _acc].
 
 decode_mam_prefs_attr_default(undefined) -> undefined;
 decode_mam_prefs_attr_default(_val) ->
