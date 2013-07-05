@@ -74,13 +74,13 @@ stop(Host) ->
     gen_iq_handler:remove_iq_handler(ejabberd_sm, Host, ?NS_MAM),
     ok.
 
-user_receive_packet(Pkt, _C2SState, JID, Peer, _To) ->
+user_receive_packet(Pkt, C2SState, JID, Peer, _To) ->
     LUser = JID#jid.luser,
     LServer = JID#jid.lserver,
     case should_archive(Pkt) of
         true ->
             NewPkt = strip_my_archived_tag(Pkt, LServer),
-            case store(NewPkt, LUser, LServer, Peer) of
+            case store(C2SState, NewPkt, LUser, LServer, Peer) of
                 {ok, ID} ->
                     Archived = #xmlel{name = <<"archived">>,
                                       attrs = [{<<"by">>, LServer},
@@ -95,13 +95,13 @@ user_receive_packet(Pkt, _C2SState, JID, Peer, _To) ->
             Pkt
     end.
 
-user_send_packet(Pkt, _C2SState, JID, Peer) ->
+user_send_packet(Pkt, C2SState, JID, Peer) ->
     LUser = JID#jid.luser,
     LServer = JID#jid.lserver,
     case should_archive(Pkt) of
         true ->
             NewPkt = strip_my_archived_tag(Pkt, LServer),
-            store(jlib:replace_from_to(JID, Peer, NewPkt),
+            store(C2SState, jlib:replace_from_to(JID, Peer, NewPkt),
                   LUser, LServer, Peer),
             NewPkt;
         false ->
@@ -206,7 +206,8 @@ strip_my_archived_tag(Pkt, LServer) ->
                end, Pkt#xmlel.children),
     Pkt#xmlel{children = NewEls}.
 
-should_archive_peer(#archive_prefs{default = Default,
+should_archive_peer(C2SState,
+                    #archive_prefs{default = Default,
                                    always = Always,
                                    never = Never},
                     Peer) ->
@@ -223,19 +224,24 @@ should_archive_peer(#archive_prefs{default = Default,
                         always -> true;
                         never -> false;
                         roster ->
-                            %% TODO: implement this
-                            false
+                            case ejabberd_c2s:get_subscription(
+                                   LPeer, C2SState) of
+                                both -> true;
+                                from -> true;
+                                to -> true;
+                                _ -> false
+                            end
                     end
             end
     end.
 
-store(Pkt, LUser, LServer, Peer) ->
+store(C2SState, Pkt, LUser, LServer, Peer) ->
     case get_prefs(LUser, LServer) of
         {ok, Prefs} ->
-            case should_archive_peer(Prefs, Peer) of
+            case should_archive_peer(C2SState, Prefs, Peer) of
                 true ->
-                    store(Pkt, LUser, LServer, Peer,
-                          gen_mod:db_type(LServer, ?MODULE));
+                    do_store(Pkt, LUser, LServer, Peer,
+                             gen_mod:db_type(LServer, ?MODULE));
                 false ->
                     pass
             end;
@@ -243,7 +249,7 @@ store(Pkt, LUser, LServer, Peer) ->
             pass
     end.
 
-store(Pkt, LUser, LServer, Peer, mnesia) ->
+do_store(Pkt, LUser, LServer, Peer, mnesia) ->
     ID = randoms:get_string(),
     LPeer = {PUser, PServer, _} = jlib:jid_tolower(Peer),
     case mnesia:dirty_write(
@@ -258,7 +264,7 @@ store(Pkt, LUser, LServer, Peer, mnesia) ->
         Err ->
             Err
     end;
-store(Pkt, LUser, LServer, Peer, odbc) ->
+do_store(Pkt, LUser, LServer, Peer, odbc) ->
     ID = TS = now_to_usec(now()),
     BarePeer = jlib:jid_to_string(
                  jlib:jid_tolower(

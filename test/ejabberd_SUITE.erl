@@ -173,11 +173,11 @@ db_tests() ->
        roster_subscribe_slave]},
      {test_offline, [sequence],
       [offline_master, offline_slave]},
+     {test_mam, [parallel],
+      [mam_master, mam_slave]},
      {test_roster_remove, [parallel],
       [roster_remove_master,
-       roster_remove_slave]},
-     {test_mam, [parallel],
-      [mam_master, mam_slave]}].
+       roster_remove_slave]}].
 
 ldap_tests() ->
     [{ldap_tests, [sequence],
@@ -899,10 +899,12 @@ mam_master(Config) ->
     Peer = ?config(slave, Config),
     send(Config, #presence{}),
     #presence{} = recv(),
+    wait_for_slave(Config),
+    #presence{from = Peer} = recv(),
     #iq{type = result, sub_els = []} =
         send_recv(Config,
                   #iq{type = set,
-                      sub_els = [#mam_prefs{default = always,
+                      sub_els = [#mam_prefs{default = roster,
                                             never = [MyJID]}]}),
     send(Config, #message{to = MyJID, body = [#text{data = <<"1">>}]}),
     send(Config, #message{to = BareMyJID, body = [#text{data = <<"2">>}]}),
@@ -910,6 +912,7 @@ mam_master(Config) ->
            #message{body = [#text{data = <<"2">>}], sub_els = []}),
     wait_for_slave(Config),
     send(Config, #message{to = Peer, body = [#text{data = <<"3">>}]}),
+    #presence{type = unavailable, from = Peer} = recv(),
     mam_query_all(Config),
     mam_query_with(Config, Peer),
     mam_query_with(Config, jlib:jid_remove_resource(Peer)),
@@ -921,8 +924,9 @@ mam_master(Config) ->
 mam_slave(Config) ->
     Peer = ?config(master, Config),
     ServerJID = server_jid(Config),
+    wait_for_master(Config),
     send(Config, #presence{}),
-    #presence{} = recv(),
+    ?recv2(#presence{}, #presence{from = Peer}),
     #iq{type = result, sub_els = []} =
         send_recv(Config,
                   #iq{type = set,
