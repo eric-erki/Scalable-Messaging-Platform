@@ -144,26 +144,30 @@ process_iq(#jid{lserver = LServer} = From,
 process_iq(#jid{luser = LUser, lserver = LServer},
            #jid{lserver = LServer},
            #iq{type = set, sub_el = #xmlel{name = <<"prefs">>} = SubEl} = IQ) ->
-    Default = case xml:get_tag_attr_s(<<"default">>, SubEl) of
-                  <<"always">> -> always;
-                  <<"never">> -> never;
-                  <<"roster">> -> roster
-              end,
-    {Always, Never} =
-        lists:foldl(
-          fun(#xmlel{name = <<"always">>, children = Els}, {A, N}) ->
-                  {get_jids(Els) ++ A, N};
-             (#xmlel{name = <<"never">>, children = Els}, {A, N}) ->
-                  {A, get_jids(Els) ++ N};
-             (_, {A, N}) ->
-                  {A, N}
-          end, {[], []}, SubEl#xmlel.children),
-    case write_prefs(LUser, LServer, Default,
-                     lists:usort(Always), lists:usort(Never)) of
-        ok ->
-            IQ#iq{type = result, sub_el = []};
-        _Err ->
-            IQ#iq{type = error, sub_el = [SubEl, ?ERR_INTERNAL_SERVER_ERROR]}
+    try {case xml:get_tag_attr_s(<<"default">>, SubEl) of
+             <<"always">> -> always;
+             <<"never">> -> never;
+             <<"roster">> -> roster
+         end,
+         lists:foldl(
+           fun(#xmlel{name = <<"always">>, children = Els}, {A, N}) ->
+                   {get_jids(Els) ++ A, N};
+              (#xmlel{name = <<"never">>, children = Els}, {A, N}) ->
+                   {A, get_jids(Els) ++ N};
+              (_, {A, N}) ->
+                   {A, N}
+           end, {[], []}, SubEl#xmlel.children)} of
+        {Default, {Always, Never}} ->
+            case write_prefs(LUser, LServer, Default,
+                             lists:usort(Always), lists:usort(Never)) of
+                ok ->
+                    IQ#iq{type = result, sub_el = []};
+                _Err ->
+                    IQ#iq{type = error,
+                          sub_el = [SubEl, ?ERR_INTERNAL_SERVER_ERROR]}
+            end
+    catch _:_ ->
+            IQ#iq{type = error, sub_el = [SubEl, ?ERR_BAD_REQUEST]}
     end;
 process_iq(_, _, #iq{sub_el = SubEl} = IQ) ->
     IQ#iq{type = error, sub_el = [SubEl, ?ERR_NOT_ALLOWED]}.
