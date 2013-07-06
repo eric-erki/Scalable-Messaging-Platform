@@ -2027,7 +2027,7 @@
                           enc = {enc_int, []}}]}).
 
 -xml(rsm_set,
-     #elem{name = <<"rsm">>,
+     #elem{name = <<"set">>,
            xmlns = <<"http://jabber.org/protocol/rsm">>,
            result = {rsm_set, '$after', '$before', '$count',
                      '$first', '$index', '$last', '$max'},

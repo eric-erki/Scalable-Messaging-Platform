@@ -906,16 +906,22 @@ mam_master(Config) ->
                   #iq{type = set,
                       sub_els = [#mam_prefs{default = roster,
                                             never = [MyJID]}]}),
-    send(Config, #message{to = MyJID, body = [#text{data = <<"1">>}]}),
-    send(Config, #message{to = BareMyJID, body = [#text{data = <<"2">>}]}),
-    ?recv2(#message{body = [#text{data = <<"1">>}], sub_els = []},
-           #message{body = [#text{data = <<"2">>}], sub_els = []}),
+    send(Config, #message{to = MyJID, body = [#text{data = <<"a">>}]}),
+    send(Config, #message{to = BareMyJID, body = [#text{data = <<"b">>}]}),
+    ?recv2(#message{body = [#text{data = <<"a">>}], sub_els = []},
+           #message{body = [#text{data = <<"b">>}], sub_els = []}),
     wait_for_slave(Config),
-    send(Config, #message{to = Peer, body = [#text{data = <<"3">>}]}),
+    lists:foreach(
+      fun(N) ->
+              Text = #text{data = jlib:integer_to_binary(N)},
+              send(Config,
+                   #message{to = Peer, body = [Text]})
+      end, lists:seq(1, 5)),
     #presence{type = unavailable, from = Peer} = recv(),
-    mam_query_all(Config),
-    mam_query_with(Config, Peer),
-    mam_query_with(Config, jlib:jid_remove_resource(Peer)),
+    %% mam_query_all(Config),
+    %% mam_query_with(Config, Peer),
+    %% mam_query_with(Config, jlib:jid_remove_resource(Peer)),
+    mam_query_rsm(Config),
     #iq{type = result, sub_els = []} =
         send_recv(Config, #iq{type = set,
                               sub_els = [#mam_prefs{default = never}]}),
@@ -932,8 +938,12 @@ mam_slave(Config) ->
                   #iq{type = set,
                       sub_els = [#mam_prefs{default = always}]}),
     wait_for_master(Config),
-    #message{from = Peer, body = [#text{data = <<"3">>}],
-             sub_els = [#mam_archived{by = ServerJID}]} = recv(),
+    lists:foreach(
+      fun(N) ->
+              Text = #text{data = jlib:integer_to_binary(N)},
+              #message{from = Peer, body = [Text],
+                       sub_els = [#mam_archived{by = ServerJID}]} = recv()
+      end, lists:seq(1, 5)),
     #iq{type = result, sub_els = []} =
         send_recv(Config, #iq{type = set,
                               sub_els = [#mam_prefs{default = never}]}),
@@ -944,36 +954,125 @@ mam_query_all(Config) ->
     MyJID = my_jid(Config),
     Peer = ?config(slave, Config),
     I = send(Config, #iq{type = get, sub_els = [#mam_query{id = QID}]}),
-    #message{to = MyJID,
-             sub_els =
-                 [#mam_result{
-                     queryid = QID,
-                     sub_els =
-                         [#forwarded{
-                             delay = #delay{},
-                             sub_els =
-                                 [#message{
-                                     from = MyJID, to = Peer,
-                                     body = [#text{data = <<"3">>}]}]}]}]}
-        = recv(),
+    lists:foreach(
+      fun(N) ->
+              Text = #text{data = jlib:integer_to_binary(N)},
+              #message{to = MyJID,
+                       sub_els =
+                           [#mam_result{
+                               queryid = QID,
+                               sub_els =
+                                   [#forwarded{
+                                       delay = #delay{},
+                                       sub_els =
+                                           [#message{
+                                               from = MyJID, to = Peer,
+                                               body = [Text]}]}]}]}
+                  = recv()
+      end, lists:seq(1, 5)),
     #iq{type = result, id = I, sub_els = []} = recv().
 
 mam_query_with(Config, JID) ->
     MyJID = my_jid(Config),
     Peer = ?config(slave, Config),
     I = send(Config, #iq{type = get, sub_els = [#mam_query{with = JID}]}),
-    #message{to = MyJID,
-             sub_els =
-                 [#mam_result{
-                     sub_els =
-                         [#forwarded{
-                             delay = #delay{},
-                             sub_els =
-                                 [#message{
-                                     from = MyJID, to = Peer,
-                                     body = [#text{data = <<"3">>}]}]}]}]}
-        = recv(),
+    lists:foreach(
+      fun(N) ->
+              Text = #text{data = jlib:integer_to_binary(N)},
+              #message{to = MyJID,
+                       sub_els =
+                           [#mam_result{
+                               sub_els =
+                                   [#forwarded{
+                                       delay = #delay{},
+                                       sub_els =
+                                           [#message{
+                                               from = MyJID, to = Peer,
+                                               body = [Text]}]}]}]}
+                  = recv()
+      end, lists:seq(1, 5)),
     #iq{type = result, id = I, sub_els = []} = recv().
+
+mam_query_rsm(Config) ->
+    MyJID = my_jid(Config),
+    Peer = ?config(slave, Config),
+    %% Get the first 3 items out of 5
+    I1 = send(Config,
+              #iq{type = get,
+                  sub_els = [#mam_query{rsm = #rsm_set{max = 3}}]}),
+    lists:foreach(
+      fun(N) ->
+              Text = #text{data = jlib:integer_to_binary(N)},
+              #message{to = MyJID,
+                       sub_els =
+                           [#mam_result{
+                               sub_els =
+                                   [#forwarded{
+                                       delay = #delay{},
+                                       sub_els =
+                                           [#message{
+                                               from = MyJID, to = Peer,
+                                               body = [Text]}]}]}]}
+                  = recv()
+      end, lists:seq(1, 3)),
+    #iq{type = result, id = I1,
+        sub_els = [#mam_query{rsm = #rsm_set{last = Last, count = 5}}]} = recv(),
+    %% Get the next items starting from the `Last`.
+    %% Limit the response to 5 items (though they would be only 2).
+    I2 = send(Config,
+              #iq{type = get,
+                  sub_els = [#mam_query{rsm = #rsm_set{max = 5,
+                                                       'after' = Last}}]}),
+    lists:foreach(
+      fun(N) ->
+              Text = #text{data = jlib:integer_to_binary(N)},
+              #message{to = MyJID,
+                       sub_els =
+                           [#mam_result{
+                               sub_els =
+                                   [#forwarded{
+                                       delay = #delay{},
+                                       sub_els =
+                                           [#message{
+                                               from = MyJID, to = Peer,
+                                               body = [Text]}]}]}]}
+                  = recv()
+      end, lists:seq(4, 5)),
+    #iq{type = result, id = I2,
+        sub_els = [#mam_query{
+                      rsm = #rsm_set{
+                        count = 5,
+                        first = #rsm_first{data = First}}}]} = recv(),
+    %% Paging back. Should receive 2 elements: 2, 3.
+    I3 = send(Config,
+              #iq{type = get,
+                  sub_els = [#mam_query{rsm = #rsm_set{max = 2,
+                                                       before = First}}]}),
+    lists:foreach(
+      fun(N) ->
+              Text = #text{data = jlib:integer_to_binary(N)},
+              #message{to = MyJID,
+                       sub_els =
+                           [#mam_result{
+                               sub_els =
+                                   [#forwarded{
+                                       delay = #delay{},
+                                       sub_els =
+                                           [#message{
+                                               from = MyJID, to = Peer,
+                                               body = [Text]}]}]}]}
+                  = recv()
+      end, lists:seq(2, 3)),
+    #iq{type = result, id = I3,
+        sub_els = [#mam_query{rsm = #rsm_set{count = 5}}]} = recv(),
+    %% Getting the item count. Should be 5
+    #iq{type = result,
+        sub_els = [#mam_query{rsm = #rsm_set{count = 5,
+                                             first = undefined,
+                                             last = undefined}}]} =
+        send_recv(Config,
+                  #iq{type = get,
+                      sub_els = [#mam_query{rsm = #rsm_set{max = 0}}]}).
 
 %%%===================================================================
 %%% Aux functions

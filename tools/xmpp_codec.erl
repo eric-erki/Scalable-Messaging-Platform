@@ -34,7 +34,7 @@ decode({xmlel, _name, _attrs, _} = _el) ->
 	  decode_mam_end(_el);
       {<<"start">>, <<"urn:xmpp:mam:tmp">>} ->
 	  decode_mam_start(_el);
-      {<<"rsm">>, <<"http://jabber.org/protocol/rsm">>} ->
+      {<<"set">>, <<"http://jabber.org/protocol/rsm">>} ->
 	  decode_rsm_set(_el);
       {<<"first">>, <<"http://jabber.org/protocol/rsm">>} ->
 	  decode_rsm_first(_el);
@@ -739,7 +739,7 @@ is_known_tag({xmlel, _name, _attrs, _} = _el) ->
       {<<"with">>, <<"urn:xmpp:mam:tmp">>} -> true;
       {<<"end">>, <<"urn:xmpp:mam:tmp">>} -> true;
       {<<"start">>, <<"urn:xmpp:mam:tmp">>} -> true;
-      {<<"rsm">>, <<"http://jabber.org/protocol/rsm">>} ->
+      {<<"set">>, <<"http://jabber.org/protocol/rsm">>} ->
 	  true;
       {<<"first">>, <<"http://jabber.org/protocol/rsm">>} ->
 	  true;
@@ -1317,8 +1317,8 @@ encode({mam_archived, _, _} = Archived) ->
 encode({mam_query, _, _, _, _, _} = Query) ->
     encode_mam_query(Query,
 		     [{<<"xmlns">>, <<"urn:xmpp:mam:tmp">>}]);
-encode({rsm_set, _, _, _, _, _, _, _} = Rsm) ->
-    encode_rsm_set(Rsm,
+encode({rsm_set, _, _, _, _, _, _, _} = Set) ->
+    encode_rsm_set(Set,
 		   [{<<"xmlns">>, <<"http://jabber.org/protocol/rsm">>}]);
 encode({rsm_first, _, _} = First) ->
     encode_rsm_first(First,
@@ -2232,7 +2232,7 @@ decode_mam_query_els([{xmlel, <<"with">>, _attrs, _} =
        true ->
 	   decode_mam_query_els(_els, End, Start, With, Rsm)
     end;
-decode_mam_query_els([{xmlel, <<"rsm">>, _attrs, _} =
+decode_mam_query_els([{xmlel, <<"set">>, _attrs, _} =
 			  _el
 		      | _els],
 		     End, Start, With, Rsm) ->
@@ -2389,7 +2389,7 @@ decode_mam_start_cdata(_val) ->
 encode_mam_start_cdata(_val, _acc) ->
     [{xmlcdata, enc_utc(_val)} | _acc].
 
-decode_rsm_set({xmlel, <<"rsm">>, _attrs, _els}) ->
+decode_rsm_set({xmlel, <<"set">>, _attrs, _els}) ->
     {After, Last, First, Count, Before, Max, Index} =
 	decode_rsm_set_els(_els, undefined, undefined,
 			   undefined, undefined, undefined, undefined,
@@ -2506,7 +2506,7 @@ encode_rsm_set({rsm_set, After, Before, Count, First,
 																			 'encode_rsm_set_$after'(After,
 																						 []))))))),
     _attrs = _xmlns_attrs,
-    {xmlel, <<"rsm">>, _attrs, _els}.
+    {xmlel, <<"set">>, _attrs, _els}.
 
 'encode_rsm_set_$after'(undefined, _acc) -> _acc;
 'encode_rsm_set_$after'(After, _acc) ->

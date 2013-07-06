@@ -12,7 +12,8 @@
 
 %% API
 -export([start/2, stop/1]).
--export([user_send_packet/4, user_receive_packet/5, process_iq/3]).
+-export([user_send_packet/4, user_receive_packet/5,
+         process_iq/3, remove_user/2]).
 
 -include_lib("stdlib/include/ms_transform.hrl").
 -include("jlib.hrl").
@@ -63,6 +64,10 @@ start(Host, Opts) ->
                        user_receive_packet, 500),
     ejabberd_hooks:add(user_send_packet, Host, ?MODULE,
                        user_send_packet, 500),
+    ejabberd_hooks:add(remove_user, Host, ?MODULE,
+		       remove_user, 50),
+    ejabberd_hooks:add(anonymous_purge_hook, Host, ?MODULE,
+		       remove_user, 50),
     ok.
 
 stop(Host) ->
@@ -72,7 +77,33 @@ stop(Host) ->
 			  user_receive_packet, 500),
     gen_iq_handler:remove_iq_handler(ejabberd_local, Host, ?NS_MAM),
     gen_iq_handler:remove_iq_handler(ejabberd_sm, Host, ?NS_MAM),
+    ejabberd_hooks:delete(remove_user, Host, ?MODULE,
+			  remove_user, 50),
+    ejabberd_hooks:delete(anonymous_purge_hook, Host,
+			  ?MODULE, remove_user, 50),
     ok.
+
+remove_user(User, Server) ->
+    LUser = jlib:nodeprep(User),
+    LServer = jlib:nameprep(Server),
+    remove_user(LUser, LServer,
+		gen_mod:db_type(LServer, ?MODULE)).
+
+remove_user(LUser, LServer, mnesia) ->
+    US = {LUser, LServer},
+    F = fun () ->
+                mnesia:delete({archive_msg, US}),
+                mnesia:delete({archive_prefs, US})
+        end,
+    mnesia:transaction(F);
+remove_user(LUser, LServer, odbc) ->
+    SUser = ejabberd_odbc:escape(LUser),
+    ejabberd_odbc:sql_query(
+      LServer,
+      [<<"delete * from archive where username='">>, SUser, <<"';">>]),
+    ejabberd_odbc:sql_query(
+      LServer,
+      [<<"delete * from archive_prefs where username='">>, SUser, <<"';">>]).
 
 user_receive_packet(Pkt, C2SState, JID, Peer, _To) ->
     LUser = JID#jid.luser,
@@ -138,8 +169,8 @@ process_iq(#jid{lserver = LServer} = From,
             IQ#iq{type = error, sub_el = [SubEl, ?ERR_BAD_REQUEST]};
         {Start, End, With, RSM} ->
             QID = xml:get_tag_attr_s(<<"queryid">>, SubEl),
-            select_and_send(From, To, Start, End, With, RSM, QID),
-            IQ#iq{type = result, sub_el = []}
+            RSMOut = select_and_send(From, To, Start, End, With, RSM, QID),
+            IQ#iq{type = result, sub_el = RSMOut}
     end;
 process_iq(#jid{luser = LUser, lserver = LServer},
            #jid{lserver = LServer},
@@ -240,26 +271,23 @@ should_archive_peer(C2SState,
     end.
 
 store(C2SState, Pkt, LUser, LServer, Peer) ->
-    case get_prefs(LUser, LServer) of
-        {ok, Prefs} ->
-            case should_archive_peer(C2SState, Prefs, Peer) of
-                true ->
-                    do_store(Pkt, LUser, LServer, Peer,
-                             gen_mod:db_type(LServer, ?MODULE));
-                false ->
-                    pass
-            end;
-        _Err ->
+    Prefs = get_prefs(LUser, LServer),
+    case should_archive_peer(C2SState, Prefs, Peer) of
+        true ->
+            do_store(Pkt, LUser, LServer, Peer,
+                     gen_mod:db_type(LServer, ?MODULE));
+        false ->
             pass
     end.
 
 do_store(Pkt, LUser, LServer, Peer, mnesia) ->
-    ID = randoms:get_string(),
     LPeer = {PUser, PServer, _} = jlib:jid_tolower(Peer),
+    TS = now(),
+    ID = now_to_usec(TS),
     case mnesia:dirty_write(
            #archive_msg{us = {LUser, LServer},
                         id = ID,
-                        timestamp = now(),
+                        timestamp = TS,
                         peer = LPeer,
                         bare_peer = {PUser, PServer, <<>>},
                         packet = Pkt}) of
@@ -323,15 +351,26 @@ write_prefs(LUser, LServer, #archive_prefs{default = Default,
 
 get_prefs(LUser, LServer) ->
     DBType = gen_mod:db_type(LServer, ?MODULE),
-    cache_tab:lookup(archive_prefs, {LUser, LServer},
-                     fun() -> get_prefs(LUser, LServer, DBType) end).
+    case cache_tab:lookup(archive_prefs, {LUser, LServer},
+                          fun() -> get_prefs(LUser, LServer, DBType) end) of
+        {ok, Prefs} ->
+            Prefs;
+        error ->
+            Default = gen_mod:get_module_opt(
+                        LServer, ?MODULE, default,
+                        fun(always) -> always;
+                           (never) -> never;
+                           (roster) -> roster
+                        end, never),
+            #archive_prefs{us = {LUser, LServer}, default = Default}
+    end.
 
 get_prefs(LUser, LServer, mnesia) ->
     case mnesia:dirty_read(archive_prefs, {LUser, LServer}) of
         [Prefs] ->
             {ok, Prefs};
         _ ->
-            {ok, #archive_prefs{us = {LUser, LServer}}}
+            error
     end;
 get_prefs(LUser, LServer, odbc) ->
     case ejabberd_odbc:sql_query(
@@ -347,7 +386,7 @@ get_prefs(LUser, LServer, odbc) ->
                                 always = Always,
                                 never = Never}};
         _ ->
-            {ok, #archive_prefs{us = {LUser, LServer}}}
+            error
     end.
 
 select_and_send(#jid{lserver = LServer} = From,
@@ -356,30 +395,37 @@ select_and_send(#jid{lserver = LServer} = From,
                     gen_mod:db_type(LServer, ?MODULE)).
 
 select_and_send(From, To, Start, End, With, RSM, QID, DBType) ->
-    Msgs = select(From, Start, End, With, RSM, DBType),
-    send(From, To, Msgs, RSM, QID).
+    {Msgs, Count} = select(From, Start, End, With, RSM, DBType),
+    SortedMsgs = lists:keysort(2, Msgs),
+    send(From, To, SortedMsgs, RSM, Count, QID).
 
 select(#jid{luser = LUser, lserver = LServer},
-       Start, End, With, none, mnesia) ->
+       Start, End, With, RSM, mnesia) ->
     MS = make_matchspec(LUser, LServer, Start, End, With),
-    lists:map(
-      fun(Msg) ->
-              {Msg#archive_msg.id, msg_to_el(Msg)}
-      end, mnesia:dirty_select(archive_msg, MS));
+    Msgs = mnesia:dirty_select(archive_msg, MS),
+    FilteredMsgs = filter_by_rsm(Msgs, RSM),
+    Count = length(Msgs),
+    {lists:map(
+       fun(Msg) ->
+               {Msg#archive_msg.id,
+                jlib:binary_to_integer(Msg#archive_msg.id),
+                msg_to_el(Msg)}
+       end, FilteredMsgs), Count};
 select(#jid{luser = LUser, lserver = LServer},
-       Start, End, With, none, odbc) ->
-    Query = make_sql_query(LUser, LServer, Start, End, With),
-    case ejabberd_odbc:sql_query(LServer, Query) of
-        {selected, _, Res} ->
-            lists:map(
-              fun([TS, XML]) ->
-                      #xmlel{} = El = xml_stream:parse_element(XML),
-                      Now = usec_to_now(TS),
-                      {TS,
-                       msg_to_el(#archive_msg{timestamp = Now, packet = El})}
-              end, Res);
+       Start, End, With, RSM, odbc) ->
+    {Query, CountQuery} = make_sql_query(LUser, LServer, Start, End, With, RSM),
+    case {ejabberd_odbc:sql_query(LServer, Query),
+          ejabberd_odbc:sql_query(LServer, CountQuery)} of
+        {{selected, _, Res}, {selected, _, [[Count]]}} ->
+            {lists:map(
+               fun([TS, XML]) ->
+                       #xmlel{} = El = xml_stream:parse_element(XML),
+                       Now = usec_to_now(TS),
+                       {TS, jlib:binary_to_integer(TS),
+                        msg_to_el(#archive_msg{timestamp = Now, packet = El})}
+               end, Res), jlib:binary_to_integer(Count)};
         _ ->
-            []
+            {[], 0}
     end.
 
 msg_to_el(#archive_msg{timestamp = TS, packet = Pkt}) ->
@@ -392,22 +438,65 @@ msg_to_el(#archive_msg{timestamp = TS, packet = Pkt}) ->
                        xml:replace_tag_attr(
                          <<"xmlns">>, <<"jabber:client">>, Pkt)]}.
 
-send(From, To, Msgs, _RSMOut, QID) ->
+send(From, To, Msgs, RSM, Count, QID) ->
+    QIDAttr = if QID /= <<>> ->
+                      [{<<"queryid">>, QID}];
+                 true ->
+                    []
+              end,
     lists:foreach(
-      fun({ID, El}) ->
+      fun({ID, _IDInt, El}) ->
               ejabberd_router:route(
                 To, From,
                 #xmlel{name = <<"message">>,
                        children = [#xmlel{name = <<"result">>,
                                           attrs = [{<<"xmlns">>, ?NS_MAM},
-                                                   {<<"id">>, ID}|
-                                                   if QID /= <<>> ->
-                                                           [{<<"queryid">>, QID}];
-                                                      true ->
-                                                           []
-                                                   end],
+                                                   {<<"id">>, ID}|QIDAttr],
                                           children = [El]}]})
-      end, Msgs).
+      end, Msgs),
+    make_rsm_out(Msgs, RSM, Count, QIDAttr).
+
+make_rsm_out(_Msgs, none, _Count, _QIDAttr) ->
+    [];
+make_rsm_out([], #rsm_in{}, Count, QIDAttr) ->
+    [#xmlel{name = <<"query">>,
+            attrs = [{<<"xmlns">>, ?NS_MAM}|QIDAttr],
+            children = jlib:rsm_encode(#rsm_out{count = Count})}];
+make_rsm_out([{FirstID, _, _}|_] = Msgs, #rsm_in{}, Count, QIDAttr) ->
+    {LastID, _, _} = lists:last(Msgs),
+    [#xmlel{name = <<"query">>,
+            attrs = [{<<"xmlns">>, ?NS_MAM}|QIDAttr],
+            children = jlib:rsm_encode(
+                         #rsm_out{first = FirstID, count = Count,
+                                  last = LastID})}].
+
+filter_by_rsm(Msgs, none) ->
+    Msgs;
+filter_by_rsm(_Msgs, #rsm_in{max = Max}) when Max =< 0 ->
+    [];
+filter_by_rsm(Msgs, #rsm_in{max = Max, direction = Direction, id = ID}) ->
+    NewMsgs = case Direction of
+                  aft ->
+                      lists:filter(
+                        fun(#archive_msg{id = I}) ->
+                                I > ID
+                        end, Msgs);
+                  before ->
+                      lists:foldl(
+                        fun(#archive_msg{id = I} = Msg, Acc) when I < ID ->
+                                [Msg|Acc];
+                           (_, Acc) ->
+                                Acc
+                        end, [], Msgs);
+                  _ ->
+                      Msgs
+              end,
+    filter_by_max(NewMsgs, Max).
+
+filter_by_max(Msgs, undefined) ->
+    Msgs;
+filter_by_max(Msgs, Len) ->
+    lists:sublist(Msgs, Len).
 
 make_matchspec(LUser, LServer, Start, End, {_, _, <<>>} = With) ->
     ets:fun2ms(
@@ -439,7 +528,20 @@ make_matchspec(LUser, LServer, Start, End, none) ->
               Msg
       end).
 
-make_sql_query(LUser, _LServer, Start, End, With) ->
+make_sql_query(LUser, _LServer, Start, End, With, RSM) ->
+    {Max, Direction, ID} = case RSM of
+                               #rsm_in{} ->
+                                   {RSM#rsm_in.max,
+                                    RSM#rsm_in.direction,
+                                    RSM#rsm_in.id};
+                               none ->
+                                   {none, none, none}
+                           end,
+    LimitClause = if is_integer(Max), Max >= 0 ->
+                          [<<" limit ">>, jlib:integer_to_binary(Max)];
+                     true ->
+                          []
+                  end,
     WithClause = case With of
                      {_, _, <<>>} ->
                          [<<" and bare_peer='">>,
@@ -452,6 +554,21 @@ make_sql_query(LUser, _LServer, Start, End, With) ->
                      none ->
                          []
                  end,
+    DirectionClause = case catch jlib:binary_to_integer(ID) of
+                          I when is_integer(I), I >= 0 ->
+                              case Direction of
+                                  before ->
+                                      [<<" and timestamp < ">>, ID,
+                                       <<" order by timestamp desc">>];
+                                  aft ->
+                                      [<<" and timestamp > ">>, ID,
+                                       <<" order by timestamp asc">>];
+                                  _ ->
+                                      []
+                              end;
+                          _ ->
+                              []
+                      end,
     StartClause = case Start of
                       {_, _, _} ->
                           [<<" and timestamp >= ">>, now_to_usec(Start)];
@@ -465,8 +582,11 @@ make_sql_query(LUser, _LServer, Start, End, With) ->
                         []
                 end,
     SUser = ejabberd_odbc:escape(LUser),
-    [<<"select timestamp, xml from archive where username='">>, SUser, <<"'">>]
-        ++ WithClause ++ StartClause ++ EndClause ++ [<<";">>].
+    {[<<"select timestamp, xml from archive where username='">>,
+      SUser, <<"'">>] ++ WithClause ++ StartClause ++ EndClause ++
+         DirectionClause ++ LimitClause ++ [<<";">>],
+     [<<"select count(*) from archive where username='">>,
+      SUser, <<"'">>] ++ WithClause ++ StartClause ++ EndClause ++ [<<";">>]}.
 
 now_to_usec({MSec, Sec, USec}) ->
     jlib:integer_to_binary((MSec*1000000 + Sec)*1000000 + USec).
