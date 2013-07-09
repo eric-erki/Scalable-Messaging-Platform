@@ -241,6 +241,14 @@ AC_ARG_ENABLE(lager,
   *) AC_MSG_ERROR(bad value ${enableval} for --enable-lager) ;;
 esac],[if test "x$lager" = "x"; then lager=true; fi])
 
+AC_ARG_ENABLE(airbrake,
+[AC_HELP_STRING([--enable-airbrake], [enable Airbrake notification (default: no)])],
+[case "${enableval}" in
+  yes) airbrake=true ;;
+  no)  airbrake=false ;;
+  *) AC_MSG_ERROR(bad value ${enableval} for --enable-airbrake) ;;
+esac],[if test "x$airbrake" = "x"; then airbrake=false; fi])
+
 AC_CONFIG_FILES([Makefile
 		 vars.config
 		 src/ejabberd.app.src])
