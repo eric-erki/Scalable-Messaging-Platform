@@ -42,6 +42,7 @@ DepConfiguredApps = lists:flatmap(
                          ({http, true}) -> [ibrowse, lhttpc];
                          ({lager, true}) -> [lager];
                          ({lager, false}) -> [p1_logger];
+                         ({airbrake, true}) -> [erlbrake];
                          (_) -> []
                       end, Vars),
 
