@@ -313,5 +313,6 @@ AC_SUBST(pubsub_ng)
 AC_SUBST(http)
 AC_SUBST(lager)
 AC_SUBST(tools)
+AC_SUBST(airbrake)
 
 AC_OUTPUT
