@@ -22,11 +22,11 @@
 -define(NS_FORWARD, <<"urn:xmpp:forward:0">>).
 
 -record(archive_msg,
-        {us = {<<"">>, <<"">>}                :: {binary(), binary()},
-         id = <<>>                            :: binary(),
-         timestamp = now()                    :: erlang:timestamp() | '_',
-         peer = {<<"">>, <<"">>, <<"">>}      :: ljid() | '_',
-         bare_peer = {<<"">>, <<"">>, <<"">>} :: ljid() | '_',
+        {us = {<<"">>, <<"">>}                :: {binary(), binary()} | '$2',
+         id = <<>>                            :: binary() | '_',
+         timestamp = now()                    :: erlang:timestamp() | '_' | '$1',
+         peer = {<<"">>, <<"">>, <<"">>}      :: ljid() | '_' | '$3',
+         bare_peer = {<<"">>, <<"">>, <<"">>} :: ljid() | '_' | '$3',
          packet = #xmlel{}                    :: xmlel() | '_'}).
 
 -record(archive_prefs,
@@ -228,9 +228,8 @@ strip_my_archived_tag(Pkt, LServer) ->
                fun(#xmlel{name = <<"archived">>,
                           attrs = Attrs}) ->
                        case catch jlib:nameprep(
-                                    jlib:string_to_jid(
-                                      xml:get_attr_s(
-                                        <<"by">>, Attrs))) of
+                                    xml:get_attr_s(
+                                      <<"by">>, Attrs)) of
                            LServer ->
                                false;
                            _ ->
