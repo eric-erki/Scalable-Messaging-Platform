@@ -228,9 +228,8 @@ ib2tol(Integer) when is_integer(Integer) ->
 %%
 %% Tests
 %%  erlc -DTEST web/xmpp_json.erl && erl -pa web/ -run xmpp_json test -run init stop -noshell
--include_lib("eunit/include/eunit.hrl").
-
 -ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
 
 to_text_value_test() ->
     In = {xmlstreamelement,
