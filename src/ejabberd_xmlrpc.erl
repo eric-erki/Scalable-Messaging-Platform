@@ -440,7 +440,9 @@ format_result(ElementsTuple,
 				      format_result(Element, ElementDef)
 			      end,
 			      ElementsAndDef),
-    {struct, [{Name, {array, FormattedList}}]}.
+    {struct, [{Name, {array, FormattedList}}]};
+format_result(404, {Name, _}) ->
+    {struct, [{Name, make_status(not_found)}]}.
 
 make_status(ok) -> 0;
 make_status(true) -> 0;
