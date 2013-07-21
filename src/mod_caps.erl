@@ -36,7 +36,7 @@
 
 -export([read_caps/1, caps_stream_features/2,
 	 disco_features/5, disco_identity/5, disco_info/5,
-	 get_features/2, export/1]).
+	 get_features/2, export/1, import/1, import/3]).
 
 %% gen_mod callbacks
 -export([start/2, start_link/2, stop/1]).
@@ -683,3 +683,33 @@ export(_Server) ->
          (_Host, _R) ->
               []
       end}].
+
+import(_LServer) ->
+    [{<<"select node, subnode from caps_features;">>,
+      fun([Node, SubNode]) ->
+              SNode = ejabberd_odbc:escape(Node),
+              SSubNode = ejabberd_odbc:escape(SubNode),
+              {selected, _, Rows} =
+                  ejabberd_odbc:sql_query_t(
+                    [<<"select feature from caps_features "
+                       "where node='">>, SNode,
+                     <<"' and subnode='">>, SSubNode, <<"';">>]),
+              Features = case Rows of
+                             [[Stamp]] ->
+                                 case catch jlib:binary_to_integer(Stamp) of
+                                     Int when is_integer(Int), Int>=0 ->
+                                         Int;
+                                     _ ->
+                                         [Stamp]
+                                 end;
+                             _ ->
+                                 [Feature || [Feature] <- Rows]
+                         end,
+              #caps_features{node_pair = {Node, SubNode},
+                             features = Features}
+      end}].
+
+import(_LServer, mnesia, #caps_features{} = Caps) ->
+    mnesia:dirty_write(Caps);
+import(_, _, _) ->
+    pass.

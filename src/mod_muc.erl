@@ -33,12 +33,12 @@
 -behaviour(gen_mod).
 
 %% API
--export([start_link/2, start/2, stop/1, export/1,
+-export([start_link/2, start/2, stop/1, export/1, import/1,
 	 room_destroyed/4, store_room/4, restore_room/3,
 	 forget_room/3, create_room/5, process_iq_disco_items/4,
 	 broadcast_service_message/2, register_room/3, node_up/1,
 	 node_down/1, migrate/3, get_vh_rooms/1, shutdown_rooms/1,
-	 is_broadcasted/1, moderate_room_history/2,
+	 is_broadcasted/1, moderate_room_history/2, import/3,
 	 persist_recent_messages/1, can_use_nick/4]).
 
 %% gen_server callbacks
@@ -1391,3 +1391,25 @@ export(_Server) ->
                       []
               end
       end}].
+
+import(_LServer) ->
+    [{<<"select name, host, opts from muc_room;">>,
+      fun([Name, RoomHost, SOpts]) ->
+              Opts = opts_to_binary(ejabberd_odbc:decode_term(SOpts)),
+              #muc_room{name_host = {Name, RoomHost},
+                        opts = Opts}
+      end},
+     {<<"select jid, host, nick from muc_registered;">>,
+      fun([J, RoomHost, Nick]) ->
+              #jid{user = U, server = S} =
+                  jlib:string_to_jid(J),
+              #muc_registered{us_host = {{U, S}, RoomHost},
+                              nick = Nick}
+      end}].
+
+import(_LServer, mnesia, #muc_room{} = R) ->
+    mnesia:dirty_write(R);
+import(_LServer, mnesia, #muc_registered{} = R) ->
+    mnesia:dirty_write(R);
+import(_, _, _) ->
+    pass.

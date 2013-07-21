@@ -37,7 +37,7 @@
 	 remove_expired_messages/1, remove_old_messages/2,
 	 remove_user/2, get_queue_length/2, webadmin_page/3, webadmin_user/4,
 	 webadmin_user_parse_query/5, count_offline_messages/3,
-         export/1]).
+         export/1, import/1, import/3]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -998,3 +998,26 @@ export(_Server) ->
          (_Host, _R) ->
               []
       end}].
+
+import(LServer) ->
+    [{<<"select username, xml from spool;">>,
+      fun([LUser, XML]) ->
+              El = #xmlel{} = xml_stream:parse_element(XML),
+              From = #jid{} = jlib:string_to_jid(
+                                xml:get_attr_s(<<"from">>, El)),
+              To = #jid{} = jlib:string_to_jid(
+                              xml:get_attr_s(<<"to">>, El)),
+              Stamp = xml:get_path_s(El, [{elem, <<"delay">>},
+                                          {elem, <<"stamp">>},
+                                          cdata]),
+              {_, _, _} = TS = jlib:datetime_string_to_timestamp(Stamp),
+              Expire = find_x_expire(TS, El#xmlel.children),
+              #offline_msg{us = {LUser, LServer},
+                           from = From, to = To,
+                           timestamp = TS, expire = Expire}
+      end}].
+
+import(_LServer, mnesia, #offline_msg{} = Msg) ->
+    mnesia:dirty_write(Msg);
+import(_, _, _) ->
+    pass.

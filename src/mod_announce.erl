@@ -36,6 +36,8 @@
 	 init/0,
 	 stop/1,
 	 export/1,
+         import/1,
+         import/3,
 	 announce/3,
 	 send_motd/1,
 	 disco_identity/5,
@@ -1120,3 +1122,21 @@ export(_Server) ->
          (_Host, _R) ->
               []
       end}].
+
+import(LServer) ->
+    [{<<"select xml from motd where username='';">>,
+      fun([XML]) ->
+              El = xml_stream:parse_element(XML),
+              #motd{server = LServer, packet = El}
+      end},
+     {<<"select username from motd where xml='';">>,
+      fun([LUser]) ->
+              #motd_users{us = {LUser, LServer}}
+      end}].
+
+import(_LServer, mnesia, #motd{} = Motd) ->
+    mnesia:dirty_write(Motd);
+import(_LServer, mnesia, #motd_users{} = Users) ->
+    mnesia:dirty_write(Users);
+import(_, _, _) ->
+    pass.
