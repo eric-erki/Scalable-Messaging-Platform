@@ -1641,7 +1641,7 @@ import(_LServer, riak, #roster{us = {LUser, LServer}} = R) ->
 import(_LServer, riak, #roster_version{} = RV) ->
     ejabberd_riak:put(RV);
 import(_, _, _) ->
-    ok.
+    pass.
 
 %% For benchmarks
 make_roster_range(I, Total) ->
