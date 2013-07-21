@@ -1236,5 +1236,7 @@ import(LServer) ->
 
 import(_LServer, mnesia, #privacy{} = P) ->
     mnesia:dirty_write(P);
+import(_LServer, riak, #privacy{} = P) ->
+    ejabberd_riak:put(P);
 import(_, _, _) ->
     pass.

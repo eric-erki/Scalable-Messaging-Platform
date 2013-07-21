@@ -711,5 +711,7 @@ import(_LServer) ->
 
 import(_LServer, mnesia, #caps_features{} = Caps) ->
     mnesia:dirty_write(Caps);
+import(_LServer, riak, #caps_features{} = Caps) ->
+    ejabberd_riak:put(Caps);
 import(_, _, _) ->
     pass.
