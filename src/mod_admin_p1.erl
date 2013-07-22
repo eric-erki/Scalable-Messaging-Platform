@@ -1329,7 +1329,7 @@ format_roster_with_presence([#roster{jid = JID,
 		 _Other -> {<<"">>, <<"unavailable">>, <<"">>}
 	       end,
     {Resource, Show, Status} = Presence,
-    Struct = {lists:flatten([User, <<"@">>, Server]),
+    Struct = {jlib:jid_to_string(jlib:make_jid(User, Server, <<>>)),
 	      Resource, extract_group(Group), Nick,
 	      iolist_to_binary(atom_to_list(Subs)),
 	      iolist_to_binary(atom_to_list(Ask)), Show, Status},
