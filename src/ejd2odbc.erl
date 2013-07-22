@@ -90,13 +90,14 @@ import_file(Server, FileName) ->
             LServer = jlib:nameprep(Server),
             Mods = [{Mod, gen_mod:db_type(LServer, Mod)}
                     || Mod <- modules(), gen_mod:is_loaded(LServer, Mod)],
-            AuthMods = case lists:member(ejabberd_auth_internal,
-                                         ejabberd_auth:auth_modules(LServer)) of
-                           true ->
-                               [{ejabberd_auth, mnesia}];
-                           false ->
-                               []
-                       end,
+            AuthMods = lists:flatmap(
+                         fun(ejabberd_auth_internal) ->
+                                 [{ejabberd_auth, mnesia}];
+                            (ejabberd_auth_riak) ->
+                                 [{ejabberd_auth, riak}];
+                            (_) ->
+                                 []
+                         end, ejabberd_auth:auth_modules(LServer)),
             import_dump(LServer, AuthMods ++ Mods, #dump{fd = Fd});
         Err ->
             exit(Err)
