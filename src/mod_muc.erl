@@ -765,7 +765,7 @@ start_new_room(Host, ServerHost, Access, Room,
 		 [Room]),
 	  mod_muc_room:start(normal_state, RoomState);
       error ->
-	  case restore_room(ServerHost, Room, Host) of
+	  case restore_room(ServerHost, Host, Room) of
 	    error ->
 		?DEBUG("MUC: open new room '~s'~n", [Room]),
 		mod_muc_room:start(Host, ServerHost, Access, Room,
