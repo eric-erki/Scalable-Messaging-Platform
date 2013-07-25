@@ -153,7 +153,19 @@ check_and_forward(JID, #xmlel{name = <<"message">>, attrs = Attrs} = Packet, Dir
 	    false ->
 		case xml:get_subtag(Packet,<<"forwarded">>) of
 		    false ->
-			send_copies(JID, Packet, Direction);
+                        case xml:get_path_s(Packet, [{elem, <<"received">>},
+                                                     {elem, <<"forwarded">>}]) of
+                            <<"">> ->
+                                case xml:get_path_s(Packet, [{elem, <<"sent">>},
+                                                             {elem, <<"forwarded">>}]) of
+                                    <<"">> ->
+                                        send_copies(JID, Packet, Direction);
+                                    _ ->
+                                        stop
+                                end;
+                            _ ->
+                                stop
+                        end;
 		    _ ->
 			%% stop the hook chain, we don't want mod_logdb to register this message (duplicate)
 			stop
