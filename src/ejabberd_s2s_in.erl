@@ -139,7 +139,7 @@ init([{SockMod, Socket}, Opts]) ->
 	       _ -> none
 	     end,
     {StartTLS, TLSRequired, TLSCertverify} =
-        case ejabberd_config:get_local_option(
+        case ejabberd_config:get_option(
                s2s_use_starttls,
                fun(false) -> false;
                   (true) -> true;
@@ -161,7 +161,7 @@ init([{SockMod, Socket}, Opts]) ->
             required_trusted ->
                 {true, true, true}
         end,
-    TLSOpts1 = case ejabberd_config:get_local_option(
+    TLSOpts1 = case ejabberd_config:get_option(
                      s2s_certfile,
                      fun iolist_to_binary/1) of
                   undefined -> [];
@@ -314,7 +314,7 @@ wait_for_feature_request({xmlstreamelement, El},
 	  ?DEBUG("starttls", []),
 	  Socket = StateData#state.socket,
 	  TLSOpts1 = case
-		      ejabberd_config:get_local_option(
+		      ejabberd_config:get_option(
                         {domain_certfile, StateData#state.server},
                         fun iolist_to_binary/1) of
 		      undefined -> StateData#state.tls_options;
@@ -322,7 +322,7 @@ wait_for_feature_request({xmlstreamelement, El},
 			  [{certfile, CertFile} | lists:keydelete(certfile, 1,
 								  StateData#state.tls_options)]
 		    end,
-          TLSOpts = case ejabberd_config:get_local_option(
+          TLSOpts = case ejabberd_config:get_option(
                            {s2s_tls_compression, StateData#state.server},
                            fun(true) -> true;
                               (false) -> false
@@ -805,7 +805,7 @@ fsm_limit_opts(Opts) ->
     case lists:keysearch(max_fsm_queue, 1, Opts) of
       {value, {_, N}} when is_integer(N) -> [{max_queue, N}];
       _ ->
-	  case ejabberd_config:get_local_option(
+	  case ejabberd_config:get_option(
                  max_fsm_queue,
                  fun(I) when is_integer(I), I > 0 -> I end) of
             undefined -> [];

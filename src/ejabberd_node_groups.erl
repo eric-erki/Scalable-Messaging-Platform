@@ -93,7 +93,7 @@ get_closest_node(Name) ->
 %%--------------------------------------------------------------------
 init([]) ->
     Groups =
-	case ejabberd_config:get_local_option(
+	case ejabberd_config:get_option(
                node_type,
                fun(frontend) -> frontend;
                   (backend) -> backend;

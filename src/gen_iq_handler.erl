@@ -33,7 +33,7 @@
 %% API
 -export([start_link/5, add_iq_handler/6,
 	 remove_iq_handler/3, stop_iq_handler/3, handle/7,
-	 process_iq/6, check_type/1]).
+	 process_iq/6, check_type/1, transform_module_options/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
@@ -48,7 +48,7 @@
                 function :: atom()}).
 
 -type component() :: ejabberd_sm | ejabberd_local.
--type type() :: no_queue | one_queue | {queues, pos_integer()} | parallel.
+-type type() :: no_queue | one_queue | pos_integer() | parallel.
 -type opts() :: no_queue | {one_queue, pid()} | {queues, [pid()]} | parallel.
 
 %%====================================================================
@@ -73,7 +73,7 @@ add_iq_handler(Component, Host, NS, Module, Function,
 	    Component:register_iq_handler(Host, NS, Module, Function, no_queue);
 	one_queue ->
             start_handler(Component, Host, NS, Module, Function);
-	{queues, N} ->
+	N when is_integer(N) ->
             lists:foreach(
               fun(_) ->
                       start_handler(Component, Host, NS, Module, Function)
@@ -129,8 +129,18 @@ process_iq(_Host, Module, Function, From, To, IQ) ->
 
 check_type(no_queue) -> no_queue;
 check_type(one_queue) -> one_queue;
-check_type({queues, N}) when is_integer(N), N>0 -> {queues, N};
+check_type(N) when is_integer(N), N>0 -> N;
 check_type(parallel) -> parallel.
+
+-spec transform_module_options([{atom(), any()}]) -> [{atom(), any()}].
+
+transform_module_options(Opts) ->
+    lists:map(
+      fun({iqdisc, {queues, N}}) ->
+              {iqdisc, N};
+         (Opt) ->
+              Opt
+      end, Opts).
 
 start_handler(Component, Host, NS, Module, Function) ->
     Spec = {{?MODULE, make_ref()},

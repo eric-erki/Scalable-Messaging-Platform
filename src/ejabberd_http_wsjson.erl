@@ -107,7 +107,7 @@ socket_handoff(LocalPath, Request, Socket, SockMod, Buf, Opts) ->
 init([WS]) ->
     Opts = [{xml_socket, true}
 	    | ejabberd_c2s_config:get_c2s_limits()],
-    WSTimeout = ejabberd_config:get_local_option(
+    WSTimeout = ejabberd_config:get_option(
                   {websocket_timeout, ?MYNAME},
                   fun(I) when is_integer(I), I>0 -> I end,
                   ?WEBSOCKET_TIMEOUT) * 1000,

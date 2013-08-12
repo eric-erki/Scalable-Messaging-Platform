@@ -70,7 +70,7 @@ node_id() ->
     jlib:integer_to_binary(erlang:phash2(node())).
 
 rehash_timeout() ->
-    case ejabberd_config:get_local_option(
+    case ejabberd_config:get_option(
            rehash_timeout,
            fun(I) when is_integer(I), I > 0 -> I end) of
         undefined -> ?REHASH_TIMEOUT;
@@ -78,7 +78,7 @@ rehash_timeout() ->
     end.
 
 migrate_timeout() ->
-    case ejabberd_config:get_local_option(
+    case ejabberd_config:get_option(
            migrate_timeout,
            fun(N) when is_integer(N), N > 0 -> N end) of
         undefined -> ?MIGRATE_TIMEOUT;

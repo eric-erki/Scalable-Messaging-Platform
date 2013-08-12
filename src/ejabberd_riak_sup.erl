@@ -34,6 +34,7 @@
 	 add_pid/1,
 	 remove_pid/1,
 	 get_pids/0,
+         transform_options/1,
 	 get_random_pid/0
 	]).
 
@@ -51,7 +52,7 @@
 -record(riak_pool, {undefined, pid}).
 
 start() ->
-    StartRiak = ejabberd_config:get_local_option(
+    StartRiak = ejabberd_config:get_option(
                   riak_server, fun(_) -> true end, false),
     if
         StartRiak ->
@@ -94,22 +95,23 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 init([]) ->
-    PoolSize =
-        ejabberd_config:get_local_option(
-          riak_pool_size,
-          fun(N) when is_integer(N), N >= 1 -> N end,
-          ?DEFAULT_POOL_SIZE),
-    StartInterval =
-        ejabberd_config:get_local_option(
-          riak_start_interval,
-          fun(N) when is_integer(N), N >= 1 -> N end,
-          ?DEFAULT_RIAK_START_INTERVAL),
-    {Server, Port} =
-        ejabberd_config:get_local_option(
-          riak_server,
-          fun({S, P}) when is_integer(P), P > 0, P < 65536 ->
-                  {binary_to_list(iolist_to_binary(S)), P}
-          end, {"127.0.0.1", 8081}),
+    PoolSize = ejabberd_config:get_option(
+                 riak_pool_size,
+                 fun(N) when is_integer(N), N >= 1 -> N end,
+                 ?DEFAULT_POOL_SIZE),
+    StartInterval = ejabberd_config:get_option(
+                      riak_start_interval,
+                      fun(N) when is_integer(N), N >= 1 -> N end,
+                      ?DEFAULT_RIAK_START_INTERVAL),
+    Server = ejabberd_config:get_option(
+               riak_server,
+               fun(S) ->
+                       binary_to_list(iolist_to_binary(S))
+               end, "127.0.0.1"),
+    Port = ejabberd_config:get_option(
+             riak_port,
+             fun(P) when is_integer(P), P > 0, P < 65536 -> P end,
+             8087),
     {ok, {{one_for_one, PoolSize*10, 1},
 	  lists:map(
 	    fun(I) ->
@@ -143,3 +145,11 @@ remove_pid(Pid) ->
 		  #riak_pool{pid = Pid})
 	end,
     mnesia:ets(F).
+
+transform_options(Opts) ->
+    lists:foldl(fun transform_options/2, [], Opts).
+
+transform_options({riak_server, {S, P}}, Opts) ->
+    [{riak_server, S}, {riak_port, P}|Opts];
+transform_options(Opt, Opts) ->
+    [Opt|Opts].

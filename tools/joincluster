@@ -38,11 +38,11 @@ echo ""
 
 echo "Make sure you have a running remote master ejabberd node"
 echo "Before continuing, you must copy the ~/.erlang.cookie file from"
-echo "remote master node and check ejabberd.cfg compatibility."
+echo "remote master node and check ejabberd.yml compatibility."
 echo "e.g. hosts definition must match on all nodes"
 echo ""
 echo "The remote master node name is defined as ERLANG_NODE into"
-echo "ejabberdctl.cfg on that remote node."
+echo "ejabberdctl.yml on that remote node."
 echo ""
 echo -n "Remote master node name: "
 read REMOTE

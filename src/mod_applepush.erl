@@ -26,6 +26,7 @@
 	 offline_resend_badge/0,
          device_reset_badge/5,
 	 remove_user/2,
+         transform_module_options/1,
          process_sm_iq/3]).
 
 
@@ -424,10 +425,10 @@ offline_resend_badge() ->
     multi_resend_badge(JIDs).
 
 lookup_cache(JID) ->
-    case get_storage(JID#jid.lserver) of
+    case gen_mod:db_type(JID#jid.lserver) of
         mnesia ->
             lookup_cache_mnesia(JID);
-        sql ->
+        odbc ->
             lookup_cache_sql(JID)
     end.
 
@@ -445,10 +446,10 @@ lookup_cache_sql(JID) ->
         "where username='">>, Username, <<"'">>]).
 
 lookup_cache(JID, DeviceID) ->
-    case get_storage(JID#jid.lserver) of
+    case gen_mod:db_type(JID#jid.lserver) of
         mnesia ->
             lookup_cache_mnesia(JID, DeviceID);
-        sql ->
+        odbc ->
             lookup_cache_sql(JID, DeviceID)
     end.
 
@@ -509,7 +510,7 @@ do_lookup_cache_sql(LServer, Query) ->
 
 
 store_cache(JID, DeviceID, AppID, SendBody, SendFrom, TimeStamp) ->
-    case get_storage(JID#jid.lserver) of
+    case gen_mod:db_type(JID#jid.lserver) of
         mnesia ->
             Options =
                 [{appid, AppID},
@@ -517,7 +518,7 @@ store_cache(JID, DeviceID, AppID, SendBody, SendFrom, TimeStamp) ->
                  {send_from, SendFrom},
                  {timestamp, TimeStamp}],
             store_cache_mnesia(JID, DeviceID, Options);
-        sql ->
+        odbc ->
             store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom)
     end.
 
@@ -574,10 +575,10 @@ store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom) ->
     odbc_queries:sql_transaction(LServer, F).
 
 delete_cache(JID, DeviceID) ->
-    case get_storage(JID#jid.lserver) of
+    case gen_mod:db_type(JID#jid.lserver) of
         mnesia ->
             delete_cache_mnesia(JID, DeviceID);
-        sql ->
+        odbc ->
             delete_cache_sql(JID, DeviceID)
     end.
 
@@ -597,10 +598,10 @@ delete_cache_sql(JID, DeviceID) ->
        <<"device_id='">>, SDeviceID, <<"';">>]).
 
 delete_cache(JID) ->
-    case get_storage(JID#jid.lserver) of
+    case gen_mod:db_type(JID#jid.lserver) of
         mnesia ->
             delete_cache_mnesia(JID);
-        sql ->
+        odbc ->
             delete_cache_sql(JID)
     end.
 
@@ -750,14 +751,6 @@ get_push_service(Host, JID, AppID) ->
 	end,
     PushService.
 
-get_storage(Host) ->
-    gen_mod:get_module_opt(Host, ?MODULE, backend,
-                           fun(mnesia) -> mnesia;
-                              (sql) -> sql
-                           end,
-                           mnesia).
-
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Internal module protection
 
@@ -796,3 +789,17 @@ get_tokens_by_jid(#jid{luser = LUser, lserver = LServer}) ->
     LUS = {LUser, LServer},
     [erlang:integer_to_list(I, 16) || {applepush_cache,_,I,_} <- 
        mnesia:dirty_read(applepush_cache, LUS)].
+
+transform_module_options(Opts) ->
+    lists:map(
+      fun({backend, sql}) ->
+              ?WARNING_MSG("Option 'backend' is obsoleted, "
+                           "use 'db_type' instead", []),
+              {db_type, odbc};
+         ({backend, mnesia}) ->
+              ?WARNING_MSG("Option 'backend' is obsoleted, "
+                           "use 'db_type' instead", []),
+              {db_type, internal};
+         (Opt) ->
+              Opt
+      end, Opts).

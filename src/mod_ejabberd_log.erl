@@ -123,10 +123,20 @@ packet(Pkt, _, _, _) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([Host, Opts]) ->
-    Dir = gen_mod:get_opt(dir, Opts, fun(A) when is_list(A) -> A end, "/tmp/"),
+    Dir = binary_to_list(
+            gen_mod:get_opt(dir, Opts,
+                            fun iolist_to_binary/1, <<"/tmp">>)),
     Day = day(),
     Filename = filename(Dir, Day),
-    Disabled = gen_mod:get_opt(disabled, Opts, fun(A) when is_list(A) -> A end, []),
+    Disabled = gen_mod:get_opt(disabled, Opts,
+                               fun(L) ->
+                                       lists:map(
+                                         fun(chat) -> chat;
+                                            (groupchat) -> groupchat;
+                                            (conn) -> conn;
+                                            (disc) -> disc
+                                         end, L)
+                               end, []),
     {ok, FD} = file:open(Filename, [append, raw]),
     ejabberd_hooks:add(sm_register_connection_hook, Host,
 		       ?MODULE, on_connect, 50),

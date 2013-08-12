@@ -222,7 +222,7 @@ terminate(_Reason, _State) -> ok.
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
 check_starttls(SockMod, Socket, Receiver, Opts) ->
-    TLSEnabled = lists:member(tls, Opts),
+    TLSEnabled = proplists:get_bool(tls, Opts),
     TLSOpts = lists:filter(fun ({certfile, _}) -> true;
 			       (_) -> false
 			   end,

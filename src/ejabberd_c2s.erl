@@ -39,7 +39,7 @@
 	 send_element/2, socket_type/0, get_presence/1,
 	 get_aux_field/2, set_aux_field/3, del_aux_field/2,
 	 get_subscription/2, broadcast/4, is_remote_socket/1,
-         get_subscribed/1]).
+         get_subscribed/1, transform_listen_option/2]).
 
 %% API:
 -export([add_rosteritem/3, del_rosteritem/2]).
@@ -261,11 +261,10 @@ init([{SockMod, Socket}, Opts, FSMLimitOpts]) ->
 		  {value, {_, XS}} -> XS;
 		  _ -> false
 		end,
-    Zlib = lists:member(zlib, Opts),
-    StartTLS = lists:member(starttls, Opts),
-    StartTLSRequired = lists:member(starttls_required,
-				    Opts),
-    TLSEnabled = lists:member(tls, Opts),
+    Zlib = proplists:get_bool(zlib, Opts),
+    StartTLS = proplists:get_bool(starttls, Opts),
+    StartTLSRequired = proplists:get_bool(starttls_required, Opts),
+    TLSEnabled = proplists:get_bool(tls, Opts),
     TLS = StartTLS orelse
 	    StartTLSRequired orelse TLSEnabled,
     TLSOpts1 = lists:filter(fun ({certfile, _}) -> true;
@@ -285,8 +284,8 @@ init([{SockMod, Socket}, Opts, FSMLimitOpts]) ->
 	   {value, {_, IP1}} -> IP1;
 	   _ -> peerip(SockMod, Socket)
 	 end,
-    FlashHack = ejabberd_config:get_local_option(
-                  flash_hack, fun(V) -> V end, false),
+    FlashHack = ejabberd_config:get_option(
+                  flash_hack, fun(B) when is_boolean(B) -> B end, false),
     case is_ip_blacklisted(IP) of
       true ->
 	  ?INFO_MSG("Connection attempt from blacklisted "
@@ -892,7 +891,7 @@ wait_for_feature_request({xmlstreamelement, El},
 	  when TLS == true, TLSEnabled == false,
 	       SockMod == gen_tcp ->
 	  TLSOpts = case
-		      ejabberd_config:get_local_option(
+		      ejabberd_config:get_option(
                         {domain_certfile, StateData#state.server},
                         fun iolist_to_binary/1)
 			of
@@ -1125,7 +1124,7 @@ resource_conflict_action(U, S, R) ->
 						      R)
 		    of
 		  true ->
-		      ejabberd_config:get_local_option(
+		      ejabberd_config:get_option(
                         {resource_conflict, S},
                         fun(setresource) -> setresource;
                            (closeold) -> closeold;
@@ -3380,7 +3379,7 @@ fsm_limit_opts(Opts) ->
     case lists:keysearch(max_fsm_queue, 1, Opts) of
       {value, {_, N}} when is_integer(N) -> [{max_queue, N}];
       _ ->
-	  case ejabberd_config:get_local_option(
+	  case ejabberd_config:get_option(
                  max_fsm_queue,
                  fun(I) when is_integer(I), I > 0 -> I end) of
             undefined -> [];
@@ -3452,7 +3451,7 @@ fix_packet(StateData, FromJID, ToJID, El) ->
 pack(S) -> S.
 
 flash_policy_string() ->
-    Listen = ejabberd_config:get_local_option(listen, fun(V) -> V end),
+    Listen = ejabberd_config:get_option(listen, fun(V) -> V end),
     ClientPortsDeep = [<<",",
 			 (iolist_to_binary(integer_to_list(Port)))/binary>>
 		       || {{Port, _, _}, ejabberd_c2s, _Opts} <- Listen],
@@ -3506,6 +3505,9 @@ update_internal_dict(#state{sockmod = SockMod,
     put(c2s_xml_socket, XMLSocket),
     put(c2s_socket, Socket),
     StateData.
+
+transform_listen_option(Opt, Opts) ->
+    [Opt|Opts].
 
 is_remote_socket(SockMod, XMLSocket, Socket) ->
     SockMod == ejabberd_frontend_socket orelse

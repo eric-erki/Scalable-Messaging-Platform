@@ -420,13 +420,13 @@ do_route(OrigFrom, OrigTo, OrigPacket) ->
     end.
 
 get_component_number(LDomain) ->
-    ejabberd_config:get_local_option(
+    ejabberd_config:get_option(
       {domain_balancing_component_number, LDomain},
       fun(N) when is_integer(N), N > 1 -> N end,
       undefined).
 
 get_domain_balancing(LDomain) ->
-    ejabberd_config:get_local_option(
+    ejabberd_config:get_option(
       {domain_balancing, LDomain},
       fun(random) -> random;
          (source) -> source;

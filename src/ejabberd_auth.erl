@@ -195,7 +195,7 @@ try_register(User, Server, Password) ->
 	  LServer = jlib:nameprep(Server),
 	  case lists:member(LServer, ?MYHOSTS) of
 	    true ->
-                MaxUsers = ejabberd_config:get_local_option({max_users, LServer},
+                MaxUsers = ejabberd_config:get_option({max_users, LServer},
                                                             fun(X) when is_integer(X) -> X end, no_limit),
                 RegAllowed = case MaxUsers of
                                  no_limit ->
@@ -443,7 +443,7 @@ auth_modules() ->
 %% Return the list of authenticated modules for a given host
 auth_modules(Server) ->
     LServer = jlib:nameprep(Server),
-    Methods = ejabberd_config:get_local_option(
+    Methods = ejabberd_config:get_option(
                 {auth_method, LServer},
                 fun(V) when is_list(V) ->
                         true = lists:all(fun is_atom/1, V),
