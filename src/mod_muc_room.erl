@@ -135,6 +135,7 @@ init([Host, ServerHost, Access, Room, HistorySize,
       PersistHistory, RoomShaper, Creator, _Nick,
       DefRoomOpts]) ->
     process_flag(trap_exit, true),
+    mod_muc:register_room(Host, Room, self()),
     Shaper = shaper:new(RoomShaper),
     State = set_affiliation(Creator, owner,
 			    #state{host = Host, server_host = ServerHost,
@@ -158,6 +159,7 @@ init([Host, ServerHost, Access, Room, HistorySize,
 init([Host, ServerHost, Access, Room, HistorySize,
       PersistHistory, RoomShaper, Opts]) ->
     process_flag(trap_exit, true),
+    mod_muc:register_room(Host, Room, self()),
     Shaper = shaper:new(RoomShaper),
     State = set_opts(Opts,
 		     #state{host = Host, server_host = ServerHost,
@@ -863,6 +865,8 @@ handle_info({migrate, Node}, StateName, StateData) ->
     end;
 handle_info(system_shutdown, _StateName, StateData) ->
     {stop, normal, StateData#state{shutdown_reason = system_shutdown}};
+handle_info(replaced, _StateName, StateData) ->
+    {stop, normal, StateData#state{shutdown_reason = replaced}};
 handle_info(_Info, StateName, StateData) ->
     {next_state, StateName, StateData}.
 
@@ -870,9 +874,8 @@ terminate({migrated, Clone}, _StateName, StateData) ->
     ?INFO_MSG("Migrating room ~s@~s to ~p on node ~p",
 	      [StateData#state.room, StateData#state.host, Clone,
 	       node(Clone)]),
-    mod_muc:room_destroyed(StateData#state.host,
-			   StateData#state.room, self(),
-			   StateData#state.server_host),
+    mod_muc:unregister_room(StateData#state.host,
+                            StateData#state.room),
     ok;
 terminate(_Reason, _StateName, StateData) ->
     Reason = StateData#state.shutdown_reason,
@@ -884,6 +887,8 @@ terminate(_Reason, _StateName, StateData) ->
 		      "because of a system shutdown">>;
                 destroyed ->
                     <<"The room has been destroyed">>;
+                replaced ->
+                    <<"The room has been moved">>;
 		_ -> <<"Room terminates">>
 	      end,
     ItemAttrs = [{<<"affiliation">>, <<"none">>},
@@ -904,7 +909,9 @@ terminate(_Reason, _StateName, StateData) ->
 					    children = []}]}]},
     (?DICT):fold(fun (LJID, Info, _) ->
 			 Nick = Info#user.nick,
-			 if Reason == system_shutdown; Reason == destroyed ->
+			 if Reason == system_shutdown;
+                            Reason == destroyed;
+                            Reason == replaced ->
 			       route_stanza(jlib:jid_replace_resource(StateData#state.jid,
 								      Nick),
 					    Info#user.jid, Packet);
@@ -917,9 +924,8 @@ terminate(_Reason, _StateName, StateData) ->
     if Reason == system_shutdown -> persist_muc_history(StateData);
        true -> ok
     end,
-    mod_muc:room_destroyed(StateData#state.host,
-			   StateData#state.room, self(),
-			   StateData#state.server_host),
+    mod_muc:unregister_room(StateData#state.host,
+                            StateData#state.room),
     ok.
 
 %%%----------------------------------------------------------------------

@@ -33,7 +33,7 @@
 -export([start_link/1,
          start/1,
          stop/1,
-         route/4]).
+         route/5]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -67,8 +67,8 @@ stop(Name) ->
     supervisor:terminate_child(ejabberd_sm_sup, Name),
     supervisor:delete_child(ejabberd_sm_sup, Name).
 
-route(Name, From, To, Packet) ->
-    gen_server:cast(Name, {route, From, To, Packet}).
+route(Name, From, To, Packet, Hops) ->
+    gen_server:cast(Name, {route, From, To, Packet, Hops}).
 
 %%====================================================================
 %% gen_server callbacks
@@ -103,11 +103,11 @@ handle_call(_Request, _From, State) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
-handle_cast({route, From, To, Packet}, State) ->
-    case catch ejabberd_sm:do_route1(From, To, Packet) of
+handle_cast({route, From, To, Packet, Hops}, State) ->
+    case catch ejabberd_sm:do_route1(From, To, Packet, Hops) of
         {'EXIT', Reason} ->
             ?ERROR_MSG("~p~nwhen processing: ~p",
-                       [Reason, {From, To, Packet}]);
+                       [Reason, {From, To, Packet, Hops}]);
         _ ->
             ok
     end,

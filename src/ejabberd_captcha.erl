@@ -60,8 +60,6 @@
 
 -define(CAPTCHA_LIFETIME, 120000).
 
--define(RPC_TIMEOUT, 5000).
-
 -define(LIMIT_PERIOD, 60 * 1000 * 1000).
 
 -type error() :: efbig | enodata | limit | malformed_image | timeout.
@@ -329,9 +327,9 @@ check_captcha(Id, ProvidedKey) ->
 	    Node when Node == node() ->
 		do_check_captcha(Id, ProvidedKey);
 	    Node ->
-		case catch rpc:call(Node, ?MODULE, check_captcha,
-				    [Id, ProvidedKey], ?RPC_TIMEOUT)
-		    of
+		case ejabberd_cluster:call(Node, ?MODULE, check_captcha,
+                                           [Id, ProvidedKey])
+                of
 		  {'EXIT', _} -> captcha_not_found;
 		  {badrpc, _} -> captcha_not_found;
 		  Res -> Res
@@ -652,9 +650,7 @@ lookup_captcha(Id) ->
 		  _ -> {error, enoent}
 		end;
 	    Node ->
-		case catch rpc:call(Node, ets, lookup, [captcha, Id],
-				    ?RPC_TIMEOUT)
-		    of
+		case ejabberd_cluster:call(Node, ets, lookup, [captcha, Id]) of
 		  [C] -> {ok, C};
 		  _ -> {error, enoent}
 		end

@@ -86,7 +86,7 @@
 -ifdef(NO_TRANSIENT_SUPERVISORS).
 
 -define(SUPERVISOR_START,
-	rpc:call(Node, p1_fsm, start,
+	ejabberd_cluster:call(Node, p1_fsm, start,
 		 [ejabberd_s2s_out, [From, Host, Type],
 		  fsm_limit_opts() ++ (?FSMOPTS)])).
 

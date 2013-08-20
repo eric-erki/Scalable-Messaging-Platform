@@ -92,8 +92,14 @@ stop(Host) ->
     supervisor:delete_child(ejabberd_sup, Proc).
 
 add_to_log(Host, Type, Data, Room, Opts) ->
-    gen_server:cast(get_proc_name(Host),
-		    {add_to_log, Type, Data, Room, Opts}).
+    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
+    case global:whereis_name(Proc) of
+        Pid when is_pid(Pid) ->
+            ejabberd_cluster:send(
+              Pid, {add_to_log, Type, Data, Room, Opts});
+        _ ->
+            error
+    end.
 
 check_access_log(Host, From) ->
     case catch gen_server:call(get_proc_name(Host),
@@ -165,14 +171,14 @@ handle_call({check_access_log, ServerHost, FromJID}, _From, State) ->
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State}.
 
-handle_cast({add_to_log, Type, Data, Room, Opts}, State) ->
+handle_cast(_Msg, State) -> {noreply, State}.
+
+handle_info({add_to_log, Type, Data, Room, Opts}, State) ->
     case catch add_to_log2(Type, Data, Room, Opts, State) of
       {'EXIT', Reason} -> ?ERROR_MSG("~p", [Reason]);
       _ -> ok
     end,
     {noreply, State};
-handle_cast(_Msg, State) -> {noreply, State}.
-
 handle_info(_Info, State) -> {noreply, State}.
 
 terminate(_Reason, _State) -> ok.

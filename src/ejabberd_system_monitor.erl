@@ -311,7 +311,7 @@ help() ->
       "<node>\n  setlh <node> <integer>">>.
 
 remote_command(Node, Args, From, To) ->
-    Message = case rpc:call(Node, ?MODULE,
+    Message = case ejabberd_cluster:call(Node, ?MODULE,
 			    process_remote_command, [Args])
 		  of
 		{badrpc, Reason} ->

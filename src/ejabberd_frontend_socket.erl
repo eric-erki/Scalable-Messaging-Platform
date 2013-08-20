@@ -136,7 +136,7 @@ init([Module, SockMod, Socket, Opts, Receiver]) ->
 	 end,
     {SockMod2, Socket2} = check_starttls(SockMod, Socket,
 					 Receiver, Opts),
-    {ok, Pid} = rpc:call(Node, Module, start,
+    {ok, Pid} = ejabberd_cluster:call(Node, Module, start,
 			 [{?MODULE, self()}, [{frontend_ip, IP} | Opts]]),
     ejabberd_receiver:become_controller(Receiver, Pid),
     {ok,

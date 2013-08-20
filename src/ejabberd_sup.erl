@@ -63,6 +63,34 @@ init([]) ->
 	 brutal_kill,
 	 worker,
 	 [ejabberd_router_multicast]},
+    Cluster =
+        {ejabberd_cluster,
+	 {ejabberd_cluster, start_link, []},
+	 permanent,
+	 brutal_kill,
+	 worker,
+	 [ejabberd_cluster]},
+    DHT =
+        {dht,
+	 {dht, start_link, []},
+	 permanent,
+	 brutal_kill,
+	 worker,
+	 [dht]},
+    ACL =
+        {acl,
+	 {acl, start_link, []},
+	 permanent,
+	 brutal_kill,
+	 worker,
+	 [acl]},
+    Shaper =
+        {shaper,
+	 {shaper, start_link, []},
+	 permanent,
+	 brutal_kill,
+	 worker,
+	 [shaper]},
     SM =
 	{ejabberd_sm,
 	 {ejabberd_sm, start_link, []},
@@ -178,6 +206,10 @@ init([]) ->
     {ok, {{one_for_one, 10, 1},
 	  [Hooks,
 	   SystemMonitor,
+           Cluster,
+           DHT,
+           ACL,
+           Shaper,
 	   Router,
 	   Router_multicast,
            SMHandlerSup,
@@ -195,5 +227,3 @@ init([]) ->
 	   IQSupervisor,
 	   FrontendSocketSupervisor,
 	   Listener]}}.
-
-

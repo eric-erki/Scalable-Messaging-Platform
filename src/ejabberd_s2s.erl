@@ -161,9 +161,8 @@ has_key(FromTo, Key) ->
 	    _ -> true
 	  end;
       Node ->
-	  case catch rpc:call(Node, mnesia, dirty_select,
-			      [s2s, Query], 5000)
-	      of
+	  case ejabberd_cluster:call(Node, mnesia, dirty_select,
+                                     [s2s, Query]) of
 	    [_ | _] -> true;
 	    _ -> false
 	  end
@@ -181,8 +180,7 @@ get_connections_pids(FromTo) ->
 -spec get_connections_number({binary(), binary()}) -> non_neg_integer().
 
 get_connections_number(FromTo) ->
-    {ResL, _BadNodes} = rpc:multicall(
-                          ejabberd_cluster:get_nodes(),
+    {ResL, _BadNodes} = ejabberd_cluster:multicall(
                           ?MODULE, get_connections_number_per_node, [FromTo]),
     lists:sum(ResL).
 
@@ -222,9 +220,8 @@ dirty_get_connections() ->
     lists:flatmap(fun (Node) when Node == node() ->
 			  mnesia:dirty_all_keys(s2s);
 		      (Node) ->
-			  case catch rpc:call(Node, mnesia, dirty_all_keys,
-					      [s2s], 5000)
-			      of
+			  case ejabberd_cluster:call(
+                                 Node, mnesia, dirty_all_keys, [s2s]) of
 			    L when is_list(L) -> L;
 			    _ -> []
 			  end
@@ -452,7 +449,8 @@ parent_domains(Domain) ->
 		end,
 		[], lists:reverse(str:tokens(Domain, <<".">>))).
 
-send_element(Pid, El) -> Pid ! {send_element, El}.
+send_element(Pid, El) ->
+    ejabberd_cluster:send(Pid, {send_element, El}).
 
 %%%----------------------------------------------------------------------
 %%% ejabberd commands

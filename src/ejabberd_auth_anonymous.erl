@@ -129,10 +129,10 @@ anonymous_user_exist(User, Server) ->
     US = {LUser, LServer},
     Ss = case ejabberd_cluster:get_node(US) of
 	   Node when Node == node() ->
-	       catch mnesia:dirty_read({anonymous, US});
+	       mnesia:dirty_read({anonymous, US});
 	   Node ->
-	       catch rpc:call(Node, mnesia, dirty_read,
-			      [{anonymous, US}], 5000)
+               ejabberd_cluster:call(Node, mnesia, dirty_read,
+                                     [{anonymous, US}])
 	 end,
     case Ss of
       [_H | _T] -> true;

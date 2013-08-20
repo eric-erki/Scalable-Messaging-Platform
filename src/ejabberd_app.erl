@@ -53,9 +53,6 @@ start(normal, _Args) ->
     gen_mod:start(),
     ejabberd_config:start(),
     set_loglevel_from_config(),
-    acl:start(),
-    shaper:start(),
-    connect_nodes(),
     Sup = ejabberd_sup:start_link(),
     ejabberd_rdbms:start(),
     ejabberd_riak_sup:start(),
@@ -65,9 +62,7 @@ start(normal, _Args) ->
     %ejabberd_debug:eprof_start(),
     %ejabberd_debug:fprof_start(),
     maybe_add_nameservers(),
-    {ok, Pid} = ejabberd_cluster:start(),
     start_modules(),
-    ejabberd_cluster:announce(Pid),
     ejabberd_node_groups:start(),
     ejabberd_listener:start_listeners(),
     ?INFO_MSG("ejabberd ~s is started in the node ~p", [?VERSION, node()]),
@@ -79,7 +74,6 @@ start(_, _) ->
 %% This function is called when an application is about to be stopped,
 %% before shutting down the processes of the application.
 prep_stop(State) ->
-    ejabberd_cluster:shutdown(),
     stop_modules(),
     ejabberd_admin:stop(),
     broadcast_c2s_shutdown(),
@@ -156,17 +150,6 @@ stop_modules() ->
                         gen_mod:stop_module_keep_config(Host, Module)
                 end, Modules)
       end, ?MYHOSTS).
-
-connect_nodes() ->
-    Nodes = ejabberd_config:get_option(
-              cluster_nodes,
-              fun(Ns) ->
-                      true = lists:all(fun is_atom/1, Ns),
-                      Ns
-              end, []),
-    lists:foreach(fun(Node) ->
-                          net_kernel:connect_node(Node)
-                  end, Nodes).
 
 %% If ejabberd is running on some Windows machine, get nameservers and add to Erlang
 maybe_add_nameservers() ->

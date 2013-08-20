@@ -34,20 +34,21 @@
 -behaviour(gen_mod).
 
 -export([start/2, stop/1, process/2, open_session/2,
-	 close_session/1, find_session/1, node_up/1, node_down/1,
-	 migrate/3]).
+	 close_session/1, find_session/1, resolve_conflict/2,
+         resolve_conflict/3]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
-
+-include_lib("stdlib/include/ms_transform.hrl").
 -include("jlib.hrl").
 
 -include("ejabberd_http.hrl").
 
 -include("bosh.hrl").
 
--record(bosh, {sid = <<"">> :: binary() | '$1' | '_',
-               pid = self() :: pid() | '$1' | '$2'}).
+-record(bosh, {sid = <<"">>      :: binary(),
+               timestamp = now() :: erlang:timestamp(),
+               pid = self()      :: pid()}).
 
 %%%----------------------------------------------------------------------
 %%% API
@@ -105,60 +106,52 @@ get_human_html_xmlel() ->
 					   "client that supports it.">>}]}]}]}.
 
 open_session(SID, Pid) ->
-    mnesia:dirty_write(#bosh{sid = SID, pid = Pid}).
+    dht:write(#bosh{sid = SID, timestamp = now(), pid = Pid},
+              {?MODULE, resolve_conflict, []}).
 
-close_session(SID) -> mnesia:dirty_delete(bosh, SID).
+close_session(SID) ->
+    dht:delete(bosh, SID).
 
-find_session(SID) ->
-    Node = ejabberd_cluster:get_node(SID),
-    case rpc:call(Node, mnesia, dirty_read, [bosh, SID],
-		  5000)
-	of
-      [#bosh{pid = Pid}] -> {ok, Pid};
-      _ -> error
+resolve_conflict(#bosh{pid = Pid1}, Pid2) ->
+    if Pid1 == Pid2 ->
+            delete;
+       true ->
+            keep
     end.
 
-migrate(_Node, _UpOrDown, After) ->
-    Rs = mnesia:dirty_select(bosh,
-			     [{#bosh{sid = '$1', pid = '$2', _ = '_'}, [],
-			       ['$$']}]),
-    lists:foreach(fun ([SID, Pid]) ->
-			  case ejabberd_cluster:get_node(SID) of
-			    Node when Node /= node() ->
-				ejabberd_bosh:migrate(Pid, Node,
-						      random:uniform(After));
-			    _ -> ok
-			  end
-		  end,
-		  Rs).
+resolve_conflict(#bosh{pid = Pid1, timestamp = T1} = S1,
+                 #bosh{pid = Pid2, timestamp = T2} = S2,
+                 _) ->
+    if Pid1 == Pid2 ->
+            S1;
+       T1 < T2 ->
+            ejabberd_cluster:send(Pid2, replaced),
+            S1;
+       true ->
+            ejabberd_cluster:send(Pid1, replaced),
+            S2
+    end.
 
-node_up(_Node) ->
-    copy_entries(mnesia:dirty_first(bosh)).
+find_session(SID) ->
+    case mnesia:dirty_read(bosh, SID) of
+        [#bosh{pid = Pid}] ->
+            {ok, Pid};
+        [] ->
+            find_session(SID, ejabberd_cluster:get_nodes(SID))
+    end.
 
-node_down(Node) when Node == node() ->
-    copy_entries(mnesia:dirty_first(bosh));
-node_down(Node) ->
-    ets:select_delete(
-      bosh,
-      [{#bosh{pid = '$1', _ = '_'},
-        [{'==', {'node', '$1'}, Node}],
-        [true]}]).
-
-copy_entries('$end_of_table') -> ok;
-copy_entries(Key) ->
-    case mnesia:dirty_read(bosh, Key) of
-      [#bosh{sid = SID} = Entry] ->
-	  case ejabberd_cluster:get_node_new(SID) of
-	    Node when node() /= Node ->
-		rpc:cast(Node, mnesia, dirty_write, [Entry]);
-	    _ -> ok
-	  end;
-      _ -> ok
-    end,
-    copy_entries(mnesia:dirty_next(bosh, Key)).
+find_session(SID, [Node|Nodes]) ->
+    case ejabberd_cluster:call(Node, mnesia, dirty_read,
+                               [bosh, SID]) of
+        [#bosh{pid = Pid}] ->
+            {ok, Pid};
+        _ ->
+            find_session(SID, Nodes)
+    end;
+find_session(_SID, []) ->
+    error.
 
 start(Host, Opts) ->
-    start_hook_handler(),
     setup_database(),
     start_jiffy(Opts),
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
@@ -173,10 +166,26 @@ stop(Host) ->
     supervisor:delete_child(ejabberd_sup, Proc).
 
 setup_database() ->
+    case catch mnesia:table_info(bosh, attributes) of
+        [sid, pid] ->
+            mnesia:delete_table(bosh);
+        _ ->
+            ok
+    end,
     mnesia:create_table(bosh,
 			[{ram_copies, [node()]}, {local_content, true},
 			 {attributes, record_info(fields, bosh)}]),
-    mnesia:add_table_copy(bosh, node(), ram_copies).
+    mnesia:add_table_copy(bosh, node(), ram_copies),
+    dht:new(bosh,
+            fun(Node) ->
+                    ets:select_delete(
+                      bosh,
+                      ets:fun2ms(
+                        fun(#bosh{pid = Pid})
+                              when node(Pid) == Node ->
+                                true
+                        end))
+            end).
 
 start_jiffy(Opts) ->
     case gen_mod:get_opt(json, Opts,
@@ -193,34 +202,6 @@ start_jiffy(Opts) ->
                     ?WARNING_MSG("Failed to start JSON codec (jiffy): ~p. "
                                  "JSON support will be disabled", [Err])
             end
-    end.
-
-start_hook_handler() -> spawn(fun hook_handler/0).
-
-hook_handler() ->
-    case catch register(ejabberd_bosh_hook_handler, self())
-	of
-      true ->
-	  ejabberd_hooks:add(node_up, ?MODULE, node_up, 100),
-	  ejabberd_hooks:add(node_down, ?MODULE, node_down, 100),
-	  ejabberd_hooks:add(node_hash_update, ?MODULE, migrate,
-			     100),
-	  MRef = erlang:monitor(process, ejabberd_sup),
-	  hook_handler_loop(MRef);
-      _ -> ok
-    end.
-
-hook_handler_loop(MRef) ->
-    receive
-      {'DOWN', MRef, _Type, _Object, _Info} ->
-	  catch ejabberd_hooks:delete(node_up, ?MODULE, node_up,
-				      100),
-	  catch ejabberd_hooks:delete(node_down, ?MODULE,
-				      node_down, 100),
-	  catch ejabberd_hooks:delete(node_hash_update, ?MODULE,
-				      migrate, 100),
-	  ok;
-      _ -> hook_handler_loop(MRef)
     end.
 
 get_type(Hdrs) ->

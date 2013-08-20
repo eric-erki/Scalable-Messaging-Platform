@@ -251,7 +251,8 @@ commands() ->
 %%% Same room can be replicated into different nodes,
 %%% call all of them.
 moderate_room_history(Room, Nick) ->
-	{Res, BadNodes} = rpc:multicall(mod_muc, moderate_room_history, [Room, Nick], 5000),
+	{Res, BadNodes} = ejabberd_cluster:multicall(
+                            mod_muc, moderate_room_history, [Room, Nick]),
 	B = case BadNodes of
 		[] ->
 			"";

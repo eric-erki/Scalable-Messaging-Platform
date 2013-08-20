@@ -400,9 +400,8 @@ get_session(SID) ->
 		  [Session] -> {ok, Session}
 		end;
 	    Node ->
-		case catch rpc:call(Node, mnesia, dirty_read,
-				    [{http_poll, SID}], 5000)
-		    of
+		case ejabberd_cluster:call(Node, mnesia, dirty_read,
+                                           [{http_poll, SID}]) of
 		  [Session] -> {ok, Session};
 		  _ -> {error, enoent}
 		end

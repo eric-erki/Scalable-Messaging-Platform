@@ -336,7 +336,10 @@ init([StateName, StateData, _FSMLimitOpts]) ->
 			undefined -> undefined;
 			El -> get_priority_from_presence(El)
 		      end,
-	   ejabberd_sm:drop_session(StateData#state.sid),
+           USR = {jlib:nodeprep(StateData#state.user),
+                  jlib:nameprep(StateData#state.server),
+                  jlib:resourceprep(StateData#state.resource)},
+	   ejabberd_sm:drop_session(USR),
 	   ejabberd_sm:open_session(SID, StateData#state.user,
 				    StateData#state.server,
 				    StateData#state.resource, Priority, Info),
@@ -742,7 +745,7 @@ wait_for_auth({xmlstreamelement, El}, StateData) ->
 							NewStateData#state.server,
 							false,
 							[self(), NewStateData]),
-			    maybe_migrate(session_established,
+			    open_session(session_established,
 					  NewStateData#state{debug = DebugFlag})
 		      end;
 		  _ ->
@@ -1119,37 +1122,6 @@ wait_for_sasl_response(closed, StateData) ->
 wait_for_sasl_response(stop_or_detach, _From, StateData) ->
     {stop, normal, stopped, StateData}.
 
-resource_conflict_action(U, S, R) ->
-    OptionRaw = case ejabberd_sm:is_existing_resource(U, S,
-						      R)
-		    of
-		  true ->
-		      ejabberd_config:get_option(
-                        {resource_conflict, S},
-                        fun(setresource) -> setresource;
-                           (closeold) -> closeold;
-                           (closenew) -> closenew;
-                           (acceptnew) -> acceptnew
-                        end);
-                  false ->
-                      acceptnew
-		end,
-    Option = case OptionRaw of
-	       setresource -> setresource;
-	       closeold ->
-		   acceptnew; %% ejabberd_sm will close old session
-	       closenew -> closenew;
-	       acceptnew -> acceptnew;
-	       _ -> acceptnew %% default ejabberd behavior
-	     end,
-    case Option of
-      acceptnew -> {accept_resource, R};
-      closenew -> closenew;
-      setresource ->
-	  Rnew = randoms:get_string(),
-	  {accept_resource, Rnew}
-    end.
-
 wait_for_bind({xmlstreamelement, El}, StateData) ->
     case jlib:iq_query_info(El) of
       #iq{type = set, xmlns = ?NS_BIND, sub_el = SubEl} =
@@ -1168,32 +1140,20 @@ wait_for_bind({xmlstreamelement, El}, StateData) ->
 		send_element(StateData, Err),
 		fsm_next_state(wait_for_bind, StateData);
 	    _ ->
-		case resource_conflict_action(U, StateData#state.server,
-					      R)
-		    of
-		  closenew ->
-		      Err = jlib:make_error_reply(El,
-						  ?STANZA_ERROR(<<"409">>,
-								<<"modify">>,
-								<<"conflict">>)),
-		      send_element(StateData, Err),
-		      fsm_next_state(wait_for_bind, StateData);
-		  {accept_resource, R2} ->
-		      JID = jlib:make_jid(U, StateData#state.server, R2),
-		      Res = IQ#iq{type = result,
-				  sub_el =
-				      [#xmlel{name = <<"bind">>,
-					      attrs = [{<<"xmlns">>, ?NS_BIND}],
-					      children =
-						  [#xmlel{name = <<"jid">>,
-							  attrs = [],
-							  children =
-							      [{xmlcdata,
-								jlib:jid_to_string(JID)}]}]}]},
-		      send_element(StateData, jlib:iq_to_xml(Res)),
-		      fsm_next_state(wait_for_session,
-				     StateData#state{resource = R2, jid = JID})
-		end
+                JID = jlib:make_jid(U, StateData#state.server, R),
+                Res = IQ#iq{type = result,
+                            sub_el =
+                                [#xmlel{name = <<"bind">>,
+                                        attrs = [{<<"xmlns">>, ?NS_BIND}],
+                                        children =
+                                            [#xmlel{name = <<"jid">>,
+                                                    attrs = [],
+                                                    children =
+                                                        [{xmlcdata,
+                                                          jlib:jid_to_string(JID)}]}]}]},
+                send_element(StateData, jlib:iq_to_xml(Res)),
+                  fsm_next_state(wait_for_session,
+                                 StateData#state{resource = R, jid = JID})
 	  end;
       _ -> fsm_next_state(wait_for_bind, StateData)
     end;
@@ -1247,7 +1207,7 @@ wait_for_session({xmlstreamelement, El}, StateData) ->
 		    ejabberd_hooks:run_fold(c2s_debug_start_hook,
 					    NewStateData#state.server, false,
 					    [self(), NewStateData]),
-		maybe_migrate(session_established,
+		open_session(session_established,
 			      NewStateData#state{debug = DebugFlag});
 	    _ ->
 		ejabberd_hooks:run(forbidden_session_hook,
@@ -2650,29 +2610,23 @@ peerip(SockMod, Socket) ->
       _ -> undefined
     end.
 
-maybe_migrate(StateName, StateData) ->
+open_session(StateName, StateData) ->
     PackedStateData = pack(StateData),
     #state{user = U, server = S, resource = R, sid = SID} =
 	StateData,
-    case ejabberd_cluster:get_node({jlib:nodeprep(U),
-				    jlib:nameprep(S)})
-	of
-      Node when Node == node() ->
-	  Conn = ejabberd_socket:get_conn_type(StateData#state.socket),
-	  Info = [{ip, StateData#state.ip}, {conn, Conn},
-		  {auth_module, StateData#state.auth_module}],
-	  Presence = StateData#state.pres_last,
-	  Priority = case Presence of
-		       undefined -> undefined;
-		       _ -> get_priority_from_presence(Presence)
-		     end,
-	  ejabberd_sm:open_session(SID, U, S, R, Priority, Info),
-	  StateData2 = change_reception(PackedStateData, true),
-	  StateData3 = start_keepalive_timer(StateData2),
-	  erlang:garbage_collect(),
-	  fsm_next_state(StateName, StateData3);
-      Node -> fsm_migrate(StateName, PackedStateData, Node, 0)
-    end.
+    Conn = ejabberd_socket:get_conn_type(StateData#state.socket),
+    Info = [{ip, StateData#state.ip}, {conn, Conn},
+            {auth_module, StateData#state.auth_module}],
+    Presence = StateData#state.pres_last,
+    Priority = case Presence of
+                   undefined -> undefined;
+                   _ -> get_priority_from_presence(Presence)
+               end,
+    ejabberd_sm:open_session(SID, U, S, R, Priority, Info),
+    StateData2 = change_reception(PackedStateData, true),
+    StateData3 = start_keepalive_timer(StateData2),
+    erlang:garbage_collect(),
+    fsm_next_state(StateName, StateData3).
 
 fsm_next_state(session_established, StateData) ->
     {next_state, session_established, StateData,
@@ -3133,7 +3087,7 @@ rebind(StateData, JID, StreamID) ->
 			     #xmlel{name = <<"rebind">>,
 				    attrs = [{<<"xmlns">>, ?NS_P1_REBIND}],
 				    children = []}),
-		maybe_migrate(session_established, StateData2)
+		open_session(session_established, StateData2)
 	    after 1000 ->
 		      send_element(StateData,
 				   #xmlel{name = <<"failure">>,
@@ -3469,17 +3423,15 @@ flash_policy_string() ->
 
 need_redirect(#state{redirect = true, user = User,
 		     server = Server}) ->
-    LUser = jlib:nodeprep(User),
-    LServer = jlib:nameprep(Server),
-    case ejabberd_cluster:get_node({LUser, LServer}) of
+    case ejabberd_sm:get_user_node(User, Server) of
       Node when node() == Node -> false;
       Node ->
-	  case rpc:call(Node, ejabberd_config, get_local_option,
-			[hostname], 5000)
-	      of
-	    Host when is_binary(Host) -> {true, Host};
-	    _ -> false
-	  end
+            case ejabberd_cluster:call(
+                   Node, ejabberd_config, get_local_option,
+                   [hostname]) of
+                Host when is_binary(Host) -> {true, Host};
+                _ -> false
+            end
     end;
 need_redirect(_) -> false.
 

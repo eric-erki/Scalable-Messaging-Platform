@@ -28,9 +28,15 @@
 
 -author('alexey@process-one.net').
 
--export([start/0, to_record/3, add/3, add_list/3,
-         add_local/3, add_list_local/3, load_from_config/0,
-	 match_rule/3, match_acl/3, transform_options/1]).
+-behaviour(gen_server).
+
+%% gen_server callbacks
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2,
+         terminate/2, code_change/3]).
+
+-export([start_link/0, to_record/3, add/3, add_list/3,
+         load_from_config/0, match_rule/3, match_acl/3,
+         transform_options/1, resolve_conflict/2, resolve_conflict/3]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -67,7 +73,15 @@
 
 -export_type([acl/0]).
 
-start() ->
+-record(state, {}).
+
+%%%===================================================================
+%%% API
+%%%===================================================================
+start_link() ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+
+init([]) ->
     case catch mnesia:table_info(acl, storage_type) of
         disc_copies ->
             mnesia:delete_table(acl);
@@ -85,7 +99,23 @@ start() ->
     mnesia:add_table_copy(acl, node(), ram_copies),
     mnesia:add_table_copy(access, node(), ram_copies),
     load_from_config(),
+    {ok, #state{}}.
+
+handle_call(_Request, _From, State) ->
+    Reply = ok,
+    {reply, Reply, State}.
+
+handle_cast(_Msg, State) ->
+    {noreply, State}.
+
+handle_info(_Info, State) ->
+    {noreply, State}.
+
+terminate(_Reason, _State) ->
     ok.
+
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
 
 -spec to_record(binary(), atom(), aclspec()) -> acl().
 
@@ -93,89 +123,51 @@ to_record(Host, ACLName, ACLSpec) ->
     #acl{aclname = {ACLName, Host},
 	 aclspec = normalize_spec(ACLSpec)}.
 
--spec add(binary(), aclname(), aclspec()) -> ok | {error, any()}.
+-spec add(binary(), aclname(), aclspec()) -> ok.
 
 add(Host, ACLName, ACLSpec) ->
-    {ResL, BadNodes} = rpc:multicall(ejabberd_cluster:get_nodes(),
-                                     ?MODULE, add_local,
-                                     [Host, ACLName, ACLSpec]),
-    case lists:keyfind(aborted, 1, ResL) of
-        false when BadNodes == [] ->
-            ok;
-        false ->
-            {error, {failed_nodes, BadNodes}};
-        Err ->
-            {error, Err}
-    end.
+    dht:write_everywhere(
+      #acl{aclname = {ACLName, Host},
+           aclspec = normalize_spec(ACLSpec)},
+      {?MODULE, resolve_conflict, []}).
 
-add_local(Host, ACLName, ACLSpec) ->
-    F = fun () ->
-		mnesia:write(#acl{aclname = {ACLName, Host},
-				  aclspec = normalize_spec(ACLSpec)})
-	end,
-    case mnesia:transaction(F) of
-        {atomic, ok} ->
-            ok;
-        Err ->
-            Err
-    end.
-
--spec add_list(binary(), [acl()], boolean()) -> ok | {error, any()}.
+-spec add_list(binary(), [acl()], boolean()) -> ok.
 
 add_list(Host, ACLs, Clear) ->
-    {ResL, BadNodes} = rpc:multicall(ejabberd_cluster:get_nodes(),
-                                     ?MODULE, add_list_local,
-                                     [Host, ACLs, Clear]),
-    case lists:keyfind(aborted, 1, ResL) of
-        false when BadNodes == [] ->
-            ok;
-        false ->
-            {error, {failed_nodes, BadNodes}};
-        Err ->
-            {error, Err}
-    end.
+    if Clear ->
+            Ks = mnesia:dirty_select(acl,
+                                     [{{acl, {'$1', Host}, '$2'}, [],
+                                       ['$1']}]),
+            lists:foreach(
+              fun(K) ->
+                      dht:delete({acl, {K, Host}})
+              end, Ks);
+       true ->
+            ok
+    end,
+    lists:foreach(
+      fun(#acl{aclname = ACLName,
+               aclspec = ACLSpec}) ->
+              dht:write_everywhere(
+                #acl{aclname = {ACLName, Host},
+                     aclspec = normalize_spec(ACLSpec)},
+                {?MODULE, resolve_conflict, []})
+      end, ACLs).
 
-add_list_local(Host, ACLs, Clear) ->
-    F = fun () ->
-		if Clear ->
-		       Ks = mnesia:select(acl,
-					  [{{acl, {'$1', Host}, '$2'}, [],
-					    ['$1']}]),
-		       lists:foreach(fun (K) -> mnesia:delete({acl, {K, Host}})
-				     end,
-				     Ks);
-		   true -> ok
-		end,
-		lists:foreach(fun (ACL) ->
-				      case ACL of
-					#acl{aclname = ACLName,
-					     aclspec = ACLSpec} ->
-					    mnesia:write(#acl{aclname =
-								  {ACLName,
-								   Host},
-							      aclspec =
-								  normalize_spec(ACLSpec)})
-				      end
-			      end,
-			      ACLs)
-	end,
-    mnesia:transaction(F).
+resolve_conflict(_, _) ->
+    delete.
+
+resolve_conflict(ACL, _, _) ->
+    ACL.
 
 -spec add_access(binary() | global,
                  access_name(), [access_rule()]) ->  ok | {error, any()}.
 
 add_access(Host, Access, Rules) ->
-    case mnesia:transaction(
-           fun() ->
-                   mnesia:write(
-                     #access{name = {Access, Host},
-                             rules = Rules})
-           end) of
-        {atomic, ok} ->
-            ok;
-        Err ->
-            {error, Err}
-    end.
+    dht:write_everywhere(
+      #access{name = {Access, Host},
+              rules = Rules},
+      {?MODULE, resolve_conflict, []}).
 
 -spec load_from_config() -> ok.
 
