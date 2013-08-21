@@ -64,9 +64,13 @@
 
 %% Modules
 \newcommand{\module}[1]{\texttt{#1}}
+\newcommand{\modack}{\module{mod\_ack}}
 \newcommand{\modadhoc}{\module{mod\_adhoc}}
+\newcommand{\modadminp}{\module{mod\_admin\_p1}}
 \newcommand{\modannounce}{\module{mod\_announce}}
 \newcommand{\modannounceodbc}{\module{mod\_announce\_odbc}}
+\newcommand{\modapplepush}{\module{mod\_applepush}}
+\newcommand{\modapplepushservice}{\module{mod\_applepush\_service}}
 \newcommand{\modblocking}{\module{mod\_blocking}}
 \newcommand{\modblockingodbc}{\module{mod\_blocking\_odbc}}
 \newcommand{\modcaps}{\module{mod\_caps}}
@@ -133,6 +137,7 @@ the processing discipline for #1 IQ queries (see section~\ref{modiqdiscoption}).
 
 %% Title page
 \include{version}
+\include{mod_admin}
 \newlength{\larg}
 \setlength{\larg}{14.5cm}
 \title{
@@ -140,7 +145,9 @@ the processing discipline for #1 IQ queries (see section~\ref{modiqdiscoption}).
 \begin{tabular}{r}
     {\huge {\bf ejabberd \version\ }} \\
     \\
-    {\huge Installation and Operation Guide}
+    {\huge Installation and Operation Guide} \\
+    \\
+    {Commercial Version}
 \end{tabular}\\
 \vspace{2mm}
 {\rule{\larg}{1mm}}
@@ -385,7 +392,7 @@ Some options that you may be interested in modifying:
 	\titem{--enable-pam}
 	Enable the PAM authentication method (see section \ref{pam}).
 
-	\titem{--enable-mssql}
+	\titem{--enable-odbc or --enable-mssql}
 	Required if you want to use an external database.
 	See section~\ref{database} for more information.
 
@@ -2530,10 +2537,14 @@ The following table lists all modules included in \ejabberd{}.
   \begin{tabular}{|l|l|l|}
     \hline {\bf Module} & {\bf Feature} & {\bf Dependencies} \\
     \hline
+    \hline \ahrefloc{modack}{\modack{}} & Reliable message delivery & \\
     \hline \modadhoc{} & Ad-Hoc Commands (\xepref{0050}) &  \\
+    \hline \modadminp{} & Extended administration commands & \\
     \hline \ahrefloc{modannounce}{\modannounce{}} & Manage announcements & recommends \modadhoc{} \\
     \hline \ahrefloc{modannounce}{\modannounceodbc{}} & Manage announcements & recommends \modadhoc{} \\
     & & supported DB (*) \\
+    \hline \ahrefloc{modapplepush}{\modapplepush{}} & Apple Push Notification Service support & \modapplepushservice{} \\
+    \hline \ahrefloc{modapplepushservice}{\modapplepushservice{}} & Manage connections to APNS servers & \\
     \hline \modblocking{} & Simple Communications Blocking (\xepref{0191}) & \modprivacy{} \\
     \hline \modblockingodbc{} & Simple Communications Blocking (\xepref{0191}) & \modprivacyodbc{} \\
     \hline \modcaps{} &  Entity Capabilities (\xepref{0115}) & \\
@@ -2707,6 +2718,40 @@ modules:
   ...
 \end{verbatim}
 
+\makesubsection{modack}{\modack{}}
+\ind{modules!\modack{}}
+
+This module takes care about reliable message delivery.
+The server sends acknowledgement messages to a sender reporting
+the status of a message being sent. The acknowledgement message is a message
+possessing element qualified by the 'urn:xmpp:receipts' namespace (\xepref{0184}).
+If a sender chooses to include \verb|<request/>| element qualified by this namespace
+it should be prepared to receive the following acknowledgement messages:
+\begin{itemize}
+\item \verb|<on-sender-server/>| A message has been received by the sender's server.
+\item \verb|<offline/>| A message has been stored in offline storage.
+\item \verb|<delayed/>| A message is queued for futher delivery.
+\item \verb|<received/>| A message has been successfully received by the recipient.
+\item \verb|<unreliable/>| A message has been sent to the recipient and it's status
+is unknown.
+\end{itemize}
+
+In the case when a message recipient doesn't support \xepref{0184} (this is checked
+using it's capabilities (\xepref{0115})), \XMPP{} pings (\xepref{0199}) are used
+to check the connection status of the recipient after every sent message.
+Since the latter procedure is not very effective, clients are encouraged
+to support \xepref{0184}.
+
+\makesubsection{modadminp}{\modadminp{}}
+\ind{modules!\modadminp{}}
+
+This module provides additional administration commands.
+Use \verb|ejabberdctl help| to get the detailed information about the commands.
+
+Currently available commands:
+
+\modadminsection{}
+
 \makesubsection{modannounce}{\modannounce{}}
 \ind{modules!\modannounce{}}\ind{MOTD}\ind{message of the day}\ind{announcements}
 
@@ -2793,6 +2838,95 @@ modules:
 Note that \modannounce{} can be resource intensive on large
 deployments as it can broadcast lot of messages. This module should be
 disabled for instances of \ejabberd{} with hundreds of thousands users.
+
+\makesubsection{modapplepush}{\modapplepush{}}
+\ind{modules!\modapplepush{}}
+
+This module allows user connected using Apple devices to receive badges,
+sounds or custom text alerts via
+\footahref{http://en.wikipedia.org/wiki/Apple\_Push\_Notification\_Service}
+{Apple Push Notification Service}. The module partially depends on \modapplepushservice{}
+module and should know where it resides.
+
+Options:
+\begin{description}
+\iqdiscitem{Push Packet (\ns{p1:push})}
+\titem{push\_services: \{ AppID: ServiceName\}} Specifies an application
+identifier and an \XMPP{} service route of \modapplepushservice{} module.
+\titem{default\_services: \{ Host: ServiceName\}} Specifies a list
+of default \XMPP{} service routes of \modapplepushservice{} module per virtual host.
+This list is used when an application identifier doesn't match any routes.
+\titem{default\_service: ServiceName} Specifies the default service route of
+\modapplepushservice{} module. This option is used as a last resort.
+The default is ``applepush.localhost''.
+\titem{db\_type: odbc|internal} Which database backend to use for caching.
+The default is \term{internal} (Mnesia).
+\end{description}
+
+Example:
+\begin{verbatim}
+modules:
+  ...
+  mod_applepush:
+    db_type: odbc
+    default_service: "applepush.localhost"
+    default_services:
+      "gmail.com": "applepush.localhost"
+      "example.org": "applepush.example.org"
+    push_services:
+      "applepush": "applepush.localhost"
+      "applepushdev": "applepushdev.localhost"
+  ...
+\end{verbatim}
+
+\makesubsection{modapplepushservice}{\modapplepushservice{}}
+\ind{modules!\modapplepushservice{}}
+
+This module maintains connections to
+\footahref{http://en.wikipedia.org/wiki/Apple\_Push\_Notification\_Service}{APNS}
+server and is used by \modapplepush{} module.
+
+Options:
+\begin{description}
+\titem{hosts: \{ Host: Options\}} Specifies a list of virtual hosts and
+the corresponding options. The available options are:
+\begin{description}
+  \titem{gateway: Name} Specifies a domain name of the APNS server. The default is
+  ``gateway.push.apple.com''.
+  \titem{port: Integer} Specifies a TCP port of the gateway (APNS server, see above).
+  The default is 2195.
+  \titem{certfile: Path} Specifies a path to file containing PEM-encoded SSL certificate.
+  \titem{sound\_file: Name} Specifies a name of a sound file a client will use
+  for push notification alerts. The default is ``pushalert.wav''. Note that this name
+  is used by a client only and there are no sound files stored in a server.
+  \titem{feedback: Name} Specifies a domain name of the feedback server.
+  The feedback server is used to receive a reason of failed push notifications.
+  \titem{feedback\_port: Integer} Specifies a TCP port of the feedback server (see above).
+  The default is 2196.
+  \titem{failure\_script: Path} Specifies a script (shell-executed command) which
+  is triggered when an SSL connection to APNS server failed. The script should accept a single
+  variable - a name of the APNS server.
+\end{description}
+\end{description}
+
+Example:
+\begin{verbatim}
+modules:
+  ...
+  mod_applepush_service:
+    hosts:
+      "applepush.localhost":
+        certfile: "ssl.pem"
+        gateway: "localhost"
+        port: 5555
+        sound_file: "alert.wav"
+        failure_script: "/tmp/sript"
+      "applepushdev.localhost":
+        certfile: "ssl.pem"
+        gateway: "localhost"
+        port: 5556
+  ...
+\end{verbatim}
 
 \makesubsection{moddisco}{\moddisco{}}
 \ind{modules!\moddisco{}}
@@ -3161,6 +3295,14 @@ themselves are not clustered nor fault-tolerant: if the node managing a
 set of rooms goes down, the rooms disappear and they will be recreated
 on an available node on first connection attempt.
 
+If the global option \option{domain\_balancing} is set to \term{broadcast}
+(see section \ref{domainlb}),
+then the rooms exist on all nodes of the cluster at the same time.
+It means that all messages published
+on one instance of a room are broadcasted to the instances of the same
+rooms on all clusters. To avoid useless traffic, this broadcast is
+limited to non empty room instances.
+
 Module options:
 \begin{description}
 \hostitem{conference}
@@ -3188,6 +3330,15 @@ Module options:
   and, as a result, nothing is kept in memory. The default value is
   \term{20}. This value is global and thus affects all rooms on the
   service.
+\titem{persistent\_history: false|true} \ind{options!persistent\_history}
+  Store recent messages of persistent MUC rooms in the ODBC table 'room\_history'
+  when ejabberd or the MUC service is stopping.
+  Later, when ejabberd is started again, those messages are loaded from the database,
+  and provided as room history when the room occupants join the room.
+  The messages are stored on server shutdown, but if the server crashes
+  the recent history is lost.
+  It is also possible to force the storage immediately by calling the ejabberd
+  command 'persist\_recent\_messages', using ejabberdctl or other method.
 \titem{max\_users: Number} \ind{options!max\_users} This option defines at
   the service level, the maximum number of users allowed per
   room. It can be lowered in each room configuration but cannot be
@@ -5167,10 +5318,9 @@ with a defined number and type of calling arguments and type of result
 that is registered in the \term{ejabberd\_commands} service.
 Those commands can be defined in any Erlang module and executed using any valid frontend.
 
-\ejabberd{} includes two frontends to execute \term{ejabberd commands}:
-the \term{ejabberdctl} shell script (see \ref{ejabberdctl})
-and the \term{ejabberd\_xmlrpc} XML-RPC listener (see \ref{listened-module}).
+\ejabberd{} includes a frontend to execute \term{ejabberd commands}: the script \term{ejabberdctl}.
 Other known frontends that can be installed to execute ejabberd commands in different ways are:
+\term{ejabberd\_xmlrpc} (XML-RPC service),
 \term{mod\_rest} (HTTP POST service),
 \term{mod\_shcommands} (ejabberd WebAdmin page).
 
@@ -5645,50 +5795,40 @@ be run on different machines that are connected via a network. They all
 must have the ability to connect to port 4369 of all another nodes, and must
 have the same magic cookie (see Erlang/OTP documentation, in other words the
 file \term{\~{}ejabberd/.erlang.cookie} must be the same on all nodes). This is
-needed because all nodes exchange information about connected users, s2s
-connections, registered services, etc\ldots
+needed because all nodes exchange information about connected users, MUC
+rooms, registered services, etc\ldots
 
-Each \ejabberd{} node has the following modules:
+\ejabberd{} uses \footahref{http://en.wikipedia.org/wiki/Consistent\_hashing}{consistent
+hashing} approach to store data across the nodes in the cluster. For instance,
+when a C2S session or a MUC room is created, the corresponding Erlang process
+is created and a reference pointing to this process is stored in the corresponding
+node. When another process wishes to send a message to this
+process, it routes the message to the node holding it's reference. This node
+performs a lookup for the reference and, if found, routes the message
+torwards the referenced process. Note that in general the referenced process might not reside
+on the same node. Thus, another internode round-trip is needed to reach the
+referenced process.
+
+Such approach allows \ejabberd{} to get rid of data replication and thus to be more
+effective in internode communications. Node (dis)connects are handled in the following
+manner:
 \begin{itemize}
-\item router,
-\item local router,
-\item session manager,
-\item s2s manager.
+\item When some node goes down, it gets removed from the hashing on other nodes.
+  Due to nature of consistent hasing, no further procedures are needed to be done.
+\item When some node goes up, a rebalancing procedure is performed on other nodes.
+  \begin{itemize}
+  \item References are duplicated to other nodes according to the new hash values.
+    This process is limited in time and is controlled by \term{rehash\_timeout} option.
+    The default value is 30 seconds.
+  \item As the second phase, some processes are copied (migrated) to other nodes
+    according to the new hash value. This is limited as well and can be configured
+    by \term{migrate\_timeout} option. The default is 120 seconds. The smaller
+    timeout forces the processes to migrate faster. So, it is not recommended
+    to set it to very small values in order to avoid an avalanche effect.
+  \end{itemize}
 \end{itemize}
 
-\makesubsection{router}{Router}
-\ind{clustering!router}
-
-This module is the main router of \XMPP{} packets on each node. It
-routes them based on their destination's domains. It uses a global
-routing table. The domain of the packet's destination is searched in the
-routing table, and if it is found, the packet is routed to the
-appropriate process. If not, it is sent to the s2s manager.
-
-\makesubsection{localrouter}{Local Router}
-\ind{clustering!local router}
-
-This module routes packets which have a destination domain equal to
-one of this server's host names. If the destination JID has a non-empty user
-part, it is routed to the session manager, otherwise it is processed depending
-on its content.
-
-\makesubsection{sessionmanager}{Session Manager}
-\ind{clustering!session manager}
-
-This module routes packets to local users. It looks up to which user
-resource a packet must be sent via a presence table. Then the packet is
-either routed to the appropriate c2s process, or stored in offline
-storage, or bounced back.
-
-\makesubsection{s2smanager}{s2s Manager}
-\ind{clustering!s2s manager}
-
-This module routes packets to other \XMPP{} servers. First, it
-checks if an opened s2s connection from the domain of the packet's
-source to the domain of the packet's destination exists. If that is the case,
-the s2s manager routes the packet to the process
-serving this connection, otherwise a new connection is opened.
+Note however that some of these techniques can be changed in the future releases.
 
 \makesection{cluster}{Clustering Setup}
 \ind{clustering!setup}
@@ -5795,6 +5935,7 @@ If you need a different behaviour, you can change the load balancing behaviour w
 
 Several balancing criteria are available:
 \begin{itemize}
+\item \term{broadcast}: ???
 \item \term{destination}: the full JID of the packet \term{to} attribute is used.
 \item \term{source}: the full JID of the packet \term{from} attribute is used.
 \item \term{bare\_destination}: the bare JID (without resource) of the packet \term{to} attribute is used.
