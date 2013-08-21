@@ -39,8 +39,10 @@
 	 broadcast_service_message/2, register_room/3,
 	 get_vh_rooms/1, shutdown_rooms/1,
 	 is_broadcasted/1, moderate_room_history/2, import/3,
-	 persist_recent_messages/1, can_use_nick/4, resolve_conflict/2,
-         resolve_conflict/3]).
+	 persist_recent_messages/1, can_use_nick/4]).
+
+%% DHT callbacks
+-export([merge_write/2, merge_delete/2, clean/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
@@ -294,16 +296,7 @@ init([Host, Opts]) ->
     catch ets:new(muc_online_users,
 		  [bag, named_table, public, {keypos, 2}]),
     mnesia:subscribe(system),
-    dht:new(muc_online_room,
-            fun(Node) ->
-                    ets:select_delete(
-                      muc_online_room,
-                      ets:fun2ms(
-                        fun(#muc_online_room{pid = Pid})
-                              when node(Pid) == Node ->
-                                true
-                        end))
-            end),
+    dht:new(muc_online_room, ?MODULE),
     Access = gen_mod:get_opt(access, Opts,
                              fun(A) when is_atom(A) -> A end, all),
     AccessCreate = gen_mod:get_opt(access_create, Opts,
@@ -733,23 +726,26 @@ register_room(Host, Room, Pid) ->
     Key = {Room, Host},
     dht:write(#muc_online_room{name_host = Key,
                                pid = Pid,
-                               timestamp = now()},
-              {?MODULE, resolve_conflict, []}).
+                               timestamp = now()}).
 
 unregister_room(Host, Room) ->
     Key = {Room, Host},
-    dht:delete(muc_online_room, Key).
+    case mnesia:dirty_read(muc_online_room, Key) of
+        [R] ->
+            dht:delete(R);
+        [] ->
+            ok
+    end.
 
-resolve_conflict(#muc_online_room{pid = Pid1}, Pid2) ->
+merge_delete(#muc_online_room{pid = Pid1}, #muc_online_room{pid = Pid2}) ->
     if Pid1 == Pid2 ->
             delete;
        true ->
             keep
     end.
 
-resolve_conflict(#muc_online_room{pid = Pid1, timestamp = T1} = S1,
-                 #muc_online_room{pid = Pid2, timestamp = T2} = S2,
-                 _) ->
+merge_write(#muc_online_room{pid = Pid1, timestamp = T1} = S1,
+            #muc_online_room{pid = Pid2, timestamp = T2} = S2) ->
     if Pid1 == Pid2 ->
             S1;
        T1 < T2 ->
@@ -759,6 +755,15 @@ resolve_conflict(#muc_online_room{pid = Pid1, timestamp = T1} = S1,
             ejabberd_cluster:send(Pid1, replaced),
             S2
     end.
+
+clean(Node) ->
+    ets:select_delete(
+      muc_online_room,
+      ets:fun2ms(
+        fun(#muc_online_room{pid = Pid})
+              when node(Pid) == Node ->
+                true
+        end)).
 
 iq_disco_info(Lang) ->
     [#xmlel{name = <<"identity">>,

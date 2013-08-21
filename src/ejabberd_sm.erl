@@ -45,7 +45,10 @@
 	 force_update_presence/1, connected_users/0,
 	 connected_users_number/0, user_resources/2,
 	 get_session_pid/3, get_user_info/3, get_user_ip/3,
-	 get_user_node/2, resolve_conflict/2, resolve_conflict/3]).
+	 get_user_node/2]).
+
+%% DHT callbacks
+-export([merge_write/2, merge_delete/2, clean/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
@@ -139,7 +142,12 @@ do_close_session(User, Server, Resource) ->
 -spec drop_session(ljid()) -> any().
 
 drop_session({U, S, _} = USR) ->
-    dht:delete(session, USR, {U, S}).
+    case mnesia:dirty_read(session, USR) of
+        [R] ->
+            dht:delete(R, {U, S});
+        [] ->
+            ok
+    end.
 
 -spec check_in_subscription(any(), binary(), binary(),
                             any(), any(), any()) -> any().
@@ -363,18 +371,18 @@ register_iq_handler(Host, XMLNS, Module, Fun, Opts) ->
 unregister_iq_handler(Host, XMLNS) ->
     ?MODULE ! {unregister_iq_handler, Host, XMLNS}.
 
-resolve_conflict(#session{sid = {_, Pid1}}, Pid2) ->
+merge_delete(#session{sid = {_, Pid1}}, #session{sid = {_, Pid2}}) ->
     if Pid1 == Pid2 ->
             delete;
        true ->
             keep
     end.
 
-resolve_conflict(#session{sid = {_, Pid}} = S, #session{sid = {_, Pid}}, _) ->
+merge_write(#session{sid = {_, Pid}} = S,
+            #session{sid = {_, Pid}}) ->
     S;
-resolve_conflict(#session{sid = {T1, _}, us = {_, Server}} = S1,
-                 #session{sid = {T2, _}} = S2,
-                 _) ->
+merge_write(#session{sid = {T1, _}, us = {_, Server}} = S1,
+            #session{sid = {T2, _}} = S2) ->
     {Old, New} = if T1 < T2 -> {S1, S2};
                     true -> {S2, S1}
                  end,
@@ -391,6 +399,15 @@ resolve_conflict(#session{sid = {T1, _}, us = {_, Server}} = S1,
             ejabberd_cluster:send(element(2, New#session.sid), replaced),
             Old
     end.
+
+clean(Node) ->
+    ets:select_delete(
+      session,
+      ets:fun2ms(
+        fun(#session{sid = {_, Pid}})
+              when node(Pid) == Node ->
+                true
+        end)).
 
 %%====================================================================
 %% gen_server callbacks
@@ -418,16 +435,7 @@ init([]) ->
     ejabberd_commands:register_commands(commands()),
     ejabberd_cluster:subscribe(),
     start_handlers(),
-    dht:new(session,
-            fun(Node) ->
-                    ets:select_delete(
-                      session,
-                      ets:fun2ms(
-                        fun(#session{sid = {_, Pid}})
-                              when node(Pid) == Node ->
-                                true
-                        end))
-            end),
+    dht:new(session, ?MODULE),
     {ok, #state{}}.
 
 handle_call(_Request, _From, State) ->
@@ -517,7 +525,7 @@ set_session(SID, User, Server, Resource, Priority, Info) ->
     USR = {LUser, LServer, LResource},
     Session = #session{sid = SID, usr = USR, us = US,
                        priority = Priority, info = Info},
-    dht:write(Session, {?MODULE, resolve_conflict, []}, US).
+    dht:write(Session, US).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 

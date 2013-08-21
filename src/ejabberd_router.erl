@@ -35,9 +35,12 @@
 	 register_route/2, register_routes/1, unregister_route/1,
 	 unregister_routes/1, dirty_get_all_routes/0,
 	 dirty_get_all_domains/0, make_id/0, get_domain_balancing/1,
-         resolve_conflict/3, check_consistency/0, merge_pids/3]).
+         check_consistency/0, merge_pids/3]).
 
 -export([start_link/0]).
+
+%% DHT callbacks
+-export([merge_write/2, clean/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
@@ -110,16 +113,13 @@ register_route(Domain, LocalHint) ->
                     V2 = vclock:increment(node(), V1),
                     NewPids = add_pid(self(), Pids, LDomain),
                     dht:write_everywhere(
-                      R#route{clock = V2, pid = NewPids},
-                      {?MODULE, resolve_conflict, []});
+                      R#route{clock = V2, pid = NewPids});
                 [] ->
                     dht:write_everywhere(
                       #route{clock = vclock:increment(
                                        node(), vclock:fresh()),
                              pid = add_pid(self(), [], LDomain),
-                             local_hint = LocalHint,
-                             domain = LDomain},
-                      {?MODULE, resolve_conflict, []});
+                             domain = LDomain});
                 _ ->
                     ok
             end
@@ -146,15 +146,14 @@ unregister_route(Domain) ->
                     NewPids = del_pid(self(), Pids, LDomain),
                     dht:write_everywhere(
                       R#route{clock = vclock:increment(node(), V),
-                              pid = NewPids},
-                      {?MODULE, resolve_conflict, []});
+                              pid = NewPids});
                 [] ->
                     ok
             end
     end.
 
-resolve_conflict(#route{pid = Pids1, clock = V1, domain = Domain} = R1,
-                 #route{pid = Pids2, clock = V2} = R2, _Pid) ->
+merge_write(#route{pid = Pids1, clock = V1, domain = Domain} = R1,
+            #route{pid = Pids2, clock = V2} = R2) ->
     case vclock:descends(V1, V2) of
         true ->
             R1#route{pid = Pids1, clock = V1};
@@ -168,6 +167,17 @@ resolve_conflict(#route{pid = Pids1, clock = V1, domain = Domain} = R1,
                     R1#route{pid = Pids, clock = V}
             end
     end.
+
+clean(Node) ->
+    lists:foreach(
+      fun(#route{pid = []}) ->
+              ok;
+         (#route{pid = Pids, clock = V, domain = Domain} = R) ->
+              NewV = vclock:increment(node(), V),
+              NewPids = del_pid_by_node(Node, Pids, Domain),
+              mnesia:dirty_write(
+                R#route{pid = NewPids, clock = NewV})
+      end, mnesia:dirty_match_object(#route{_ = '_'})).
 
 -spec unregister_routes([binary()]) -> ok.
 
@@ -210,18 +220,7 @@ init([]) ->
                          {local_content, true},
 			 {attributes, record_info(fields, route)}]),
     mnesia:add_table_copy(route, node(), ram_copies),
-    dht:new(route,
-            fun(Node) ->
-                    lists:foreach(
-                      fun(#route{pid = []}) ->
-                              ok;
-                         (#route{pid = Pids, clock = V, domain = Domain} = R) ->
-                              NewV = vclock:increment(node(), V),
-                              NewPids = del_pid_by_node(Node, Pids, Domain),
-                              mnesia:dirty_write(
-                                R#route{pid = NewPids, clock = NewV})
-                      end, mnesia:dirty_match_object(#route{_ = '_'}))
-            end),
+    dht:new(route, ?MODULE),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------

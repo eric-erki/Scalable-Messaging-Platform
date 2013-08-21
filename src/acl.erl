@@ -36,11 +36,15 @@
 
 -export([start_link/0, to_record/3, add/3, add_list/3,
          load_from_config/0, match_rule/3, match_acl/3,
-         transform_options/1, resolve_conflict/2, resolve_conflict/3]).
+         transform_options/1]).
+
+%% DHT callbacks
+-export([merge_write/2, merge_delete/2, clean/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
 -include("jlib.hrl").
+-include_lib("stdlib/include/ms_transform.hrl").
 
 -record(acl, {aclname, aclspec}).
 -record(access, {name       :: access_name(),
@@ -69,7 +73,7 @@
                    {node_glob, {glob(), glob()}}.
 
 -type acl() :: #acl{aclname :: aclname(),
-                    aclspec :: aclspec()}.
+                    aclspec :: [aclspec()]}.
 
 -export_type([acl/0]).
 
@@ -83,13 +87,15 @@ start_link() ->
 
 init([]) ->
     case catch mnesia:table_info(acl, storage_type) of
-        disc_copies ->
-            mnesia:delete_table(acl);
-        _ ->
-            ok
+        disc_copies -> mnesia:delete_table(acl);
+        _ -> ok
+    end,
+    case catch mnesia:table_info(acl, type) of
+        bag -> mnesia:delete_table(acl);
+        _ -> ok
     end,
     mnesia:create_table(acl,
-			[{ram_copies, [node()]}, {type, bag},
+			[{ram_copies, [node()]},
                          {local_content, true},
 			 {attributes, record_info(fields, acl)}]),
     mnesia:create_table(access,
@@ -98,6 +104,8 @@ init([]) ->
 			 {attributes, record_info(fields, access)}]),
     mnesia:add_table_copy(acl, node(), ram_copies),
     mnesia:add_table_copy(access, node(), ram_copies),
+    dht:new(acl, ?MODULE),
+    dht:new(access, ?MODULE),
     load_from_config(),
     {ok, #state{}}.
 
@@ -117,48 +125,53 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
--spec to_record(binary(), atom(), aclspec()) -> acl().
+-spec to_record(binary(), atom(), [aclspec()]) -> acl().
 
-to_record(Host, ACLName, ACLSpec) ->
+to_record(Host, ACLName, ACLSpecs) ->
     #acl{aclname = {ACLName, Host},
-	 aclspec = normalize_spec(ACLSpec)}.
+	 aclspec = normalize_specs(ACLSpecs)}.
 
--spec add(binary(), aclname(), aclspec()) -> ok.
+-spec add(binary(), aclname(), [aclspec()]) -> ok.
 
-add(Host, ACLName, ACLSpec) ->
+add(Host, ACLName, ACLSpecs) ->
     dht:write_everywhere(
       #acl{aclname = {ACLName, Host},
-           aclspec = normalize_spec(ACLSpec)},
-      {?MODULE, resolve_conflict, []}).
+           aclspec = normalize_specs(ACLSpecs)}).
 
 -spec add_list(binary(), [acl()], boolean()) -> ok.
 
 add_list(Host, ACLs, Clear) ->
     if Clear ->
-            Ks = mnesia:dirty_select(acl,
-                                     [{{acl, {'$1', Host}, '$2'}, [],
-                                       ['$1']}]),
+            Objs = mnesia:dirty_select(
+                     acl,
+                     ets:fun2ms(
+                       fun(#acl{aclname = {_, H}} = ACL)
+                             when H == Host ->
+                               ACL
+                       end)),
             lists:foreach(
-              fun(K) ->
-                      dht:delete({acl, {K, Host}})
-              end, Ks);
+              fun(Obj) ->
+                      dht:delete(Obj)
+              end, Objs);
        true ->
             ok
     end,
     lists:foreach(
       fun(#acl{aclname = ACLName,
-               aclspec = ACLSpec}) ->
+               aclspec = ACLSpecs}) ->
               dht:write_everywhere(
                 #acl{aclname = {ACLName, Host},
-                     aclspec = normalize_spec(ACLSpec)},
-                {?MODULE, resolve_conflict, []})
+                     aclspec = normalize_specs(ACLSpecs)})
       end, ACLs).
 
-resolve_conflict(_, _) ->
+merge_delete(_, _) ->
     delete.
 
-resolve_conflict(ACL, _, _) ->
-    ACL.
+merge_write(Obj, _) ->
+    Obj.
+
+clean(_Node) ->
+    ok.
 
 -spec add_access(binary() | global,
                  access_name(), [access_rule()]) ->  ok | {error, any()}.
@@ -166,8 +179,7 @@ resolve_conflict(ACL, _, _) ->
 add_access(Host, Access, Rules) ->
     dht:write_everywhere(
       #access{name = {Access, Host},
-              rules = Rules},
-      {?MODULE, resolve_conflict, []}).
+              rules = Rules}).
 
 -spec load_from_config() -> ok.
 
@@ -181,16 +193,15 @@ load_from_config() ->
                               {access, Host}, fun(V) -> V end, []),
               lists:foreach(
                 fun({ACLName, SpecList}) ->
-                        lists:foreach(
-                          fun({ACLType, ACLSpecs}) when is_list(ACLSpecs) ->
-                                  lists:foreach(
-                                    fun(ACLSpec) ->
-                                            add(Host, ACLName,
-                                                {ACLType, ACLSpec})
-                                    end, lists:flatten(ACLSpecs));
-                             ({ACLType, ACLSpecs}) ->
-                                  add(Host, ACLName, {ACLType, ACLSpecs})
-                          end, lists:flatten(SpecList))
+                        NewSpecList =
+                            lists:flatmap(
+                              fun({ACLType, ACLSpecs}) when is_list(ACLSpecs) ->
+                                      [{ACLType, ACLSpec}
+                                       || ACLSpec <- lists:flatten(ACLSpecs)];
+                                 (Spec) ->
+                                      [Spec]
+                              end, lists:flatten([SpecList])),
+                        add(Host, ACLName, NewSpecList)
                 end, ACLs),
               lists:foreach(
                 fun({Access, Rules}) ->
@@ -209,6 +220,9 @@ nameprep(S) ->
 
 resourceprep(S) ->
     jlib:resourceprep(b(S)).
+
+normalize_specs(Specs) ->
+    [normalize_spec(Spec) || Spec <- Specs].
 
 normalize_spec(Spec) ->
     case Spec of
@@ -282,17 +296,15 @@ match_acl(none, _JID, _Host) ->
 match_acl(ACL, IP, Host) when tuple_size(IP) == 4;
                               tuple_size(IP) == 8 ->
     lists:any(
-      fun(#acl{aclspec = {ip, {Net, Mask}}}) ->
+      fun({ip, {Net, Mask}}) ->
               is_ip_match(IP, Net, Mask);
          (_) ->
               false
-      end,
-      ets:lookup(acl, {ACL, Host}) ++
-          ets:lookup(acl, {ACL, global}));
+      end, get_aclspecs(ACL, Host));
 match_acl(ACL, JID, Host) ->
     {User, Server, Resource} = jlib:jid_tolower(JID),
     lists:any(
-      fun(#acl{aclspec = Spec}) ->
+      fun(Spec) ->
               case Spec of
                   all -> true;
                   {user, {U, S}} -> U == User andalso S == Server;
@@ -338,7 +350,13 @@ match_acl(ACL, JID, Host) ->
                       false
               end
       end,
-      ets:lookup(acl, {ACL, Host}) ++
+      get_aclspecs(ACL, Host)).
+
+get_aclspecs(ACL, Host) ->
+    lists:flatmap(
+      fun(#acl{aclspec = Specs}) ->
+              Specs
+      end, ets:lookup(acl, {ACL, Host}) ++
           ets:lookup(acl, {ACL, global})).
 
 is_regexp_match(String, RegExp) ->

@@ -34,8 +34,10 @@
 -behaviour(gen_mod).
 
 -export([start/2, stop/1, process/2, open_session/2,
-	 close_session/1, find_session/1, resolve_conflict/2,
-         resolve_conflict/3]).
+	 close_session/1, find_session/1]).
+
+%% DHT callbacks
+-export([merge_write/2, merge_delete/2, clean/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -106,22 +108,27 @@ get_human_html_xmlel() ->
 					   "client that supports it.">>}]}]}]}.
 
 open_session(SID, Pid) ->
-    dht:write(#bosh{sid = SID, timestamp = now(), pid = Pid},
-              {?MODULE, resolve_conflict, []}).
+    dht:write(#bosh{sid = SID,
+                    timestamp = now(),
+                    pid = Pid}).
 
 close_session(SID) ->
-    dht:delete(bosh, SID).
+    case mnesia:dirty_read(bosh, SID) of
+        [R] ->
+            dht:delete(R);
+        [] ->
+            ok
+    end.
 
-resolve_conflict(#bosh{pid = Pid1}, Pid2) ->
+merge_delete(#bosh{pid = Pid1}, #bosh{pid = Pid2}) ->
     if Pid1 == Pid2 ->
             delete;
        true ->
             keep
     end.
 
-resolve_conflict(#bosh{pid = Pid1, timestamp = T1} = S1,
-                 #bosh{pid = Pid2, timestamp = T2} = S2,
-                 _) ->
+merge_write(#bosh{pid = Pid1, timestamp = T1} = S1,
+            #bosh{pid = Pid2, timestamp = T2} = S2) ->
     if Pid1 == Pid2 ->
             S1;
        T1 < T2 ->
@@ -131,6 +138,15 @@ resolve_conflict(#bosh{pid = Pid1, timestamp = T1} = S1,
             ejabberd_cluster:send(Pid1, replaced),
             S2
     end.
+
+clean(Node) ->
+    ets:select_delete(
+      bosh,
+      ets:fun2ms(
+        fun(#bosh{pid = Pid})
+              when node(Pid) == Node ->
+                true
+        end)).
 
 find_session(SID) ->
     case mnesia:dirty_read(bosh, SID) of
@@ -176,16 +192,7 @@ setup_database() ->
 			[{ram_copies, [node()]}, {local_content, true},
 			 {attributes, record_info(fields, bosh)}]),
     mnesia:add_table_copy(bosh, node(), ram_copies),
-    dht:new(bosh,
-            fun(Node) ->
-                    ets:select_delete(
-                      bosh,
-                      ets:fun2ms(
-                        fun(#bosh{pid = Pid})
-                              when node(Pid) == Node ->
-                                true
-                        end))
-            end).
+    dht:new(bosh, ?MODULE).
 
 start_jiffy(Opts) ->
     case gen_mod:get_opt(json, Opts,
