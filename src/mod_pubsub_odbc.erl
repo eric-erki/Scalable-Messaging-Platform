@@ -947,7 +947,8 @@ remove_user(User, Server) ->
 									  [NodeId,
 									   Entity,
 									   JID,
-									   all])
+									   all]);
+							  (_) -> ok
 						      end,
 						      Subscriptions),
 					{result, Affiliations} =
