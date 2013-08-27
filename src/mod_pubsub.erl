@@ -1357,7 +1357,8 @@ remove_user(User, Server) ->
 									  [NodeId,
 									   Entity,
 									   JID,
-									   all])
+									   all]);
+							  (_) -> ok
 						      end,
 						      Subscriptions),
 					{result, Affiliations} =
@@ -4672,10 +4673,10 @@ sub_with_options(JID, NodeId, SubId) ->
 user_resources(User, Server) ->
     ejabberd_sm:get_user_resources(User, Server).
 
-user_resource(User, Server, []) ->
+user_resource(User, Server, <<>>) ->
     case user_resources(User, Server) of
       [R | _] -> R;
-      _ -> []
+      _ -> <<>>
     end;
 user_resource(_, _, Resource) -> Resource.
 
