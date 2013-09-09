@@ -112,7 +112,7 @@ init([WS]) ->
                   {websocket_timeout, ?MYNAME},
                   fun(I) when is_integer(I), I>0 -> I end,
                   ?WEBSOCKET_TIMEOUT) * 1000,
-    Socket = {http_ws, self(), WS:get(ip)},
+    Socket = {http_ws, self(), ejabberd_ws:get(WS, ip)},
     ?DEBUG("Client connected through websocket ~p",
 	   [Socket]),
     ejabberd_socket:start(ejabberd_c2s, ?MODULE, Socket,
@@ -141,7 +141,7 @@ handle_sync_event({send, Packet}, _From, StateName,
     Packet2 = if is_binary(Packet) -> Packet;
 		 true -> iolist_to_binary(Packet)
 	      end,
-    WS:send(Packet2),
+    ejabberd_ws:send(WS, Packet2),
     {reply, ok, StateName, StateData};
 handle_sync_event(close, _From, _StateName, StateData) ->
     {stop, normal, StateData}.
