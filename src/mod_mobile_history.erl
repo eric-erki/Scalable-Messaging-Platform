@@ -1,0 +1,425 @@
+-module(mod_mobile_history).
+
+-export([start/2, stop/1]).
+
+-export([log_out/4, log_message_to_user/3,
+	 process_sm_iq/3, remove_user/2]).
+
+-export([get_user_history/4,
+	 parse_read_notification/1]).
+
+-define(NS_P1_HISTORY, <<"p1:archive">>).
+
+-ifndef(NS_P1_PUSHED).
+
+-define(NS_P1_PUSHED, <<"p1:pushed">>).
+
+-endif.
+
+-ifndef(NS_RECEIPTS).
+
+-define(NS_RECEIPTS, <<"urn:xmpp:receipts">>).
+
+-endif.
+
+-include("ejabberd.hrl").
+-include("logger.hrl").
+-include("jlib.hrl").
+
+-define(MYSQL_HOST_POOL, <<"testdomain">>).
+
+-define(PROC_LOG_MSG, <<"log_msg">>).
+
+-define(PROC_SET_READ, <<"set_read">>).
+
+-define(PROC_SET_DELIVER_STATUS,
+	<<"set_deliver_status">>).
+
+-define(PROC_REMOVE_CONVERSATION_HISTORY,
+	<<"remove_conversation_history">>).
+
+-define(PROC_REMOVE_USER_HISTORY,
+	<<"remove_user_history">>).
+
+start(Host, Opts) ->
+    ejabberd_hooks:add(user_send_packet, Host, ?MODULE,
+		       log_out, 90),
+    ejabberd_hooks:add(message_to_user, Host, ?MODULE,
+		       log_message_to_user, 100),
+    IQDisc = gen_mod:get_opt(iqdisc, Opts, fun(X) -> X end, one_queue),
+    gen_iq_handler:add_iq_handler(ejabberd_sm, Host,
+				  ?NS_P1_HISTORY, ?MODULE, process_sm_iq,
+				  IQDisc),
+    ejabberd_hooks:add(remove_user, Host, ?MODULE,
+		       remove_user, 50),
+    ok.
+
+stop(Host) ->
+    ejabberd_hooks:delete(user_send_packet, Host, ?MODULE,
+			  log_out, 90),
+    ejabberd_hooks:delete(message_to_user, Host, ?MODULE,
+			  log_message_to_user, 100),
+    gen_iq_handler:remove_iq_handler(ejabberd_sm, Host,
+				     ?NS_P1_HISTORY),
+    ok.
+
+remove_user(User, Server) ->
+    remove_all_history(jlib:make_jid(User, Server, <<"">>)).
+
+log_out( #xmlel{name = <<"message">>, attrs = Attrs} = OrigPacket,
+            _C2SState, From, To) ->
+    case filter_chat_packet(OrigPacket) of
+      true ->
+	  Packet = xml:replace_tag_attr(<<"from">>,
+					jlib:jid_to_string(jlib:jid_remove_resource(From)),
+					OrigPacket),
+	  Collection = get_collection(From, To, Packet),
+	  Timestamp = get_datetime_string_for_db(now()),
+	  ID = xml:get_attr_s(<<"id">>, Attrs),
+	  JID =
+	      ejabberd_odbc:escape(jlib:jid_to_string(jlib:jid_remove_resource(From))),
+	  Text =
+	      ejabberd_odbc:escape(xml:element_to_binary(Packet)),
+	  Query = [<<"CALL ">>, log_msg(From#jid.lserver),
+		   <<"('">>, JID, <<"','">>, JID, <<"','">>,
+		   ejabberd_odbc:escape(Collection), <<"','">>,
+		   ejabberd_odbc:escape(ID), <<"','">>, Text, <<"','">>,
+		   ejabberd_odbc:escape(Timestamp), <<"', true)">>],
+	  case ejabberd_odbc:sql_query(?MYSQL_HOST_POOL,
+				  lists:flatten(Query)) of
+            {error, Cause} ->
+                ?ERROR_MSG("Error storing history message sent by ~p to ~p: ~p", [jlib:jid_to_string(From), jlib:jid_to_string(To), Cause]);
+            _ ->
+                ok
+        end;
+      false ->
+	  Timestamp = get_datetime_string_for_db(now()),
+	  case parse_read_notification(OrigPacket) of
+	    {read, ID} ->
+		JID =
+		    ejabberd_odbc:escape(jlib:jid_to_string(jlib:jid_remove_resource(From))),
+		Query = [<<"CALL ">>, set_read(From#jid.lserver),
+			 <<"('">>, JID, <<"','">>, ejabberd_odbc:escape(ID),
+			 <<"', '">>, ejabberd_odbc:escape(Timestamp), <<"')">>],
+		case ejabberd_odbc:sql_query(?MYSQL_HOST_POOL,
+					lists:flatten(Query)) of
+                {error, Cause} ->
+                    ?ERROR_MSG("Error storing read notification for user ~p,  message ~p : ~p", [JID, ID, Cause]);
+                _ ->
+                    ok
+            end;
+	    false -> ok
+	  end
+    end,
+    OrigPacket;
+log_out(Packet, _C2SState,_From, _To) -> Packet.
+
+get_collection(From, To, Packet) ->
+    str:join(lists:usort([jlib:jid_to_string(jlib:jid_remove_resource(From))
+			  | get_target(To, Packet)]),
+	     <<":">>).
+
+get_datetime_string_for_db({MegaSecs, Secs,
+			    MicroSecs}) ->
+    {{Year, Month, Day}, {Hour, Minute, Second}} =
+	calendar:now_to_universal_time({MegaSecs, Secs,
+					MicroSecs}),
+    iolist_to_binary(io_lib:format("~4..0w-~2..0w-~2..0w ~2..0w:~2..0w:~2..0w",
+				   [Year, Month, Day, Hour, Minute, Second])).
+
+get_target(To, Packet) ->
+    case xml:get_subtag(Packet, <<"addresses">>) of
+      #xmlel{name = <<"addresses">>, attrs = AAttrs,
+	     children = Addresses} ->
+	  case xml:get_attr_s(<<"xmlns">>, AAttrs) of
+	    ?NS_ADDRESS ->
+		[xml:get_attr_s(<<"jid">>, Attrs)
+		 || #xmlel{name = <<"address">>, attrs = Attrs}
+			<- Addresses];
+	    _ -> [jlib:jid_to_string(jlib:jid_remove_resource(To))]
+	  end;
+      _ -> [jlib:jid_to_string(jlib:jid_remove_resource(To))]
+    end.
+
+parse_read_notification(Packet) ->
+    case xml:get_subtag(Packet, <<"read">>) of
+      #xmlel{name = <<"read">>, attrs = AAttrs} ->
+	  case xml:get_attr_s(<<"xmlns">>, AAttrs) of
+	    ?NS_RECEIPTS ->
+		{read, xml:get_attr_s(<<"id">>, AAttrs)};
+	    _ -> false
+	  end;
+      _ -> false
+    end.
+
+filter_chat_packet(#xmlel{name = <<"message">>,
+			  attrs = Attrs} =
+		       Msg) ->
+    case xml:get_attr_s(<<"type">>, Attrs) of
+      <<"chat">> ->
+	  xml:get_subtag(Msg, <<"body">>) /= false orelse
+	    xml:get_subtag(Msg, <<"x">>) /= false;
+      _ -> false
+    end.
+
+is_delayed(Packet) ->
+    case xml:get_subtag(Packet, <<"delay">>) of
+      #xmlel{name = <<"delay">>, attrs = AAttrs} ->
+	  case xml:get_attr_s(<<"xmlns">>, AAttrs) of
+	    ?NS_DELAY -> true;
+	    _ -> false
+	  end;
+      _ -> false
+    end.
+
+is_pushed(#xmlel{name = <<"message">>,
+		 children = Els}) ->
+    [1
+     || #xmlel{name = <<"x">>, attrs = Attrs} <- Els,
+	xml:get_attr_s(<<"xmlns">>, Attrs) == (?NS_P1_PUSHED)]
+      /= [].
+
+log_message_to_user(From, To,
+		    #xmlel{name = <<"message">>, attrs = Attrs} =
+			OrigPacket) ->
+    case filter_chat_packet(OrigPacket) andalso
+	   not is_delayed(OrigPacket) andalso
+	     not is_pushed(OrigPacket) andalso
+	       not mod_carboncopy:is_carbon_copy(OrigPacket)
+	of
+      true ->
+	  Packet = xml:replace_tag_attr(<<"from">>,
+					jlib:jid_to_string(jlib:jid_remove_resource(From)),
+					OrigPacket),
+	  Collection = get_collection(From, To, Packet),
+	  Timestamp = get_datetime_string_for_db(now()),
+	  ID = xml:get_attr_s(<<"id">>, Attrs),
+	  JIDTo =
+	      ejabberd_odbc:escape(jlib:jid_to_string(jlib:jid_remove_resource(To))),
+	  JIDFrom =
+	      ejabberd_odbc:escape(jlib:jid_to_string(jlib:jid_remove_resource(From))),
+	  Text =
+	      ejabberd_odbc:escape(xml:element_to_binary(Packet)),
+	  Query = [<<"CALL ">>, log_msg(To#jid.lserver), <<"('">>,
+		   JIDTo, <<"','">>, JIDFrom, <<"','">>,
+		   ejabberd_odbc:escape(Collection), <<"','">>,
+		   ejabberd_odbc:escape(ID), <<"','">>, Text, <<"','">>,
+		   ejabberd_odbc:escape(Timestamp), <<"', false)">>],
+	  case ejabberd_odbc:sql_query(?MYSQL_HOST_POOL,
+				  lists:flatten(Query)) of
+            {error, Cause} ->
+                ?ERROR_MSG("Error storing history message received by ~p from ~p: ~p", [jlib:jid_to_string(To), jlib:jid_to_string(From), Cause]);
+            _ ->
+                ok
+        end;
+      false ->
+	  case parse_receipt_response(OrigPacket) of
+	    {ok, MsgID, Status}
+		when Status /= <<"on-sender-server">> ->
+		JIDTo =
+		    ejabberd_odbc:escape(jlib:jid_to_string(jlib:jid_remove_resource(To))),
+		Timestamp =
+		    ejabberd_odbc:escape(get_datetime_string_for_db(now())),
+		Query = [<<"CALL ">>,
+			 set_deliver_status(To#jid.lserver), <<"('">>, JIDTo,
+			 <<"','">>, ejabberd_odbc:escape(MsgID), <<"','">>,
+			 ejabberd_odbc:escape(Status), <<"','">>, Timestamp,
+			 <<"')">>],
+	    case ejabberd_odbc:sql_query(?MYSQL_HOST_POOL,
+					lists:flatten(Query)) of
+                {error, Cause} ->
+                    ?ERROR_MSG("Error storing delivery notification for user ~p,  message ~p : ~p", [JIDTo, MsgID, Cause]);
+                _ ->
+                    ok
+            end;
+	    _ -> ok
+	  end
+    end;
+log_message_to_user(_From, _To, _Packet) -> ok.
+
+parse_receipt_response(#xmlel{name = <<"message">>,
+			      children = Children}) ->
+    case xml:remove_cdata(Children) of
+      [#xmlel{name = Status, attrs = Attrs}] ->
+	  case xml:get_attr_s(<<"xmlns">>, Attrs) of
+	    ?NS_RECEIPTS ->
+		{ok, xml:get_attr_s(<<"id">>, Attrs), Status};
+	    _ -> false
+	  end;
+      _ -> false
+    end;
+parse_receipt_response(_) -> false.
+
+normalize_rsm_in(#rsm_in{id = Id} = R)
+    when is_binary(Id) ->
+    normalize_rsm_in(R#rsm_in{id =
+				  tmplib:iolist_to_integer(Id)});
+normalize_rsm_in(#rsm_in{id = undefined} = R) ->
+    normalize_rsm_in(R#rsm_in{id = 0});
+normalize_rsm_in(#rsm_in{max = undefined} = R) ->
+    normalize_rsm_in(R#rsm_in{max = 50});
+normalize_rsm_in(R) -> R.
+
+process_sm_iq(From, _To,
+	      #iq{type = get, sub_el = El} = IQ) ->
+    Date = xml:get_tag_attr_s(<<"start">>, El),
+    #rsm_in{max = Max, id = Index} =
+	normalize_rsm_in(jlib:rsm_decode(IQ)),
+    {History, Count} = get_user_history(From, Date, Index,
+					Max),
+    Res = [#xmlel{name = <<"history">>,
+		  attrs =
+		      [{<<"read">>,
+			iolist_to_binary(atom_to_list(Read == <<"1">>))},
+		       {<<"at">>, db_datetime_to_iso(At)},
+		       {<<"deliver-status">>, DeliverStatus}],
+		  children = parse_message_from_db(From, At, Message)}
+	   || {Message, At, Read, DeliverStatus} <- History],
+    RsmOut = jlib:rsm_encode(#rsm_out{first =
+					  iolist_to_binary(integer_to_list(Index)),
+				      count = Count,
+				      last =
+					  iolist_to_binary(integer_to_list(Index
+									     +
+									     str:len(History)))}),
+    #xmlel{name = <<"retrieve">>, attrs = Attrs} = El,
+    IQ#iq{type = result,
+	  sub_el =
+	      [#xmlel{name = <<"retrieve">>, attrs = Attrs,
+		      children = Res ++ RsmOut}]};
+process_sm_iq(From, _To,
+	      #iq{type = set,
+		  sub_el =
+		      #xmlel{name = <<"remove-conversation">>,
+			     attrs = Attrs} =
+			  SubEl} =
+		  IQ) ->
+    Conversation = xml:get_attr_s(<<"conversation">>,
+				  Attrs),
+    case remove_conversation(From, Conversation) of
+      error ->
+	  IQ#iq{type = error,
+		sub_el = [SubEl, ?ERR_INTERNAL_SERVER_ERROR]};
+      ok -> IQ#iq{type = result, sub_el = []}
+    end;
+process_sm_iq(From, _To,
+	      #iq{type = set,
+		  sub_el = #xmlel{name = <<"remove-all">>} = SubEl} =
+		  IQ) ->
+    case remove_all_history(From) of
+      error ->
+	  IQ#iq{type = error,
+		sub_el = [SubEl, ?ERR_INTERNAL_SERVER_ERROR]};
+      ok -> IQ#iq{type = result, sub_el = []}
+    end;
+process_sm_iq(_From, _To, #iq{sub_el = SubEl} = IQ) ->
+    IQ#iq{type = error, sub_el = [SubEl, ?ERR_BAD_REQUEST]}.
+
+parse_message_from_db(User, At, Message) ->
+    case xml_stream:parse_element(Message) of
+      {error, Error} ->
+	  ?ERROR_MSG("Error parsing message from DB. User:~p "
+		     "Message: ~p  At: ~p Error:~p",
+		     [jlib:jid_to_string(jlib:jid_remove_resource(User)),
+		      Message, At, Error]),
+	  [];
+      El -> [El]
+    end.
+
+get_user_history(JID, StartingDate, Index, Max) ->
+    Date =
+	get_datetime_string_for_db(jlib:datetime_string_to_timestamp(StartingDate)),
+    JIDStr =
+	jlib:jid_to_string(jlib:jid_remove_resource(JID)),
+    Query = [<<"SELECT SQL_CALC_FOUND_ROWS message, "
+	       "at, is_read, deliver_status FROM messages_vie"
+	       "w WHERE jid='">>,
+	     ejabberd_odbc:escape(JIDStr), <<"' AND modified > '">>,
+	     ejabberd_odbc:escape(Date),
+	     <<"' ORDER BY at ASC LIMIT ">>,
+	     iolist_to_binary(integer_to_list(Index)), <<",">>,
+	     iolist_to_binary(integer_to_list(Max))],
+    {atomic, {Rows, Count}} =
+	ejabberd_odbc:sql_bloc(?MYSQL_HOST_POOL,
+			       fun () ->
+				       {selected, _, Rows} =
+					   ejabberd_odbc:sql_query_t(lists:flatten(Query)),
+				       {selected, _, [{Count}]} =
+					   ejabberd_odbc:sql_query_t(<<"SELECT FOUND_ROWS()">>),
+				       {Rows, Count}
+			       end),
+    {Rows, Count}.
+
+remove_conversation(JID, Conversation) ->
+    JIDStr =
+	jlib:jid_to_string(jlib:jid_remove_resource(JID)),
+    Query = [<<"CALL ">>,
+	     remove_conversation_history(JID#jid.lserver), <<"('">>,
+	     ejabberd_odbc:escape(JIDStr), <<"','">>,
+	     ejabberd_odbc:escape(Conversation), <<"')">>],
+    case ejabberd_odbc:sql_query(?MYSQL_HOST_POOL,
+				 lists:flatten(Query))
+	of
+      {error, Cause} ->
+	  ?ERROR_MSG("Error removing conversation ~p for user "
+		     "~p: ~p",
+		     [Conversation, JIDStr, Cause]),
+	  error;
+      {updated, _} -> ok
+    end.
+
+remove_all_history(JID) ->
+    JIDStr =
+	jlib:jid_to_string(jlib:jid_remove_resource(JID)),
+    Query = [<<"CALL ">>,
+	     remove_user_history(JID#jid.lserver), <<"('">>, JIDStr,
+	     <<"')">>],
+    case ejabberd_odbc:sql_query(?MYSQL_HOST_POOL,
+				 lists:flatten(Query))
+	of
+      {error, Cause} ->
+	  ?ERROR_MSG("Error removing user history ~p: ~p",
+		     [JIDStr, Cause]),
+	  error;
+      {updated, _} -> ok
+    end.
+
+db_datetime_to_iso(String) ->
+    [Date, Time] = str:tokens(String, <<" ">>),
+    [Y, M, D] = str:tokens(Date, <<"-">>),
+    [HH, MM, SS] = str:tokens(Time, <<":">>),
+    {T, Tz} =
+	jlib:timestamp_to_iso({{tmplib:iolist_to_integer(Y),
+				tmplib:iolist_to_integer(M),
+				tmplib:iolist_to_integer(D)},
+			       {tmplib:iolist_to_integer(HH),
+				tmplib:iolist_to_integer(MM),
+				tmplib:iolist_to_integer(SS)}},
+			      utc),
+    T ++ Tz.
+
+log_msg(Host) ->
+    gen_mod:get_module_opt(Host, ?MODULE, proc_log_msg, fun(X) -> X end,
+			   ?PROC_LOG_MSG).
+
+set_read(Host) ->
+    gen_mod:get_module_opt(Host, ?MODULE, proc_set_read, fun(X) -> X end,
+			   ?PROC_SET_READ).
+
+set_deliver_status(Host) ->
+    gen_mod:get_module_opt(Host, ?MODULE, proc_set_deliver_status,  fun(X) -> X end,
+        ?PROC_SET_DELIVER_STATUS).
+
+remove_conversation_history(Host) ->
+    gen_mod:get_module_opt(Host, ?MODULE, proc_remove_conversation_history, fun(X) -> X end,
+			   ?PROC_REMOVE_CONVERSATION_HISTORY).
+
+remove_user_history(Host) ->
+    gen_mod:get_module_opt(Host, ?MODULE, proc_remove_user_history, fun(X) -> X end,
+        ?PROC_REMOVE_USER_HISTORY).
+
+%ejabberd_odbc:sql_query(Host, "CALL log_msg(JID, Sender, Collection, ID, Packet, Date, false)");
+%ejabberd_odbc:sql_query(Host, "CALL set_read(JID, ID)");
+
+%"SELECT * from message_view where user=user and at >= date offset = ? limit = ?"
+
