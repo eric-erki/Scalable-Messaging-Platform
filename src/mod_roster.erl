@@ -80,6 +80,9 @@ start(Host, Opts) ->
 	  update_tables(),
 	  mnesia:add_table_index(roster, us),
 	  mnesia:add_table_index(roster_version, us);
+      p1db ->
+          p1db:open_table(roster, [{mapsize, 1024*1024*100}]),
+          p1db:open_table(roster_version, [{mapsize, 1024*1024*100}]);
       _ -> ok
     end,
     ejabberd_hooks:add(roster_get, Host, ?MODULE,
@@ -205,6 +208,12 @@ read_roster_version(LServer, LUser, odbc) ->
       {selected, [<<"version">>], [[Version]]} -> Version;
       {selected, [<<"version">>], []} -> error
     end;
+read_roster_version(LServer, LUser, p1db) ->
+    US = us2key(LUser, LServer),
+    case p1db:get(roster_version, US) of
+        {ok, Version, _VClock} -> Version;
+        {error, _} -> error
+    end;
 read_roster_version(LServer, LUser, riak) ->
     case ejabberd_riak:get(roster_version, {LUser, LServer}) of
         {ok, Version} -> Version;
@@ -245,6 +254,9 @@ write_roster_version(LUser, LServer, InTransaction, Ver,
 										EVer)
 					end)
     end;
+write_roster_version(LUser, LServer, _InTransaction, Ver, p1db) ->
+    US = us2key(LUser, LServer),
+    p1db:insert(roster_version, US, Ver);
 write_roster_version(LUser, LServer, _InTransaction, Ver,
 		     riak) ->
     US = {LUser, LServer},
@@ -349,6 +361,14 @@ get_roster(LUser, LServer, mnesia) ->
 	of
       Items  when is_list(Items)-> Items;
       _ -> []
+    end;
+get_roster(LUser, LServer, p1db) ->
+    USPrefix = us_prefix(LUser, LServer),
+    case p1db:get_by_prefix(roster, USPrefix) of
+        {ok, L} ->
+            [p1db_to_item(key2usj(Key), Val) || {Key, Val, _VClock} <- L];
+        {error, _} ->
+            []
     end;
 get_roster(LUser, LServer, riak) ->
     case ejabberd_riak:get_by_index(roster, <<"us">>, {LUser, LServer}) of
@@ -463,6 +483,17 @@ get_roster_by_jid_t(LUser, LServer, LJID, odbc) ->
 		R#roster{usj = {LUser, LServer, LJID},
 			 us = {LUser, LServer}, jid = LJID, name = <<"">>}
 	  end
+    end;
+get_roster_by_jid_t(LUser, LServer, LJID, p1db) ->
+    USJKey = usj2key(LUser, LServer, LJID),
+    case p1db:get(roster, USJKey) of
+        {ok, Val, _VClock} ->
+            p1db_to_item({LUser, LServer, LJID}, Val);
+        {error, notfound} ->
+            #roster{usj = {LUser, LServer, LJID},
+                    us = {LUser, LServer}, jid = LJID};
+        {error, _} = Err ->
+            exit(Err)
     end;
 get_roster_by_jid_t(LUser, LServer, LJID, riak) ->
     case ejabberd_riak:get(roster, {LUser, LServer, LJID}) of
@@ -639,6 +670,14 @@ get_subscription_lists(_, LUser, LServer, odbc) ->
             lists:map(fun(I) -> raw_to_record(LServer, I) end, Items);
       _ -> []
     end;
+get_subscription_lists(_, LUser, LServer, p1db) ->
+    USPrefix = us_prefix(LUser, LServer),
+    case p1db:get_by_prefix(roster, USPrefix) of
+        {ok, L} ->
+            [p1db_to_item(key2usj(Key), Val) || {Key, Val, _VClock} <- L];
+        {error, _} ->
+            []
+    end;
 get_subscription_lists(_, LUser, LServer, riak) ->
     case ejabberd_riak:get_by_index(roster, <<"us">>, {LUser, LServer}) of
         {ok, Items} -> Items;
@@ -682,6 +721,10 @@ roster_subscribe_t(LUser, LServer, LJID, Item, odbc) ->
     SJID = ejabberd_odbc:escape(jlib:jid_to_string(LJID)),
     odbc_queries:roster_subscribe(LServer, Username, SJID,
 				  ItemVals);
+roster_subscribe_t(LUser, LServer, LJID, Item, p1db) ->
+    USJKey = usj2key(LUser, LServer, LJID),
+    Val = item_to_p1db(Item),
+    p1db:insert(roster, USJKey, Val);
 roster_subscribe_t(LUser, LServer, _LJID, Item, riak) ->
     ejabberd_riak:put(Item,
                       [{'2i', [{<<"us">>, {LUser, LServer}}]}]).
@@ -690,6 +733,7 @@ transaction(LServer, F) ->
     case gen_mod:db_type(LServer, ?MODULE) of
       mnesia -> mnesia:transaction(F);
       odbc -> ejabberd_odbc:sql_transaction(LServer, F);
+      p1db -> {atomic, F()};
       riak -> {atomic, F()}
     end.
 
@@ -741,6 +785,17 @@ get_roster_by_jid_with_groups_t(LUser, LServer, LJID,
        []} ->
 	  #roster{usj = {LUser, LServer, LJID},
 		  us = {LUser, LServer}, jid = LJID}
+    end;
+get_roster_by_jid_with_groups_t(LUser, LServer, LJID, p1db) ->
+    USJKey = usj2key(LUser, LServer, LJID),
+    case p1db:get(roster, USJKey) of
+        {ok, Val, _VClock} ->
+            p1db_to_item({LUser, LServer, LJID}, Val);
+        {error, notfound} ->
+            #roster{usj = {LUser, LServer, LJID},
+                    us = {LUser, LServer}, jid = LJID};
+        {error, _} = Err ->
+            exit(Err)
     end;
 get_roster_by_jid_with_groups_t(LUser, LServer, LJID, riak) ->
     case ejabberd_riak:get(roster, {LUser, LServer, LJID}) of
@@ -963,6 +1018,19 @@ remove_user(LUser, LServer, odbc) ->
     Username = ejabberd_odbc:escape(LUser),
     odbc_queries:del_user_roster_t(LServer, Username),
     ok;
+remove_user(LUser, LServer, p1db) ->
+    USPrefix = us_prefix(LUser, LServer),
+    case p1db:get_by_prefix(roster, USPrefix) of
+        {ok, L} ->
+            lists:foreach(
+              fun({Key, _Val, VClock}) ->
+                      p1db:delete(roster, Key,
+                                  p1db:incr_vclock(VClock))
+              end, L),
+            {atomic, ok};
+        {error, _} = Err ->
+            {aborted, Err}
+    end;
 remove_user(LUser, LServer, riak) ->
     {atomic, ejabberd_riak:delete_by_index(roster, <<"us">>, {LUser, LServer})}.
 
@@ -1032,6 +1100,9 @@ update_roster_t(LUser, LServer, LJID, Item, odbc) ->
     ItemGroups = groups_to_string(Item),
     odbc_queries:update_roster(LServer, Username, SJID, ItemVals,
                                ItemGroups);
+update_roster_t(LUser, LServer, LJID, Item, p1db) ->
+    USJKey = usj2key(LUser, LServer, LJID),
+    p1db:insert(roster, USJKey, item_to_p1db(Item));
 update_roster_t(LUser, LServer, _LJID, Item, riak) ->
     ejabberd_riak:put(Item,
                       [{'2i', [{<<"us">>, {LUser, LServer}}]}]).
@@ -1046,6 +1117,9 @@ del_roster_t(LUser, LServer, LJID, odbc) ->
     Username = ejabberd_odbc:escape(LUser),
     SJID = ejabberd_odbc:escape(jlib:jid_to_string(LJID)),
     odbc_queries:del_roster(LServer, Username, SJID);
+del_roster_t(LUser, LServer, LJID, p1db) ->
+    USJKey = usj2key(LUser, LServer, LJID),
+    p1db:delete(roster, USJKey);
 del_roster_t(LUser, LServer, LJID, riak) ->
     ejabberd_riak:delete(roster, {LUser, LServer, LJID}).
 
@@ -1114,7 +1188,7 @@ get_in_pending_subscriptions(Ls, User, Server) ->
 				 gen_mod:db_type(LServer, ?MODULE)).
 
 get_in_pending_subscriptions(Ls, User, Server, DBType)
-  when DBType == mnesia; DBType == riak ->
+  when DBType == mnesia; DBType == riak; DBType == p1db ->
     JID = jlib:make_jid(User, Server, <<"">>),
     Result = get_roster(JID#jid.luser, JID#jid.lserver, DBType),
     Ls ++ lists:map(fun (R) ->
@@ -1227,6 +1301,17 @@ read_subscription_and_groups(LUser, LServer, LJID,
 		   end,
 	  {Subscription, Groups};
       _ -> error
+    end;
+read_subscription_and_groups(LUser, LServer, LJID, p1db) ->
+    USJKey = usj2key(LUser, LServer, LJID),
+    case p1db:get(roster, USJKey) of
+        {ok, Val, _VClock} ->
+            #roster{subscription = Subscription,
+                    groups = Groups}
+                = p1db_to_item({LUser, LServer, LJID}, Val),
+            {Subscription, Groups};
+        {error, _} ->
+            error
     end;
 read_subscription_and_groups(LUser, LServer, LJID,
 			     riak) ->
@@ -1587,6 +1672,51 @@ webadmin_user(Acc, _User, _Server, Lang) ->
     Acc ++
       [?XE(<<"h3">>, [?ACT(<<"roster/">>, <<"Roster">>)])].
 
+us2key(LUser, LServer) ->
+    <<LServer/binary, 0, LUser/binary>>.
+
+usj2key(User, Server, JID) ->
+    USKey = us2key(User, Server),
+    SJID = jlib:jid_to_string(JID),
+    <<USKey/binary, 0, SJID/binary>>.
+
+key2usj(USJKey) ->
+    [LServer, LUser, SJID] = str:tokens(USJKey, <<0>>),
+    LJID = jlib:jid_tolower(jlib:string_to_jid(SJID)),
+    {LUser, LServer, LJID}.
+
+us_prefix(User, Server) ->
+    USKey = us2key(User, Server),
+    <<USKey/binary, 0>>.
+
+item_to_p1db(#roster{name = Name,
+                     subscription = Subscription,
+                     ask = Ask,
+                     groups = Groups,
+                     askmessage = AskMessage,
+                     xs = Xs}) ->
+    term_to_binary(
+      [{name, Name},
+       {subscription, Subscription},
+       {ask, Ask},
+       {groups, Groups},
+       {askmessage, AskMessage},
+       {xs, Xs}]).
+
+p1db_to_item({LUser, LServer, LJID}, Val) ->
+    Item = #roster{usj = {LUser, LServer, LJID},
+                   us = {LUser, LServer},
+                   jid = LJID},
+    lists:foldl(
+      fun({name, Name}, I) -> I#roster{name = Name};
+         ({subscription, S}, I) -> I#roster{subscription = S};
+         ({ask, Ask}, I) -> I#roster{ask = Ask};
+         ({groups, Groups}, I) -> I#roster{groups = Groups};
+         ({askmessage, AskMsg}, I) -> I#roster{askmessage = AskMsg};
+         ({xs, Xs}, I) -> I#roster{xs = Xs};
+         (_, I) -> I
+      end, Item, binary_to_term(Val)).
+
 export(_Server) ->
     [{roster,
       fun(Host, #roster{usj = {LUser, LServer, LJID}} = R)
@@ -1636,6 +1766,13 @@ import(_LServer, mnesia, #roster{} = R) ->
     mnesia:dirty_write(R);
 import(_LServer, mnesia, #roster_version{} = RV) ->
     mnesia:dirty_write(RV);
+import(_LServer, p1db, #roster{us = {LUser, LServer}, jid = LJID} = R) ->
+    USJKey = usj2key(LUser, LServer, LJID),
+    Val = item_to_p1db(R),
+    p1db:put(roster, USJKey, Val);
+import(_LServer, p1db, #roster_version{us = {LUser, LServer}, version = Ver}) ->
+    USKey = us2key(LUser, LServer),
+    p1db:put(roster_version, USKey, Ver);
 import(_LServer, riak, #roster{us = {LUser, LServer}} = R) ->
     ejabberd_riak:put(R, [{'2i', [{<<"us">>, {LUser, LServer}}]}]);
 import(_LServer, riak, #roster_version{} = RV) ->
@@ -1659,31 +1796,50 @@ make_roster_range(I, Total) ->
 -spec create_rosters(binary(), binary(), pos_integer(), gen_mod:db_type()) -> any().
 
 create_rosters(UserPattern, Server, Total, DBType) ->
-    lists:foreach(
-      fun(I) ->
+    lists:foldl(
+      fun(I, Acc) ->
               LUser = jlib:nodeprep(
                         iolist_to_binary([UserPattern, integer_to_list(I)])),
               LServer = jlib:nameprep(Server),
               Range = make_roster_range(I, Total),
-              lists:foreach(
-                fun(R) ->
-                        Contact = jlib:nodeprep(
-                                    iolist_to_binary(
-                                      [UserPattern, integer_to_list(R)])),
-                        LJID = {Contact, LServer, <<"">>},
-                        RItem = #roster{subscription = both,
-                                        us = {LUser, LServer},
-                                        usj = {LUser, LServer, LJID},
-                                        jid = LJID},
-                        case DBType of
-                            riak ->
-                                ejabberd_riak:put(
-                                  RItem,
-                                  [{'2i', [{<<"us">>, {LUser, LServer}}]}]);
-                            mnesia ->
-                                mnesia:dirty_write(RItem);
-                            odbc ->
-                                erlang:error(odbc_not_supported)
-                        end
-                end, Range)
-      end, lists:seq(1, Total)).
+              NewAcc =
+                  lists:foldl(
+                    fun(R, Items) ->
+                            Contact = jlib:nodeprep(
+                                        iolist_to_binary(
+                                          [UserPattern, integer_to_list(R)])),
+                            LJID = {Contact, LServer, <<"">>},
+                            RItem = #roster{subscription = both,
+                                            us = {LUser, LServer},
+                                            usj = {LUser, LServer, LJID},
+                                            jid = LJID},
+                            case DBType of
+                                riak ->
+                                    ejabberd_riak:put(
+                                      RItem,
+                                      [{'2i', [{<<"us">>, {LUser, LServer}}]}]),
+                                    Items;
+                                p1db ->
+                                    USJKey = usj2key(LUser, LServer, LJID),
+                                    Val = item_to_p1db(RItem),
+                                    [{put, USJKey, Val, <<>>}|Items];
+                                mnesia ->
+                                    mnesia:dirty_write(RItem),
+                                    Items;
+                                odbc ->
+                                    erlang:error(odbc_not_supported)
+                            end
+                    end, Acc, Range),
+              if ((length(NewAcc) >= 10000) or (I == Total)) and (DBType == p1db) ->
+                      {ok, _} = p1db:batch(roster, NewAcc),
+                      receive_all(length(NewAcc)),
+                      [];
+                 true ->
+                      NewAcc
+              end
+      end, [], lists:seq(1, Total)).
+
+receive_all(0) ->
+    ok;
+receive_all(N) ->
+    receive _ -> receive_all(N-1) end.

@@ -64,6 +64,7 @@ start(normal, _Args) ->
     maybe_add_nameservers(),
     start_modules(),
     ejabberd_node_groups:start(),
+    wait_for_p1db_sync(),
     ejabberd_listener:start_listeners(),
     ?INFO_MSG("ejabberd ~s is started in the node ~p", [?VERSION, node()]),
     Sup;
@@ -208,6 +209,20 @@ set_loglevel_from_config() ->
               4),
     ejabberd_logger:set(Level).
 
+-ifdef(p1db).
+p1db_start() ->
+    ejabberd:start_app(p1db).
+
+wait_for_p1db_sync() ->
+    p1db:wait_for_tables().
+-else.
+p1db_start() ->
+    ok.
+
+wait_for_p1db_sync() ->
+    ok.
+-endif.
+
 start_apps() ->
     ejabberd:start_app(sasl),
     ejabberd:start_app(ssl),
@@ -216,4 +231,5 @@ start_apps() ->
     ejabberd:start_app(p1_xml),
     ejabberd:start_app(p1_stringprep),
     ejabberd:start_app(p1_zlib),
+    p1db_start(),
     ejabberd:start_app(p1_cache_tab).

@@ -463,6 +463,8 @@ import(Server) ->
 
 import(Server, mnesia, Passwd) ->
     ejabberd_auth_internal:import(Server, mnesia, Passwd);
+import(Server, p1db, Passwd) ->
+    ejabberd_auth_p1db:import(Server, p1db, Passwd);
 import(Server, riak, Passwd) ->
     ejabberd_auth_riak:import(Server, riak, Passwd);
 import(_, _, _) ->
@@ -483,6 +485,9 @@ create_users(UserPattern, PassPattern, Server, Total, DBType) ->
                   mnesia ->
                       mnesia:dirty_write(#passwd{us = US,
                                                  password = Pass});
+                  p1db ->
+                      USKey = <<LServer/binary, 0, LUser/binary>>,
+                      p1db:async_insert(passwd, USKey, Pass);
                   riak ->
                       ejabberd_riak:put(
                         #passwd{us = US,

@@ -26,6 +26,8 @@ Macros = lists:flatmap(
                    [{d, 'mssql'}];
               ({lager, true}) ->
                    [{d, 'LAGER'}];
+              ({p1db, true}) ->
+                   [{d, 'p1db'}];
               (_) ->
                    []
            end, Cfg),
@@ -110,6 +112,8 @@ CfgDeps = lists:flatmap(
                     [{p1_logger, ".*", {git, "git://github.com/processone/p1_logger"}}];
                ({airbrake, true}) ->
                     [{erlbrake, ".*", {git, "git://github.com/kenpratt/erlbrake"}}];
+               ({p1db, true}) ->
+                    [{p1db, ".*", {git, "git@github.com:processone/p1db"}}];
                (_) ->
                     []
             end, Cfg),

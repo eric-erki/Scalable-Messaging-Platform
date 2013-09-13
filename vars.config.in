@@ -33,6 +33,7 @@
 {lager, @lager@}.
 {iconv, @iconv@}.
 {airbrake, @airbrake@}.
+{p1db, @p1db@}.
 
 %% Version
 {vsn, "@PACKAGE_VERSION@"}.

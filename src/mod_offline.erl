@@ -69,6 +69,8 @@ start(Host, Opts) ->
 			      [{disc_only_copies, [node()]}, {type, bag},
 			       {attributes, record_info(fields, offline_msg)}]),
 	  update_table();
+      p1db ->
+          p1db:open_table(offline_msg, [{mapsize, 1024*1024*100}]);
       _ -> ok
     end,
     ejabberd_hooks:add(offline_message_hook, Host, ?MODULE,
@@ -166,6 +168,21 @@ store_offline_msg(Host, {User, _}, Msgs, Len, MaxOfflineMsgs,
 			     Msgs),
 	   odbc_queries:add_spool(Host, Query)
     end;
+store_offline_msg(Host, {User, _}, Msgs, Len, MaxOfflineMsgs, p1db) ->
+    Count = if MaxOfflineMsgs =/= infinity ->
+                    Len + count_offline_messages(User, Host);
+               true -> 0
+            end,
+    if Count > MaxOfflineMsgs ->
+            discard_warn_sender(Msgs);
+       true ->
+            lists:foreach(
+              fun(#offline_msg{us = {LUser, LServer}, timestamp = Now} = Msg) ->
+                      USNKey = usn2key(LUser, LServer, Now),
+                      Val = offmsg_to_p1db(Msg),
+                      p1db:insert(offline_msg, USNKey, Val)
+              end, Msgs)
+    end;
 store_offline_msg(Host, {User, _}, Msgs, Len, MaxOfflineMsgs,
 		  riak) ->
     Count = if MaxOfflineMsgs =/= infinity ->
@@ -200,6 +217,7 @@ receive_all(US, Msgs, DBType) ->
 		case DBType of
 		  mnesia -> Msgs;
 		  odbc -> lists:reverse(Msgs);
+                  p1db -> Msgs;
 		  riak -> Msgs
 		end
     end.
@@ -393,6 +411,35 @@ pop_offline_messages(Ls, LUser, LServer, odbc) ->
 			  Rs);
       _ -> Ls
     end;
+pop_offline_messages(Ls, LUser, LServer, p1db) ->
+    USPrefix = us_prefix(LUser, LServer),
+    case p1db:get_by_prefix(offline_msg, USPrefix) of
+        {ok, L} ->
+            TS = now(),
+            Msgs = lists:flatmap(
+                     fun({Key, Val, VClock}) ->
+                             DelRes = p1db:delete(offline_msg, Key,
+                                                  p1db:incr_vclock(VClock)),
+                             if DelRes == ok; DelRes == {error, notfound} ->
+                                     USN = key2usn(Key),
+                                     M = p1db_to_offmsg(USN, Val),
+                                     IsExpired = case M#offline_msg.expire of
+                                                     never -> false;
+                                                     TS1 -> TS >= TS1
+                                                 end,
+                                     if IsExpired ->
+                                             [];
+                                        true ->
+                                             [offline_msg_to_route(LServer, M)]
+                                     end;
+                                true ->
+                                     []
+                             end
+                     end, L),
+            Ls ++ Msgs;
+        _Err ->
+            Ls
+    end;
 pop_offline_messages(Ls, LUser, LServer, riak) ->
     case ejabberd_riak:get_by_index(offline_msg,
                                     <<"us">>, {LUser, LServer}) of
@@ -445,6 +492,7 @@ remove_expired_messages(_LServer, mnesia) ->
 	end,
     mnesia:transaction(F);
 remove_expired_messages(_LServer, odbc) -> {atomic, ok};
+remove_expired_messages(_LServer, p1db) -> {atomic, ok};
 remove_expired_messages(_LServer, riak) -> {atomic, ok}.
 
 remove_old_messages(Days, Server) ->
@@ -471,6 +519,8 @@ remove_old_messages(Days, _LServer, mnesia) ->
     mnesia:transaction(F);
 remove_old_messages(_Days, _LServer, odbc) ->
     {atomic, ok};
+remove_old_messages(_Days, _LServer, p1db) ->
+    {atomic, ok};
 remove_old_messages(_Days, _LServer, riak) ->
     {atomic, ok}.
 
@@ -487,6 +537,19 @@ remove_user(LUser, LServer, mnesia) ->
 remove_user(LUser, LServer, odbc) ->
     Username = ejabberd_odbc:escape(LUser),
     odbc_queries:del_spool_msg(LServer, Username);
+remove_user(LUser, LServer, p1db) ->
+    USPrefix = us_prefix(LUser, LServer),
+    case p1db:get_by_prefix(offline_msg, USPrefix) of
+        {ok, L} ->
+            lists:foreach(
+              fun({Key, _Val, VClock}) ->
+                      p1db:delete(offline_msg, Key,
+                                  p1db:incr_vclock(VClock))
+              end, L),
+            {atomic, ok};
+        Err ->
+            {aborted, Err}
+    end;
 remove_user(LUser, LServer, riak) ->
     {atomic, ejabberd_riak:delete_by_index(offline_msg,
                                            <<"us">>, {LUser, LServer})}.
@@ -547,7 +610,8 @@ webadmin_page(Acc, _, _) -> Acc.
 get_offline_els(LUser, LServer) ->
     get_offline_els(LUser, LServer, gen_mod:db_type(LServer, ?MODULE)).
 
-get_offline_els(LUser, LServer, DBType) when DBType == mnesia; DBType == riak ->
+get_offline_els(LUser, LServer, DBType)
+  when DBType == mnesia; DBType == riak; DBType == p1db ->
     Msgs = read_all_msgs(LUser, LServer, DBType),
     lists:map(
       fun(Msg) ->
@@ -605,6 +669,14 @@ read_all_msgs(LUser, LServer, mnesia) ->
     US = {LUser, LServer},
     lists:keysort(#offline_msg.timestamp,
 		  mnesia:dirty_read({offline_msg, US}));
+read_all_msgs(LUser, LServer, p1db) ->
+    USPrefix = us_prefix(LUser, LServer),
+    case p1db:get_by_prefix(offline_msg, USPrefix) of
+        {ok, L} ->
+            [p1db_to_offmsg(key2usn(Key), Val) || {Key, Val, _VClock} <- L];
+        _Err ->
+            []
+    end;
 read_all_msgs(LUser, LServer, riak) ->
     case ejabberd_riak:get_by_index(
            offline_msg, <<"us">>, {LUser, LServer}) of
@@ -630,7 +702,8 @@ read_all_msgs(LUser, LServer, odbc) ->
       _ -> []
     end.
 
-format_user_queue(Msgs, DBType) when DBType == mnesia; DBType == riak ->
+format_user_queue(Msgs, DBType)
+  when DBType == mnesia; DBType == riak; DBType == p1db ->
     lists:map(fun (#offline_msg{timestamp = TimeStamp,
 				from = From, to = To,
 				packet =
@@ -738,6 +811,24 @@ user_queue_parse_query(LUser, LServer, Query, mnesia) ->
 	  ok;
       false -> nothing
     end;
+user_queue_parse_query(LUser, LServer, Query, p1db) ->
+    case lists:keysearch(<<"delete">>, 1, Query) of
+        {value, _} ->
+            Msgs = read_all_msgs(LUser, LServer, p1db),
+            lists:foreach(
+              fun(#offline_msg{timestamp = Now} = Msg) ->
+                      ID = jlib:encode_base64(term_to_binary(Msg)),
+                      case lists:member({<<"selected">>, ID}, Query) of
+                          true ->
+                              USNKey = usn2key(LUser, LServer, Now),
+                              p1db:delete(offline_msg, USNKey);
+                          false ->
+                              ok
+                      end
+              end, Msgs);
+        false ->
+            nothing
+    end;
 user_queue_parse_query(LUser, LServer, Query, riak) ->
     case lists:keysearch(<<"delete">>, 1, Query) of
         {value, _} ->
@@ -816,6 +907,12 @@ get_queue_length(LUser, LServer) ->
 get_queue_length(LUser, LServer, mnesia) ->
     length(mnesia:dirty_read({offline_msg,
 			       {LUser, LServer}}));
+get_queue_length(LUser, LServer, p1db) ->
+    USPrefix = us_prefix(LUser, LServer),
+    case p1db:count_by_prefix(offline_msg, USPrefix) of
+        {ok, N} -> N;
+        _Err -> 0
+    end;
 get_queue_length(LUser, LServer, riak) ->
     case ejabberd_riak:count_by_index(offline_msg,
                                       <<"us">>, {LUser, LServer}) of
@@ -853,7 +950,7 @@ get_messages_subset2(Max, Length, MsgsAll, _DBType)
     when Length =< Max * 2 ->
     MsgsAll;
 get_messages_subset2(Max, Length, MsgsAll, DBType)
-  when DBType == mnesia; DBType == riak ->
+  when DBType == mnesia; DBType == riak; DBType == p1db ->
     FirstN = Max,
     {MsgsFirstN, Msgs2} = lists:split(FirstN, MsgsAll),
     MsgsLastN = lists:nthtail(Length - FirstN - FirstN,
@@ -901,6 +998,19 @@ delete_all_msgs(LUser, LServer, mnesia) ->
 			      mnesia:dirty_read({offline_msg, US}))
 	end,
     mnesia:transaction(F);
+delete_all_msgs(LUser, LServer, p1db) ->
+    USPrefix = us_prefix(LUser, LServer),
+    case p1db:get_by_prefix(offline_msg, USPrefix) of
+        {ok, L} ->
+            lists:foreach(
+              fun({Key, _Val, VClock}) ->
+                      p1db:delete(offline_msg, Key,
+                                  p1db:incr_vclock(VClock))
+              end, L),
+            {atomic, ok};
+        Err ->
+            {aborted, Err}
+    end;
 delete_all_msgs(LUser, LServer, riak) ->
     Res = ejabberd_riak:delete_by_index(offline_msg,
                                         <<"us">>, {LUser, LServer}),
@@ -953,6 +1063,12 @@ count_offline_messages(LUser, LServer, odbc) ->
 	  jlib:binary_to_integer(Res);
       _ -> 0
     end;
+count_offline_messages(LUser, LServer, p1db) ->
+    USPrefix = us_prefix(LUser, LServer),
+    case p1db:count_by_prefix(offline_msg, USPrefix) of
+        {ok, N} -> N;
+        _Err -> 0
+    end;
 count_offline_messages(LUser, LServer, riak) ->
     case ejabberd_riak:count_by_index(
            offline_msg, <<"us">>, {LUser, LServer}) of
@@ -964,6 +1080,45 @@ count_offline_messages(LUser, LServer, riak) ->
 count_offline_messages(_Acc, User, Server) ->
     N = count_offline_messages(User, Server),
     {stop, N}.
+
+us2key(LUser, LServer) ->
+    <<LServer/binary, 0, LUser/binary>>.
+
+usn2key(LUser, LServer, {MegaSecs, Secs, USecs}) ->
+    TimeStamp = (MegaSecs*1000000 + Secs)*1000000 + USecs,
+    USKey = us2key(LUser, LServer),
+    <<USKey/binary, 0, TimeStamp:64>>.
+
+key2usn(Key) ->
+    Head = binary_to_list(Key),
+    Pos1 = string:chr(Head, 0),
+    {S, [0|Tail]} = lists:split(Pos1-1, Head),
+    Pos2 = string:chr(Tail, 0),
+    {U, [0|T]} = lists:split(Pos2-1, Tail),
+    <<TimeStamp:64>> = list_to_binary(T),
+    MSecs = TimeStamp div 1000000,
+    USecs = TimeStamp rem 1000000,
+    MegaSecs = MSecs div 1000000,
+    Secs = MSecs rem 1000000,
+    {list_to_binary(U), list_to_binary(S), {MegaSecs, Secs, USecs}}.
+
+us_prefix(LUser, LServer) ->
+    USKey = us2key(LUser, LServer),
+    <<USKey/binary, 0>>.
+
+p1db_to_offmsg({LUser, LServer, Now}, Val) ->
+    OffMsg = #offline_msg{us = {LUser, LServer},
+                          timestamp = Now},
+    lists:foldl(
+      fun({from, From}, M) -> M#offline_msg{from = From};
+         ({to, To}, M) -> M#offline_msg{to = To};
+         ({packet, Pkt}, M) -> M#offline_msg{packet = Pkt};
+         ({expire, Expire}, M) -> M#offline_msg{expire = Expire};
+         (_, M) -> M
+      end, OffMsg, binary_to_term(Val)).
+
+offmsg_to_p1db(#offline_msg{from = From, to = To, packet = Pkt, expire = T}) ->
+    term_to_binary([{from, From}, {to, To}, {packet, Pkt}, {expire, T}]).
 
 export(_Server) ->
     [{offline_msg,
@@ -1023,6 +1178,10 @@ import(LServer) ->
 
 import(_LServer, mnesia, #offline_msg{} = Msg) ->
     mnesia:dirty_write(Msg);
+import(_LServer, p1db, #offline_msg{us = {LUser, LServer},
+                                    timestamp = Now} = Msg) ->
+    USNKey = usn2key(LUser, LServer, Now),
+    p1db:put(offline_msg, USNKey, offmsg_to_p1db(Msg));
 import(_LServer, riak, #offline_msg{us = US, timestamp = TS} = M) ->
     ejabberd_riak:put(M, [{i, TS}, {'2i', [{<<"us">>, US}]}]);
 import(_, _, _) ->

@@ -56,6 +56,8 @@ start(Host, Opts) ->
 			       {attributes,
 				record_info(fields, last_activity)}]),
 	  update_table();
+      p1db ->
+          p1db:open_table(last_activity, [{mapsize, 1024*1024*100}]);
       _ -> ok
     end,
     gen_iq_handler:add_iq_handler(ejabberd_local, Host,
@@ -169,6 +171,19 @@ get_last(LUser, LServer, mnesia) ->
 		      status = Status}] ->
 	  {ok, TimeStamp, Status}
     end;
+get_last(LUser, LServer, p1db) ->
+    USKey = us2key(LUser, LServer),
+    case p1db:get(last_activity, USKey) of
+        {ok, Val, _VClock} ->
+            #last_activity{timestamp = TimeStamp,
+                           status = Status}
+                = p1db_to_la({LUser, LServer}, Val),
+            {ok, TimeStamp, Status};
+        {error, notfound} ->
+            not_found;
+        {error, _} = Err ->
+            Err
+    end;
 get_last(LUser, LServer, riak) ->
     case ejabberd_riak:get(last_activity, {LUser, LServer}) of
         {ok, #last_activity{timestamp = TimeStamp,
@@ -246,6 +261,11 @@ store_last_info(LUser, LServer, TimeStamp, Status,
 					    status = Status})
 	end,
     mnesia:transaction(F);
+store_last_info(LUser, LServer, TimeStamp, Status, p1db) ->
+    USKey = us2key(LUser, LServer),
+    Val = la_to_p1db(#last_activity{timestamp = TimeStamp,
+                                    status = Status}),
+    {atomic, p1db:insert(last_activity, USKey, Val)};
 store_last_info(LUser, LServer, TimeStamp, Status,
                 riak) ->
     US = {LUser, LServer},
@@ -282,6 +302,9 @@ remove_user(LUser, LServer, mnesia) ->
 remove_user(LUser, LServer, odbc) ->
     Username = ejabberd_odbc:escape(LUser),
     odbc_queries:del_last(LServer, Username);
+remove_user(LUser, LServer, p1db) ->
+    USKey = us2key(LUser, LServer),
+    {atomic, p1db:delete(last_activity, USKey)};
 remove_user(LUser, LServer, riak) ->
     {atomic, ejabberd_riak:delete(last_activity, {LUser, LServer})}.
 
@@ -331,10 +354,32 @@ import(LServer) ->
 
 import(_LServer, mnesia, #last_activity{} = LA) ->
     mnesia:dirty_write(LA);
+import(_LServer, p1db, #last_activity{us = {LUser, LServer}} = LA) ->
+    USKey = us2key(LUser, LServer),
+    p1db:put(last_activity, USKey, la_to_p1db(LA));
 import(_LServer, riak, #last_activity{} = LA) ->
     ejabberd_riak:put(LA);
 import(_, _, _) ->
     pass.
+
+us2key(LUser, LServer) ->
+    <<LServer/binary, 0, LUser/binary>>.
+
+la_to_p1db(#last_activity{timestamp = TimeStamp, status = Status}) ->
+    term_to_binary(
+      [{timestamp, TimeStamp},
+       {status, Status}]).
+
+p1db_to_la({LUser, LServer}, Val) ->
+    LA = #last_activity{us = {LUser, LServer}},
+    lists:foldl(
+      fun({timestamp, TimeStamp}, R) ->
+              R#last_activity{timestamp = TimeStamp};
+         ({status, Status}, R) ->
+              R#last_activity{status = Status};
+         (_, R) ->
+              R
+      end, LA, binary_to_term(Val)).
 
 transform_options(Opts) ->
     lists:foldl(fun transform_options/2, [], Opts).
