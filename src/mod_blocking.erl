@@ -187,7 +187,8 @@ process_blocklist_block(LUser, LServer, Filter, p1db) ->
     DefaultKey = mod_privacy:default_key(LUser, LServer),
     Res = case p1db:get_by_prefix(privacy, USPrefix) of
               {ok, [{DefaultKey, DefaultName, _}|L]} ->
-                  case lists:keyfind(DefaultName, 1, L) of
+                  USNKey = mod_privacy:usn2key(LUser, LServer, DefaultName),
+                  case lists:keyfind(USNKey, 1, L) of
                       {_, Val, _} ->
                           {DefaultName, mod_privacy:p1db_to_items(Val)};
                       false ->
@@ -205,12 +206,12 @@ process_blocklist_block(LUser, LServer, Filter, p1db) ->
             {aborted, Err};
         {Default, List} ->
             NewList = Filter(List),
-            USNKey = mod_privacy:usn2key(LUser, LServer, Default),
+            USNKey1 = mod_privacy:usn2key(LUser, LServer, Default),
             case p1db:insert(privacy, DefaultKey, Default) of
                 ok ->
                     Val1 = mod_privacy:items_to_p1db(NewList),
-                    case p1db:insert(privacy, USNKey, Val1) of
-                        ok -> {atomic, ok};
+                    case p1db:insert(privacy, USNKey1, Val1) of
+                        ok -> {atomic, {ok, Default, NewList}};
                         Err -> {aborted, Err}
                     end;
                 Err ->
@@ -347,12 +348,12 @@ unblock_by_filter(LUser, LServer, Filter, p1db) ->
     DefaultKey = mod_privacy:default_key(LUser, LServer),
     case p1db:get_by_prefix(privacy, USPrefix) of
         {ok, [{DefaultKey, Default, _}|L]} ->
-            case lists:keyfind(Default, 1, L) of
+            USNKey = mod_privacy:usn2key(LUser, LServer, Default),
+            case lists:keyfind(USNKey, 1, L) of
                 {_, Val, _} ->
                     List = mod_privacy:p1db_to_items(Val),
                     NewList = Filter(List),
                     NewVal = mod_privacy:items_to_p1db(NewList),
-                    USNKey = mod_privacy:usn2key(LUser, LServer, Default),
                     case p1db:insert(privacy, USNKey, NewVal) of
                         ok ->
                             {atomic, {ok, Default, NewList}};
