@@ -59,6 +59,7 @@
 -define(PGSQL_VHOST, <<"pgsql.localhost">>).
 -define(LDAP_VHOST, <<"ldap.localhost">>).
 -define(EXTAUTH_VHOST, <<"extauth.localhost">>).
+-define(P1DB_VHOST, <<"p1db.localhost">>).
 
 insert(Val, N, Tuple) ->
     L = tuple_to_list(Tuple),

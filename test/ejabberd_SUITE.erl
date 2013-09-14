@@ -68,6 +68,9 @@ init_per_group(ldap, Config) ->
     set_opt(server, ?LDAP_VHOST, Config);
 init_per_group(extauth, Config) ->
     set_opt(server, ?EXTAUTH_VHOST, Config);
+init_per_group(p1db, Config) ->
+    mod_muc:shutdown_rooms(?P1DB_VHOST),
+    set_opt(server, ?P1DB_VHOST, Config);
 init_per_group(_GroupName, Config) ->
     Pid = start_event_relay(),
     set_opt(event_relay, Pid, Config).
@@ -83,6 +86,8 @@ end_per_group(no_db, _Config) ->
 end_per_group(ldap, _Config) ->
     ok;
 end_per_group(extauth, _Config) ->
+    ok;
+end_per_group(p1db, _Config) ->
     ok;
 end_per_group(_GroupName, Config) ->
     stop_event_relay(Config),
@@ -153,7 +158,30 @@ no_db_tests() ->
      {test_proxy65, [parallel],
       [proxy65_master, proxy65_slave]}].
 
-db_tests() ->
+db_tests(p1db) ->
+    %% No support for mod_mam and mod_pubsub so far
+    [{single_user, [sequence],
+      [test_register,
+       auth_plain,
+       auth_md5,
+       presence_broadcast,
+       last,
+       roster_get,
+       private,
+       privacy,
+       blocking,
+       vcard,
+       muc_single,
+       test_unregister]},
+     {test_roster_subscribe, [parallel],
+      [roster_subscribe_master,
+       roster_subscribe_slave]},
+     {test_offline, [sequence],
+      [offline_master, offline_slave]},
+     {test_roster_remove, [parallel],
+      [roster_remove_master,
+       roster_remove_slave]}];
+db_tests(_) ->
     [{single_user, [sequence],
       [test_register,
        auth_plain,
@@ -193,9 +221,10 @@ groups() ->
     [{ldap, [sequence], ldap_tests()},
      {extauth, [sequence], extauth_tests()},
      {no_db, [sequence], no_db_tests()},
-     {mnesia, [sequence], db_tests()},
-     {mysql, [sequence], db_tests()},
-     {pgsql, [sequence], db_tests()}].
+     {mnesia, [sequence], db_tests(mnesia)},
+     {mysql, [sequence], db_tests(mysql)},
+     {pgsql, [sequence], db_tests(pgsql)},
+     {p1db, [sequence], db_tests(p1db)}].
 
 all() ->
     [{group, ldap},
@@ -204,6 +233,7 @@ all() ->
      {group, mysql},
      {group, pgsql},
      {group, extauth},
+     {group, p1db},
      stop_ejabberd].
 
 stop_ejabberd(Config) ->
