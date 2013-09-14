@@ -34,7 +34,8 @@
 	 process_iq_set/4, process_iq_get/5, get_user_list/3,
 	 check_packet/6, remove_user/2, item_to_raw/1,
 	 raw_to_item/1, is_list_needdb/1, updated_list/3,
-         item_to_xml/1, get_user_lists/2, import/3]).
+         item_to_xml/1, get_user_lists/2, import/3,
+         p1db_to_items/1, items_to_p1db/1]).
 
 %% For mod_blocking
 -export([sql_add_privacy_list/2,
@@ -44,7 +45,8 @@
 	 sql_get_privacy_list_data_by_id_t/1,
 	 sql_get_privacy_list_id_t/2,
 	 sql_set_default_privacy_list/2,
-	 sql_set_privacy_list/2]).
+	 sql_set_privacy_list/2,
+         us_prefix/2, usn2key/3, key2name/2, default_key/2]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -62,6 +64,8 @@ start(Host, Opts) ->
 			      [{disc_copies, [node()]},
 			       {attributes, record_info(fields, privacy)}]),
 	  update_table();
+      p1db ->
+          p1db:open_table(privacy, [{mapsize, 1024*1024*100}]);
       _ -> ok
     end,
     mod_disco:register_feature(Host, ?NS_PRIVACY),
@@ -161,6 +165,25 @@ process_lists_get(LUser, LServer, _Active, mnesia) ->
 			     Lists),
 	  {Default, LItems}
     end;
+process_lists_get(LUser, LServer, _Active, p1db) ->
+    USPrefix = us_prefix(LUser, LServer),
+    case p1db:get_by_prefix(privacy, USPrefix) of
+        {ok, L} ->
+            DefaultKey = default_key(LUser, LServer),
+            lists:foldl(
+              fun({Key, Val, _VClock}, {_Def, Els}) when Key == DefaultKey ->
+                      {Val, Els};
+                 ({Key, _Val, _VClock}, {Def, Els}) ->
+                      Name = key2name(USPrefix, Key),
+                      {Def, [#xmlel{name = <<"list">>,
+                                    attrs = [{<<"name">>, Name}],
+                                    children = []}|Els]}
+              end, {none, []}, L);
+        {error, notfound} ->
+            {none, []};
+        {error, _} ->
+            error
+    end;
 process_lists_get(LUser, LServer, _Active, riak) ->
     case ejabberd_riak:get(privacy, {LUser, LServer}) of
         {ok, #privacy{default = Default, lists = Lists}} ->
@@ -224,6 +247,16 @@ process_list_get(LUser, LServer, Name, mnesia) ->
 	    {value, {_, List}} -> List;
 	    _ -> not_found
 	  end
+    end;
+process_list_get(LUser, LServer, Name, p1db) ->
+    USNKey = usn2key(LUser, LServer, Name),
+    case p1db:get(privacy, USNKey) of
+        {ok, Val, _VClock} ->
+            p1db_to_items(Val);
+        {error, notfound} ->
+            not_found;
+        {error, _} ->
+            error
     end;
 process_list_get(LUser, LServer, Name, riak) ->
     case ejabberd_riak:get(privacy, {LUser, LServer}) of
@@ -382,6 +415,20 @@ process_default_set(LUser, LServer, {value, Name},
 		end
 	end,
     mnesia:transaction(F);
+process_default_set(LUser, LServer, {value, Name}, p1db) ->
+    USNKey = usn2key(LUser, LServer, Name),
+    case p1db:get(privacy, USNKey) of
+        {ok, _Val, _VClock} ->
+            DefaultKey = default_key(LUser, LServer),
+            case p1db:insert(privacy, DefaultKey, Name) of
+                ok -> {atomic, ok};
+                {error, _} = Err -> {aborted, Err}
+            end;
+        {error, notfound} ->
+            {atomic, not_found};
+        {error, _} = Err ->
+            {aborted, Err}
+    end;
 process_default_set(LUser, LServer, {value, Name}, riak) ->
     {atomic,
      case ejabberd_riak:get(privacy, {LUser, LServer}) of
@@ -417,6 +464,13 @@ process_default_set(LUser, LServer, false, mnesia) ->
 		end
 	end,
     mnesia:transaction(F);
+process_default_set(LUser, LServer, false, p1db) ->
+    DefaultKey = default_key(LUser, LServer),
+    case p1db:delete(privacy, DefaultKey) of
+        ok -> {atomic, ok};
+        {error, notfound} -> {atomic, ok};
+        {error, _} = Err -> {aborted, Err}
+    end;
 process_default_set(LUser, LServer, false, riak) ->
     {atomic,
      case ejabberd_riak:get(privacy, {LUser, LServer}) of
@@ -456,6 +510,14 @@ process_active_set(LUser, LServer, Name, mnesia) ->
 	    {value, {_, List}} -> List;
 	    false -> error
 	  end
+    end;
+process_active_set(LUser, LServer, Name, p1db) ->
+    USNKey = usn2key(LUser, LServer, Name),
+    case p1db:get(privacy, USNKey) of
+        {ok, Val, _VClock} ->
+            p1db_to_items(Val);
+        {error, _} ->
+            error
     end;
 process_active_set(LUser, LServer, Name, riak) ->
     case ejabberd_riak:get(privacy, {LUser, LServer}) of
@@ -498,6 +560,26 @@ remove_privacy_list(LUser, LServer, Name, mnesia) ->
 		end
 	end,
     mnesia:transaction(F);
+remove_privacy_list(LUser, LServer, Name, p1db) ->
+    DefaultKey = default_key(LUser, LServer),
+    Default = case p1db:get(privacy, DefaultKey) of
+                  {ok, Val, _VClock} -> Val;
+                  {error, notfound} -> <<"">>;
+                  {error, _} = Err -> Err
+              end,
+    case Default of
+        {error, _} = Err1 ->
+            {aborted, Err1};
+        Name ->
+            {atomic, conflict};
+        _ ->
+            USNKey = usn2key(LUser, LServer, Name),
+            case p1db:delete(privacy, USNKey) of
+                ok -> {atomic, ok};
+                {error, notfound} -> {atomic, ok};
+                {error, _} = Err1 -> {aborted, Err1}
+            end
+    end;
 remove_privacy_list(LUser, LServer, Name, riak) ->
     {atomic,
      case ejabberd_riak:get(privacy, {LUser, LServer}) of
@@ -538,6 +620,13 @@ set_privacy_list(LUser, LServer, Name, List, mnesia) ->
 		end
 	end,
     mnesia:transaction(F);
+set_privacy_list(LUser, LServer, Name, List, p1db) ->
+    USNKey = usn2key(LUser, LServer, Name),
+    Val = items_to_p1db(List),
+    case p1db:insert(privacy, USNKey, Val) of
+        ok -> {atomic, ok};
+        {error, _} = Err -> {aborted, Err}
+    end;
 set_privacy_list(LUser, LServer, Name, List, riak) ->
     {atomic,
      case ejabberd_riak:get(privacy, {LUser, LServer}) of
@@ -732,6 +821,23 @@ get_user_list(_, LUser, LServer, mnesia) ->
 	  end;
       _ -> {none, []}
     end;
+get_user_list(_, LUser, LServer, p1db) ->
+    USPrefix = us_prefix(LUser, LServer),
+    DefaultKey = default_key(LUser, LServer),
+    case p1db:get_by_prefix(privacy, USPrefix) of
+        {ok, [{DefaultKey, Default, _VClock}|L]} ->
+            USNKey = usn2key(LUser, LServer, Default),
+            case lists:keyfind(USNKey, 1, L) of
+                {_, Val, _} ->
+                    {Default, p1db_to_items(Val)};
+                false ->
+                    {none, []}
+            end;
+        {ok, _} ->
+            {none, []};
+        {error, _} ->
+            {none, []}
+    end;
 get_user_list(_, LUser, LServer, riak) ->
     case ejabberd_riak:get(privacy, {LUser, LServer}) of
         {ok, #privacy{default = Default, lists = Lists}} ->
@@ -775,6 +881,23 @@ get_user_lists(LUser, LServer, mnesia) ->
         [#privacy{} = P] ->
             {ok, P};
         _ ->
+            error
+    end;
+get_user_lists(LUser, LServer, p1db) ->
+    USPrefix = us_prefix(LUser, LServer),
+    case p1db:get_by_prefix(privacy, USPrefix) of
+        {ok, L} ->
+            DefaultKey = default_key(LUser, LServer),
+            Privacy = #privacy{us = {LUser, LServer}},
+            lists:foldl(
+              fun({Key, Val, _VClock}, P) when Key == DefaultKey ->
+                      P#privacy{default = Val};
+                 ({Key, Val, _VClock}, #privacy{lists = Lists} = P) ->
+                      Name = key2name(USPrefix, Key),
+                      List = p1db_to_items(Val),
+                      P#privacy{lists = [{Name, List}|Lists]}
+              end, Privacy, L);
+        {error, _} ->
             error
     end;
 get_user_lists(LUser, LServer, riak) ->
@@ -943,6 +1066,18 @@ remove_user(LUser, LServer, mnesia) ->
     F = fun () -> mnesia:delete({privacy, {LUser, LServer}})
 	end,
     mnesia:transaction(F);
+remove_user(LUser, LServer, p1db) ->
+    USPrefix = us_prefix(LUser, LServer),
+    case p1db:get_by_prefix(privacy, USPrefix) of
+        {ok, L} ->
+            lists:foreach(
+              fun({Key, _, _}) ->
+                      p1db:async_delete(privacy, Key)
+              end, L),
+            {atomic, ok};
+        {error, _} = Err ->
+            {aborted, Err}
+    end;
 remove_user(LUser, LServer, riak) ->
     {atomic, ejabberd_riak:delete(privacy, {LUser, LServer})};
 remove_user(LUser, LServer, odbc) ->
@@ -953,6 +1088,56 @@ updated_list(_, #userlist{name = OldName} = Old,
     if OldName == NewName -> New;
        true -> Old
     end.
+
+us_prefix(LUser, LServer) ->
+    <<LServer/binary, 0, LUser/binary, 0>>.
+
+usn2key(LUser, LServer, Name) ->
+    <<LServer/binary, 0, LUser/binary, 0, Name/binary>>.
+
+default_key(LUser, LServer) ->
+    usn2key(LUser, LServer, <<0>>).
+
+key2name(USPrefix, Key) ->
+    Size = size(USPrefix),
+    <<_:Size/binary, Name/binary>> = Key,
+    Name.
+
+p1db_to_items(Val) ->
+    lists:map(fun proplist_to_item/1, binary_to_term(Val)).
+
+items_to_p1db(Items) ->
+    term_to_binary(lists:map(fun item_to_proplist/1, Items)).
+
+proplist_to_item(PropList) ->
+    lists:foldl(
+      fun({type, V}, I) -> I#listitem{type = V};
+         ({value, V}, I) -> I#listitem{value = V};
+         ({action, V}, I) -> I#listitem{action = V};
+         ({order, V}, I) -> I#listitem{order = V};
+         ({match_all, V}, I) -> I#listitem{match_all = V};
+         ({match_iq, V}, I) -> I#listitem{match_iq = V};
+         ({match_message, V}, I) -> I#listitem{match_message = V};
+         ({match_presence_in, V}, I) -> I#listitem{match_presence_in = V};
+         ({match_presence_out, V}, I) -> I#listitem{match_presence_out = V};
+         (_, I) -> I
+      end, #listitem{}, PropList).
+
+item_to_proplist(Item) ->
+    Keys = record_info(fields, listitem),
+    DefItem = #listitem{},
+    {_, PropList} =
+        lists:foldl(
+          fun(Key, {Pos, L}) ->
+                  Val = element(Pos, Item),
+                  DefVal = element(Pos, DefItem),
+                  if Val == DefVal ->
+                          {Pos+1, L};
+                     true ->
+                          {Pos+1, [{Key, Val}|L]}
+                  end
+          end, {2, []}, Keys),
+    PropList.
 
 raw_to_item([SType, SValue, SAction, SOrder, SMatchAll,
 	     SMatchIQ, SMatchMessage, SMatchPresenceIn,
@@ -1236,6 +1421,22 @@ import(LServer) ->
 
 import(_LServer, mnesia, #privacy{} = P) ->
     mnesia:dirty_write(P);
+import(_LServer, p1db, #privacy{us = {LUser, LServer},
+                                default = Default,
+                                lists = Lists}) ->
+    case Default of
+        none ->
+            ok;
+        _ ->
+            DefaultKey = default_key(LUser, LServer),
+            p1db:async_insert(privacy, DefaultKey, Default)
+    end,
+    lists:foreach(
+      fun({Name, List}) ->
+              USNKey = usn2key(LUser, LServer, Name),
+              Val = items_to_p1db(List),
+              p1db:async_insert(privacy, USNKey, Val)
+      end, Lists);
 import(_LServer, riak, #privacy{} = P) ->
     ejabberd_riak:put(P);
 import(_, _, _) ->

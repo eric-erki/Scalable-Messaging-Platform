@@ -592,6 +592,17 @@ get_data(_LServer, Host, From, mnesia) ->
       [] -> empty;
       [#irc_custom{data = Data}] -> Data
     end;
+get_data(LServer, Host, From, p1db) ->
+    #jid{luser = LUser, lserver = LServer} = From,
+    USHKey = ush2key(LUser, LServer, Host),
+    case p1db:get(irc_custom, USHKey) of
+        {ok, Val, _VClock} ->
+            binary_to_term(Val);
+        {error, notfound} ->
+            empty;
+        _Err ->
+            error
+    end;
 get_data(LServer, Host, From, riak) ->
     #jid{luser = LUser, lserver = LServer} = From,
     US = {LUser, LServer},
@@ -735,6 +746,13 @@ set_data(_LServer, Host, From, Data, mnesia) ->
 					 data = Data})
 	end,
     mnesia:transaction(F);
+set_data(LServer, Host, From, Data, p1db) ->
+    {LUser, LServer, _} = jlib:jid_tolower(From),
+    USHKey = ush2key(LUser, LServer, Host),
+    case p1db:insert(irc_custom, USHKey, term_to_binary(Data)) of
+        ok -> {atomic, ok};
+        {error, _} = Err -> {aborted, Err}
+    end;
 set_data(LServer, Host, From, Data, riak) ->
     {LUser, LServer, _} = jlib:jid_tolower(From),
     US = {LUser, LServer},
@@ -1267,6 +1285,9 @@ conn_params_to_list(Params) ->
                Port, binary_to_list(P)}
       end, Params).
 
+ush2key(LUser, LServer, Host) ->
+    <<LServer/binary, 0, LUser/binary, 0, Host>>.
+
 update_table() ->
     Fields = record_info(fields, irc_custom),
     case mnesia:table_info(irc_custom, attributes) of
@@ -1319,6 +1340,9 @@ import(_LServer) ->
 
 import(_LServer, mnesia, #irc_custom{} = R) ->
     mnesia:dirty_write(R);
+import(_LServer, p1db, #irc_custom{us_host = {{U, S}, Host}, data = Data}) ->
+    USHKey = ush2key(U, S, Host),
+    p1db:async_insert(irc_custom, USHKey, term_to_binary(Data));
 import(_LServer, riak, #irc_custom{} = R) ->
     ejabberd_riak:put(R);
 import(_, _, _) ->

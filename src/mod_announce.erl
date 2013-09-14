@@ -76,6 +76,8 @@ start(Host, Opts) ->
                                  {attributes,
                                   record_info(fields, motd_users)}]),
             update_tables();
+        p1db ->
+            p1db:open_table(motd, [{mapsize, 1024*1024*100}]);
         _ ->
             ok
     end,
@@ -793,6 +795,13 @@ announce_motd(Host, Packet) ->
                           end, Sessions)
                 end,
             mnesia:transaction(F);
+        p1db ->
+            lists:foreach(
+              fun({U, S, _R}) ->
+                      USKey = us2key(U, S),
+                      p1db:async_insert(motd, USKey, <<>>)
+              end, Sessions),
+            {atomic, ok};
         riak ->
             try
                 lists:foreach(
@@ -849,6 +858,13 @@ announce_motd_update(LServer, Packet) ->
                         mnesia:write(#motd{server = LServer, packet = Packet})
                 end,
             mnesia:transaction(F);
+        p1db ->
+            SPrefix = server_prefix(LServer),
+            XML = xml:element_to_binary(Packet),
+            case p1db:insert(motd, SPrefix, XML) of
+                ok -> {atomic, ok};
+                {error, _} = Err -> {aborted, Err}
+            end;
         riak ->
             {atomic, ejabberd_riak:put(#motd{server = LServer,
                                              packet = Packet})};
@@ -902,6 +918,18 @@ announce_motd_delete(LServer) ->
                                       end, Users)
                 end,
             mnesia:transaction(F);
+        p1db ->
+            SPrefix = server_prefix(LServer),
+            case p1db:get_by_prefix(motd, SPrefix) of
+                {ok, L} ->
+                    lists:foreach(
+                      fun({Key, _Val, _VClock}) ->
+                              p1db:async_delete(motd, Key)
+                      end, L),
+                    {atomic, ok};
+                {error, _} = Err ->
+                    {aborted, Err}
+            end;
         riak ->
             try
                 ok = ejabberd_riak:delete(motd, LServer),
@@ -939,6 +967,31 @@ send_motd(#jid{luser = LUser, lserver = LServer} = JID, mnesia) ->
 	    end;
 	_ ->
 	    ok
+    end;
+send_motd(#jid{luser = LUser, lserver = LServer} = JID, p1db) ->
+    USKey = us2key(LUser, LServer),
+    case p1db:get(motd, USKey) of
+        {ok, <<>>, _VClock} ->
+            ok;
+        {error, notfound} ->
+            SPrefix = server_prefix(LServer),
+            case p1db:get(motd, SPrefix) of
+                {ok, XML, _VClock} ->
+                    case xml_stream:parse_element(XML) of
+                        #xmlel{} = Packet ->
+                            case p1db:insert(motd, USKey) of
+                                ok ->
+                                    Local = jlib:make_jid(<<>>, LServer, <<>>),
+                                    ejabberd_router:route(Local, JID, Packet);
+                                {error, _} ->
+                                    ok
+                            end;
+                        {error, _} ->
+                            ok
+                    end;
+                {error, _} ->
+                    ok
+            end
     end;
 send_motd(#jid{luser = LUser, lserver = LServer} = JID, riak) ->
     case catch ejabberd_riak:get(motd, LServer) of
@@ -1007,6 +1060,17 @@ get_stored_motd_packet(LServer, mnesia) ->
 	_ ->
 	    error
     end;
+get_stored_motd_packet(LServer, p1db) ->
+    SPrefix = server_prefix(LServer),
+    case p1db:get(motd, SPrefix) of
+        {ok, Val, _VClock} ->
+            case xml_stream:parse_element(Val) of
+                #xmlel{} = El -> {ok, El};
+                {error, _} -> error
+            end;
+        {error, _} ->
+            error
+    end;
 get_stored_motd_packet(LServer, riak) ->
     case ejabberd_riak:get(motd, LServer) of
         {ok, #motd{packet = Packet}} ->
@@ -1061,6 +1125,12 @@ get_access(Host) ->
                            none).
 
 %%-------------------------------------------------------------------------
+
+us2key(LUser, LServer) ->
+    <<LServer/binary, 0, LUser/binary>>.
+
+server_prefix(LServer) ->
+    <<LServer/binary, 0>>.
 
 update_tables() ->
     update_motd_table(),
@@ -1138,6 +1208,13 @@ import(_LServer, mnesia, #motd{} = Motd) ->
     mnesia:dirty_write(Motd);
 import(_LServer, mnesia, #motd_users{} = Users) ->
     mnesia:dirty_write(Users);
+import(_LServer, p1db, #motd{server = LServer, packet = El}) ->
+    SPrefix = server_prefix(LServer),
+    XML = xml:element_to_binary(El),
+    p1db:async_insert(motd, SPrefix, XML);
+import(_LServer, p1db, #motd_users{us = {LUser, LServer}}) ->
+    USKey = us2key(LUser, LServer),
+    p1db:async_insert(motd, USKey, <<>>);
 import(_LServer, riak, #motd{} = Motd) ->
     ejabberd_riak:put(Motd);
 import(_LServer, riak, #motd_users{us = {_, S}} = Users) ->

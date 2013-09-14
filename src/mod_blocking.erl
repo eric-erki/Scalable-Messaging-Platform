@@ -182,6 +182,41 @@ process_blocklist_block(LUser, LServer, Filter,
 		{ok, NewDefault, NewList}
 	end,
     mnesia:transaction(F);
+process_blocklist_block(LUser, LServer, Filter, p1db) ->
+    USPrefix = mod_privacy:us_prefix(LUser, LServer),
+    DefaultKey = mod_privacy:default_key(LUser, LServer),
+    Res = case p1db:get_by_prefix(privacy, USPrefix) of
+              {ok, [{DefaultKey, DefaultName, _}|L]} ->
+                  case lists:keyfind(DefaultName, 1, L) of
+                      {_, Val, _} ->
+                          {DefaultName, mod_privacy:p1db_to_items(Val)};
+                      false ->
+                          {<<"Blocked contacts">>, []}
+                  end;
+              {ok, _} ->
+                  {<<"Blocked contacts">>, []};
+              {error, notfound} ->
+                  {<<"Blocked contacts">>, []};
+              {error, _} = E ->
+                  E
+          end,
+    case Res of
+        {error, _} = Err ->
+            {aborted, Err};
+        {Default, List} ->
+            NewList = Filter(List),
+            USNKey = mod_privacy:usn2key(LUser, LServer, Default),
+            case p1db:insert(privacy, DefaultKey, Default) of
+                ok ->
+                    Val1 = mod_privacy:items_to_p1db(NewList),
+                    case p1db:insert(privacy, USNKey, Val1) of
+                        ok -> {atomic, ok};
+                        Err -> {aborted, Err}
+                    end;
+                Err ->
+                    {aborted, Err}
+            end
+    end;
 process_blocklist_block(LUser, LServer, Filter,
 			riak) ->
     {atomic,
@@ -252,10 +287,8 @@ process_blocklist_unblock_all(LUser, LServer) ->
 				  end,
 				  List)
 	     end,
-    case process_blocklist_unblock_all(LUser, LServer,
-				       Filter,
-				       gen_mod:db_type(LServer, mod_privacy))
-	of
+    DBType = gen_mod:db_type(LServer, mod_privacy),
+    case unblock_by_filter(LUser, LServer, Filter, DBType) of
       {atomic, ok} -> {result, []};
       {atomic, {ok, Default, List}} ->
 	  UserList = make_userlist(Default, List),
@@ -266,82 +299,6 @@ process_blocklist_unblock_all(LUser, LServer) ->
       _ -> {error, ?ERR_INTERNAL_SERVER_ERROR}
     end.
 
-process_blocklist_unblock_all(LUser, LServer, Filter,
-			      mnesia) ->
-    F = fun () ->
-		case mnesia:read({privacy, {LUser, LServer}}) of
-		  [] ->
-		      % No lists, nothing to unblock
-		      ok;
-		  [#privacy{default = Default, lists = Lists} = P] ->
-		      case lists:keysearch(Default, 1, Lists) of
-			{value, {_, List}} ->
-			    NewList = Filter(List),
-			    NewLists1 = lists:keydelete(Default, 1, Lists),
-			    NewLists = [{Default, NewList} | NewLists1],
-			    mnesia:write(P#privacy{lists = NewLists}),
-			    {ok, Default, NewList};
-			false ->
-			    % No default list, nothing to unblock
-			    ok
-		      end
-		end
-	end,
-    mnesia:transaction(F);
-process_blocklist_unblock_all(LUser, LServer, Filter,
-                              riak) ->
-    {atomic,
-     case ejabberd_riak:get(privacy, {LUser, LServer}) of
-         {ok, #privacy{default = Default, lists = Lists} = P} ->
-             case lists:keysearch(Default, 1, Lists) of
-                 {value, {_, List}} ->
-                     NewList = Filter(List),
-                     NewLists1 = lists:keydelete(Default, 1, Lists),
-                     NewLists = [{Default, NewList} | NewLists1],
-                     case ejabberd_riak:put(P#privacy{lists = NewLists}) of
-                         ok ->
-                             {ok, Default, NewList};
-                         Err ->
-                             Err
-                     end;
-                 false ->
-                     %% No default list, nothing to unblock
-                     ok
-             end;
-         {error, _} ->
-             %% No lists, nothing to unblock
-             ok
-     end};
-process_blocklist_unblock_all(LUser, LServer, Filter,
-			      odbc) ->
-    F = fun () ->
-		case mod_privacy:sql_get_default_privacy_list_t(LUser)
-		    of
-		  {selected, [<<"name">>], []} -> ok;
-		  {selected, [<<"name">>], [[Default]]} ->
-		      {selected, [<<"id">>], [[ID]]} =
-			  mod_privacy:sql_get_privacy_list_id_t(LUser, Default),
-		      case mod_privacy:sql_get_privacy_list_data_by_id_t(ID)
-			  of
-			{selected,
-			 [<<"t">>, <<"value">>, <<"action">>, <<"ord">>,
-			  <<"match_all">>, <<"match_iq">>, <<"match_message">>,
-			  <<"match_presence_in">>, <<"match_presence_out">>],
-			 RItems = [_ | _]} ->
-			    List = lists:map(fun mod_privacy:raw_to_item/1,
-					     RItems),
-			    NewList = Filter(List),
-			    NewRItems = lists:map(fun mod_privacy:item_to_raw/1,
-						  NewList),
-			    mod_privacy:sql_set_privacy_list(ID, NewRItems),
-			    {ok, Default, NewList};
-			_ -> ok
-		      end;
-		  _ -> ok
-		end
-	end,
-    ejabberd_odbc:sql_transaction(LServer, F).
-
 process_blocklist_unblock(LUser, LServer, JIDs) ->
     Filter = fun (List) ->
 		     lists:filter(fun (#listitem{action = deny, type = jid,
@@ -351,9 +308,8 @@ process_blocklist_unblock(LUser, LServer, JIDs) ->
 				  end,
 				  List)
 	     end,
-    case process_blocklist_unblock(LUser, LServer, Filter,
-				   gen_mod:db_type(LServer, mod_privacy))
-	of
+    DBType = gen_mod:db_type(LServer, mod_privacy),
+    case unblock_by_filter(LUser, LServer, Filter, DBType) of
       {atomic, ok} -> {result, []};
       {atomic, {ok, Default, List}} ->
 	  UserList = make_userlist(Default, List),
@@ -365,8 +321,7 @@ process_blocklist_unblock(LUser, LServer, JIDs) ->
       _ -> {error, ?ERR_INTERNAL_SERVER_ERROR}
     end.
 
-process_blocklist_unblock(LUser, LServer, Filter,
-			  mnesia) ->
+unblock_by_filter(LUser, LServer, Filter, mnesia) ->
     F = fun () ->
 		case mnesia:read({privacy, {LUser, LServer}}) of
 		  [] ->
@@ -387,8 +342,31 @@ process_blocklist_unblock(LUser, LServer, Filter,
 		end
 	end,
     mnesia:transaction(F);
-process_blocklist_unblock(LUser, LServer, Filter,
-                          riak) ->
+unblock_by_filter(LUser, LServer, Filter, p1db) ->
+    USPrefix = mod_privacy:us_prefix(LUser, LServer),
+    DefaultKey = mod_privacy:default_key(LUser, LServer),
+    case p1db:get_by_prefix(privacy, USPrefix) of
+        {ok, [{DefaultKey, Default, _}|L]} ->
+            case lists:keyfind(Default, 1, L) of
+                {_, Val, _} ->
+                    List = mod_privacy:p1db_to_items(Val),
+                    NewList = Filter(List),
+                    NewVal = mod_privacy:items_to_p1db(NewList),
+                    USNKey = mod_privacy:usn2key(LUser, LServer, Default),
+                    case p1db:insert(privacy, USNKey, NewVal) of
+                        ok ->
+                            {atomic, {ok, Default, NewList}};
+                        {error, _} = Err ->
+                            {aborted, Err}
+                    end;
+                false ->
+                    {atomic, ok}
+            end;
+        {ok, _} -> {atomic, ok};
+        {error, notfound} -> {atomic, ok};
+        {error, _} = Err -> {aborted, Err}
+    end;
+unblock_by_filter(LUser, LServer, Filter, riak) ->
     {atomic,
      case ejabberd_riak:get(privacy, {LUser, LServer}) of
          {error, _} ->
@@ -411,8 +389,7 @@ process_blocklist_unblock(LUser, LServer, Filter,
                      ok
              end
      end};
-process_blocklist_unblock(LUser, LServer, Filter,
-			  odbc) ->
+unblock_by_filter(LUser, LServer, Filter, odbc) ->
     F = fun () ->
 		case mod_privacy:sql_get_default_privacy_list_t(LUser)
 		    of
@@ -488,6 +465,23 @@ process_blocklist_get(LUser, LServer, mnesia) ->
 	    {value, {_, List}} -> List;
 	    _ -> []
 	  end
+    end;
+process_blocklist_get(LUser, LServer, p1db) ->
+    USPrefix = mod_privacy:us_prefix(LUser, LServer),
+    DefaultKey = mod_privacy:default_key(LUser, LServer),
+    case p1db:get_by_prefix(privacy, USPrefix) of
+        {ok, [{DefaultKey, Default, _VClock}|L]} ->
+            USNKey = mod_privacy:usn2key(LUser, LServer, Default),
+            case lists:keyfind(USNKey, 1, L) of
+                {_, Val, _} ->
+                    mod_privacy:p1db_to_items(Val);
+                false ->
+                    []
+            end;
+        {ok, _} ->
+            [];
+        {error, _} ->
+            error
     end;
 process_blocklist_get(LUser, LServer, riak) ->
     case ejabberd_riak:get(privacy, {LUser, LServer}) of

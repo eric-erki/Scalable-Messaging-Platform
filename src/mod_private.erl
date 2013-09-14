@@ -57,6 +57,8 @@ start(Host, Opts) ->
 			       {attributes,
 				record_info(fields, private_storage)}]),
 	  update_table();
+      p1db ->
+          p1db:open_table(private_storage, [{mapsize, 1024*1024*100}]);
       _ -> ok
     end,
     ejabberd_hooks:add(remove_user, Host, ?MODULE,
@@ -91,6 +93,7 @@ process_sm_iq(#jid{luser = LUser, lserver = LServer},
 		case DBType of
 		  odbc -> ejabberd_odbc:sql_transaction(LServer, F);
 		  mnesia -> mnesia:transaction(F);
+                  p1db -> F();
 		  riak -> F()
 		end,
 		IQ#iq{type = result, sub_el = []}
@@ -152,6 +155,10 @@ set_data(LUser, LServer, {XMLNS, El}, odbc) ->
     SData = ejabberd_odbc:escape(xml:element_to_binary(El)),
     odbc_queries:set_private_data(LServer, Username, LXMLNS,
 				  SData);
+set_data(LUser, LServer, {XMLNS, El}, p1db) ->
+    USNKey = usn2key(LUser, LServer, XMLNS),
+    Val = xml:element_to_binary(El),
+    p1db:insert(private_storage, USNKey, Val);
 set_data(LUser, LServer, {XMLNS, El}, riak) ->
     ejabberd_riak:put(#private_storage{usns = {LUser, LServer, XMLNS},
                                        xml = El},
@@ -190,6 +197,19 @@ get_data(LUser, LServer, odbc, [{XMLNS, El} | Els],
 	  end;
       _ -> get_data(LUser, LServer, odbc, Els, [El | Res])
     end;
+get_data(LUser, LServer, p1db, [{XMLNS, El} | Els], Res) ->
+    USNKey = usn2key(LUser, LServer, XMLNS),
+    case p1db:get(private_storage, USNKey) of
+        {ok, XML, _VClock} ->
+            case xml_stream:parse_element(XML) of
+                {error, _} ->
+                    get_data(LUser, LServer, p1db, Els, [El | Res]);
+                NewEl ->
+                    get_data(LUser, LServer, p1db, Els, [NewEl | Res])
+            end;
+        {error, _} ->
+            get_data(LUser, LServer, p1db, Els, [El | Res])
+    end;
 get_data(LUser, LServer, riak, [{XMLNS, El} | Els],
 	 Res) ->
     case ejabberd_riak:get(private_storage, {LUser, LServer, XMLNS}) of
@@ -225,6 +245,20 @@ get_all_data(LUser, LServer, odbc) ->
         _ ->
             []
     end;
+get_all_data(LUser, LServer, p1db) ->
+    USPrefix = us_prefix(LUser, LServer),
+    case p1db:get_by_prefix(private_storage, USPrefix) of
+        {ok, L} ->
+            lists:flatmap(
+              fun({_Key, Val, _VClock}) ->
+                      case xml_stream:parse_element(Val) of
+                          #xmlel{} = El -> [El];
+                          _ -> []
+                      end
+              end, L);
+        {error, _} ->
+            []
+    end;
 get_all_data(LUser, LServer, riak) ->
     case ejabberd_riak:get_by_index(
            private_storage, <<"us">>, {LUser, LServer}) of
@@ -233,6 +267,13 @@ get_all_data(LUser, LServer, riak) ->
         _ ->
             []
     end.
+
+usn2key(LUser, LServer, XMLNS) ->
+    USPrefix = us_prefix(LUser, LServer),
+    <<USPrefix/binary, XMLNS/binary>>.
+
+us_prefix(LUser, LServer) ->
+    <<LServer/binary, 0, LUser/binary, 0>>.
 
 remove_user(User, Server) ->
     LUser = jlib:nodeprep(User),
@@ -261,6 +302,18 @@ remove_user(LUser, LServer, odbc) ->
     Username = ejabberd_odbc:escape(LUser),
     odbc_queries:del_user_private_storage(LServer,
 					  Username);
+remove_user(LUser, LServer, p1db) ->
+    USPrefix = us_prefix(LUser, LServer),
+    case p1db:get_by_prefix(private_storage, USPrefix) of
+        {ok, L} ->
+            lists:foreach(
+              fun({Key, _Val, VClock}) ->
+                      p1db:async_delete(private_storage, Key, VClock)
+              end, L),
+            {atomic, ok};
+        {error, _} = Err ->
+            {aborted, Err}
+    end;
 remove_user(LUser, LServer, riak) ->
     {atomic, ejabberd_riak:delete_by_index(private_storage,
                                            <<"us">>, {LUser, LServer})}.
@@ -308,6 +361,11 @@ import(LServer) ->
 
 import(_LServer, mnesia, #private_storage{} = PS) ->
     mnesia:dirty_write(PS);
+import(_LServer, p1db, #private_storage{usns = {LUser, LServer, XMLNS},
+                                        xml = El}) ->
+    USNKey = usn2key(LUser, LServer, XMLNS),
+    XML = xml:element_to_binary(El),
+    p1db:async_insert(private_storage, USNKey, XML);
 import(_LServer, riak, #private_storage{usns = {LUser, LServer, _}} = PS) ->
     ejabberd_riak:put(PS, [{'2i', [{<<"us">>, {LUser, LServer}}]}]);
 import(_, _, _) ->

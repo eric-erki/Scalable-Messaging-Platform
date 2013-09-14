@@ -35,6 +35,8 @@ start(Host, Opts) ->
 			       {attributes,
 				record_info(fields, vcard_xupdate)}]),
           update_table();
+     p1db ->
+          p1db:open_table(vcard_xupdate, [{mapsize, 1024*1024*100}]);
       _ -> ok
     end,
     ejabberd_hooks:add(c2s_update_presence, Host, ?MODULE,
@@ -88,6 +90,9 @@ add_xupdate(LUser, LServer, Hash, mnesia) ->
 					    hash = Hash})
 	end,
     mnesia:transaction(F);
+add_xupdate(LUser, LServer, Hash, p1db) ->
+    USKey = us2key(LUser, LServer),
+    {atomic, p1db:insert(vcard_xupdate, USKey, Hash)};
 add_xupdate(LUser, LServer, Hash, riak) ->
     {atomic, ejabberd_riak:put(#vcard_xupdate{us = {LUser, LServer},
                                               hash = Hash})};
@@ -111,6 +116,12 @@ get_xupdate(LUser, LServer, mnesia) ->
 	of
       [#vcard_xupdate{hash = Hash}] -> Hash;
       _ -> undefined
+    end;
+get_xupdate(LUser, LServer, p1db) ->
+    USKey = us2key(LUser, LServer),
+    case p1db:get(vcard_xupdate, USKey) of
+        {ok, Hash, _VClock} -> Hash;
+        {error, _} -> undefined
     end;
 get_xupdate(LUser, LServer, riak) ->
     case ejabberd_riak:get(vcard_xupdate, {LUser, LServer}) of
@@ -137,6 +148,9 @@ remove_xupdate(LUser, LServer, mnesia) ->
 		mnesia:delete({vcard_xupdate, {LUser, LServer}})
 	end,
     mnesia:transaction(F);
+remove_xupdate(LUser, LServer, p1db) ->
+    USKey = us2key(LUser, LServer),
+    {atomic, p1db:delete(vcard_xupdate, USKey)};
 remove_xupdate(LUser, LServer, riak) ->
     {atomic, ejabberd_riak:delete(vcard_xupdate, {LUser, LServer})};
 remove_xupdate(LUser, LServer, odbc) ->
@@ -182,6 +196,9 @@ build_xphotoel(User, Host) ->
 	   attrs = [{<<"xmlns">>, ?NS_VCARD_UPDATE}],
 	   children = PhotoEl}.
 
+us2key(LUser, LServer) ->
+    <<LServer/binary, 0, LUser/binary>>.
+
 update_table() ->
     Fields = record_info(fields, vcard_xupdate),
     case mnesia:table_info(vcard_xupdate, attributes) of
@@ -222,6 +239,9 @@ import(LServer) ->
 
 import(_LServer, mnesia, #vcard_xupdate{} = R) ->
     mnesia:dirty_write(R);
+import(_LServer, p1db, #vcard_xupdate{us = {LUser, LServer}, hash = Hash}) ->
+    USKey = us2key(LUser, LServer),
+    p1db:async_insert(vcard_xupdate, USKey, Hash);
 import(_LServer, riak, #vcard_xupdate{} = R) ->
     ejabberd_riak:put(R);
 import(_, _, _) ->

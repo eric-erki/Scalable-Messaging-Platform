@@ -75,6 +75,8 @@ start(Host, Opts) ->
 	  mnesia:add_table_index(vcard_search, lemail),
 	  mnesia:add_table_index(vcard_search, lorgname),
 	  mnesia:add_table_index(vcard_search, lorgunit);
+      p1db ->
+          p1db:open_table(vcard, [{mapsize, 1024*1024*100}]);
       _ -> ok
     end,
     ejabberd_hooks:add(remove_user, Host, ?MODULE,
@@ -99,7 +101,13 @@ init(Host, ServerHost, Search) ->
     case Search of
       false -> loop(Host, ServerHost);
       _ ->
-	  ejabberd_router:register_route(Host),
+          case gen_mod:db_type(ServerHost, ?MODULE) of
+              p1db ->
+                  ?WARNING_MSG("VCard search functionality is "
+                               "not implemented for P1DB backend", []);
+              _ ->
+                  ejabberd_router:register_route(Host)
+          end,
 	  loop(Host, ServerHost)
     end.
 
@@ -214,6 +222,17 @@ get_vcard(LUser, LServer, odbc) ->
       {selected, [<<"vcard">>], []} -> [];
       _ -> error
     end;
+get_vcard(LUser, LServer, p1db) ->
+    USKey = us2key(LUser, LServer),
+    case p1db:get(vcard, USKey) of
+        {ok, VCard, _} ->
+            case xml_stream:parse_element(VCard) of
+                {error, _Reason} -> error;
+                El -> [El]
+            end;
+        {error, _} ->
+            error
+    end;
 get_vcard(LUser, LServer, riak) ->
     case ejabberd_riak:get(vcard, {LUser, LServer}) of
         {ok, R} ->
@@ -299,6 +318,9 @@ set_vcard(User, LServer, VCARD) ->
 							lorgunit = LOrgUnit})
 		     end,
 		 mnesia:transaction(F);
+             p1db ->
+                 USKey = us2key(LUser, LServer),
+                 p1db:insert(vcard, USKey, xml:element_to_binary(VCARD));
              riak ->
                  US = {LUser, LServer},
                  ejabberd_riak:put(#vcard{us = US, vcard = VCARD},
@@ -725,6 +747,8 @@ search(LServer, MatchSpec, AllowReturnAll, odbc) ->
 	     Error -> ?ERROR_MSG("~p", [Error]), []
 	   end
     end;
+search(_LServer, _MatchSpec, _AllowReturnAll, p1db) ->
+    [];
 search(_LServer, _MatchSpec, _AllowReturnAll, riak) ->
     [].
 
@@ -734,6 +758,8 @@ make_matchspec(LServer, Data, mnesia) ->
     Match;
 make_matchspec(LServer, Data, odbc) ->
     filter_fields(Data, <<"">>, LServer, odbc);
+make_matchspec(_LServer, _Data, p1db) ->
+    [];
 make_matchspec(_LServer, _Data, riak) ->
     [].
 
@@ -926,6 +952,9 @@ remove_user(LUser, LServer, odbc) ->
 				    Username, <<"';">>],
 				   [<<"delete from vcard_search where lusername='">>,
 				    Username, <<"';">>]]);
+remove_user(LUser, LServer, p1db) ->
+    USKey = us2key(LUser, LServer),
+    {atomic, p1db:async_delete(vcard, USKey)};
 remove_user(LUser, LServer, riak) ->
     {atomic, ejabberd_riak:delete(vcard, {LUser, LServer})}.
 
@@ -972,6 +1001,9 @@ update_vcard_search_table() ->
 	  ?INFO_MSG("Recreating vcard_search table", []),
 	  mnesia:transform_table(vcard_search, ignore, Fields)
     end.
+
+us2key(LUser, LServer) ->
+    <<LServer/binary, 0, LUser/binary>>.
 
 export(_Server) ->   
     [{vcard,
@@ -1082,6 +1114,10 @@ import(_LServer, mnesia, #vcard{} = VCard) ->
     mnesia:dirty_write(VCard);
 import(_LServer, mnesia, #vcard_search{} = S) ->
     mnesia:dirty_write(S);
+import(_LServer, p1db, #vcard{us = {LUser, LServer}, vcard = El}) ->
+    USKey = us2key(LUser, LServer),
+    XML = xml:element_to_binary(El),
+    p1db:async_insert(vcard, USKey, XML);
 import(_LServer, riak, #vcard{us = {LUser, _}, vcard = El} = VCard) ->
     FN = xml:get_path_s(El, [{elem, <<"FN">>}, cdata]),
     Family = xml:get_path_s(El,

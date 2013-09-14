@@ -304,6 +304,8 @@ init([Host, Opts]) ->
             update_table(),
             mnesia:add_table_copy(caps_features, node(),
                                   disc_only_copies);
+        p1db ->
+            p1db:open_table(caps_features, [{mapsize, 1024*1024*100}]);
         _ ->
             ok
     end,
@@ -441,6 +443,13 @@ caps_read_fun(_LServer, Node, mnesia) ->
 	      _ -> error
 	    end
     end;
+caps_read_fun(_LServer, Node, p1db) ->
+    fun() ->
+            case p1db:get(caps_features, node2key(Node)) of
+                {ok, Val} -> {ok, binary_to_term(Val)};
+                _ -> error
+            end
+    end;
 caps_read_fun(_LServer, Node, riak) ->
     fun() ->
             case ejabberd_riak:get(caps_features, Node) of
@@ -477,6 +486,11 @@ caps_write_fun(_LServer, Node, Features, mnesia) ->
     fun () ->
 	    mnesia:dirty_write(#caps_features{node_pair = Node,
 					      features = Features})
+    end;
+caps_write_fun(_LServer, Node, Features, p1db) ->
+    fun () ->
+            Val = term_to_binary(Features),
+            p1db:insert(caps_features, node2key(Node), Val)
     end;
 caps_write_fun(_LServer, Node, Features, riak) ->
     fun () ->
@@ -638,6 +652,9 @@ is_valid_node(Node) ->
             false
     end.
 
+node2key({Node, SubNode}) ->
+    <<Node/binary, $#, SubNode/binary>>.
+
 update_table() ->
     Fields = record_info(fields, caps_features),
     case mnesia:table_info(caps_features, attributes) of
@@ -711,6 +728,8 @@ import(_LServer) ->
 
 import(_LServer, mnesia, #caps_features{} = Caps) ->
     mnesia:dirty_write(Caps);
+import(_LServer, p1db, #caps_features{node_pair = Node, features = Feats}) ->
+    p1db:async_insert(caps_features, node2key(Node), term_to_binary(Feats));
 import(_LServer, riak, #caps_features{} = Caps) ->
     ejabberd_riak:put(Caps);
 import(_, _, _) ->
