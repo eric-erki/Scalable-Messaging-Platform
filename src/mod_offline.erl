@@ -421,7 +421,8 @@ pop_offline_messages(Ls, LUser, LServer, p1db) ->
                              DelRes = p1db:delete(offline_msg, Key,
                                                   p1db:incr_vclock(VClock)),
                              if DelRes == ok; DelRes == {error, notfound} ->
-                                     USN = key2usn(Key),
+                                     Now = key2now(USPrefix, Key),
+                                     USN = {LUser, LServer, Now},
                                      M = p1db_to_offmsg(USN, Val),
                                      IsExpired = case M#offline_msg.expire of
                                                      never -> false;
@@ -673,7 +674,12 @@ read_all_msgs(LUser, LServer, p1db) ->
     USPrefix = us_prefix(LUser, LServer),
     case p1db:get_by_prefix(offline_msg, USPrefix) of
         {ok, L} ->
-            [p1db_to_offmsg(key2usn(Key), Val) || {Key, Val, _VClock} <- L];
+            lists:map(
+              fun({Key, Val, _VClock}) ->
+                      Now = key2now(USPrefix, Key),
+                      USN = {LUser, LServer, Now},
+                      p1db_to_offmsg(USN, Val)
+              end, L);
         _Err ->
             []
     end;
@@ -1089,18 +1095,14 @@ usn2key(LUser, LServer, {MegaSecs, Secs, USecs}) ->
     USKey = us2key(LUser, LServer),
     <<USKey/binary, 0, TimeStamp:64>>.
 
-key2usn(Key) ->
-    Head = binary_to_list(Key),
-    Pos1 = string:chr(Head, 0),
-    {S, [0|Tail]} = lists:split(Pos1-1, Head),
-    Pos2 = string:chr(Tail, 0),
-    {U, [0|T]} = lists:split(Pos2-1, Tail),
-    <<TimeStamp:64>> = list_to_binary(T),
+key2now(USPrefix, Key) ->
+    Size = size(USPrefix),
+    <<_:Size/binary, TimeStamp:64>> = Key,
     MSecs = TimeStamp div 1000000,
     USecs = TimeStamp rem 1000000,
     MegaSecs = MSecs div 1000000,
     Secs = MSecs rem 1000000,
-    {list_to_binary(U), list_to_binary(S), {MegaSecs, Secs, USecs}}.
+    {MegaSecs, Secs, USecs}.
 
 us_prefix(LUser, LServer) ->
     USKey = us2key(LUser, LServer),

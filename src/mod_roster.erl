@@ -366,7 +366,12 @@ get_roster(LUser, LServer, p1db) ->
     USPrefix = us_prefix(LUser, LServer),
     case p1db:get_by_prefix(roster, USPrefix) of
         {ok, L} ->
-            [p1db_to_item(key2usj(Key), Val) || {Key, Val, _VClock} <- L];
+            lists:map(
+              fun({Key, Val, _VClock}) ->
+                      Now = key2jid(USPrefix, Key),
+                      USN = {LUser, LServer, Now},
+                      p1db_to_item(USN, Val)
+              end, L);
         {error, _} ->
             []
     end;
@@ -674,7 +679,12 @@ get_subscription_lists(_, LUser, LServer, p1db) ->
     USPrefix = us_prefix(LUser, LServer),
     case p1db:get_by_prefix(roster, USPrefix) of
         {ok, L} ->
-            [p1db_to_item(key2usj(Key), Val) || {Key, Val, _VClock} <- L];
+            lists:map(
+              fun({Key, Val, _VClock}) ->
+                      Now = key2jid(USPrefix, Key),
+                      USN = {LUser, LServer, Now},
+                      p1db_to_item(USN, Val)
+              end, L);
         {error, _} ->
             []
     end;
@@ -1680,10 +1690,10 @@ usj2key(User, Server, JID) ->
     SJID = jlib:jid_to_string(JID),
     <<USKey/binary, 0, SJID/binary>>.
 
-key2usj(USJKey) ->
-    [LServer, LUser, SJID] = str:tokens(USJKey, <<0>>),
-    LJID = jlib:jid_tolower(jlib:string_to_jid(SJID)),
-    {LUser, LServer, LJID}.
+key2jid(USPrefix, Key) ->
+    Size = size(USPrefix),
+    <<_:Size/binary, SJID>> = Key,
+    jlib:jid_tolower(jlib:string_to_jid(SJID)).
 
 us_prefix(User, Server) ->
     USKey = us2key(User, Server),
