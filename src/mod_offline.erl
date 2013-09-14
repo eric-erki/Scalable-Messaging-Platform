@@ -1183,7 +1183,7 @@ import(_LServer, mnesia, #offline_msg{} = Msg) ->
 import(_LServer, p1db, #offline_msg{us = {LUser, LServer},
                                     timestamp = Now} = Msg) ->
     USNKey = usn2key(LUser, LServer, Now),
-    p1db:put(offline_msg, USNKey, offmsg_to_p1db(Msg));
+    p1db:async_insert(offline_msg, USNKey, offmsg_to_p1db(Msg));
 import(_LServer, riak, #offline_msg{us = US, timestamp = TS} = M) ->
     ejabberd_riak:put(M, [{i, TS}, {'2i', [{<<"us">>, US}]}]);
 import(_, _, _) ->

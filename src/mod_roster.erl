@@ -1779,10 +1779,10 @@ import(_LServer, mnesia, #roster_version{} = RV) ->
 import(_LServer, p1db, #roster{us = {LUser, LServer}, jid = LJID} = R) ->
     USJKey = usj2key(LUser, LServer, LJID),
     Val = item_to_p1db(R),
-    p1db:put(roster, USJKey, Val);
+    p1db:async_insert(roster, USJKey, Val);
 import(_LServer, p1db, #roster_version{us = {LUser, LServer}, version = Ver}) ->
     USKey = us2key(LUser, LServer),
-    p1db:put(roster_version, USKey, Ver);
+    p1db:async_insert(roster_version, USKey, Ver);
 import(_LServer, riak, #roster{us = {LUser, LServer}} = R) ->
     ejabberd_riak:put(R, [{'2i', [{<<"us">>, {LUser, LServer}}]}]);
 import(_LServer, riak, #roster_version{} = RV) ->

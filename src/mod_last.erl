@@ -356,7 +356,7 @@ import(_LServer, mnesia, #last_activity{} = LA) ->
     mnesia:dirty_write(LA);
 import(_LServer, p1db, #last_activity{us = {LUser, LServer}} = LA) ->
     USKey = us2key(LUser, LServer),
-    p1db:put(last_activity, USKey, la_to_p1db(LA));
+    p1db:async_insert(last_activity, USKey, la_to_p1db(LA));
 import(_LServer, riak, #last_activity{} = LA) ->
     ejabberd_riak:put(LA);
 import(_, _, _) ->

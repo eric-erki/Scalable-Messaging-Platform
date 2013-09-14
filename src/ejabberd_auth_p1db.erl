@@ -229,6 +229,6 @@ export(_Server) ->
 import(_LServer, p1db, #passwd{us = {User, Server}, password = Pass})
   when is_binary(Pass) ->
     US = us2key(User, Server),
-    p1db:put(passwd, US, Pass);
+    p1db:async_insert(passwd, US, Pass);
 import(_, _, _) ->
     pass.
