@@ -1832,7 +1832,8 @@ create_rosters(UserPattern, Server, Total, DBType) ->
                                 p1db ->
                                     USJKey = usj2key(LUser, LServer, LJID),
                                     Val = item_to_p1db(RItem),
-                                    [{put, USJKey, Val, <<>>}|Items];
+                                    VClock = p1db:new_vclock(node()),
+                                    [{put, USJKey, Val, VClock}|Items];
                                 mnesia ->
                                     mnesia:dirty_write(RItem),
                                     Items;
