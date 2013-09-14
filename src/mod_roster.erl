@@ -1850,7 +1850,7 @@ create_rosters(UserPattern, Server, Total, DBType) ->
               end
       end, [], lists:seq(1, Total)).
 
-receive_all(0) ->
-    ok;
-receive_all(N) ->
-    receive _ -> receive_all(N-1) end.
+receive_all(N) when N>=0 ->
+    receive _ -> receive_all(N-1) end;
+receive_all(_) ->
+    ok.
