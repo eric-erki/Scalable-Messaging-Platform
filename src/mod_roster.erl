@@ -368,9 +368,9 @@ get_roster(LUser, LServer, p1db) ->
         {ok, L} ->
             lists:map(
               fun({Key, Val, _VClock}) ->
-                      Now = key2jid(USPrefix, Key),
-                      USN = {LUser, LServer, Now},
-                      p1db_to_item(USN, Val)
+                      LJID = key2jid(USPrefix, Key),
+                      USJ = {LUser, LServer, LJID},
+                      p1db_to_item(USJ, Val)
               end, L);
         {error, _} ->
             []
@@ -681,9 +681,9 @@ get_subscription_lists(_, LUser, LServer, p1db) ->
         {ok, L} ->
             lists:map(
               fun({Key, Val, _VClock}) ->
-                      Now = key2jid(USPrefix, Key),
-                      USN = {LUser, LServer, Now},
-                      p1db_to_item(USN, Val)
+                      LJID = key2jid(USPrefix, Key),
+                      USJ = {LUser, LServer, LJID},
+                      p1db_to_item(USJ, Val)
               end, L);
         {error, _} ->
             []
@@ -1692,7 +1692,7 @@ usj2key(User, Server, JID) ->
 
 key2jid(USPrefix, Key) ->
     Size = size(USPrefix),
-    <<_:Size/binary, SJID>> = Key,
+    <<_:Size/binary, SJID/binary>> = Key,
     jlib:jid_tolower(jlib:string_to_jid(SJID)).
 
 us_prefix(User, Server) ->
