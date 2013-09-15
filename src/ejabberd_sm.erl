@@ -31,7 +31,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, route/3, do_route1/4, set_session/6,
+-export([start_link/0, route/3, do_route/4, set_session/6,
 	 open_session/5, open_session/6, close_session/4,
 	 close_migrated_session/4, drop_session/1,
 	 check_in_subscription/6, bounce_offline_message/3,
@@ -85,12 +85,7 @@ start_link() ->
 -spec route(jid(), jid(), xmlel() | broadcast()) -> ok.
 
 route(From, To, Packet) ->
-    case catch do_route(From, To, Packet, []) of
-      {'EXIT', Reason} ->
-	  ?ERROR_MSG("~p~nwhen processing: ~p",
-		     [Reason, {From, To, Packet}]);
-      _ -> ok
-    end.
+    dispatch(From, To, Packet, []).
 
 -spec open_session(sid(), binary(), binary(), binary(), info()) -> ok.
 
@@ -452,13 +447,8 @@ handle_cast(_Msg, State) -> {noreply, State}.
 handle_info({route, From, To, Packet}, State) ->
     handle_info({route, From, To, Packet, []}, State);
 handle_info({route, From, To, Packet, Hops}, State) ->
-    case catch do_route(From, To, Packet, Hops) of
-        {'EXIT', Reason} ->
-            ?ERROR_MSG("~p~nwhen processing: ~p",
-                       [Reason, {From, To, Packet, Hops}]);
-        _ ->
-            ok
-    end,
+    ?WARNING_MSG("should not be here!", []),
+    dispatch(From, To, Packet, Hops),
     {noreply, State};
 handle_info({register_iq_handler, Host, XMLNS, Module,
 	     Function},
@@ -538,14 +528,16 @@ do_route(From, To, Packet, Hops) ->
             case lists:member(Node, Hops) of
                 true ->
                     %% Loop detected. End up here.
-                    dispatch(From, To, Packet, Hops);
+                    do_route1(From, To, Packet, Hops);
                 false ->
+                    #jid{luser = U, lserver = S} = To,
+                    RemoteSM = get_proc_by_hash({U, S}),
                     ejabberd_cluster:send(
-                      {?MODULE, Node},
+                      {RemoteSM, Node},
                       {route, From, To, Packet, [node()|Hops]})
             end;
 	_ ->
-	    dispatch(From, To, Packet, Hops)
+            do_route1(From, To, Packet, Hops)
     end.
 
 do_route1(From, To, {broadcast, _} = Packet, Hops) ->
