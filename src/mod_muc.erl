@@ -100,10 +100,15 @@ stop(Host) ->
 shutdown_rooms(Host) ->
     MyHost = gen_mod:get_module_opt_host(Host, mod_muc,
 					 <<"conference.@HOST@">>),
-    Rooms = get_vh_rooms_all_nodes(MyHost),
-    [ejabberd_cluster:send(Pid, system_shutdown)
-     || #muc_online_room{pid = Pid} <- Rooms],
-    Rooms.
+    lists:flatmap(
+      fun(#muc_online_room{pid = Pid}) ->
+              ejabberd_cluster:send(Pid, system_shutdown),
+              if node(Pid) == node() ->
+                      [Pid];
+                 true ->
+                      []
+              end
+      end, get_vh_rooms_all_nodes(MyHost)).
 
 persist_recent_messages(Host) ->
     MyHost = gen_mod:get_module_opt_host(Host, mod_muc,
