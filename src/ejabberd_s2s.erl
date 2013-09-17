@@ -38,7 +38,7 @@
 	 incoming_s2s_number/0, outgoing_s2s_number/0,
 	 clean_temporarily_blocked_table/0,
 	 list_temporarily_blocked_hosts/0,
-         get_connections_number/1, needed_connections_number/3,
+         needed_connections_number/2,
          get_connections_number_per_node/1,
 	 external_host_overloaded/1, is_temporarly_blocked/1]).
 
@@ -55,8 +55,6 @@
 -include("jlib.hrl").
 
 -include("ejabberd_commands.hrl").
-
--define(DEFAULT_MAX_S2S_CONNECTIONS_NUMBER, 1).
 
 -define(DEFAULT_MAX_S2S_CONNECTIONS_NUMBER_PER_NODE, 1).
 
@@ -177,13 +175,6 @@ get_connections_pids(FromTo) ->
       _ -> []
     end.
 
--spec get_connections_number({binary(), binary()}) -> non_neg_integer().
-
-get_connections_number(FromTo) ->
-    {ResL, _BadNodes} = ejabberd_cluster:multicall(
-                          ?MODULE, get_connections_number_per_node, [FromTo]),
-    lists:sum(ResL).
-
 -spec get_connections_number_per_node({binary(), binary()}) -> non_neg_integer().
 
 get_connections_number_per_node(FromTo) ->
@@ -193,13 +184,10 @@ get_connections_number_per_node(FromTo) ->
 
 try_register(FromTo) ->
     Key = new_key(),
-    MaxS2SConnectionsNumber =
-	max_s2s_connections_number(FromTo),
     MaxS2SConnectionsNumberPerNode =
 	max_s2s_connections_number_per_node(FromTo),
     NeededConnections = needed_connections_number(
                           FromTo,
-                          MaxS2SConnectionsNumber,
                           MaxS2SConnectionsNumberPerNode),
     F = fun () ->
 		if NeededConnections > 0 ->
@@ -302,13 +290,10 @@ find_connection(From, To) ->
     #jid{lserver = MyServer} = From,
     #jid{lserver = Server} = To,
     FromTo = {MyServer, Server},
-    MaxS2SConnectionsNumber =
-	max_s2s_connections_number(FromTo),
     MaxS2SConnectionsNumberPerNode =
 	max_s2s_connections_number_per_node(FromTo),
     NeededConnections = needed_connections_number(
                           FromTo,
-                          MaxS2SConnectionsNumber,
                           MaxS2SConnectionsNumberPerNode),
     ?DEBUG("Finding connection for ~p~n", [FromTo]),
     case catch mnesia:dirty_read(s2s, FromTo) of
@@ -323,7 +308,6 @@ find_connection(From, To) ->
 	    true ->
 		open_several_connections(NeededConnections, MyServer,
 					 Server, From, FromTo,
-					 MaxS2SConnectionsNumber,
 					 MaxS2SConnectionsNumberPerNode);
 	    false -> {aborted, error}
 	  end;
@@ -332,7 +316,6 @@ find_connection(From, To) ->
 		 %% We establish the missing connections for this pair.
 		 open_several_connections(NeededConnections, MyServer,
 					  Server, From, FromTo,
-					  MaxS2SConnectionsNumber,
 					  MaxS2SConnectionsNumberPerNode);
 	     true ->
 		 %% We choose a connexion from the pool of opened ones.
@@ -356,10 +339,9 @@ choose_pid(From, Pids) ->
     Pid.
 
 open_several_connections(N, MyServer, Server, From,
-			 FromTo, MaxS2SConnectionsNumber,
-			 MaxS2SConnectionsNumberPerNode) ->
+			 FromTo, MaxS2SConnectionsNumberPerNode) ->
     ConnectionsResult = [new_connection(MyServer, Server,
-					From, FromTo, MaxS2SConnectionsNumber,
+					From, FromTo,
 					MaxS2SConnectionsNumberPerNode)
 			 || _N <- lists:seq(1, N)],
     case [PID || {atomic, PID} <- ConnectionsResult] of
@@ -368,14 +350,12 @@ open_several_connections(N, MyServer, Server, From,
     end.
 
 new_connection(MyServer, Server, From, FromTo,
-	       MaxS2SConnectionsNumber,
 	       MaxS2SConnectionsNumberPerNode) ->
     Key = new_key(),
     {ok, Pid} = ejabberd_s2s_out:start(MyServer, Server,
 				       {new, Key}),
     NeededConnections = needed_connections_number(
                           FromTo,
-                          MaxS2SConnectionsNumber,
                           MaxS2SConnectionsNumberPerNode),
     F = fun () ->
 		L = mnesia:read({s2s, FromTo}),
@@ -394,16 +374,8 @@ new_connection(MyServer, Server, From, FromTo,
     end,
     TRes.
 
-max_s2s_connections_number({From, To}) ->
-    case acl:match_rule(From, max_s2s_connections,
-			jlib:make_jid(<<"">>, To, <<"">>))
-	of
-      Max when is_integer(Max) -> Max;
-      _ -> ?DEFAULT_MAX_S2S_CONNECTIONS_NUMBER
-    end.
-
 max_s2s_connections_number_per_node({From, To}) ->
-    case acl:match_rule(From, max_s2s_connections_per_node,
+    case acl:match_rule(From, max_s2s_connections,
 			jlib:make_jid(<<"">>, To, <<"">>))
 	of
       Max when is_integer(Max) -> Max;
@@ -411,11 +383,8 @@ max_s2s_connections_number_per_node({From, To}) ->
     end.
 
 needed_connections_number(FromTo,
-                          MaxS2SConnectionsNumber,
 			  MaxS2SConnectionsNumberPerNode) ->
-    lists:min(
-      [MaxS2SConnectionsNumber - get_connections_number(FromTo),
-       MaxS2SConnectionsNumberPerNode - get_connections_number_per_node(FromTo)]).
+    MaxS2SConnectionsNumberPerNode - get_connections_number_per_node(FromTo).
 
 new_key() ->
     <<(randoms:get_string())/binary, "-",
