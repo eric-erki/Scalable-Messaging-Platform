@@ -1697,8 +1697,10 @@ This example limits the number of sessions per user to 5 for all users, and to 1
 
 The special access \term{max\_s2s\_connections} specifies how many
 simultaneous S2S connections can be established to a specific remote XMPP server.
-The default value is \term{1}.
-There's also available the access \term{max\_s2s\_connections\_per\_node}.
+The default value is \term{1}. Note that this option doesn't take into consideration
+the number of all connections with a specific remote server on all nodes in
+a cluster. That is, for example, if there is no S2S connection with the server on local node,
+the one will be created even if such S2S connections already exist on another nodes.
 
 The syntax is:
 \esyntax{\{access, max\_s2s\_connections, [ \{MaxNumber, ACLName\}, ...]\}.}
