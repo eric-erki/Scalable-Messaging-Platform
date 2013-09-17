@@ -830,7 +830,9 @@ update_state_database(_Host, _ServerHost) ->
 			   [Rea2])
 	  end;
       _ -> ok
-    end.
+    end,
+    mnesia:add_table_index(pubsub_state, nodeidx),
+    mnesia:add_table_index(pubsub_item, nodeidx).
 
 send_loop(State) ->
     receive

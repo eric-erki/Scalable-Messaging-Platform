@@ -566,6 +566,7 @@ do_route1(From, To, Packet, Hops) ->
 	 lserver = LServer, lresource = LResource} =
 	To,
     #xmlel{name = Name, attrs = Attrs} = Packet,
+    ejabberd_hooks:run(message_to_user, LServer, [From, To, Packet]),
     case LResource of
       <<"">> ->
 	  case Name of
@@ -655,6 +656,7 @@ do_route1(From, To, Packet, Hops) ->
 		  _ -> ?DEBUG("packet droped~n", [])
 		end;
 	    Ss ->
+
 		Session = lists:max(Ss),
 		Pid = element(2, Session#session.sid),
 		?DEBUG("sending to process ~p~n", [Pid]),
@@ -678,6 +680,7 @@ is_privacy_allow(From, To, Packet, PrivacyList) ->
 			      allow,
 			      [User, Server, PrivacyList, {From, To, Packet},
 			       in]).
+
 
 route_message(From, To, Packet) ->
     LUser = To#jid.luser,

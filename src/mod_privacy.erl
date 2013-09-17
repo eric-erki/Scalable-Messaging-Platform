@@ -1335,7 +1335,7 @@ update_table() ->
     end.
 
 export(Server) ->
-    case ejabberd_odbc:sql_query(jlib:nameprep(Server),
+    case catch ejabberd_odbc:sql_query(jlib:nameprep(Server),
 				 [<<"select id from privacy_list order by "
 				    "id desc limit 1;">>]) of
         {selected, [<<"id">>], [[I]]} ->
