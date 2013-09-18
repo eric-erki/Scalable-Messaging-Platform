@@ -26,7 +26,6 @@
 -include("logger.hrl").
 -include("jlib.hrl").
 
--define(MYSQL_HOST_POOL, <<"testdomain">>).
 
 -define(PROC_LOG_MSG, <<"log_msg">>).
 
@@ -63,6 +62,14 @@ stop(Host) ->
 				     ?NS_P1_HISTORY),
     ok.
 
+to_binary(X) when is_binary(X) -> X;
+to_binary(X) when is_list(X) -> list_to_binary(X).
+
+get_pool_name_for(Host) ->
+    gen_mod:get_module_opt(Host, ?MODULE, connection_pool, fun to_binary/1, Host).
+
+
+
 remove_user(User, Server) ->
     remove_all_history(jlib:make_jid(User, Server, <<"">>)).
 
@@ -85,7 +92,7 @@ log_out( #xmlel{name = <<"message">>, attrs = Attrs} = OrigPacket,
 		   ejabberd_odbc:escape(Collection), <<"','">>,
 		   ejabberd_odbc:escape(ID), <<"','">>, Text, <<"','">>,
 		   ejabberd_odbc:escape(Timestamp), <<"', true)">>],
-	  case ejabberd_odbc:sql_query(?MYSQL_HOST_POOL,
+	  case ejabberd_odbc:sql_query(get_pool_name_for(From#jid.server),
 				  lists:flatten(Query)) of
             {error, Cause} ->
                 ?ERROR_MSG("Error storing history message sent by ~p to ~p: ~p", [jlib:jid_to_string(From), jlib:jid_to_string(To), Cause]);
@@ -101,7 +108,7 @@ log_out( #xmlel{name = <<"message">>, attrs = Attrs} = OrigPacket,
 		Query = [<<"CALL ">>, set_read(From#jid.lserver),
 			 <<"('">>, JID, <<"','">>, ejabberd_odbc:escape(ID),
 			 <<"', '">>, ejabberd_odbc:escape(Timestamp), <<"')">>],
-		case ejabberd_odbc:sql_query(?MYSQL_HOST_POOL,
+		case ejabberd_odbc:sql_query(get_pool_name_for(From#jid.server),
 					lists:flatten(Query)) of
                 {error, Cause} ->
                     ?ERROR_MSG("Error storing read notification for user ~p,  message ~p : ~p", [JID, ID, Cause]);
@@ -205,7 +212,7 @@ log_message_to_user(From, To,
 		   ejabberd_odbc:escape(Collection), <<"','">>,
 		   ejabberd_odbc:escape(ID), <<"','">>, Text, <<"','">>,
 		   ejabberd_odbc:escape(Timestamp), <<"', false)">>],
-	  case ejabberd_odbc:sql_query(?MYSQL_HOST_POOL,
+	  case ejabberd_odbc:sql_query(get_pool_name_for(To#jid.server),
 				  lists:flatten(Query)) of
             {error, Cause} ->
                 ?ERROR_MSG("Error storing history message received by ~p from ~p: ~p", [jlib:jid_to_string(To), jlib:jid_to_string(From), Cause]);
@@ -225,7 +232,7 @@ log_message_to_user(From, To,
 			 <<"','">>, ejabberd_odbc:escape(MsgID), <<"','">>,
 			 ejabberd_odbc:escape(Status), <<"','">>, Timestamp,
 			 <<"')">>],
-	    case ejabberd_odbc:sql_query(?MYSQL_HOST_POOL,
+	    case ejabberd_odbc:sql_query(get_pool_name_for(To#jid.server),
 					lists:flatten(Query)) of
                 {error, Cause} ->
                     ?ERROR_MSG("Error storing delivery notification for user ~p,  message ~p : ~p", [JIDTo, MsgID, Cause]);
@@ -340,7 +347,7 @@ get_user_history(JID, StartingDate, Index, Max) ->
 	     iolist_to_binary(integer_to_list(Index)), <<",">>,
 	     iolist_to_binary(integer_to_list(Max))],
     {atomic, {Rows, Count}} =
-	ejabberd_odbc:sql_bloc(?MYSQL_HOST_POOL,
+	ejabberd_odbc:sql_bloc(get_pool_name_for(JID#jid.server),
 			       fun () ->
 				       {selected, _, Rows} =
 					   ejabberd_odbc:sql_query_t(lists:flatten(Query)),
@@ -357,7 +364,7 @@ remove_conversation(JID, Conversation) ->
 	     remove_conversation_history(JID#jid.lserver), <<"('">>,
 	     ejabberd_odbc:escape(JIDStr), <<"','">>,
 	     ejabberd_odbc:escape(Conversation), <<"')">>],
-    case ejabberd_odbc:sql_query(?MYSQL_HOST_POOL,
+    case ejabberd_odbc:sql_query(get_pool_name_for(JID#jid.server),
 				 lists:flatten(Query))
 	of
       {error, Cause} ->
@@ -374,7 +381,7 @@ remove_all_history(JID) ->
     Query = [<<"CALL ">>,
 	     remove_user_history(JID#jid.lserver), <<"('">>, JIDStr,
 	     <<"')">>],
-    case ejabberd_odbc:sql_query(?MYSQL_HOST_POOL,
+    case ejabberd_odbc:sql_query(get_pool_name_for(JID#jid.server),
 				 lists:flatten(Query))
 	of
       {error, Cause} ->
