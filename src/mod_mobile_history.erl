@@ -260,7 +260,7 @@ parse_receipt_response(_) -> false.
 normalize_rsm_in(#rsm_in{id = Id} = R)
     when is_binary(Id) ->
     normalize_rsm_in(R#rsm_in{id =
-				  tmplib:iolist_to_integer(Id)});
+				  jlib:binary_to_integer(Id)});
 normalize_rsm_in(#rsm_in{id = undefined} = R) ->
     normalize_rsm_in(R#rsm_in{id = 0});
 normalize_rsm_in(#rsm_in{max = undefined} = R) ->
@@ -284,14 +284,12 @@ process_sm_iq(From, _To,
 		       {<<"at">>, db_datetime_to_iso(At)},
 		       {<<"deliver-status">>, DeliverStatus}],
 		  children = parse_message_from_db(From, At, Message)}
-	   || {Message, At, Read, DeliverStatus} <- History],
+	   || [Message, At, Read, DeliverStatus] <- History],
     RsmOut = jlib:rsm_encode(#rsm_out{first =
 					  iolist_to_binary(integer_to_list(Index)),
 				      count = Count,
 				      last =
-					  iolist_to_binary(integer_to_list(Index
-									     +
-									     str:len(History)))}),
+					  iolist_to_binary(integer_to_list(Index+length(History)))}),
     #xmlel{name = <<"retrieve">>, attrs = Attrs} = El,
     IQ#iq{type = result,
 	  sub_el =
@@ -354,9 +352,8 @@ get_user_history(JID, StartingDate, Index, Max) ->
 			       fun () ->
 				       {selected, _, Rows} =
 					   ejabberd_odbc:sql_query_t(lists:flatten(Query)),
-				       {selected, _, [{Count}]} =
-					   ejabberd_odbc:sql_query_t(<<"SELECT FOUND_ROWS()">>),
-				       {Rows, Count}
+                                       {selected, _, [[Count]]} = ejabberd_odbc:sql_query_t(<<"SELECT FOUND_ROWS()">>),
+				       {Rows, jlib:binary_to_integer(Count)}
 			       end),
     {Rows, Count}.
 
@@ -399,14 +396,14 @@ db_datetime_to_iso(String) ->
     [Y, M, D] = str:tokens(Date, <<"-">>),
     [HH, MM, SS] = str:tokens(Time, <<":">>),
     {T, Tz} =
-	jlib:timestamp_to_iso({{tmplib:iolist_to_integer(Y),
-				tmplib:iolist_to_integer(M),
-				tmplib:iolist_to_integer(D)},
-			       {tmplib:iolist_to_integer(HH),
-				tmplib:iolist_to_integer(MM),
-				tmplib:iolist_to_integer(SS)}},
+	jlib:timestamp_to_iso({{jlib:binary_to_integer(Y),
+				jlib:binary_to_integer(M),
+				jlib:binary_to_integer(D)},
+			       {jlib:binary_to_integer(HH),
+				jlib:binary_to_integer(MM),
+				jlib:binary_to_integer(SS)}},
 			      utc),
-    T ++ Tz.
+    <<T/binary, Tz/binary>>.
 
 log_msg(Host) ->
     gen_mod:get_module_opt(Host, ?MODULE, proc_log_msg, fun(X) -> X end,
