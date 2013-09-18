@@ -104,7 +104,7 @@ handle_call(_Request, _From, State) ->
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
 handle_cast({route, From, To, Packet, Hops}, State) ->
-    case catch ejabberd_sm:do_route(From, To, Packet, Hops) of
+    case catch ejabberd_sm:do_route1(From, To, Packet, Hops) of
         {'EXIT', Reason} ->
             ?ERROR_MSG("~p~nwhen processing: ~p",
                        [Reason, {From, To, Packet, Hops}]);
