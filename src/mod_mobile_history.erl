@@ -270,10 +270,13 @@ normalize_rsm_in(R) -> R.
 process_sm_iq(From, _To,
 	      #iq{type = get, sub_el = El} = IQ) ->
     Date = xml:get_tag_attr_s(<<"start">>, El),
-    #rsm_in{max = Max, id = Index} =
-	normalize_rsm_in(jlib:rsm_decode(IQ)),
-    {History, Count} = get_user_history(From, Date, Index,
-					Max),
+    {Max, Index} = case normalize_rsm_in(jlib:rsm_decode(IQ)) of
+                       none ->
+                           {50, 0};
+                       #rsm_in{max = M, id = I} ->
+                           {M, I}
+                   end,
+    {History, Count} = get_user_history(From, Date, Index, Max),
     Res = [#xmlel{name = <<"history">>,
 		  attrs =
 		      [{<<"read">>,
