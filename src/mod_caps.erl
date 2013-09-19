@@ -305,7 +305,12 @@ init([Host, Opts]) ->
             mnesia:add_table_copy(caps_features, node(),
                                   disc_only_copies);
         p1db ->
-            p1db:open_table(caps_features, [{mapsize, 1024*1024*100}]);
+            p1db:open_table(caps_features,
+                            [{mapsize, 1024*1024*100},
+                             {schema, [{keys, [node]},
+                                       {val, features},
+                                       {dec_val, fun dec_val/2},
+                                       {enc_val, fun enc_val/2}]}]);
         _ ->
             ok
     end,
@@ -691,6 +696,17 @@ sql_write_features_t({Node, SubNode}, Features) ->
      [[<<"insert into caps_features(node, subnode, feature) ">>,
        <<"values ('">>, SNode, <<"', '">>, SSubNode, <<"', '">>,
        ejabberd_odbc:escape(F), <<"');">>] || F <- NewFeatures]].
+
+%% P1DB/SQL schema
+enc_val(_, Bin) ->
+    Str = binary_to_list(<<Bin/binary, ".">>),
+    {ok, Tokens, _} = erl_scan:string(Str),
+    {ok, Term} = erl_parse:parse_term(Tokens),
+    term_to_binary(Term).
+
+dec_val(_, Bin) ->
+    Term = binary_to_term(Bin),
+    list_to_binary(io_lib:print(Term)).
 
 export(_Server) ->
     [{caps_features,

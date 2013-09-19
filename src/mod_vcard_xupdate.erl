@@ -36,7 +36,12 @@ start(Host, Opts) ->
 				record_info(fields, vcard_xupdate)}]),
           update_table();
      p1db ->
-          p1db:open_table(vcard_xupdate, [{mapsize, 1024*1024*100}]);
+          p1db:open_table(vcard_xupdate,
+                          [{mapsize, 1024*1024*100},
+                           {schema, [{keys, [server, user]},
+                                     {val, hash},
+                                     {enc_key, fun enc_key/1},
+                                     {dec_key, fun dec_key/1}]}]);
       _ -> ok
     end,
     ejabberd_hooks:add(c2s_update_presence, Host, ?MODULE,
@@ -198,6 +203,17 @@ build_xphotoel(User, Host) ->
 
 us2key(LUser, LServer) ->
     <<LServer/binary, 0, LUser/binary>>.
+
+%% P1DB/SQL schema
+enc_key([Server]) ->
+    <<Server/binary>>;
+enc_key([Server, User]) ->
+    <<Server/binary, 0, User/binary>>.
+
+dec_key(Key) ->
+    SLen = str:chr(Key, 0) - 1,
+    <<Server:SLen/binary, 0, User/binary>> = Key,
+    [Server, User].
 
 update_table() ->
     Fields = record_info(fields, vcard_xupdate),

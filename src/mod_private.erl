@@ -58,7 +58,12 @@ start(Host, Opts) ->
 				record_info(fields, private_storage)}]),
 	  update_table();
       p1db ->
-          p1db:open_table(private_storage, [{mapsize, 1024*1024*100}]);
+          p1db:open_table(private_storage,
+                          [{mapsize, 1024*1024*100},
+                           {schema, [{keys, [server, user, xmlns]},
+                                     {val, xml},
+                                     {enc_key, fun enc_key/1},
+                                     {dec_key, fun dec_key/1}]}]);
       _ -> ok
     end,
     ejabberd_hooks:add(remove_user, Host, ?MODULE,
@@ -274,6 +279,21 @@ usn2key(LUser, LServer, XMLNS) ->
 
 us_prefix(LUser, LServer) ->
     <<LServer/binary, 0, LUser/binary, 0>>.
+
+%% P1DB schema
+enc_key([Server]) ->
+    <<Server/binary>>;
+enc_key([Server, User]) ->
+    <<Server/binary, 0, User/binary>>;
+enc_key([Server, User, XMLNS]) ->
+    <<Server/binary, 0, User/binary, 0, XMLNS/binary>>.
+
+dec_key(Key) ->
+    SLen = str:chr(Key, 0) - 1,
+    <<Server:SLen/binary, 0, UKey/binary>> = Key,
+    ULen = str:chr(UKey, 0) - 1,
+    <<User:ULen/binary, 0, XMLNS/binary>> = UKey,
+    [Server, User, XMLNS].
 
 remove_user(User, Server) ->
     LUser = jlib:nodeprep(User),

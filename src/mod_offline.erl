@@ -70,7 +70,14 @@ start(Host, Opts) ->
 			       {attributes, record_info(fields, offline_msg)}]),
 	  update_table();
       p1db ->
-          p1db:open_table(offline_msg, [{mapsize, 1024*1024*100}]);
+          p1db:open_table(offline_msg,
+                          [{mapsize, 1024*1024*100},
+                           {schema, [{keys, [server, user, timestamp]},
+                                     {val, xml},
+                                     {enc_key, fun enc_key/1},
+                                     {dec_key, fun dec_key/1},
+                                     {enc_val, fun enc_val/2},
+                                     {dec_val, fun dec_val/2}]}]);
       _ -> ok
     end,
     ejabberd_hooks:add(offline_message_hook, Host, ?MODULE,
@@ -1121,6 +1128,31 @@ p1db_to_offmsg({LUser, LServer, Now}, Val) ->
 
 offmsg_to_p1db(#offline_msg{from = From, to = To, packet = Pkt, expire = T}) ->
     term_to_binary([{from, From}, {to, To}, {packet, Pkt}, {expire, T}]).
+
+%% P1DB/SQL schema
+enc_key([Server]) ->
+    <<Server/binary>>;
+enc_key([Server, User]) ->
+    <<Server/binary, 0, User/binary>>;
+enc_key([Server, User, TS]) ->
+    <<Server/binary, 0, User/binary, 0, TS:64>>.
+
+dec_key(Key) ->
+    SLen = str:chr(Key, 0) - 1,
+    <<Server:SLen/binary, 0, UKey/binary>> = Key,
+    ULen = str:chr(UKey, 0) - 1,
+    <<User:ULen/binary, 0, TS:64>> = UKey,
+    [Server, User, TS].
+
+enc_val(_, Bin) ->
+    Str = binary_to_list(<<Bin/binary, ".">>),
+    {ok, Tokens, _} = erl_scan:string(Str),
+    {ok, Term} = erl_parse:parse_term(Tokens),
+    term_to_binary(Term).
+
+dec_val(_, Bin) ->
+    Term = binary_to_term(Bin),
+    list_to_binary(io_lib:print(Term)).
 
 export(_Server) ->
     [{offline_msg,

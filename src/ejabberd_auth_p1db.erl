@@ -51,7 +51,11 @@
 %%% API
 %%%----------------------------------------------------------------------
 start(_Host) ->
-    p1db:open_table(passwd, [{mapsize, 1024*1024*100}]),
+    p1db:open_table(passwd, [{mapsize, 1024*1024*100},
+                             {schema, [{keys, [server, user]},
+                                       {val, password},
+                                       {enc_key, fun enc_key/1},
+                                       {dec_key, fun dec_key/1}]}]),
     ok.
 
 plain_password_required() -> false.
@@ -209,6 +213,18 @@ remove_user(User, Server, Password) ->
             bad_request
     end.
 
+%% P1DB/SQL Schema
+enc_key([Server]) ->
+    <<Server/binary>>;
+enc_key([Server, User]) ->
+    <<Server/binary, 0, User/binary>>.
+
+dec_key(Key) ->
+    Len = str:chr(Key, 0) - 1,
+    <<Server:Len/binary, 0, User/binary>> = Key,
+    [Server, User].
+
+%% Export/Import
 export(_Server) ->
     [{passwd,
       fun(Host, {USKey, Password}) ->

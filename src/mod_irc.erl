@@ -122,6 +122,15 @@ init([Host, Opts]) ->
 			      [{disc_copies, [node()]},
 			       {attributes, record_info(fields, irc_custom)}]),
 	  update_table();
+      p1db ->
+          p1db:open_table(irc_custom,
+                          [{mapsize, 1024*1024*100},
+                           {schema, [{keys, [service, server, user]},
+                                     {val, data},
+                                     {enc_key, fun enc_key/1},
+                                     {dec_key, fun dec_key/1},
+                                     {enc_val, fun enc_val/2},
+                                     {dec_val, fun dec_val/2}]}]);
       _ -> ok
     end,
     Access = gen_mod:get_opt(access, Opts,
@@ -1286,7 +1295,32 @@ conn_params_to_list(Params) ->
       end, Params).
 
 ush2key(LUser, LServer, Host) ->
-    <<LServer/binary, 0, LUser/binary, 0, Host>>.
+    <<Host/binary, 0, LServer/binary, 0, LUser/binary>>.
+
+%% P1DB/SQL schema
+enc_key([Host]) ->
+    <<Host/binary>>;
+enc_key([Host, Server]) ->
+    <<Host/binary, 0, Server/binary>>;
+enc_key([Host, Server, User]) ->
+    <<Host/binary, 0, Server/binary, 0, User/binary>>.
+
+dec_key(Key) ->
+    HLen = str:chr(Key, 0) - 1,
+    <<Host:HLen/binary, 0, SKey/binary>> = Key,
+    SLen = str:chr(SKey, 0) - 1,
+    <<Server:SLen/binary, 0, User/binary>> = SKey,
+    [Host, Server, User].
+
+enc_val(_, Bin) ->
+    Str = binary_to_list(<<Bin/binary, ".">>),
+    {ok, Tokens, _} = erl_scan:string(Str),
+    {ok, Term} = erl_parse:parse_term(Tokens),
+    term_to_binary(Term).
+
+dec_val(_, Bin) ->
+    Term = binary_to_term(Bin),
+    list_to_binary(io_lib:print(Term)).
 
 update_table() ->
     Fields = record_info(fields, irc_custom),

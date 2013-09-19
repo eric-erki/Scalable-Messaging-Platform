@@ -81,8 +81,20 @@ start(Host, Opts) ->
 	  mnesia:add_table_index(roster, us),
 	  mnesia:add_table_index(roster_version, us);
       p1db ->
-          p1db:open_table(roster, [{mapsize, 1024*1024*100}]),
-          p1db:open_table(roster_version, [{mapsize, 1024*1024*100}]);
+          p1db:open_table(roster,
+                          [{mapsize, 1024*1024*100},
+                           {schema, [{keys, [server, user, jid]},
+                                     {val, item},
+                                     {enc_key, fun enc_key/1},
+                                     {dec_key, fun dec_roster_key/1},
+                                     {enc_val, fun enc_val/2},
+                                     {dec_val, fun dec_val/2}]}]),
+          p1db:open_table(roster_version,
+                          [{mapsize, 1024*1024*100},
+                           {schema, [{keys, [server, user]},
+                                     {val, version},
+                                     {dec_key, fun dec_roster_version_key/1},
+                                     {enc_key, fun enc_key/1}]}]);
       _ -> ok
     end,
     ejabberd_hooks:add(roster_get, Host, ?MODULE,
@@ -1699,19 +1711,23 @@ us_prefix(User, Server) ->
     USKey = us2key(User, Server),
     <<USKey/binary, 0>>.
 
-item_to_p1db(#roster{name = Name,
-                     subscription = Subscription,
-                     ask = Ask,
-                     groups = Groups,
-                     askmessage = AskMessage,
-                     xs = Xs}) ->
-    term_to_binary(
-      [{name, Name},
-       {subscription, Subscription},
-       {ask, Ask},
-       {groups, Groups},
-       {askmessage, AskMessage},
-       {xs, Xs}]).
+item_to_p1db(Roster) ->
+    Keys = record_info(fields, roster),
+    DefRoster = #roster{us = Roster#roster.us,
+                        usj = Roster#roster.usj,
+                        jid = Roster#roster.jid},
+    {_, PropList} = 
+        lists:foldl(
+          fun(Key, {Pos, L}) ->
+                  Val = element(Pos, Roster),
+                  DefVal = element(Pos, DefRoster),
+                  if Val == DefVal ->
+                          {Pos+1, L};
+                     true ->
+                          {Pos+1, [{Key, Val}|L]}
+                  end
+          end, {2, []}, Keys),
+    term_to_binary(PropList).
 
 p1db_to_item({LUser, LServer, LJID}, Val) ->
     Item = #roster{usj = {LUser, LServer, LJID},
@@ -1726,6 +1742,36 @@ p1db_to_item({LUser, LServer, LJID}, Val) ->
          ({xs, Xs}, I) -> I#roster{xs = Xs};
          (_, I) -> I
       end, Item, binary_to_term(Val)).
+
+%% P1DB/SQL schema
+enc_key([Server]) ->
+    <<Server/binary>>;
+enc_key([Server, User]) ->
+    <<Server/binary, 0, User/binary>>;
+enc_key([Server, User, JID]) ->
+    <<Server/binary, 0, User/binary, 0, JID/binary>>.
+
+dec_roster_key(Key) ->
+    SLen = str:chr(Key, 0) - 1,
+    <<Server:SLen/binary, 0, UKey/binary>> = Key,
+    ULen = str:chr(UKey, 0) - 1,
+    <<User:ULen/binary, 0, JID/binary>> = UKey,
+    [Server, User, JID].
+
+dec_roster_version_key(Key) ->
+    SLen = str:chr(Key, 0) - 1,
+    <<Server:SLen/binary, 0, User/binary>> = Key,
+    [Server, User].
+
+enc_val(_, Bin) ->
+    Str = binary_to_list(<<Bin/binary, ".">>),
+    {ok, Tokens, _} = erl_scan:string(Str),
+    {ok, Term} = erl_parse:parse_term(Tokens),
+    term_to_binary(Term).
+
+dec_val(_, Bin) ->
+    Term = binary_to_term(Bin),
+    list_to_binary(io_lib:print(Term)).
 
 export(_Server) ->
     [{roster,

@@ -269,7 +269,7 @@ can_use_nick(_LServer, Host, JID, Nick, mnesia) ->
 can_use_nick(LServer, Host, JID, Nick, p1db) ->
     {LUser, LServer, _} = jlib:jid_tolower(JID),
     NHKey = nh2key(Nick, Host),
-    case p1db:get(muc_registered, NHKey) of
+    case p1db:get(muc_nick, NHKey) of
         {ok, SJID, _VClock} ->
             case jlib:string_to_jid(SJID) of
                 #jid{luser = LUser, lserver = LServer} ->
@@ -327,8 +327,26 @@ init([Host, Opts]) ->
 	  update_tables(),
 	  mnesia:add_table_index(muc_registered, nick);
       p1db ->
-          p1db:open_table(muc_room, [{mapsize, 1024*1024*100}]),
-          p1db:open_table(muc_registered, [{mapsize, 1024*1024*100}]);
+          p1db:open_table(muc_room,
+                          [{mapsize, 1024*1024*100},
+                           {schema, [{keys, [service, room]},
+                                     {val, options},
+                                     {enc_key, fun enc_key/1},
+                                     {dec_key, fun dec_key/1},
+                                     {enc_val, fun enc_room_opts/2},
+                                     {dec_val, fun dec_room_opts/2}]}]),
+          p1db:open_table(muc_nick,
+                          [{mapsize, 1024*1024*100},
+                           {schema, [{keys, [service, nick]},
+                                     {val, jid},
+                                     {enc_key, fun enc_key/1},
+                                     {dec_key, fun dec_key/1}]}]),
+          p1db:open_table(muc_user,
+                          [{mapsize, 1024*1024*100},
+                           {schema, [{keys, [service, server, user]},
+                                     {val, nick},
+                                     {enc_key, fun enc_key/1},
+                                     {dec_key, fun dec_user_key/1}]}]);
       _ -> ok
     end,
     update_muc_online_table(),
@@ -996,7 +1014,7 @@ get_nick(_LServer, Host, From, mnesia) ->
 get_nick(_LServer, Host, From, p1db) ->
     {LUser, LServer, _} = jlib:jid_tolower(From),
     USHKey = ush2key(LUser, LServer, Host),
-    case p1db:get(muc_registered, USHKey) of
+    case p1db:get(muc_user, USHKey) of
         {ok, Nick, _VClock} -> Nick;
         {error, _} -> error
     end;
@@ -1093,12 +1111,12 @@ set_nick(_LServer, Host, From, Nick, mnesia) ->
 set_nick(LServer, Host, From, <<"">>, p1db) ->
     {LUser, LServer, _} = jlib:jid_tolower(From),
     USHKey = ush2key(LUser, LServer, Host),
-    case p1db:get(muc_registered, USHKey) of
+    case p1db:get(muc_user, USHKey) of
         {ok, Nick, _VClock} ->
             NHKey = nh2key(Nick, Host),
-            case p1db:delete(muc_registered, NHKey) of
+            case p1db:delete(muc_nick, NHKey) of
                 ok ->
-                    case p1db:delete(muc_registered, USHKey) of
+                    case p1db:delete(muc_user, USHKey) of
                         ok -> {atomic, ok};
                         {error, notfound} -> {atomic, ok};
                         {error, _} = Err -> {aborted, Err}
@@ -1116,18 +1134,23 @@ set_nick(LServer, Host, From, Nick, p1db) ->
     NHKey = nh2key(Nick, Host),
     case can_use_nick(LServer, Host, From, Nick, p1db) of
         true ->
-            SJID = jlib:jid_to_string({LUser, LServer, <<"">>}),
-            case p1db:insert(muc_registered, NHKey, SJID) of
-                ok ->
-                    USHKey = ush2key(LUser, LServer, Host),
-                    case p1db:insert(muc_registered, USHKey, Nick) of
+            case set_nick(LServer, Host, From, <<"">>, p1db) of
+                {atomic, ok} ->
+                    SJID = jlib:jid_to_string({LUser, LServer, <<"">>}),
+                    case p1db:insert(muc_nick, NHKey, SJID) of
                         ok ->
-                            {atomic, ok};
+                            USHKey = ush2key(LUser, LServer, Host),
+                            case p1db:insert(muc_user, USHKey, Nick) of
+                                ok ->
+                                    {atomic, ok};
+                                {error, _} = Err ->
+                                    {aborted, Err}
+                            end;
                         {error, _} = Err ->
                             {aborted, Err}
                     end;
-                {error, _} = Err ->
-                    {aborted, Err}
+                Aborted ->
+                    Aborted
             end;
         false ->
             {atomic, false}
@@ -1458,6 +1481,36 @@ key2room(HPrefix, Key) ->
     <<_:Size/binary, Room/binary>> = Key,
     Room.
 
+%% P1DB/SQL schema
+enc_key([Host]) ->
+    <<Host/binary>>;
+enc_key([Host, Val]) ->
+    <<Host/binary, 0, Val/binary>>;
+enc_key([Host, Server, User]) ->
+    <<Host/binary, 0, Server/binary, 0, User/binary>>.
+
+dec_key(Key) ->
+    Len = str:chr(Key, 0) - 1,
+    <<Host:Len/binary, 0, Val/binary>> = Key,
+    [Host, Val].
+
+dec_user_key(Key) ->
+    HLen = str:chr(Key, 0) - 1,
+    <<Host:HLen/binary, 0, SKey/binary>> = Key,
+    SLen = str:chr(SKey, 0) - 1,
+    <<Server:SLen/binary, 0, User/binary>> = SKey,
+    [Host, Server, User].
+
+enc_room_opts(_, Bin) ->
+    Str = binary_to_list(<<Bin/binary, ".">>),
+    {ok, Tokens, _} = erl_scan:string(Str),
+    {ok, Term} = erl_parse:parse_term(Tokens),
+    term_to_binary(Term).
+
+dec_room_opts(_, Bin) ->
+    Term = binary_to_term(Bin),
+    list_to_binary(io_lib:print(Term)).
+
 export(_Server) ->
     [{muc_room,
       fun(Host, #muc_room{name_host = {Name, RoomHost}, opts = Opts}) ->
@@ -1524,8 +1577,8 @@ import(_LServer, p1db, #muc_registered{us_host = {{U, S}, Host},
     NHKey = nh2key(Nick, Host),
     USHKey = ush2key(U, S, Host),
     SJID = jlib:jid_to_string({U, S, <<"">>}),
-    p1db:async_insert(muc_registered, NHKey, SJID),
-    p1db:async_insert(muc_registered, USHKey, Nick);
+    p1db:async_insert(muc_nick, NHKey, SJID),
+    p1db:async_insert(muc_user, USHKey, Nick);
 import(_LServer, riak, #muc_room{} = R) ->
     ejabberd_riak:put(R);
 import(_LServer, riak,

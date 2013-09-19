@@ -65,7 +65,14 @@ start(Host, Opts) ->
 			       {attributes, record_info(fields, privacy)}]),
 	  update_table();
       p1db ->
-          p1db:open_table(privacy, [{mapsize, 1024*1024*100}]);
+          p1db:open_table(privacy,
+                          [{mapsize, 1024*1024*100},
+                           {schema, [{keys, [server, user, name]},
+                                     {val, list},
+                                     {enc_key, fun enc_key/1},
+                                     {dec_key, fun dec_key/1},
+                                     {enc_val, fun enc_val/2},
+                                     {dec_val, fun dec_val/2}]}]);
       _ -> ok
     end,
     mod_disco:register_feature(Host, ?NS_PRIVACY),
@@ -1102,6 +1109,42 @@ key2name(USPrefix, Key) ->
     Size = size(USPrefix),
     <<_:Size/binary, Name/binary>> = Key,
     Name.
+
+%% P1DB/SQL schema
+enc_key([Server]) ->
+    <<Server/binary>>;
+enc_key([Server, User]) ->
+    <<Server/binary, 0, User/binary>>;
+enc_key([Server, User, null]) ->
+    <<Server/binary, 0, User/binary, 0, 0>>;
+enc_key([Server, User, Name]) ->
+    <<Server/binary, 0, User/binary, 0, Name/binary>>.
+
+dec_key(Key) ->
+    SLen = str:chr(Key, 0) - 1,
+    <<Server:SLen/binary, 0, UKey/binary>> = Key,
+    ULen = str:chr(UKey, 0) - 1,
+    <<User:ULen/binary, 0, Rest/binary>> = UKey,
+    case Rest of
+        <<0>> ->
+            [Server, User, null];
+        Name ->
+            [Server, User, Name]
+    end.
+
+enc_val([_, _, null], Bin) ->
+    Bin;
+enc_val(_, Bin) ->
+    Str = binary_to_list(<<Bin/binary, ".">>),
+    {ok, Tokens, _} = erl_scan:string(Str),
+    {ok, Term} = erl_parse:parse_term(Tokens),
+    term_to_binary(Term).
+
+dec_val([_, _, null], Bin) ->
+    Bin;
+dec_val(_, Bin) ->
+    Term = binary_to_term(Bin),
+    list_to_binary(io_lib:print(Term)).
 
 p1db_to_items(Val) ->
     lists:map(fun proplist_to_item/1, binary_to_term(Val)).

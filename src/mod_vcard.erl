@@ -76,7 +76,12 @@ start(Host, Opts) ->
 	  mnesia:add_table_index(vcard_search, lorgname),
 	  mnesia:add_table_index(vcard_search, lorgunit);
       p1db ->
-          p1db:open_table(vcard, [{mapsize, 1024*1024*100}]);
+          p1db:open_table(vcard,
+                          [{mapsize, 1024*1024*100},
+                           {schema, [{keys, [server, user]},
+                                     {val, vcard},
+                                     {enc_key, fun enc_key/1},
+                                     {dec_key, fun dec_key/1}]}]);
       _ -> ok
     end,
     ejabberd_hooks:add(remove_user, Host, ?MODULE,
@@ -1004,6 +1009,17 @@ update_vcard_search_table() ->
 
 us2key(LUser, LServer) ->
     <<LServer/binary, 0, LUser/binary>>.
+
+%% P1DB/SQL schema
+enc_key([Server]) ->
+    <<Server/binary>>;
+enc_key([Server, User]) ->
+    <<Server/binary, 0, User/binary>>.
+
+dec_key(Key) ->
+    SLen = str:chr(Key, 0) - 1,
+    <<Server:SLen/binary, 0, User/binary>> = Key,
+    [Server, User].
 
 export(_Server) ->   
     [{vcard,
