@@ -317,3 +317,13 @@ CREATE TABLE caps_features (
 ) CHARACTER SET utf8;
 
 CREATE INDEX i_caps_features_node_subnode ON caps_features(node(75), subnode(75));
+
+CREATE TABLE `applepush_cache` (
+   `username` varchar(255) NOT NULL,
+   `device_id` varchar(255) NOT NULL,
+   `app_id` varchar(255) NOT NULL,
+   `send_body` char(1) NOT NULL,
+   `send_from` char(1) NOT NULL,
+   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   UNIQUE KEY `i_applepush_cache_username_device_id` (`username`,`device_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
