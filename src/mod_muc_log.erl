@@ -48,6 +48,7 @@
 -include("mod_muc_room.hrl").
 
 -record(muc_online_room, {name_host = {<<>>, <<>>} :: {binary(), binary()},
+                          timestamp = now() :: erlang:timestamp(),
                           pid = self() :: pid()}).
 
 -define(T(Text), translate:translate(Lang, Text)).
