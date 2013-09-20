@@ -34,7 +34,7 @@
 
 %% API
 -export([start_link/2, start/2, stop/1, export/1, import/1,
-	 unregister_room/2, store_room/4, restore_room/3,
+	 unregister_room/2, store_room/5, restore_room/3,
 	 forget_room/3, create_room/5, process_iq_disco_items/4,
 	 broadcast_service_message/2, register_room/3,
 	 get_vh_rooms/1, shutdown_rooms/1,
@@ -141,28 +141,37 @@ create_room(Host, Name, From, Nick, Opts) ->
     gen_server:call({Proc, Node},
 		    {create, Name, From, Nick, Opts}).
 
-store_room(ServerHost, Host, Name, Opts) ->
+store_room(ServerHost, Host, Name, Config, Affiliations) ->
     LServer = jlib:nameprep(ServerHost),
-    store_room(LServer, Host, Name, Opts,
+    store_room(LServer, Host, Name, Config, Affiliations,
 	       gen_mod:db_type(LServer, ?MODULE)).
 
-store_room(_LServer, Host, Name, Opts, mnesia) ->
+store_room(_LServer, Host, Name, Config, Affiliations, mnesia) ->
+    Opts = [{affiliations, Affiliations}|Config],
     F = fun () ->
 		mnesia:write(#muc_room{name_host = {Name, Host},
 				       opts = Opts})
 	end,
     mnesia:transaction(F);
-store_room(_LServer, Host, Name, Opts, p1db) ->
+store_room(_LServer, Host, Name, Config, Affiliations, p1db) ->
     RoomKey = rh2key(Name, Host),
-    Val = term_to_binary(Opts),
-    case p1db:insert(muc_room, RoomKey, Val) of
-        ok -> {atomic, ok};
-        {error, _} = Err -> {aborted, Err}
+    CfgVal = term_to_binary(Config),
+    AffVal = term_to_binary(Affiliations),
+    case p1db:insert(muc_config, RoomKey, CfgVal) of
+        ok ->
+            case p1db:insert(muc_affiliations, RoomKey, AffVal) of
+                ok -> {atomic, ok};
+                {error, _} = Err -> {aborted, Err}
+            end;
+        {error, _} = Err ->
+            {aborted, Err}
     end;
-store_room(_LServer, Host, Name, Opts, riak) ->
+store_room(_LServer, Host, Name, Config, Affiliations, riak) ->
+    Opts = [{affiliations, Affiliations}|Config],
     {atomic, ejabberd_riak:put(#muc_room{name_host = {Name, Host},
                                          opts = Opts})};
-store_room(LServer, Host, Name, Opts, odbc) ->
+store_room(LServer, Host, Name, Config, Affiliations, odbc) ->
+    Opts = [{affiliations, Affiliations}|Config],
     SName = ejabberd_odbc:escape(Name),
     SHost = ejabberd_odbc:escape(Host),
     SOpts = ejabberd_odbc:encode_term(Opts),
@@ -187,9 +196,22 @@ restore_room(_LServer, Host, Name, mnesia) ->
     end;
 restore_room(_LServer, Host, Name, p1db) ->
     RoomKey = rh2key(Name, Host),
-    case p1db:get(muc_room, RoomKey) of
-        {ok, Val, _VClock} -> binary_to_term(Val);
-        {error, _} -> error
+    case p1db:get(muc_config, RoomKey) of
+        {ok, CfgVal, _VClock1} ->
+            case p1db:get(muc_affiliations, RoomKey) of
+                {ok, AffVal, _VClock2} ->
+                    Config = binary_to_term(CfgVal),
+                    Affiliations = binary_to_term(AffVal),
+                    [{affiliations, Affiliations}|Config];
+                {error, Reason} ->
+                    ?WARNING_MSG("failed to get affiliations "
+                                 " for room ~s@~s: ~s",
+                                 [Name, Host,
+                                  p1db:format_error(Reason)]),
+                    error
+            end;
+        {error, _} ->
+            error
     end;
 restore_room(_LServer, Host, Name, riak) ->
     case ejabberd_riak:get(muc_room, {Name, Host}) of
@@ -220,10 +242,15 @@ forget_room(_LServer, Host, Name, mnesia) ->
     mnesia:transaction(F);
 forget_room(_LServer, Host, Name, p1db) ->
     RoomKey = rh2key(Name, Host),
-    case p1db:delete(muc_room, RoomKey) of
-        ok -> {atomic, ok};
-        {error, notfound} -> {atomic, ok};
-        {error, _} = Err -> {aborted, Err}
+    DelRes = p1db:delete(muc_config, RoomKey),
+    if DelRes == ok; DelRes == {error, notfound} ->
+            case p1db:delete(muc_affiliations, RoomKey) of
+                ok -> {atomic, ok};
+                {error, notfound} -> {atomic, ok};
+                {error, _} = Err -> {aborted, Err}
+            end;
+       true ->
+            {aborted, DelRes}
     end;
 forget_room(_LServer, Host, Name, riak) ->
     {atomic, ejabberd_riak:delete(muc_room, {Name, Host})};
@@ -327,14 +354,22 @@ init([Host, Opts]) ->
 	  update_tables(),
 	  mnesia:add_table_index(muc_registered, nick);
       p1db ->
-          p1db:open_table(muc_room,
+          p1db:open_table(muc_config,
                           [{mapsize, 1024*1024*100},
                            {schema, [{keys, [service, room]},
                                      {vals, [options]},
                                      {enc_key, fun enc_key/1},
                                      {dec_key, fun dec_key/1},
-                                     {enc_val, fun enc_room_opts/2},
-                                     {dec_val, fun dec_room_opts/2}]}]),
+                                     {enc_val, fun enc_term/2},
+                                     {dec_val, fun dec_term/2}]}]),
+          p1db:open_table(muc_affiliations,
+                          [{mapsize, 1024*1024*100},
+                           {schema, [{keys, [service, room]},
+                                     {vals, [affiliations]},
+                                     {enc_key, fun enc_key/1},
+                                     {dec_key, fun dec_key/1},
+                                     {enc_val, fun enc_term/2},
+                                     {dec_val, fun dec_term/2}]}]),
           p1db:open_table(muc_nick,
                           [{mapsize, 1024*1024*100},
                            {schema, [{keys, [service, nick]},
@@ -703,15 +738,27 @@ get_rooms(_LServer, Host, mnesia) ->
     end;
 get_rooms(_LServer, Host, p1db) ->
     HPrefix = host_prefix(Host),
-    case p1db:get_by_prefix(muc_room, HPrefix) of
-        {ok, L} ->
+    case p1db:get_by_prefix(muc_config, HPrefix) of
+        {ok, CfgList} ->
             lists:map(
-              fun({Key, Val, _VClock}) ->
+              fun({Key, CfgVal, _VClock}) ->
                       Room = key2room(HPrefix, Key),
-                      Opts = binary_to_term(Val),
+                      Cfg = binary_to_term(CfgVal),
+                      Affiliations =
+                          case p1db:get(muc_affiliations, Key) of
+                              {ok, AffVal, _} ->
+                                  [{affiliations, binary_to_term(AffVal)}];
+                              {error, Reason} ->
+                                  ?WARNING_MSG("failed to get affiliations "
+                                               " for room ~s@~s: ~s",
+                                               [Room, Host,
+                                                p1db:format_error(Reason)]),
+                                  []
+                          end,
+                      Opts = Affiliations ++ Cfg,
                       #muc_room{name_host = {Room, Host},
                                 opts = Opts}
-              end, L);
+              end, CfgList);
         {error, _} ->
             []
     end;
@@ -1501,11 +1548,11 @@ dec_user_key(Key) ->
     <<Server:SLen/binary, 0, User/binary>> = SKey,
     [Host, Server, User].
 
-enc_room_opts(_, [Expr]) ->
+enc_term(_, [Expr]) ->
     Term = jlib:expr_to_term(Expr),
     term_to_binary(Term).
 
-dec_room_opts(_, Bin) ->
+dec_term(_, Bin) ->
     Term = binary_to_term(Bin),
     [jlib:term_to_expr(Term)].
 
@@ -1568,8 +1615,13 @@ import(_LServer, mnesia, #muc_room{} = R) ->
 import(_LServer, mnesia, #muc_registered{} = R) ->
     mnesia:dirty_write(R);
 import(_LServer, p1db, #muc_room{name_host = {Room, Host}, opts = Opts}) ->
+    {Affiliations, Config} = lists:parition(
+                               fun({affiliations, _}) -> true;
+                                  (_) -> false
+                               end, Opts),
     RHKey = rh2key(Room, Host),
-    p1db:async_insert(muc_room, RHKey, term_to_binary(Opts));
+    p1db:async_insert(muc_config, RHKey, term_to_binary(Config)),
+    p1db:async_insert(muc_affiliations, RHKey, term_to_binary(Affiliations));
 import(_LServer, p1db, #muc_registered{us_host = {{U, S}, Host},
                                        nick = Nick}) ->
     NHKey = nh2key(Nick, Host),

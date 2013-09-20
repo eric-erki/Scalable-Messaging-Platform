@@ -148,7 +148,7 @@ init([Host, ServerHost, Access, Room, HistorySize,
     if (State1#state.config)#config.persistent ->
 	   mod_muc:store_room(State1#state.server_host,
                               State1#state.host, State1#state.room,
-			      make_opts(State1));
+			      make_opts(State1), make_affiliations(State1));
        true -> ok
     end,
     ?INFO_MSG("Created MUC room ~s@~s by ~s",
@@ -316,7 +316,8 @@ normal_state({route, From, <<"">>,
 					       mod_muc:store_room(NSD#state.server_host,
 								  NSD#state.host,
 								  NSD#state.room,
-								  make_opts(NSD));
+								  make_opts(NSD),
+                                                                  make_affiliations(NSD));
 					   _ -> ok
 					 end,
 					 {next_state, normal_state, NSD};
@@ -1019,7 +1020,8 @@ process_groupchat_message(From,
 								mod_muc:store_room(NSD#state.server_host,
 										   NSD#state.host,
 										   NSD#state.room,
-										   make_opts(NSD));
+										   make_opts(NSD),
+                                                                                   make_affiliations(NSD));
 							    _ -> ok
 							  end,
 							  {NSD, true};
@@ -2777,7 +2779,7 @@ process_admin_items_set(UJID, Items, Lang, StateData) ->
 	    true ->
 		mod_muc:store_room(NSD#state.server_host,
 				   NSD#state.host, NSD#state.room,
-				   make_opts(NSD));
+				   make_opts(NSD), make_affiliations(NSD));
 	    _ -> ok
 	  end,
 	  {result, [], NSD};
@@ -3809,7 +3811,8 @@ change_config(Config, StateData) ->
 	of
       {_, true} ->
 	  mod_muc:store_room(NSD#state.server_host,
-			     NSD#state.host, NSD#state.room, make_opts(NSD));
+			     NSD#state.host, NSD#state.room,
+                             make_opts(NSD), make_affiliations(NSD));
       {true, false} ->
 	  mod_muc:forget_room(NSD#state.server_host,
 			      NSD#state.host, NSD#state.room);
@@ -3948,36 +3951,37 @@ set_opts([{Opt, Val} | Opts], StateData) ->
 	  end,
     set_opts(Opts, NSD).
 
--define(MAKE_CONFIG_OPT(Opt), {Opt, Config#config.Opt}).
-
+make_affiliations(StateData) ->
+    (?DICT):to_list(StateData#state.affiliations).
 
 make_opts(StateData) ->
+    make_opts(StateData, true).
+
+make_opts(StateData, Compact) ->
     Config = StateData#state.config,
-    [?MAKE_CONFIG_OPT(title), ?MAKE_CONFIG_OPT(description),
-     ?MAKE_CONFIG_OPT(allow_change_subj),
-     ?MAKE_CONFIG_OPT(allow_query_users),
-     ?MAKE_CONFIG_OPT(allow_private_messages),
-     ?MAKE_CONFIG_OPT(allow_private_messages_from_visitors),
-     ?MAKE_CONFIG_OPT(allow_visitor_status),
-     ?MAKE_CONFIG_OPT(allow_visitor_nickchange),
-     ?MAKE_CONFIG_OPT(public), ?MAKE_CONFIG_OPT(public_list),
-     ?MAKE_CONFIG_OPT(persistent),
-     ?MAKE_CONFIG_OPT(moderated),
-     ?MAKE_CONFIG_OPT(members_by_default),
-     ?MAKE_CONFIG_OPT(members_only),
-     ?MAKE_CONFIG_OPT(allow_user_invites),
-     ?MAKE_CONFIG_OPT(password_protected),
-     ?MAKE_CONFIG_OPT(captcha_protected),
-     ?MAKE_CONFIG_OPT(password), ?MAKE_CONFIG_OPT(anonymous),
-     ?MAKE_CONFIG_OPT(logging), ?MAKE_CONFIG_OPT(max_users),
-     ?MAKE_CONFIG_OPT(allow_voice_requests),
-     ?MAKE_CONFIG_OPT(voice_request_min_interval),
-     {captcha_whitelist,
-      (?SETS):to_list((StateData#state.config)#config.captcha_whitelist)},
-     {affiliations,
-      (?DICT):to_list(StateData#state.affiliations)},
-     {subject, StateData#state.subject},
-     {subject_author, StateData#state.subject_author}].
+    DefConfig = #config{},
+    Fields = record_info(fields, config),
+    {_, Opts} =
+        lists:foldl(
+          fun(captcha_whitelist, {Pos, L}) ->
+                  case (?SETS):to_list(element(Pos, Config)) of
+                      [] when Compact ->
+                          {Pos+1, L};
+                      Val ->
+                          {Pos+1, [{captcha_whitelist, Val}|L]}
+                  end;
+             (Field, {Pos, L}) ->
+                  Val = element(Pos, Config),
+                  DefVal = element(Pos, DefConfig),
+                  if (Val == DefVal) and Compact ->
+                          {Pos+1, L};
+                     true ->
+                          {Pos+1, [{Field, Val}|L]}
+                  end
+          end, {2, []}, Fields),
+    [{subject, StateData#state.subject},
+     {subject_author, StateData#state.subject_author}
+     | lists:reverse(Opts)].
 
 destroy_room(DEl, StateData) ->
     lists:foreach(fun ({_LJID, Info}) ->
@@ -4469,13 +4473,13 @@ add_to_log(Type, Data, StateData)
     when Type == roomconfig_change_disabledlogging ->
     mod_muc_log:add_to_log(StateData#state.server_host,
 			   roomconfig_change, Data, StateData#state.jid,
-			   make_opts(StateData));
+			   make_opts(StateData, false));
 add_to_log(Type, Data, StateData) ->
     case (StateData#state.config)#config.logging of
       true ->
 	  mod_muc_log:add_to_log(StateData#state.server_host,
 				 Type, Data, StateData#state.jid,
-				 make_opts(StateData));
+				 make_opts(StateData, false));
       false -> ok
     end.
 
