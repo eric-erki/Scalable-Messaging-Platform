@@ -191,13 +191,10 @@ to_bool(1) -> true;
 to_bool(_) -> false.
 
 encode_term(Term) ->
-    escape(list_to_binary(io_lib:print(Term))).
+    escape(jlib:term_to_expr(Term)).
 
-decode_term(Bin) ->
-    Str = binary_to_list(<<Bin/binary, ".">>),
-    {ok, Tokens, _} = erl_scan:string(Str),
-    {ok, Term} = erl_parse:parse_term(Tokens),
-    Term.
+decode_term(Expr) ->
+    jlib:expr_to_term(Expr).
 
 %%%----------------------------------------------------------------------
 %%% Callback functions from gen_fsm

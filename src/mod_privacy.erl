@@ -68,7 +68,7 @@ start(Host, Opts) ->
           p1db:open_table(privacy,
                           [{mapsize, 1024*1024*100},
                            {schema, [{keys, [server, user, name]},
-                                     {val, list},
+                                     {vals, [list]},
                                      {enc_key, fun enc_key/1},
                                      {dec_key, fun dec_key/1},
                                      {enc_val, fun enc_val/2},
@@ -1132,19 +1132,17 @@ dec_key(Key) ->
             [Server, User, Name]
     end.
 
-enc_val([_, _, null], Bin) ->
+enc_val([_, _, null], [Bin]) ->
     Bin;
-enc_val(_, Bin) ->
-    Str = binary_to_list(<<Bin/binary, ".">>),
-    {ok, Tokens, _} = erl_scan:string(Str),
-    {ok, Term} = erl_parse:parse_term(Tokens),
+enc_val(_, [Expr]) ->
+    Term = jlib:expr_to_term(Expr),
     term_to_binary(Term).
 
 dec_val([_, _, null], Bin) ->
-    Bin;
+    [Bin];
 dec_val(_, Bin) ->
     Term = binary_to_term(Bin),
-    list_to_binary(io_lib:print(Term)).
+    [jlib:term_to_expr(Term)].
 
 p1db_to_items(Val) ->
     lists:map(fun proplist_to_item/1, binary_to_term(Val)).

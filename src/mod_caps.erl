@@ -307,10 +307,12 @@ init([Host, Opts]) ->
         p1db ->
             p1db:open_table(caps_features,
                             [{mapsize, 1024*1024*100},
-                             {schema, [{keys, [node]},
-                                       {val, features},
-                                       {dec_val, fun dec_val/2},
-                                       {enc_val, fun enc_val/2}]}]);
+                             {schema, [{keys, [node, ver, feature]},
+                                       {vals, [timestamp]},
+                                       {enc_key, fun enc_key/1},
+                                       {dec_key, fun dec_key/1},
+                                       {enc_val, fun enc_val/2},
+                                       {dec_val, fun dec_val/2}]}]);
         _ ->
             ok
     end,
@@ -450,9 +452,26 @@ caps_read_fun(_LServer, Node, mnesia) ->
     end;
 caps_read_fun(_LServer, Node, p1db) ->
     fun() ->
-            case p1db:get(caps_features, node2key(Node)) of
-                {ok, Val} -> {ok, binary_to_term(Val)};
-                _ -> error
+            NVPrefix = nv_prefix(Node),
+            case p1db:get_by_prefix(caps_features, NVPrefix) of
+                {ok, []} ->
+                    error;
+                {ok, L} ->
+                    NullFeature = null_feature(Node),
+                    case lists:map(
+                           fun({Key, <<T:32>>, _}) ->
+                                   case key2feature(NVPrefix, Key) of
+                                       NullFeature -> T;
+                                       Feature -> Feature
+                                   end
+                           end, L) of
+                        [TS|_] when is_integer(TS) ->
+                            {ok, TS};
+                        Features ->
+                            {ok, Features}
+                    end;
+                {error, _} ->
+                    error
             end
     end;
 caps_read_fun(_LServer, Node, riak) ->
@@ -494,8 +513,18 @@ caps_write_fun(_LServer, Node, Features, mnesia) ->
     end;
 caps_write_fun(_LServer, Node, Features, p1db) ->
     fun () ->
-            Val = term_to_binary(Features),
-            p1db:insert(caps_features, node2key(Node), Val)
+            if is_list(Features) ->
+                    p1db:delete(caps_features, null_feature(Node)),
+                    lists:foreach(
+                      fun(Feature) ->
+                              NVFKey = nvf2key(Node, Feature),
+                              p1db:insert(caps_features,
+                                          NVFKey, <<(now_ts()):32>>)
+                      end, Features);
+               true ->
+                    NVFKey = null_feature(Node),
+                    p1db:insert(caps_features, NVFKey, <<Features:32>>)
+            end
     end;
 caps_write_fun(_LServer, Node, Features, riak) ->
     fun () ->
@@ -657,8 +686,19 @@ is_valid_node(Node) ->
             false
     end.
 
-node2key({Node, SubNode}) ->
-    <<Node/binary, $#, SubNode/binary>>.
+nvf2key({Node, Ver}, Feature) ->
+    <<Node/binary, 0, Ver/binary, 0, Feature/binary>>.
+
+nv_prefix({Node, Ver}) ->
+    <<Node/binary, 0, Ver/binary, 0>>.
+
+null_feature({Node, Ver}) ->
+    <<Node/binary, 0, Ver/binary, 0, 0>>.
+
+key2feature(Prefix, Key) ->
+    Size = size(Prefix),
+    <<_:Size/binary, Feature/binary>> = Key,
+    Feature.
 
 update_table() ->
     Fields = record_info(fields, caps_features),
@@ -698,15 +738,30 @@ sql_write_features_t({Node, SubNode}, Features) ->
        ejabberd_odbc:escape(F), <<"');">>] || F <- NewFeatures]].
 
 %% P1DB/SQL schema
-enc_val(_, Bin) ->
-    Str = binary_to_list(<<Bin/binary, ".">>),
-    {ok, Tokens, _} = erl_scan:string(Str),
-    {ok, Term} = erl_parse:parse_term(Tokens),
-    term_to_binary(Term).
+enc_key([Node]) ->
+    <<Node/binary>>;
+enc_key([Node, Ver]) ->
+    <<Node/binary, 0, Ver/binary>>;
+enc_key([Node, Ver, null]) ->
+    <<Node/binary, 0, Ver/binary, 0, 0>>;
+enc_key([Node, Ver, Feature]) ->
+    <<Node/binary, 0, Ver/binary, 0, Feature/binary>>.
 
-dec_val(_, Bin) ->
-    Term = binary_to_term(Bin),
-    list_to_binary(io_lib:print(Term)).
+dec_key(Key) ->
+    NLen = str:chr(Key, 0) - 1,
+    <<Node:NLen/binary, 0, VKey/binary>> = Key,
+    VLen = str:chr(VKey, 0) - 1,
+    <<Ver:VLen/binary, 0, Feature/binary>> = VKey,
+    case Feature of
+        <<0>> -> [Node, Ver, null];
+        _ -> [Node, Ver, Feature]
+    end.
+
+enc_val(_, [I]) ->
+    <<I:32>>.
+
+dec_val(_, <<I:32>>) ->
+    [I].
 
 export(_Server) ->
     [{caps_features,
@@ -745,7 +800,17 @@ import(_LServer) ->
 import(_LServer, mnesia, #caps_features{} = Caps) ->
     mnesia:dirty_write(Caps);
 import(_LServer, p1db, #caps_features{node_pair = Node, features = Feats}) ->
-    p1db:async_insert(caps_features, node2key(Node), term_to_binary(Feats));
+    if is_list(Feats) ->
+            lists:foreach(
+              fun(Feature) ->
+                      NVFKey = nvf2key(Node, Feature),
+                      p1db:async_insert(caps_features,
+                                        NVFKey, <<(now_ts()):32>>)
+              end, Feats);
+       true ->
+            NVFKey = null_feature(Node),
+            p1db:async_insert(caps_features, NVFKey, <<Feats:32>>)
+    end;
 import(_LServer, riak, #caps_features{} = Caps) ->
     ejabberd_riak:put(Caps);
 import(_, _, _) ->

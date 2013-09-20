@@ -126,7 +126,7 @@ init([Host, Opts]) ->
           p1db:open_table(irc_custom,
                           [{mapsize, 1024*1024*100},
                            {schema, [{keys, [service, server, user]},
-                                     {val, data},
+                                     {vals, [data]},
                                      {enc_key, fun enc_key/1},
                                      {dec_key, fun dec_key/1},
                                      {enc_val, fun enc_val/2},
@@ -1312,15 +1312,13 @@ dec_key(Key) ->
     <<Server:SLen/binary, 0, User/binary>> = SKey,
     [Host, Server, User].
 
-enc_val(_, Bin) ->
-    Str = binary_to_list(<<Bin/binary, ".">>),
-    {ok, Tokens, _} = erl_scan:string(Str),
-    {ok, Term} = erl_parse:parse_term(Tokens),
+enc_val(_, [Expr]) ->
+    Term = jlib:expr_to_term(Expr),
     term_to_binary(Term).
 
 dec_val(_, Bin) ->
     Term = binary_to_term(Bin),
-    list_to_binary(io_lib:print(Term)).
+    [jlib:term_to_expr(Term)].
 
 update_table() ->
     Fields = record_info(fields, irc_custom),

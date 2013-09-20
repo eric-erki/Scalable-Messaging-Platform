@@ -330,7 +330,7 @@ init([Host, Opts]) ->
           p1db:open_table(muc_room,
                           [{mapsize, 1024*1024*100},
                            {schema, [{keys, [service, room]},
-                                     {val, options},
+                                     {vals, [options]},
                                      {enc_key, fun enc_key/1},
                                      {dec_key, fun dec_key/1},
                                      {enc_val, fun enc_room_opts/2},
@@ -338,13 +338,13 @@ init([Host, Opts]) ->
           p1db:open_table(muc_nick,
                           [{mapsize, 1024*1024*100},
                            {schema, [{keys, [service, nick]},
-                                     {val, jid},
+                                     {vals, [jid]},
                                      {enc_key, fun enc_key/1},
                                      {dec_key, fun dec_key/1}]}]),
           p1db:open_table(muc_user,
                           [{mapsize, 1024*1024*100},
                            {schema, [{keys, [service, server, user]},
-                                     {val, nick},
+                                     {vals, [nick]},
                                      {enc_key, fun enc_key/1},
                                      {dec_key, fun dec_user_key/1}]}]);
       _ -> ok
@@ -1501,15 +1501,13 @@ dec_user_key(Key) ->
     <<Server:SLen/binary, 0, User/binary>> = SKey,
     [Host, Server, User].
 
-enc_room_opts(_, Bin) ->
-    Str = binary_to_list(<<Bin/binary, ".">>),
-    {ok, Tokens, _} = erl_scan:string(Str),
-    {ok, Term} = erl_parse:parse_term(Tokens),
+enc_room_opts(_, [Expr]) ->
+    Term = jlib:expr_to_term(Expr),
     term_to_binary(Term).
 
 dec_room_opts(_, Bin) ->
     Term = binary_to_term(Bin),
-    list_to_binary(io_lib:print(Term)).
+    [jlib:term_to_expr(Term)].
 
 export(_Server) ->
     [{muc_room,

@@ -61,7 +61,7 @@ start(Host, Opts) ->
           p1db:open_table(private_storage,
                           [{mapsize, 1024*1024*100},
                            {schema, [{keys, [server, user, xmlns]},
-                                     {val, xml},
+                                     {vals, [xml]},
                                      {enc_key, fun enc_key/1},
                                      {dec_key, fun dec_key/1}]}]);
       _ -> ok

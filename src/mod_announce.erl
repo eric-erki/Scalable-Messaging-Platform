@@ -80,7 +80,7 @@ start(Host, Opts) ->
             p1db:open_table(motd,
                             [{mapsize, 1024*1024*100},
                              {schema, [{keys, [server, user]},
-                                       {val, motd},
+                                       {vals, [motd]},
                                        {enc_key, fun enc_key/1},
                                        {dec_key, fun dec_key/1}]}]);
         _ ->
@@ -864,9 +864,9 @@ announce_motd_update(LServer, Packet) ->
                 end,
             mnesia:transaction(F);
         p1db ->
-            SPrefix = server_prefix(LServer),
+            MsgKey = msg_key(LServer),
             XML = xml:element_to_binary(Packet),
-            case p1db:insert(motd, SPrefix, XML) of
+            case p1db:insert(motd, MsgKey, XML) of
                 ok -> {atomic, ok};
                 {error, _} = Err -> {aborted, Err}
             end;
@@ -979,12 +979,12 @@ send_motd(#jid{luser = LUser, lserver = LServer} = JID, p1db) ->
         {ok, <<>>, _VClock} ->
             ok;
         {error, notfound} ->
-            SPrefix = server_prefix(LServer),
-            case p1db:get(motd, SPrefix) of
+            MsgKey = msg_key(LServer),
+            case p1db:get(motd, MsgKey) of
                 {ok, XML, _VClock} ->
                     case xml_stream:parse_element(XML) of
                         #xmlel{} = Packet ->
-                            case p1db:insert(motd, USKey) of
+                            case p1db:insert(motd, USKey, <<>>) of
                                 ok ->
                                     Local = jlib:make_jid(<<>>, LServer, <<>>),
                                     ejabberd_router:route(Local, JID, Packet);
@@ -1066,8 +1066,8 @@ get_stored_motd_packet(LServer, mnesia) ->
 	    error
     end;
 get_stored_motd_packet(LServer, p1db) ->
-    SPrefix = server_prefix(LServer),
-    case p1db:get(motd, SPrefix) of
+    MsgKey = msg_key(LServer),
+    case p1db:get(motd, MsgKey) of
         {ok, Val, _VClock} ->
             case xml_stream:parse_element(Val) of
                 #xmlel{} = El -> {ok, El};
@@ -1137,16 +1137,24 @@ us2key(LUser, LServer) ->
 server_prefix(LServer) ->
     <<LServer/binary, 0>>.
 
+msg_key(LServer) ->
+    <<LServer/binary, 0, 0>>.
+
 %% P1DB/SQL schema
 enc_key([Server]) ->
     <<Server/binary>>;
+enc_key([Server, null]) ->
+    <<Server/binary, 0, 0>>;
 enc_key([Server, User]) ->
     <<Server/binary, 0, User/binary>>.
 
 dec_key(Key) ->
     SLen = str:chr(Key, 0) - 1,
     <<Server:SLen/binary, 0, User/binary>> = Key,
-    [Server, User].
+    case User of
+        <<0>> -> [Server, null];
+        _ -> [Server, User]
+    end.
 
 update_tables() ->
     update_motd_table(),
@@ -1225,9 +1233,9 @@ import(_LServer, mnesia, #motd{} = Motd) ->
 import(_LServer, mnesia, #motd_users{} = Users) ->
     mnesia:dirty_write(Users);
 import(_LServer, p1db, #motd{server = LServer, packet = El}) ->
-    SPrefix = server_prefix(LServer),
+    MsgKey = msg_key(LServer),
     XML = xml:element_to_binary(El),
-    p1db:async_insert(motd, SPrefix, XML);
+    p1db:async_insert(motd, MsgKey, XML);
 import(_LServer, p1db, #motd_users{us = {LUser, LServer}}) ->
     USKey = us2key(LUser, LServer),
     p1db:async_insert(motd, USKey, <<>>);

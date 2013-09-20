@@ -53,7 +53,7 @@
 start(_Host) ->
     p1db:open_table(passwd, [{mapsize, 1024*1024*100},
                              {schema, [{keys, [server, user]},
-                                       {val, password},
+                                       {vals, [password]},
                                        {enc_key, fun enc_key/1},
                                        {dec_key, fun dec_key/1}]}]),
     ok.

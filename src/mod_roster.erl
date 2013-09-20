@@ -84,7 +84,9 @@ start(Host, Opts) ->
           p1db:open_table(roster,
                           [{mapsize, 1024*1024*100},
                            {schema, [{keys, [server, user, jid]},
-                                     {val, item},
+                                     {vals, [name, subscription,
+                                             ask, groups, askmessage,
+                                             xs]},
                                      {enc_key, fun enc_key/1},
                                      {dec_key, fun dec_roster_key/1},
                                      {enc_val, fun enc_val/2},
@@ -92,7 +94,7 @@ start(Host, Opts) ->
           p1db:open_table(roster_version,
                           [{mapsize, 1024*1024*100},
                            {schema, [{keys, [server, user]},
-                                     {val, version},
+                                     {vals, [version]},
                                      {dec_key, fun dec_roster_version_key/1},
                                      {enc_key, fun enc_key/1}]}]);
       _ -> ok
@@ -1763,15 +1765,29 @@ dec_roster_version_key(Key) ->
     <<Server:SLen/binary, 0, User/binary>> = Key,
     [Server, User].
 
-enc_val(_, Bin) ->
-    Str = binary_to_list(<<Bin/binary, ".">>),
-    {ok, Tokens, _} = erl_scan:string(Str),
-    {ok, Term} = erl_parse:parse_term(Tokens),
-    term_to_binary(Term).
+enc_val(_, [Name, SSubscription, SAsk, SGroups, AskMsg, SXs]) ->
+    Item = #roster{name = Name,
+                   subscription = jlib:binary_to_atom(SSubscription),
+                   ask = jlib:binary_to_atom(SAsk),
+                   groups = jlib:expr_to_term(SGroups),
+                   askmessage = AskMsg,
+                   xs = jlib:expr_to_term(SXs)},
+    item_to_p1db(Item).
 
-dec_val(_, Bin) ->
-    Term = binary_to_term(Bin),
-    list_to_binary(io_lib:print(Term)).
+dec_val([Server, User, SJID], Bin) ->
+    LJID = jlib:jid_tolower(jlib:string_to_jid(SJID)),
+    #roster{name = Name,
+            subscription = Subscription,
+            ask = Ask,
+            groups = Groups,
+            askmessage = AskMsg,
+            xs = Xs} = p1db_to_item({User, Server, LJID}, Bin),
+    [Name,
+     jlib:atom_to_binary(Subscription),
+     jlib:atom_to_binary(Ask),
+     jlib:term_to_expr(Groups),
+     AskMsg,
+     jlib:term_to_expr(Xs)].
 
 export(_Server) ->
     [{roster,

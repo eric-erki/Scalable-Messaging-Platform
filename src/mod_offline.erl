@@ -73,7 +73,7 @@ start(Host, Opts) ->
           p1db:open_table(offline_msg,
                           [{mapsize, 1024*1024*100},
                            {schema, [{keys, [server, user, timestamp]},
-                                     {val, xml},
+                                     {vals, [expire, packet]},
                                      {enc_key, fun enc_key/1},
                                      {dec_key, fun dec_key/1},
                                      {enc_val, fun enc_val/2},
@@ -184,9 +184,16 @@ store_offline_msg(Host, {User, _}, Msgs, Len, MaxOfflineMsgs, p1db) ->
             discard_warn_sender(Msgs);
        true ->
             lists:foreach(
-              fun(#offline_msg{us = {LUser, LServer}, timestamp = Now} = Msg) ->
+              fun(#offline_msg{us = {LUser, LServer}, timestamp = Now,
+                               from = From, to = To,
+                               packet = #xmlel{attrs = Attrs} = El} = Msg) ->
+                      NewAttrs = jlib:replace_from_to_attrs(
+                                   jlib:jid_to_string(From),
+                                   jlib:jid_to_string(To),
+                                   Attrs),
+                      NewEl = El#xmlel{attrs = NewAttrs},
                       USNKey = usn2key(LUser, LServer, Now),
-                      Val = offmsg_to_p1db(Msg),
+                      Val = offmsg_to_p1db(Msg#offline_msg{packet = NewEl}),
                       p1db:insert(offline_msg, USNKey, Val)
               end, Msgs)
     end;
@@ -424,9 +431,8 @@ pop_offline_messages(Ls, LUser, LServer, p1db) ->
         {ok, L} ->
             TS = now(),
             Msgs = lists:flatmap(
-                     fun({Key, Val, VClock}) ->
-                             DelRes = p1db:delete(offline_msg, Key,
-                                                  p1db:incr_vclock(VClock)),
+                     fun({Key, Val, _VClock}) ->
+                             DelRes = p1db:delete(offline_msg, Key),
                              if DelRes == ok; DelRes == {error, notfound} ->
                                      Now = key2now(USPrefix, Key),
                                      USN = {LUser, LServer, Now},
@@ -550,9 +556,8 @@ remove_user(LUser, LServer, p1db) ->
     case p1db:get_by_prefix(offline_msg, USPrefix) of
         {ok, L} ->
             lists:foreach(
-              fun({Key, _Val, VClock}) ->
-                      p1db:delete(offline_msg, Key,
-                                  p1db:incr_vclock(VClock))
+              fun({Key, _Val, _VClock}) ->
+                      p1db:delete(offline_msg, Key)
               end, L),
             {atomic, ok};
         Err ->
@@ -1016,9 +1021,8 @@ delete_all_msgs(LUser, LServer, p1db) ->
     case p1db:get_by_prefix(offline_msg, USPrefix) of
         {ok, L} ->
             lists:foreach(
-              fun({Key, _Val, VClock}) ->
-                      p1db:delete(offline_msg, Key,
-                                  p1db:incr_vclock(VClock))
+              fun({Key, _Val, _VClock}) ->
+                      p1db:delete(offline_msg, Key)
               end, L),
             {atomic, ok};
         Err ->
@@ -1097,37 +1101,45 @@ count_offline_messages(_Acc, User, Server) ->
 us2key(LUser, LServer) ->
     <<LServer/binary, 0, LUser/binary>>.
 
-usn2key(LUser, LServer, {MegaSecs, Secs, USecs}) ->
-    TimeStamp = (MegaSecs*1000000 + Secs)*1000000 + USecs,
+usn2key(LUser, LServer, Now) ->
+    TimeStamp = now2ts(Now),
     USKey = us2key(LUser, LServer),
     <<USKey/binary, 0, TimeStamp:64>>.
 
 key2now(USPrefix, Key) ->
     Size = size(USPrefix),
     <<_:Size/binary, TimeStamp:64>> = Key,
+    ts2now(TimeStamp).
+
+us_prefix(LUser, LServer) ->
+    USKey = us2key(LUser, LServer),
+    <<USKey/binary, 0>>.
+
+ts2now(TimeStamp) ->
     MSecs = TimeStamp div 1000000,
     USecs = TimeStamp rem 1000000,
     MegaSecs = MSecs div 1000000,
     Secs = MSecs rem 1000000,
     {MegaSecs, Secs, USecs}.
 
-us_prefix(LUser, LServer) ->
-    USKey = us2key(LUser, LServer),
-    <<USKey/binary, 0>>.
+now2ts({MegaSecs, Secs, USecs}) ->
+    (MegaSecs*1000000 + Secs)*1000000 + USecs.
 
 p1db_to_offmsg({LUser, LServer, Now}, Val) ->
-    OffMsg = #offline_msg{us = {LUser, LServer},
-                          timestamp = Now},
-    lists:foldl(
-      fun({from, From}, M) -> M#offline_msg{from = From};
-         ({to, To}, M) -> M#offline_msg{to = To};
-         ({packet, Pkt}, M) -> M#offline_msg{packet = Pkt};
-         ({expire, Expire}, M) -> M#offline_msg{expire = Expire};
-         (_, M) -> M
-      end, OffMsg, binary_to_term(Val)).
+    OffMsg0 = #offline_msg{us = {LUser, LServer},
+                           timestamp = Now},
+    OffMsg = lists:foldl(
+               fun({packet, Pkt}, M) -> M#offline_msg{packet = Pkt};
+                  ({expire, Expire}, M) -> M#offline_msg{expire = Expire};
+                  (_, M) -> M
+               end, OffMsg0, binary_to_term(Val)),
+    El = OffMsg#offline_msg.packet,
+    #jid{} = To = jlib:string_to_jid(xml:get_tag_attr_s(<<"to">>, El)),
+    #jid{} = From = jlib:string_to_jid(xml:get_tag_attr_s(<<"from">>, El)),
+    OffMsg#offline_msg{from = From, to = To}.
 
-offmsg_to_p1db(#offline_msg{from = From, to = To, packet = Pkt, expire = T}) ->
-    term_to_binary([{from, From}, {to, To}, {packet, Pkt}, {expire, T}]).
+offmsg_to_p1db(#offline_msg{packet = Pkt, expire = T}) ->
+    term_to_binary([{packet, Pkt}, {expire, T}]).
 
 %% P1DB/SQL schema
 enc_key([Server]) ->
@@ -1144,15 +1156,23 @@ dec_key(Key) ->
     <<User:ULen/binary, 0, TS:64>> = UKey,
     [Server, User, TS].
 
-enc_val(_, Bin) ->
-    Str = binary_to_list(<<Bin/binary, ".">>),
-    {ok, Tokens, _} = erl_scan:string(Str),
-    {ok, Term} = erl_parse:parse_term(Tokens),
-    term_to_binary(Term).
+enc_val(_, [SExpire, SPacket]) ->
+    Expire = case SExpire of
+                 <<"never">> -> never;
+                 _ -> ts2now(SExpire)
+             end,
+    #xmlel{} = Packet = xml_stream:parse_element(SPacket),
+    offmsg_to_p1db(#offline_msg{packet = Packet, expire = Expire}).
 
-dec_val(_, Bin) ->
-    Term = binary_to_term(Bin),
-    list_to_binary(io_lib:print(Term)).
+dec_val([Server, User, TS], Bin) ->
+    #offline_msg{packet  = Packet,
+                 expire = Expire}
+        = p1db_to_offmsg({User, Server, ts2now(TS)}, Bin),
+    SExpire = case Expire of
+                  never -> <<"never">>;
+                  _ -> now2ts(Expire)
+              end,
+    [SExpire, xml:element_to_binary(Packet)].
 
 export(_Server) ->
     [{offline_msg,
