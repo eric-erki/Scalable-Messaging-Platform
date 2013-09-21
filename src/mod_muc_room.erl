@@ -4176,7 +4176,7 @@ decode_opts(_, Bin) ->
               if is_atom(Val) ->
                       jlib:atom_to_binary(Val);
                  is_integer(Val) ->
-                      erlang:integer_to_binary(Val);
+                      Val;
                  is_binary(Val) ->
                       Val;
                  true ->
@@ -4194,11 +4194,11 @@ encode_opts(_, Vals) ->
                                description -> BinVal;
                                password -> BinVal;
                                voice_request_min_interval ->
-                                   jlib:binary_to_integer(BinVal);
+                                   BinVal;
                                max_users when BinVal == <<"none">> ->
                                    none;
                                max_users ->
-                                   jlib:binary_to_integer(BinVal);
+                                   BinVal;
                                captcha_whitelist ->
                                    jlib:expr_to_term(BinVal);
                                _ ->
