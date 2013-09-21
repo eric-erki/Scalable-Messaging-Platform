@@ -174,7 +174,8 @@ handle_call(stop, _From, State) ->
 
 handle_cast(_Msg, State) -> {noreply, State}.
 
-handle_info({add_to_log, Type, Data, Room, Opts}, State) ->
+handle_info({add_to_log, Type, Data, Room, CompactOpts}, State) ->
+    Opts = mod_muc_room:expand_opts(CompactOpts),
     case catch add_to_log2(Type, Data, Room, Opts, State) of
       {'EXIT', Reason} -> ?ERROR_MSG("~p", [Reason]);
       _ -> ok

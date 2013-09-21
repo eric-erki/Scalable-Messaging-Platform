@@ -35,7 +35,9 @@
 %% External exports
 -export([start_link/10, start_link/8, start_link/2,
 	 start/10, start/8, start/2, migrate/3, route/4,
-	 moderate_room_history/2, persist_recent_messages/1]).
+	 moderate_room_history/2, persist_recent_messages/1,
+         expand_opts/1, encode_opts/2, decode_opts/2,
+         config_fields/0]).
 
 %% gen_fsm callbacks
 -export([init/1, normal_state/2, handle_event/3,
@@ -137,25 +139,25 @@ init([Host, ServerHost, Access, Room, HistorySize,
     process_flag(trap_exit, true),
     mod_muc:register_room(Host, Room, self()),
     Shaper = shaper:new(RoomShaper),
-    State = set_affiliation(Creator, owner,
-			    #state{host = Host, server_host = ServerHost,
-				   access = Access, room = Room,
-				   history = lqueue_new(HistorySize),
-				   persist_history = PersistHistory,
-				   jid = jlib:make_jid(Room, Host, <<"">>),
-				   just_created = true, room_shaper = Shaper}),
+    State = #state{host = Host, server_host = ServerHost,
+                   access = Access, room = Room,
+                   history = lqueue_new(HistorySize),
+                   persist_history = PersistHistory,
+                   jid = jlib:make_jid(Room, Host, <<"">>),
+                   just_created = true, room_shaper = Shaper},
     State1 = set_opts(DefRoomOpts, State),
-    if (State1#state.config)#config.persistent ->
-	   mod_muc:store_room(State1#state.server_host,
-                              State1#state.host, State1#state.room,
-			      make_opts(State1), make_affiliations(State1));
+    State2 = set_affiliation(Creator, owner, State1),
+    if (State2#state.config)#config.persistent ->
+	   mod_muc:store_room(State2#state.server_host,
+                              State2#state.host, State2#state.room,
+			      make_opts(State2), make_affiliations(State2));
        true -> ok
     end,
     ?INFO_MSG("Created MUC room ~s@~s by ~s",
 	      [Room, Host, jlib:jid_to_string(Creator)]),
-    add_to_log(room_existence, created, State1),
-    add_to_log(room_existence, started, State1),
-    {ok, normal_state, State1};
+    add_to_log(room_existence, created, State2),
+    add_to_log(room_existence, started, State2),
+    {ok, normal_state, State2};
 init([Host, ServerHost, Access, Room, HistorySize,
       PersistHistory, RoomShaper, Opts]) ->
     process_flag(trap_exit, true),
@@ -733,8 +735,8 @@ handle_event(destroy, StateName, StateData) ->
     handle_event({destroy, none}, StateName, StateData);
 handle_event({set_affiliations, Affiliations},
 	     StateName, StateData) ->
-    {next_state, StateName,
-     StateData#state{affiliations = Affiliations}};
+    NewStateData = set_affiliations(Affiliations, StateData),
+    {next_state, StateName, NewStateData};
 handle_event(_Event, StateName, StateData) ->
     {next_state, StateName, StateData}.
 
@@ -1399,6 +1401,26 @@ set_affiliation(JID, Affiliation, StateData) ->
     set_affiliation(JID, Affiliation, StateData, <<"">>).
 
 set_affiliation(JID, Affiliation, StateData, Reason) ->
+    DBType = gen_mod:db_type(StateData#state.server_host, mod_muc),
+    set_affiliation(JID, Affiliation, StateData, Reason, DBType).
+
+set_affiliation(JID, Affiliation,
+                #state{config = #config{persistent = true}} = StateData,
+                Reason, p1db) ->
+    {LUser, LServer, _} = jlib:jid_tolower(JID),
+    Room = StateData#state.room,
+    Host = StateData#state.host,
+    AffKey = mod_muc:rhus2key(Room, Host, LUser, LServer),
+    case Affiliation of
+        none ->
+            p1db:delete(muc_affiliations, AffKey);
+        _ ->
+            Val = term_to_binary([{affiliation, Affiliation},
+                                  {reason, Reason}]),
+            p1db:insert(muc_affiliations, AffKey, Val)
+    end,
+    StateData;
+set_affiliation(JID, Affiliation, StateData, Reason, _) ->
     LJID = jlib:jid_remove_resource(jlib:jid_tolower(JID)),
     Affiliations = case Affiliation of
 		     none ->
@@ -1409,45 +1431,134 @@ set_affiliation(JID, Affiliation, StateData, Reason) ->
 		   end,
     StateData#state{affiliations = Affiliations}.
 
+set_affiliations(Affiliations, StateData) ->
+    DBType = gen_mod:db_type(StateData#state.server_host, mod_muc),
+    set_affiliations(Affiliations, StateData, DBType).
+
+set_affiliations(Affiliations,
+                 #state{config = #config{persistent = true}} = StateData,
+                 p1db) ->
+    Room = StateData#state.room,
+    Host = StateData#state.host,
+    case clear_affiliations(StateData) of
+        ok ->
+            lists:foreach(
+              fun({_JID, {none, _Reason}}) ->
+                      ok;
+                 ({JID, {Affiliation, Reason}}) ->
+                      {LUser, LServer, _} = jlib:jid_tolower(JID),
+                      AffKey = mod_muc:rhus2key(Room, Host, LUser, LServer),
+                      Val = term_to_binary([{affiliation, Affiliation},
+                                            {reason, Reason}]),
+                      p1db:insert(muc_affiliations, AffKey, Val)
+              end, (?DICT):to_list(Affiliations)),
+            StateData;
+        {error, _} ->
+            StateData
+    end;
+set_affiliations(Affiliations, StateData, _DBType) ->
+    StateData#state{affiliations = Affiliations}.
+
+clear_affiliations(StateData) ->
+    DBType = gen_mod:db_type(StateData#state.server_host, mod_muc),
+    clear_affiliations(StateData, DBType).
+
+clear_affiliations(#state{config = #config{persistent = true}} = StateData,
+                   p1db) ->
+    Room = StateData#state.room,
+    Host = StateData#state.host,
+    RHPrefix = mod_muc:rh_prefix(Room, Host),
+    case p1db:get_by_prefix(muc_affiliations, RHPrefix) of
+        {ok, L} ->
+            lists:foreach(
+              fun({Key, _, _}) ->
+                      p1db:async_delete(muc_affiliations, Key)
+              end, L);
+        {error, _} = Err ->
+            Err
+    end;
+clear_affiliations(_StateData, _DBType) ->
+    ok.
+
 get_affiliation(JID, StateData) ->
-    {_AccessRoute, _AccessCreate, AccessAdmin,
-     _AccessPersistent} =
-	StateData#state.access,
-    Res = case acl:match_rule(StateData#state.server_host,
-			      AccessAdmin, JID)
-	      of
-	    allow -> owner;
-	    _ ->
-		LJID = jlib:jid_tolower(JID),
-		case (?DICT):find(LJID, StateData#state.affiliations) of
-		  {ok, Affiliation} -> Affiliation;
-		  _ ->
-		      LJID1 = jlib:jid_remove_resource(LJID),
-		      case (?DICT):find(LJID1, StateData#state.affiliations)
-			  of
-			{ok, Affiliation} -> Affiliation;
-			_ ->
-			    LJID2 = setelement(1, LJID, <<"">>),
-			    case (?DICT):find(LJID2,
-					      StateData#state.affiliations)
-				of
-			      {ok, Affiliation} -> Affiliation;
-			      _ ->
-				  LJID3 = jlib:jid_remove_resource(LJID2),
-				  case (?DICT):find(LJID3,
-						    StateData#state.affiliations)
-				      of
-				    {ok, Affiliation} -> Affiliation;
-				    _ -> none
-				  end
-			    end
-		      end
-		end
-	  end,
-    case Res of
-      {A, _Reason} -> A;
-      _ -> Res
+    case get_service_affiliation(JID, StateData) of
+        owner ->
+            owner;
+        none ->
+            DBType = gen_mod:db_type(StateData#state.server_host, mod_muc),
+            case get_affiliation(JID, StateData, DBType) of
+                {Affiliation, _Reason} -> Affiliation;
+                Affiliation -> Affiliation
+            end
     end.
+
+get_affiliation(JID, #state{config = #config{persistent = true}} = StateData,
+                p1db) ->
+    Room = StateData#state.room,
+    Host = StateData#state.host,
+    LServer = JID#jid.lserver,
+    LUser = JID#jid.luser,
+    AffKey = mod_muc:rhus2key(Room, Host, LUser, LServer),
+    case p1db:get(muc_affiliations, AffKey) of
+        {ok, Val, _VClock} ->
+            PropList = binary_to_term(Val),
+            proplists:get_value(affiliation, PropList, none);
+        {error, _} ->
+            none
+    end;
+get_affiliation(JID, StateData, _DBType) ->
+    LJID = jlib:jid_tolower(JID),
+    case (?DICT):find(LJID, StateData#state.affiliations) of
+        {ok, Affiliation} -> Affiliation;
+        _ ->
+            LJID1 = jlib:jid_remove_resource(LJID),
+            case (?DICT):find(LJID1, StateData#state.affiliations)
+            of
+                {ok, Affiliation} -> Affiliation;
+                _ ->
+                    LJID2 = setelement(1, LJID, <<"">>),
+                    case (?DICT):find(LJID2,
+                                      StateData#state.affiliations)
+                    of
+                        {ok, Affiliation} -> Affiliation;
+                        _ ->
+                            LJID3 = jlib:jid_remove_resource(LJID2),
+                            case (?DICT):find(LJID3,
+                                              StateData#state.affiliations)
+                            of
+                                {ok, Affiliation} -> Affiliation;
+                                _ -> none
+                            end
+                    end
+            end
+    end.
+
+get_affiliations(StateData) ->
+    DBType = gen_mod:db_type(StateData#state.server_host, mod_muc),
+    get_affiliations(StateData, DBType).
+
+get_affiliations(#state{config = #config{persistent = true}} = StateData,
+                 p1db) ->
+    Room = StateData#state.room,
+    Host = StateData#state.host,
+    RHPrefix = mod_muc:rh_prefix(Room, Host),
+    case p1db:get_by_prefix(muc_affiliations, RHPrefix) of
+        {ok, L} ->
+            (?DICT):from_list(
+              lists:map(
+                fun({Key, Val, _VClock}) ->
+                        PropList = binary_to_term(Val),
+                        Reason = proplists:get_value(reason, PropList, <<>>),
+                        Affiliation = proplists:get_value(
+                                        affiliation, PropList, none),
+                        {LUser, LServer} = mod_muc:key2us(RHPrefix, Key),
+                        {{LUser, LServer, <<"">>}, {Affiliation, Reason}}
+                end, L));
+        {error, _} ->
+            StateData#state.affiliations
+    end;
+get_affiliations(StateData, _DBType) ->
+    StateData#state.affiliations.
 
 get_service_affiliation(JID, StateData) ->
     {_AccessRoute, _AccessCreate, AccessAdmin,
@@ -2647,6 +2758,34 @@ search_role(Role, StateData) ->
 		 (?DICT):to_list(StateData#state.users)).
 
 search_affiliation(Affiliation, StateData) ->
+    DBType = gen_mod:db_type(StateData#state.server_host, mod_muc),
+    search_affiliation(Affiliation, StateData, DBType).
+
+search_affiliation(Affiliation,
+                   #state{config = #config{persistent = true}} = StateData,
+                   p1db) ->
+    Room = StateData#state.room,
+    Host = StateData#state.host,
+    RHPrefix = mod_muc:rh_prefix(Room, Host),
+    case p1db:get_by_prefix(muc_affiliations, RHPrefix) of
+        {ok, L} ->
+            lists:flatmap(
+              fun({Key, Val, _VClock}) ->
+                      PropList = binary_to_term(Val),
+                      Reason = proplists:get_value(reason, PropList, <<>>),
+                      case proplists:get_value(affiliation, PropList, none) of
+                          Affiliation ->
+                              {LUser, LServer} = mod_muc:key2us(RHPrefix, Key),
+                              [{{LUser, LServer, <<"">>},
+                                {Affiliation, Reason}}];
+                          _ ->
+                              []
+                      end
+              end, L);
+        {error, _} ->
+            []
+    end;
+search_affiliation(Affiliation, StateData, _DBType) ->
     lists:filter(fun ({_, A}) ->
 			 case A of
 			   {A1, _Reason} -> Affiliation == A1;
@@ -3805,25 +3944,38 @@ set_xoption([_ | _Opts], _Config) ->
     {error, ?ERR_BAD_REQUEST}.
 
 change_config(Config, StateData) ->
-    NSD = StateData#state{config = Config},
-    case {(StateData#state.config)#config.persistent,
-	  Config#config.persistent}
-	of
-      {_, true} ->
-	  mod_muc:store_room(NSD#state.server_host,
-			     NSD#state.host, NSD#state.room,
-                             make_opts(NSD), make_affiliations(NSD));
-      {true, false} ->
-	  mod_muc:forget_room(NSD#state.server_host,
-			      NSD#state.host, NSD#state.room);
-      {false, false} -> ok
-    end,
+    StateData1 = StateData#state{config = Config},
+    StateData2 =
+        case {(StateData#state.config)#config.persistent,
+              Config#config.persistent} of
+            {WasPersistent, true} ->
+                if not WasPersistent ->
+                        set_affiliations(StateData1#state.affiliations,
+                                         StateData1);
+                   true ->
+                        ok
+                end,
+                mod_muc:store_room(StateData1#state.server_host,
+                                   StateData1#state.host, StateData1#state.room,
+                                   make_opts(StateData1),
+                                   make_affiliations(StateData1)),
+                StateData1;
+            {true, false} ->
+                Affiliations = get_affiliations(StateData),
+                mod_muc:forget_room(StateData1#state.server_host,
+                                    StateData1#state.host,
+                                    StateData1#state.room),
+                StateData1#state{affiliations = Affiliations};
+            {false, false} ->
+                StateData1
+        end,
     case {(StateData#state.config)#config.members_only,
-	  Config#config.members_only}
-	of
-      {false, true} ->
-	  NSD1 = remove_nonmembers(NSD), {result, [], NSD1};
-      _ -> {result, [], NSD}
+	  Config#config.members_only} of
+        {false, true} ->
+            StateData3 = remove_nonmembers(StateData2),
+            {result, [], StateData3};
+        _ ->
+            {result, [], StateData2}
     end.
 
 remove_nonmembers(StateData) ->
@@ -3955,33 +4107,106 @@ make_affiliations(StateData) ->
     (?DICT):to_list(StateData#state.affiliations).
 
 make_opts(StateData) ->
-    make_opts(StateData, true).
-
-make_opts(StateData, Compact) ->
     Config = StateData#state.config,
     DefConfig = #config{},
     Fields = record_info(fields, config),
-    {_, Opts} =
+    {_, Opts1} =
         lists:foldl(
-          fun(captcha_whitelist, {Pos, L}) ->
-                  case (?SETS):to_list(element(Pos, Config)) of
-                      [] when Compact ->
-                          {Pos+1, L};
-                      Val ->
-                          {Pos+1, [{captcha_whitelist, Val}|L]}
-                  end;
-             (Field, {Pos, L}) ->
-                  Val = element(Pos, Config),
-                  DefVal = element(Pos, DefConfig),
-                  if (Val == DefVal) and Compact ->
+          fun(Field, {Pos, L}) ->
+                  V = element(Pos, Config),
+                  DefV = element(Pos, DefConfig),
+                  Val = case (?SETS):is_set(V) of
+                            true -> (?SETS):to_list(V);
+                            false -> V
+                        end,
+                  DefVal = case (?SETS):is_set(DefV) of
+                               true -> (?SETS):to_list(DefV);
+                               false -> DefV
+                           end,
+                  if Val == DefVal ->
                           {Pos+1, L};
                      true ->
                           {Pos+1, [{Field, Val}|L]}
                   end
           end, {2, []}, Fields),
-    [{subject, StateData#state.subject},
-     {subject_author, StateData#state.subject_author}
-     | lists:reverse(Opts)].
+    Opts2 = lists:reverse(Opts1),
+    Opts3 = case StateData#state.subject_author of
+                <<"">> -> Opts2;
+                SubjectAuthor -> [{subject_author, SubjectAuthor}|Opts2]
+            end,
+    Opts4 = case StateData#state.subject of
+                <<"">> -> Opts3;
+                Subject -> [{subject, Subject}|Opts3]
+            end,
+    Opts4.
+
+expand_opts(CompactOpts) ->
+    DefConfig = #config{},
+    Fields = record_info(fields, config),
+    {_, Opts1} =
+        lists:foldl(
+          fun(Field, {Pos, Opts}) ->
+                  case lists:keyfind(Field, 1, CompactOpts) of
+                      false ->
+                          DefV = element(Pos, DefConfig),
+                          DefVal = case (?SETS):is_set(DefV) of
+                                       true -> (?SETS):to_list(DefV);
+                                       false -> DefV
+                                   end,
+                          {Pos+1, [{Field, DefVal}|Opts]};
+                      {_, Val} ->
+                          {Pos+1, [{Field, Val}|Opts]}
+                  end
+          end, {2, []}, Fields),
+    SubjectAuthor = proplists:get_value(subject_author, CompactOpts, <<"">>),
+    Subject = proplists:get_value(subject, CompactOpts, <<"">>),
+    [{subject, Subject},
+     {subject_author, SubjectAuthor}
+     | lists:reverse(Opts1)].
+
+config_fields() ->
+    [subject, subject_author | record_info(fields, config)].
+
+%% Part of P1DB/SQL schema value encoding/decoding
+decode_opts(_, Bin) ->
+    CompactOpts = binary_to_term(Bin),
+    Opts = expand_opts(CompactOpts),
+    lists:map(
+      fun({Key, Val}) ->
+              if is_atom(Val) ->
+                      jlib:atom_to_binary(Val);
+                 is_integer(Val) ->
+                      erlang:integer_to_binary(Val);
+                 is_binary(Val) ->
+                      Val;
+                 true ->
+                      jlib:term_to_expr(Val)
+              end
+      end, Opts).
+
+encode_opts(_, Vals) ->
+    Opts = lists:map(
+             fun({Key, BinVal}) ->
+                     Val = case Key of
+                               subject -> BinVal;
+                               subject_author -> BinVal;
+                               title -> BinVal;
+                               description -> BinVal;
+                               password -> BinVal;
+                               voice_request_min_interval ->
+                                   jlib:binary_to_integer(BinVal);
+                               max_users when BinVal == <<"none">> ->
+                                   none;
+                               max_users ->
+                                   jlib:binary_to_integer(BinVal);
+                               captcha_whitelist ->
+                                   jlib:expr_to_term(BinVal);
+                               _ ->
+                                   jlib:binary_to_atom(BinVal)
+                           end,
+                     {Key, Val}
+             end, lists:zip(config_fields(), Vals)),
+    term_to_binary(Opts).
 
 destroy_room(DEl, StateData) ->
     lists:foreach(fun ({_LJID, Info}) ->
@@ -4473,13 +4698,13 @@ add_to_log(Type, Data, StateData)
     when Type == roomconfig_change_disabledlogging ->
     mod_muc_log:add_to_log(StateData#state.server_host,
 			   roomconfig_change, Data, StateData#state.jid,
-			   make_opts(StateData, false));
+			   make_opts(StateData));
 add_to_log(Type, Data, StateData) ->
     case (StateData#state.config)#config.logging of
       true ->
 	  mod_muc_log:add_to_log(StateData#state.server_host,
 				 Type, Data, StateData#state.jid,
-				 make_opts(StateData, false));
+				 make_opts(StateData));
       false -> ok
     end.
 
