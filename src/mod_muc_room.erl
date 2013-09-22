@@ -4172,7 +4172,7 @@ decode_opts(_, Bin) ->
     CompactOpts = binary_to_term(Bin),
     Opts = expand_opts(CompactOpts),
     lists:map(
-      fun({Key, Val}) ->
+      fun({_Key, Val}) ->
               if is_atom(Val) ->
                       jlib:atom_to_binary(Val);
                  is_integer(Val) ->
