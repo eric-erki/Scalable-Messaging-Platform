@@ -690,7 +690,7 @@ is_group_enabled(Host1, Group1) ->
     end.
 
 is_group_enabled(Opts) ->
-    not lists:member(disabled, Opts).
+    not proplists:get_bool(disabled, Opts).
 
 get_group_opt(Opt, Opts, Default) ->
     case lists:keysearch(Opt, 1, Opts) of
@@ -807,16 +807,12 @@ displayed_groups(GroupsOpts, SelectedGroupsOpts) ->
 							      <- proplists:get_value(displayed_groups,
 										     Opts,
 										     []),
-							  not
-							    lists:member(disabled,
-									 Opts)]
+                                                          is_group_enabled(Opts)]
 						end,
 						SelectedGroupsOpts)),
     [G
      || G <- DisplayedGroups,
-	not
-	  lists:member(disabled,
-		       proplists:get_value(G, GroupsOpts, []))].
+        is_group_enabled(proplists:get_value(G, GroupsOpts, []))].
 
 get_special_displayed_groups(GroupsOpts) ->
     Groups = lists:flatmap(
@@ -1587,14 +1583,16 @@ default_group_opts() ->
      {description, <<"">>},
      {displayed_groups, []},
      {all_users, false},
-     {online_users, false}].
+     {online_users, false},
+     {disabled, false}].
 
 enc_val(_, Vals) ->
     Opts = lists:map(
              fun({{Key, _}, BinVal}) ->
                      Val = if Key == name; Key == description ->
                                    BinVal;
-                              Key == all_users; Key == online_users ->
+                              Key == all_users; Key == online_users;
+                              Key == disabled ->
                                    jlib:binary_to_atom(BinVal);
                               true ->
                                    jlib:expr_to_term(BinVal)
