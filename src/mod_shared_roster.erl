@@ -75,6 +75,26 @@ start(Host, Opts) ->
 			       {attributes, record_info(fields, sr_user)}]),
           update_tables(),
 	  mnesia:add_table_index(sr_user, group_host);
+      p1db ->
+          OptsFields = [Field || {Field, _} <- default_group_opts()],
+          p1db:open_table(sr_group,
+                          [{mapsize, 1024*1024*100},
+                           {schema, [{keys, [host, group, server, user]},
+                                     {enc_key, fun enc_key/1},
+                                     {dec_key, fun dec_key/1}]}]),
+          p1db:open_table(sr_opts,
+                          [{mapsize, 1024*1024*100},
+                           {schema, [{keys, [host, group]},
+                                     {vals, OptsFields},
+                                     {enc_key, fun enc_key/1},
+                                     {dec_key, fun dec_key/1},
+                                     {enc_val, fun enc_val/2},
+                                     {dec_val, fun dec_val/2}]}]),
+          p1db:open_table(sr_user,
+                          [{mapsize, 1024*1024*100},
+                           {schema, [{keys, [host, server, user, group]},
+                                     {enc_key, fun enc_key/1},
+                                     {dec_key, fun dec_key/1}]}]);
       _ -> ok
     end,
     ejabberd_hooks:add(webadmin_menu_host, Host, ?MODULE,
@@ -399,6 +419,17 @@ list_groups(Host, mnesia) ->
     mnesia:dirty_select(sr_group,
 			[{#sr_group{group_host = {'$1', '$2'}, _ = '_'},
 			  [{'==', '$2', Host}], ['$1']}]);
+list_groups(Host, p1db) ->
+    HPrefix = host_prefix(Host),
+    case p1db:get_by_prefix(sr_opts, HPrefix) of
+        {ok, L} ->
+            lists:map(
+              fun({Key, _Val, _VClock}) ->
+                      get_suffix(HPrefix, Key)
+              end, L);
+        {error, _} ->
+            []
+    end;
 list_groups(Host, riak) ->
     case ejabberd_riak:get_keys_by_index(sr_group, <<"host">>, Host) of
         {ok, Gs} ->
@@ -423,6 +454,19 @@ groups_with_opts(Host, mnesia) ->
 					 _ = '_'},
 			       [], [['$1', '$2']]}]),
     lists:map(fun ([G, O]) -> {G, O} end, Gs);
+groups_with_opts(Host, p1db) ->
+    HPrefix = host_prefix(Host),
+    case p1db:get_by_prefix(sr_opts, HPrefix) of
+        {ok, L} ->
+            lists:map(
+              fun({Key, Val, _VClock}) ->
+                      Group = get_suffix(HPrefix, Key),
+                      Opts = binary_to_term(Val),
+                      {Group, Opts}
+              end, L);
+        {error, _} ->
+            []
+    end;
 groups_with_opts(Host, riak) ->
     case ejabberd_riak:get_by_index(sr_group, <<"host">>, Host) of
         {ok, Rs} ->
@@ -451,6 +495,13 @@ create_group(Host, Group, Opts, mnesia) ->
     R = #sr_group{group_host = {Group, Host}, opts = Opts},
     F = fun () -> mnesia:write(R) end,
     mnesia:transaction(F);
+create_group(Host, Group, Opts, p1db) ->
+    GHKey = gh2key(Group, Host),
+    Val = term_to_binary(Opts),
+    case p1db:insert(sr_opts, GHKey, Val) of
+        ok -> {atomic, ok};
+        {error, _} = Err -> {aborted, Err}
+    end;
 create_group(Host, Group, Opts, riak) ->
     {atomic, ejabberd_riak:put(#sr_group{group_host = {Group, Host},
                                          opts = Opts},
@@ -481,6 +532,34 @@ delete_group(Host, Group, mnesia) ->
 			      Users)
 	end,
     mnesia:transaction(F);
+delete_group(Host, Group, p1db) ->
+    GHKey = gh2key(Group, Host),
+    GHPrefix = gh_prefix(Group, Host),
+    DelRes = p1db:delete(sr_opts, GHKey),
+    if DelRes == ok; DelRes == {error, notfound} ->
+            try
+                {ok, L1} = p1db:get_by_prefix(sr_group, GHPrefix),
+                lists:foreach(
+                  fun({Key, _, _}) ->
+                          ok = p1db:async_delete(sr_group, Key)
+                  end, L1),
+                {ok, L2} = p1db:get(sr_user),
+                lists:foreach(
+                  fun({Key, _, _}) ->
+                          case get_group_from_ushg(Key) of
+                              Group ->
+                                  ok = p1db:async_delete(sr_user, Key);
+                              _ ->
+                                  ok
+                          end
+                  end, L2),
+                {atomic, ok}
+            catch error:{badmatch, {error, _} = Err} ->
+                    {aborted, Err}
+            end;
+       true ->
+            {aborted, DelRes}
+    end;
 delete_group(Host, Group, riak) ->
     try
         ok = ejabberd_riak:delete(sr_group, {Group, Host}),
@@ -509,6 +588,14 @@ get_group_opts(Host, Group, mnesia) ->
       [#sr_group{opts = Opts}] -> Opts;
       _ -> error
     end;
+get_group_opts(Host, Group, p1db) ->
+    GHKey = gh2key(Group, Host),
+    case p1db:get(sr_opts, GHKey) of
+        {ok, Val, _VClock} ->
+            binary_to_term(Val);
+        {error, _} ->
+            error
+    end;
 get_group_opts(Host, Group, riak) ->
     case ejabberd_riak:get(sr_group, {Group, Host}) of
         {ok, #sr_group{opts = Opts}} -> Opts;
@@ -533,6 +620,13 @@ set_group_opts(Host, Group, Opts, mnesia) ->
     R = #sr_group{group_host = {Group, Host}, opts = Opts},
     F = fun () -> mnesia:write(R) end,
     mnesia:transaction(F);
+set_group_opts(Host, Group, Opts, p1db) ->
+    GHKey = gh2key(Group, Host),
+    Val = term_to_binary(Opts),
+    case p1db:insert(sr_opts, GHKey, Val) of
+        ok -> {atomic, ok};
+        {error, _} = Err -> {aborted, Err}
+    end;
 set_group_opts(Host, Group, Opts, riak) ->
     {atomic, ejabberd_riak:put(#sr_group{group_host = {Group, Host},
                                          opts = Opts},
@@ -559,6 +653,17 @@ get_user_groups(US, Host, mnesia) ->
 	  [Group
 	   || #sr_user{group_host = {Group, H}} <- Rs, H == Host];
       _ -> []
+    end;
+get_user_groups(US, Host, p1db) ->
+    USHPrefix = ush_prefix(US, Host),
+    case p1db:get_by_prefix(sr_user, USHPrefix) of
+        {ok, L} ->
+            lists:map(
+              fun({Key, _, _}) ->
+                      get_suffix(USHPrefix, Key)
+              end, L);
+        {error, _} ->
+            []
     end;
 get_user_groups(US, Host, riak) ->
     case ejabberd_riak:get_by_index(sr_user, <<"us">>, US) of
@@ -634,6 +739,17 @@ get_group_explicit_users(Host, Group, mnesia) ->
     case Read of
       Rs when is_list(Rs) -> [R#sr_user.us || R <- Rs];
       _ -> []
+    end;
+get_group_explicit_users(Host, Group, p1db) ->
+    GHPrefix = gh_prefix(Group, Host),
+    case p1db:get_by_prefix(sr_group, GHPrefix) of
+        {ok, L} ->
+            lists:map(
+              fun({Key, _, _}) ->
+                      decode_us(get_suffix(GHPrefix, Key))
+              end, L);
+        {error, _} ->
+            []
     end;
 get_group_explicit_users(Host, Group, riak) ->
     case ejabberd_riak:get_by_index(sr_user, <<"group_host">>,
@@ -719,6 +835,18 @@ get_user_displayed_groups(LUser, LServer, GroupsOpts,
 	      H == LServer];
       _ -> []
     end;
+get_user_displayed_groups(LUser, LServer, GroupOpts, p1db) ->
+    USHPrefix = ush_prefix({LUser, LServer}, LServer),
+    case p1db:get_by_prefix(sr_user, USHPrefix) of
+        {ok, L} ->
+            lists:map(
+              fun({Key, _, _}) ->
+                      Group = get_suffix(USHPrefix, Key),
+                      {Group, proplists:get_value(Group, GroupOpts, [])}
+              end, L);
+        {error, _} ->
+            []
+    end;
 get_user_displayed_groups(LUser, LServer, GroupsOpts,
                           riak) ->
     case ejabberd_riak:get_by_index(sr_user,
@@ -769,6 +897,14 @@ is_user_in_group(US, Group, Host, mnesia) ->
 	of
       [] -> lists:member(US, get_group_users(Host, Group));
       _ -> true
+    end;
+is_user_in_group(US, Group, Host, p1db) ->
+    USHGKey = ushg2key(US, Host, Group),
+    case p1db:get(sr_user, USHGKey) of
+        {ok, _, _} ->
+            true;
+        {error, _} ->
+            lists:member(US, get_group_users(Host, Group))
     end;
 is_user_in_group(US, Group, Host, riak) ->
     case ejabberd_riak:get_by_index(sr_user, <<"us">>, US) of
@@ -824,6 +960,16 @@ add_user_to_group(Host, US, Group, mnesia) ->
     R = #sr_user{us = US, group_host = {Group, Host}},
     F = fun () -> mnesia:write(R) end,
     mnesia:transaction(F);
+add_user_to_group(Host, US, Group, p1db) ->
+    GHUSKey = ghus2key(Group, Host, US),
+    USHGKey = ushg2key(US, Host, Group),
+    try
+        ok = p1db:insert(sr_user, USHGKey, <<>>),
+        ok = p1db:insert(sr_group, GHUSKey, <<>>),
+        {atomic, ok}
+    catch error:{badmatch, {error, _} = Err} ->
+            {aborted, Err}
+    end;
 add_user_to_group(Host, US, Group, riak) ->
     {atomic, ejabberd_riak:put(
                #sr_user{us = US, group_host = {Group, Host}},
@@ -881,6 +1027,19 @@ remove_user_from_group(Host, US, Group, mnesia) ->
     R = #sr_user{us = US, group_host = {Group, Host}},
     F = fun () -> mnesia:delete_object(R) end,
     mnesia:transaction(F);
+remove_user_from_group(Host, US, Group, p1db) ->
+    GHUSKey = ghus2key(Group, Host, US),
+    USHGKey = ushg2key(US, Host, Group),
+    DelRes = p1db:delete(sr_user, USHGKey),
+    if DelRes == ok; DelRes == {error, notfound} ->
+            case p1db:delete(sr_group, GHUSKey) of
+                ok -> {atomic, ok};
+                {error, notfound} -> {atomic, ok};
+                {error, _} = Err -> {aborted, Err}
+            end;
+       true ->
+            {aborted, DelRes}
+    end;
 remove_user_from_group(Host, US, Group, riak) ->
     {atomic, ejabberd_riak:delete(sr_group, {US, {Group, Host}})};
 remove_user_from_group(Host, US, Group, odbc) ->
@@ -1376,6 +1535,78 @@ opts_to_binary(Opts) ->
               Opt
       end, Opts).
 
+host_prefix(Host) ->
+    <<Host/binary, 0>>.
+
+get_suffix(Prefix, Key) ->
+    Size = size(Prefix),
+    <<_:Size/binary, Suffix/binary>> = Key,
+    Suffix.
+
+gh2key(Group, Host) ->
+    <<Host/binary, 0, Group/binary>>.
+
+ghus2key(Group, Host, {User, Server}) ->
+    <<Host/binary, 0, Group/binary, 0, Server/binary, 0, User/binary>>.
+
+ushg2key({User, Server}, Host, Group) ->
+    <<Host/binary, 0, Server/binary, 0, User/binary, 0, Group/binary>>.
+
+gh_prefix(Group, Host) ->
+    <<Host/binary, 0, Group/binary, 0>>.
+
+ush_prefix({User, Server}, Host) ->
+    <<Host/binary, 0, Server/binary, 0, User/binary, 0>>.
+
+get_group_from_ushg(Key) ->
+    [Group|_] = lists:reverse(str:tokens(Key, <<0>>)),
+    Group.
+
+decode_us(Bin) ->
+    [Server, User] = str:tokens(Bin, <<0>>),
+    {User, Server}.
+
+enc_key(L) ->
+    str:join(L, 0).
+
+dec_key(Key) ->
+    str:tokens(Key, <<0>>).
+
+default_group_opts() ->
+    [{name, <<"">>},
+     {description, <<"">>},
+     {displayed_groups, []},
+     {all_users, false},
+     {online_users, false}].
+
+enc_val(_, Vals) ->
+    Opts = lists:map(
+             fun({{Key, _}, BinVal}) ->
+                     Val = if Key == name; Key == description ->
+                                   BinVal;
+                              Key == all_users; Key == online_users ->
+                                   jlib:binary_to_atom(BinVal);
+                              true ->
+                                   jlib:expr_to_term(BinVal)
+                           end,
+                     {Key, Val}
+             end, lists:zip(default_group_opts(), Vals)),
+    term_to_binary(Opts).
+
+dec_val(_, Bin) ->
+    Opts = binary_to_term(Bin),
+    lists:map(
+      fun({Key, DefVal}) ->
+              Val = case lists:keyfind(Key, 1, Opts) of
+                        {_, V} -> V;
+                        false -> DefVal
+                    end,
+              if is_binary(Val) -> Val;
+                 is_atom(Val) -> jlib:atom_to_binary(Val);
+                 true -> jlib:term_to_expr(Val)
+              end
+      end, default_group_opts()).
+
 update_tables() ->
     update_sr_group_table(),
     update_sr_user_table().
@@ -1459,6 +1690,15 @@ import(_LServer, mnesia, #sr_group{} = G) ->
     mnesia:dirty_write(G);
 import(_LServer, mnesia, #sr_user{} = U) ->
     mnesia:dirty_write(U);
+import(_LServer, p1db, #sr_group{group_host = {G, H}, opts = Opts}) ->
+    GHKey = gh2key(G, H),
+    Val = term_to_binary(Opts),
+    p1db:async_insert(sr_opts, GHKey, Val);
+import(_LServer, p1db, #sr_user{group_host = {G, H}, us = US}) ->
+    GHUSKey = ghus2key(G, H, US),
+    USHGKey = ushg2key(US, H, G),
+    p1db:async_insert(sr_group, GHUSKey, <<>>),
+    p1db:async_insert(sr_user, USHGKey, <<>>);
 import(_LServer, riak, #sr_group{group_host = {_, Host}} = G) ->
     ejabberd_riak:put(G, [{'2i', [{<<"host">>, Host}]}]);
 import(_LServer, riak, #sr_user{us = US, group_host = {Group, Host}} = User) ->
