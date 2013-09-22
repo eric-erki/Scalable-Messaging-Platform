@@ -781,17 +781,23 @@ get_group_name(Host1, Group1) ->
     get_group_opt(name, Opts, Group).
 
 get_special_users_groups(Host) ->
-    lists:filter(fun ({_Group, Opts}) ->
-			 get_group_opt(all_users, Opts, false) orelse
-			   get_group_opt(online_users, Opts, false)
-		 end,
-		 groups_with_opts(Host)).
+    lists:flatmap(fun ({Group, Opts}) ->
+                          case get_group_opt(all_users, Opts, false) orelse
+                              get_group_opt(online_users, Opts, false) of
+                              true -> [Group];
+                              false -> []
+                          end
+                  end,
+                  groups_with_opts(Host)).
 
 get_special_users_groups_online(Host) ->
-    lists:filter(fun ({_Group, Opts}) ->
-			 get_group_opt(online_users, Opts, false)
-		 end,
-                 groups_with_opts(Host)).
+    lists:flatmap(fun ({Group, Opts}) ->
+                          case get_group_opt(online_users, Opts, false) of
+                              true -> [Group];
+                              false -> []
+                          end
+                  end,
+                  groups_with_opts(Host)).
 
 displayed_groups(GroupsOpts, SelectedGroupsOpts) ->
     DisplayedGroups = lists:usort(lists:flatmap(fun
@@ -813,10 +819,14 @@ displayed_groups(GroupsOpts, SelectedGroupsOpts) ->
 		       proplists:get_value(G, GroupsOpts, []))].
 
 get_special_displayed_groups(GroupsOpts) ->
-    Groups = lists:filter(fun ({_Group, Opts}) ->
-				  proplists:get_value(all_users, Opts, false)
-			  end,
-			  GroupsOpts),
+    Groups = lists:flatmap(
+               fun({Group, Opts}) ->
+                       case proplists:get_value(all_users, Opts, false) of
+                           true -> [Group];
+                           false -> []
+                       end
+               end,
+               GroupsOpts),
     displayed_groups(GroupsOpts, Groups).
 
 get_user_displayed_groups(LUser, LServer, GroupsOpts) ->
