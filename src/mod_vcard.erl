@@ -235,6 +235,8 @@ get_vcard(LUser, LServer, p1db) ->
                 {error, _Reason} -> error;
                 El -> [El]
             end;
+        {error, notfound} ->
+            [];
         {error, _} ->
             error
     end;
