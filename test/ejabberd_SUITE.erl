@@ -159,7 +159,7 @@ no_db_tests() ->
       [proxy65_master, proxy65_slave]}].
 
 db_tests(p1db) ->
-    %% No support for mod_mam and mod_pubsub so far
+    %% No support for mod_pubsub so far
     [{single_user, [sequence],
       [test_register,
        auth_plain,
@@ -178,6 +178,8 @@ db_tests(p1db) ->
        roster_subscribe_slave]},
      {test_offline, [sequence],
       [offline_master, offline_slave]},
+     {test_mam, [parallel],
+      [mam_master, mam_slave]},
      {test_roster_remove, [parallel],
       [roster_remove_master,
        roster_remove_slave]}];

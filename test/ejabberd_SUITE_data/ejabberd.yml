@@ -126,6 +126,8 @@ Welcome to this XMPP server."
         db_type: p1db
       mod_roster: 
         db_type: p1db
+      mod_mam:
+        db_type: p1db
       mod_vcard:
         search: false
         db_type: p1db

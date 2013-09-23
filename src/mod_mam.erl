@@ -52,6 +52,23 @@ start(Host, Opts) ->
               archive_prefs,
               [{disc_only_copies, [node()]},
                {attributes, record_info(fields, archive_prefs)}]);
+        p1db ->
+            p1db:open_table(archive_msg,
+                            [{mapsize, 1024*1024*100},
+                             {schema, [{keys, [server, user, timestamp]},
+                                       {vals, [peer, packet]},
+                                       {enc_key, fun enc_key/1},
+                                       {dec_key, fun dec_key/1},
+                                       {enc_val, fun enc_val/2},
+                                       {dec_val, fun dec_val/2}]}]),
+            p1db:open_table(archive_prefs,
+                            [{mapsize, 1024*1024*100},
+                             {schema, [{keys, [server, user]},
+                                       {vals, [default, always, never]},
+                                       {enc_key, fun enc_key/1},
+                                       {dec_key, fun dec_key/1},
+                                       {enc_val, fun enc_prefs/2},
+                                       {dec_val, fun dec_prefs/2}]}]);
         _ ->
             ok
     end,
@@ -96,6 +113,24 @@ remove_user(LUser, LServer, mnesia) ->
                 mnesia:delete({archive_prefs, US})
         end,
     mnesia:transaction(F);
+remove_user(LUser, LServer, p1db) ->
+    USKey = us2key(LUser, LServer),
+    USPrefix = us_prefix(LUser, LServer),
+    case p1db:get_by_prefix(archive_msg, USPrefix) of
+        {ok, L} ->
+            DelRes = p1db:delete(archive_prefs, USKey),
+            if DelRes == ok; DelRes == {error, notfound} ->
+                    lists:foreach(
+                      fun({Key, _, _}) ->
+                              p1db:async_delete(archive_msg, Key)
+                      end, L),
+                    {atomic, ok};
+               true ->
+                    {aborted, DelRes}
+            end;
+        {error, _} = Err ->
+            {aborted, Err}
+    end;
 remove_user(LUser, LServer, odbc) ->
     SUser = ejabberd_odbc:escape(LUser),
     ejabberd_odbc:sql_query(
@@ -282,7 +317,7 @@ store(C2SState, Pkt, LUser, LServer, Peer) ->
 do_store(Pkt, LUser, LServer, Peer, mnesia) ->
     LPeer = {PUser, PServer, _} = jlib:jid_tolower(Peer),
     TS = now(),
-    ID = now_to_usec(TS),
+    ID = jlib:integer_to_binary(now_to_usec(TS)),
     case mnesia:dirty_write(
            #archive_msg{us = {LUser, LServer},
                         id = ID,
@@ -295,8 +330,20 @@ do_store(Pkt, LUser, LServer, Peer, mnesia) ->
         Err ->
             Err
     end;
+do_store(Pkt, LUser, LServer, Peer, p1db) ->
+    Now = now(),
+    USNKey = usn2key(LUser, LServer, Now),
+    XML = xml:element_to_binary(Pkt),
+    Val = term_to_binary([{peer, Peer},
+                          {packet, XML}]),
+    case p1db:insert(archive_msg, USNKey, Val) of
+        ok ->
+            {ok, jlib:integer_to_binary(now_to_usec(Now))};
+        {error, _} = Err ->
+            Err
+    end;
 do_store(Pkt, LUser, LServer, Peer, odbc) ->
-    ID = TS = now_to_usec(now()),
+    ID = TS = jlib:integer_to_binary(now_to_usec(now())),
     BarePeer = jlib:jid_to_string(
                  jlib:jid_tolower(
                    jlib:jid_remove_resource(Peer))),
@@ -330,6 +377,10 @@ write_prefs(LUser, LServer, Default, Always, Never) ->
 
 write_prefs(_LUser, _LServer, Prefs, mnesia) ->
     mnesia:dirty_write(Prefs);
+write_prefs(LUser, LServer, Prefs, p1db) ->
+    Val = prefs_to_p1db(Prefs),
+    USKey = us2key(LUser, LServer),
+    p1db:insert(archive_prefs, USKey, Val);
 write_prefs(LUser, LServer, #archive_prefs{default = Default,
                                            never = Never,
                                            always = Always},
@@ -369,6 +420,14 @@ get_prefs(LUser, LServer, mnesia) ->
         [Prefs] ->
             {ok, Prefs};
         _ ->
+            error
+    end;
+get_prefs(LUser, LServer, p1db) ->
+    USKey = us2key(LUser, LServer),
+    case p1db:get(archive_prefs, USKey) of
+        {ok, Val, _} ->
+            {ok, p1db_to_prefs({LUser, LServer}, Val)};
+        {error, _} ->
             error
     end;
 get_prefs(LUser, LServer, odbc) ->
@@ -411,6 +470,43 @@ select(#jid{luser = LUser, lserver = LServer},
                 msg_to_el(Msg)}
        end, FilteredMsgs), Count};
 select(#jid{luser = LUser, lserver = LServer},
+       Start, End, With, RSM, p1db) ->
+    USPrefix = us_prefix(LUser, LServer),
+    case p1db:get_by_prefix(archive_msg, USPrefix) of
+        {ok, L} ->
+            Msgs = lists:flatmap(
+                     fun({Key, Val, _}) ->
+                             TS = get_suffix(USPrefix, Key),
+                             Now = usec_to_now(TS),
+                             Opts = binary_to_term(Val),
+                             Peer = proplists:get_value(peer, Opts),
+                             case match_interval(Now, Start, End) and
+                                 match_with(Peer, With) and
+                                 match_rsm(Now, RSM) of
+                                 true ->
+                                     #xmlel{} = Pkt =
+                                         xml_stream:parse_element(
+                                           proplists:get_value(packet, Opts)),
+                                     [{jlib:integer_to_binary(TS), TS,
+                                       msg_to_el(#archive_msg{
+                                                    timestamp = Now,
+                                                    packet = Pkt})}];
+                                 false ->
+                                     []
+                             end
+                     end, L),
+            case RSM of
+                #rsm_in{max = Max, direction = before} ->
+                    {filter_by_max(lists:reverse(Msgs), Max), length(L)};
+                #rsm_in{max = Max} ->
+                    {filter_by_max(Msgs, Max), length(L)};
+                _ ->
+                    {Msgs, length(L)}
+            end;
+        {error, _} ->
+            {[], 0}
+    end;
+select(#jid{luser = LUser, lserver = LServer},
        Start, End, With, RSM, odbc) ->
     {Query, CountQuery} = make_sql_query(LUser, LServer, Start, End, With, RSM),
     case {ejabberd_odbc:sql_query(LServer, Query),
@@ -419,7 +515,7 @@ select(#jid{luser = LUser, lserver = LServer},
             {lists:map(
                fun([TS, XML]) ->
                        #xmlel{} = El = xml_stream:parse_element(XML),
-                       Now = usec_to_now(TS),
+                       Now = usec_to_now(jlib:binary_to_integer(TS)),
                        {TS, jlib:binary_to_integer(TS),
                         msg_to_el(#archive_msg{timestamp = Now, packet = El})}
                end, Res), jlib:binary_to_integer(Count)};
@@ -494,8 +590,26 @@ filter_by_rsm(Msgs, #rsm_in{max = Max, direction = Direction, id = ID}) ->
 
 filter_by_max(Msgs, undefined) ->
     Msgs;
-filter_by_max(Msgs, Len) ->
-    lists:sublist(Msgs, Len).
+filter_by_max(Msgs, Len) when is_integer(Len), Len >= 0 ->
+    lists:sublist(Msgs, Len);
+filter_by_max(_Msgs, _Junk) ->
+    [].
+
+match_interval(Now, Start, End) ->
+    (Now >= Start) and (Now =< End).
+
+match_with({U, S, _}, {U, S, <<"">>}) -> true;
+match_with(_, none) -> true;
+match_with(Peer, With) -> Peer == With.
+
+match_rsm(Now, #rsm_in{id = ID, direction = aft}) ->
+    Now1 = (catch usec_to_now(jlib:binary_to_integer(ID))),
+    Now > Now1;
+match_rsm(Now, #rsm_in{id = ID, direction = before}) ->
+    Now1 = (catch usec_to_now(jlib:binary_to_integer(ID))),
+    Now < Now1;
+match_rsm(_Now, _) ->
+    true.
 
 make_matchspec(LUser, LServer, Start, End, {_, _, <<>>} = With) ->
     ets:fun2ms(
@@ -570,13 +684,15 @@ make_sql_query(LUser, _LServer, Start, End, With, RSM) ->
                       end,
     StartClause = case Start of
                       {_, _, _} ->
-                          [<<" and timestamp >= ">>, now_to_usec(Start)];
+                          [<<" and timestamp >= ">>, 
+                           jlib:integer_to_binary(now_to_usec(Start))];
                       _ ->
                           []
                   end,
     EndClause = case End of
                     {_, _, _} ->
-                        [<<" and timestamp <= ">>, now_to_usec(Start)];
+                        [<<" and timestamp <= ">>,
+                         jlib:integer_to_binary(now_to_usec(Start))];
                     _ ->
                         []
                 end,
@@ -588,10 +704,9 @@ make_sql_query(LUser, _LServer, Start, End, With, RSM) ->
       SUser, <<"'">>] ++ WithClause ++ StartClause ++ EndClause ++ [<<";">>]}.
 
 now_to_usec({MSec, Sec, USec}) ->
-    jlib:integer_to_binary((MSec*1000000 + Sec)*1000000 + USec).
+    (MSec*1000000 + Sec)*1000000 + USec.
 
-usec_to_now(S) ->
-    Int = jlib:binary_to_integer(S),
+usec_to_now(Int) ->
     Secs = Int div 1000000,
     USec = Int rem 1000000,
     MSec = Secs div 1000000,
@@ -629,3 +744,85 @@ update(LServer, Table, Fields, Vals, Where) ->
 %% Almost a copy of string:join/2.
 join([], _Sep) -> [];
 join([H | T], Sep) -> [H, [[Sep, X] || X <- T]].
+
+us2key(LUser, LServer) ->
+    <<LServer/binary, 0, LUser/binary>>.
+
+usn2key(LUser, LServer, Now) ->
+    TimeStamp = now_to_usec(Now),
+    <<LServer/binary, 0, LUser/binary, 0, TimeStamp:64>>.
+
+us_prefix(LUser, LServer) ->
+    <<LServer/binary, 0, LUser/binary, 0>>.
+
+get_suffix(Prefix, Key) ->
+    Size = size(Prefix),
+    <<_:Size/binary, TS:64>> = Key,
+    TS.
+
+prefs_to_p1db(Prefs) ->
+    Keys = record_info(fields, archive_prefs),
+    DefPrefs = #archive_prefs{us = Prefs#archive_prefs.us},
+    {_, PropList} =
+        lists:foldl(
+          fun(Key, {Pos, L}) ->
+                  Val = element(Pos, Prefs),
+                  DefVal = element(Pos, DefPrefs),
+                  if Val == DefVal ->
+                          {Pos+1, L};
+                     true ->
+                          {Pos+1, [{Key, Val}|L]}
+                  end
+          end, {2, []}, Keys),
+    term_to_binary(PropList).
+
+p1db_to_prefs({LUser, LServer}, Bin) ->
+    Prefs = #archive_prefs{us = {LUser, LServer}},
+    lists:foldl(
+      fun({default, Default}, P) -> P#archive_prefs{default = Default};
+         ({always, Always}, P) -> P#archive_prefs{always = Always};
+         ({never, Never}, P) -> P#archive_prefs{never = Never};
+         (_, P) -> P
+      end, Prefs, binary_to_term(Bin)).
+
+%% P1DB/SQL schema
+enc_key([Server]) ->
+    <<Server/binary>>;
+enc_key([Server, User]) ->
+    <<Server/binary, 0, User/binary>>;
+enc_key([Server, User, TS]) ->
+    <<Server/binary, 0, User/binary, 0, TS:64>>.
+
+dec_key(Key) ->
+    SLen = str:chr(Key, 0) - 1,
+    <<Server:SLen/binary, 0, UKey/binary>> = Key,
+    case str:chr(UKey, 0) of
+        0 ->
+            [Server, UKey];
+        L ->
+            ULen = L - 1,
+            <<User:ULen/binary, 0, TS:64>> = UKey,
+            [Server, User, TS]
+    end.
+
+enc_val(_, [SPeer, XML]) ->
+    term_to_binary([{peer, #jid{} = jlib:string_to_jid(SPeer)},
+                    {packet, XML}]).
+
+dec_val(_, Bin) ->
+    Opts = binary_to_term(Bin),
+    Packet = proplists:get_value(packet, Opts),
+    #jid{} = Peer = proplists:get_value(peer, Opts),
+    [jlib:jid_to_string(Peer), Packet].
+
+enc_prefs(_, [Default, Always, Never]) ->
+    prefs_to_p1db(#archive_prefs{
+                     default = jlib:binary_to_atom(Default),
+                     always = jlib:expr_to_term(Always),
+                     never = jlib:expr_to_term(Never)}).
+
+dec_prefs(_, Bin) ->
+    Prefs = p1db_to_prefs({<<>>, <<>>}, Bin),
+    [jlib:atom_to_binary(Prefs#archive_prefs.default),
+     jlib:term_to_expr(Prefs#archive_prefs.always),
+     jlib:term_to_expr(Prefs#archive_prefs.never)].
