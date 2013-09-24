@@ -215,20 +215,20 @@ read_roster_version(LUser, LServer, mnesia) ->
       [#roster_version{version = V}] -> V;
       [] -> error
     end;
-read_roster_version(LServer, LUser, odbc) ->
+read_roster_version(LUser, LServer, odbc) ->
     Username = ejabberd_odbc:escape(LUser),
     case odbc_queries:get_roster_version(LServer, Username)
 	of
       {selected, [<<"version">>], [[Version]]} -> Version;
       {selected, [<<"version">>], []} -> error
     end;
-read_roster_version(LServer, LUser, p1db) ->
+read_roster_version(LUser, LServer, p1db) ->
     US = us2key(LUser, LServer),
     case p1db:get(roster_version, US) of
         {ok, Version, _VClock} -> Version;
         {error, _} -> error
     end;
-read_roster_version(LServer, LUser, riak) ->
+read_roster_version(LUser, LServer, riak) ->
     case ejabberd_riak:get(roster_version, {LUser, LServer}) of
         {ok, Version} -> Version;
         _Err -> error
