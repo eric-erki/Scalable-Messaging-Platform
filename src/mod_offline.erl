@@ -1227,7 +1227,7 @@ import(LServer, DBType, <<"spool">>, [LUser, XML|_]) ->
          end,
     US = {LUser, LServer},
     Expire = find_x_expire(TS, El#xmlel.children),
-    Msg = #offline_msg{us = US,
+    Msg = #offline_msg{us = US, packet = El,
                        from = From, to = To,
                        timestamp = TS, expire = Expire},
     case DBType of
