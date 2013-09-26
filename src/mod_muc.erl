@@ -1619,7 +1619,11 @@ import(_LServer, p1db, <<"muc_room">>, [Room, Host, SOpts|_]) ->
     lists:foreach(
       fun({affiliations, Affs}) ->
               lists:foreach(
-                fun({JID, {Affiliation, Reason}}) ->
+                fun({JID, Aff}) ->
+                        {Affiliation, Reason} = case Aff of
+                                                    {A, R} -> {A, R};
+                                                    A -> {A, <<"">>}
+                                                end,
                         {LUser, LServer, _} = jlib:jid_tolower(JID),
                         RHUSKey = rhus2key(Room, Host, LUser, LServer),
                         Val = term_to_binary([{affiliation, Affiliation},
