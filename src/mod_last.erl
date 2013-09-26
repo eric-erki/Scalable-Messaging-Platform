@@ -373,10 +373,13 @@ export(_Server) ->
 import_info() ->
     [{<<"last">>, 3}].
 
-import(LServer, DBType, <<"last">>, [LUser, TimeStamp, State]) ->
+import(LServer, DBType, <<"last">>, [LUser, TimeStamp, State|_]) ->
+    TS = case TimeStamp of
+             <<"">> -> 0;
+             _ -> jlib:binary_to_integer(TimeStamp)
+         end,
     LA = #last_activity{us = {LUser, LServer},
-                        timestamp = jlib:binary_to_integer(
-                                      TimeStamp),
+                        timestamp = TS,
                         status = State},
     case DBType of
         mnesia ->
