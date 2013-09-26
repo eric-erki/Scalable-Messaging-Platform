@@ -30,7 +30,7 @@
 
 -include("logger.hrl").
 
--export([export/2, export/3, import/2, import/3, import_info/0]).
+-export([export/2, export/3, import/2, import/3, import_info/1]).
 
 -record(sql_dump, {fd, type}).
 
@@ -106,18 +106,15 @@ import(Server, Dir, Mod) ->
                       ?ERROR_MSG("Failed to open SQL dump ~s: ~s",
                                  [FileName, format_error(Err)])
               end
-      end, Mod:import_info()).
+      end, import_info(Mod)).
 
-import_info() ->
-    lists:flatmap(
-      fun(Mod) ->
-              Info = Mod:import_info(),
-              lists:map(
-                fun({Tab, FieldsNum}) ->
-                        FileName = <<Tab/binary, ".txt">>,
-                        {FileName, Tab, Mod, FieldsNum}
-                end, Info)
-      end, modules()).
+import_info(Mod) ->
+    Info = Mod:import_info(),
+    lists:map(
+      fun({Tab, FieldsNum}) ->
+              FileName = <<Tab/binary, ".txt">>,
+              {FileName, Tab, Mod, FieldsNum}
+      end, Info).
 
 %%%----------------------------------------------------------------------
 %%% Internal functions
