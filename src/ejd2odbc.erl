@@ -30,7 +30,7 @@
 
 -include("logger.hrl").
 
--export([export/2, export/3, import/2, import_info/0]).
+-export([export/2, export/3, import/2, import/3, import_info/0]).
 
 -record(sql_dump, {fd, type}).
 
@@ -81,9 +81,15 @@ export(Server, Output, Module) ->
     close_output(Output, IO).
 
 import(Server, Dir) ->
+    lists:foreach(
+      fun(Mod) ->
+              import(Server, Dir, Mod)
+      end, modules()).
+
+import(Server, Dir, Mod) ->
     LServer = jlib:nameprep(iolist_to_binary(Server)),
     lists:foreach(
-      fun({File, Tab, Mod, FieldsNumber}) ->
+      fun({File, Tab, _Mod, FieldsNumber}) ->
               FileName = filename:join([Dir, File]),
               case open_sql_dump(FileName) of
                   {ok, Dump} ->
@@ -100,7 +106,7 @@ import(Server, Dir) ->
                       ?ERROR_MSG("Failed to open SQL dump ~s: ~s",
                                  [FileName, format_error(Err)])
               end
-      end, import_info()).
+      end, Mod:import_info()).
 
 import_info() ->
     lists:flatmap(
