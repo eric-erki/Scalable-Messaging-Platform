@@ -1211,7 +1211,7 @@ export(_Server) ->
 import_info() ->
     [{<<"spool">>, 4}].
 
-import(LServer, DBType, <<"spool">>, [LUser, XML]) ->
+import(LServer, DBType, <<"spool">>, [LUser, XML|_]) ->
     El = #xmlel{} = xml_stream:parse_element(XML),
     From = #jid{} = jlib:string_to_jid(
                       xml:get_attr_s(<<"from">>, El#xmlel.attrs)),
