@@ -1565,18 +1565,18 @@ ush_prefix({User, Server}, Host) ->
     <<Host/binary, 0, Server/binary, 0, User/binary, 0>>.
 
 get_group_from_ushg(Key) ->
-    [Group|_] = lists:reverse(str:tokens(Key, <<0>>)),
+    [Group|_] = lists:reverse(binary:split(Key, <<0>>, [global])),
     Group.
 
 decode_us(Bin) ->
-    [Server, User] = str:tokens(Bin, <<0>>),
+    [Server, User] = binary:split(Bin, <<0>>, [global]),
     {User, Server}.
 
 enc_key(L) ->
     str:join(L, 0).
 
 dec_key(Key) ->
-    str:tokens(Key, <<0>>).
+    binary:split(Key, <<0>>, [global]).
 
 default_group_opts() ->
     [{name, <<"">>},

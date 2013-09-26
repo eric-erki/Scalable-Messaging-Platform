@@ -1535,7 +1535,7 @@ enc_key([Host, Room, Server, User]) ->
     <<Host/binary, 0, Room/binary, 0, Server/binary, 0, User/binary>>.
 
 dec_key(Key) ->
-    str:tokens(Key, <<0>>).
+    binary:split(Key, <<0>>, [global]).
 
 enc_aff(_, [Affiliation, Reason]) ->
     term_to_binary([{affiliation, jlib:binary_to_atom(Affiliation)},

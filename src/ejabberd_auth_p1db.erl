@@ -65,7 +65,7 @@ us2key(User, Server) ->
     <<LServer/binary, 0, LUser/binary>>.
 
 key2us(Key) ->
-    [LServer, LUser] = str:tokens(Key, <<0>>),
+    [LServer, LUser] = binary:split(Key, <<0>>, [global]),
     {LUser, LServer}.
 
 server_prefix(Server) ->
