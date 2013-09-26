@@ -39,15 +39,15 @@
 
 -behaviour(gen_mod).
 
--export([start/2, stop/1, process_iq/3, export/1, import/1,
-	 process_local_iq/3, get_user_roster/2, import/3,
-	 get_subscription_lists/3, get_roster/2,
+-export([start/2, stop/1, process_iq/3, export/1, import_info/0,
+	 process_local_iq/3, get_user_roster/2, import/4,
+	 get_subscription_lists/3, get_roster/2, import_start/2,
 	 get_in_pending_subscriptions/3, in_subscription/6,
 	 out_subscription/4, set_items/3, remove_user/2,
 	 get_jid_info/4, item_to_xml/1, webadmin_page/3,
 	 webadmin_user/4, get_versioning_feature/2,
 	 roster_versioning_enabled/1, roster_version/2,
-         record_to_string/1, groups_to_string/1]).
+         record_to_string/1, groups_to_string/1, import_stop/2]).
 
 %% For benchmarking
 -export([create_rosters/4]).
@@ -1815,42 +1815,56 @@ export(_Server) ->
               []
       end}].
 
-import(LServer) ->
-    [{<<"select username, jid, nick, subscription, "
-        "ask, askmessage, server, subscribe, type from rosterusers;">>,
-      fun([LUser, JID|_] = Row) ->
-              Item = raw_to_record(LServer, Row),
-              Username = ejabberd_odbc:escape(LUser),
-              SJID = ejabberd_odbc:escape(JID),
-              {selected, _, Rows} =
-                  ejabberd_odbc:sql_query_t(
-                    [<<"select grp from rostergroups where username='">>,
-                     Username, <<"' and jid='">>, SJID, <<"'">>]),
-              Groups = [Grp || [Grp] <- Rows],
-              Item#roster{groups = Groups}
-      end},
-     {<<"select username, version from roster_version;">>,
-      fun([LUser, Ver]) ->
-              #roster_version{us = {LUser, LServer}, version = Ver}
-      end}].
+import_info() ->
+    [{<<"roster_version">>, 2},
+     {<<"rostergroups">>, 3},
+     {<<"rosterusers">>, 10}].
 
-import(_LServer, mnesia, #roster{} = R) ->
-    mnesia:dirty_write(R);
-import(_LServer, mnesia, #roster_version{} = RV) ->
+import_start(_LServer, odbc) ->
+    ok;
+import_start(_LServer, _DBType) ->
+    ets:new(rostergroups_tmp, [private, named_table, bag]).
+
+import_stop(_LServer, odbc) ->
+    ok;
+import_stop(_LServer, _DBType) ->
+    ets:delete(rostergroups_tmp).
+
+import(LServer, DBType, <<"rostergroups">>, [LUser, SJID, Group])
+  when DBType == riak; DBType == mnesia; DBType == p1db ->
+    LJID = jlib:jid_tolower(jlib:string_to_jid(SJID)),
+    ets:insert(rostergroups_tmp, {{LUser, LServer, LJID}, Group});
+import(LServer, DBType, <<"rosterusers">>, Row) ->
+    I = raw_to_record(LServer, lists:sublist(Row, 9)),
+    {LUser, _LServer, LJID} = I#roster.usj,
+    Groups = [G || {_, G} <- ets:lookup(rostergroups_tmp, I#roster.usj)],
+    RosterItem = I#roster{groups = Groups},
+    case DBType of
+        mnesia ->
+            mnesia:dirty_write(RosterItem);
+        riak ->
+            ejabberd_riak:put(RosterItem,
+                              [{'2i', [{<<"us">>, {LUser, LServer}}]}]);
+        p1db ->
+            USJKey = usj2key(LUser, LServer, LJID),
+            Val = item_to_p1db(RosterItem),
+            p1db:async_insert(roster, USJKey, Val);
+        odbc ->
+            ok
+    end;
+import(LServer, mnesia, <<"roster_version">>, [LUser, Ver]) ->
+    RV = #roster_version{us = {LUser, LServer}, version = Ver},
     mnesia:dirty_write(RV);
-import(_LServer, p1db, #roster{us = {LUser, LServer}, jid = LJID} = R) ->
-    USJKey = usj2key(LUser, LServer, LJID),
-    Val = item_to_p1db(R),
-    p1db:async_insert(roster, USJKey, Val);
-import(_LServer, p1db, #roster_version{us = {LUser, LServer}, version = Ver}) ->
+import(LServer, riak, <<"roster_version">>, [LUser, Ver]) ->
+    RV = #roster_version{us = {LUser, LServer}, version = Ver},
+    ejabberd_riak:put(RV);
+import(LServer, p1db, <<"roster_version">>, [LUser, Ver]) ->
     USKey = us2key(LUser, LServer),
     p1db:async_insert(roster_version, USKey, Ver);
-import(_LServer, riak, #roster{us = {LUser, LServer}} = R) ->
-    ejabberd_riak:put(R, [{'2i', [{<<"us">>, {LUser, LServer}}]}]);
-import(_LServer, riak, #roster_version{} = RV) ->
-    ejabberd_riak:put(RV);
-import(_, _, _) ->
-    pass.
+import(_LServer, odbc, Tab, _)
+  when Tab == <<"roster_version">>; Tab == <<"rostergroups">>;
+       Tab == <<"rosterusers">> ->
+    ok.
 
 %% For benchmarks
 make_roster_range(I, Total) ->

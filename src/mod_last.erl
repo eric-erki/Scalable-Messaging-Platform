@@ -31,7 +31,7 @@
 -behaviour(gen_mod).
 
 -export([start/2, stop/1, process_local_iq/3, export/1,
-	 process_sm_iq/3, on_presence_update/4, import/1, import/3,
+	 process_sm_iq/3, on_presence_update/4, import_info/0, import/4,
 	 store_last_info/4, get_last_info/2, remove_user/2,
          transform_options/1]).
 
@@ -370,24 +370,25 @@ export(_Server) ->
               []
       end}].
 
-import(LServer) ->
-    [{<<"select username, seconds, state from last">>,
-      fun([LUser, TimeStamp, State]) ->
-              #last_activity{us = {LUser, LServer},
-                             timestamp = jlib:binary_to_integer(
-                                           TimeStamp),
-                             status = State}
-      end}].
+import_info() ->
+    [{<<"last">>, 3}].
 
-import(_LServer, mnesia, #last_activity{} = LA) ->
-    mnesia:dirty_write(LA);
-import(_LServer, p1db, #last_activity{us = {LUser, LServer}} = LA) ->
-    USKey = us2key(LUser, LServer),
-    p1db:async_insert(last_activity, USKey, la_to_p1db(LA));
-import(_LServer, riak, #last_activity{} = LA) ->
-    ejabberd_riak:put(LA);
-import(_, _, _) ->
-    pass.
+import(LServer, DBType, <<"last">>, [LUser, TimeStamp, State]) ->
+    LA = #last_activity{us = {LUser, LServer},
+                        timestamp = jlib:binary_to_integer(
+                                      TimeStamp),
+                        status = State},
+    case DBType of
+        mnesia ->
+            mnesia:dirty_write(LA);
+        riak ->
+            ejabberd_riak:put(LA);
+        p1db ->
+            USKey = us2key(LUser, LServer),
+            p1db:async_insert(last_activity, USKey, la_to_p1db(LA));
+        _ ->
+            ok
+    end.
 
 us2key(LUser, LServer) ->
     <<LServer/binary, 0, LUser/binary>>.

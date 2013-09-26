@@ -30,12 +30,12 @@
 
 -behaviour(gen_mod).
 
--export([start/2, stop/1, process_iq/3, export/1, import/1,
+-export([start/2, stop/1, process_iq/3, export/1, import_info/0,
 	 process_iq_set/4, process_iq_get/5, get_user_list/3,
 	 check_packet/6, remove_user/2, item_to_raw/1,
 	 raw_to_item/1, is_list_needdb/1, updated_list/3,
-         item_to_xml/1, get_user_lists/2, import/3,
-         p1db_to_items/1, items_to_p1db/1]).
+         item_to_xml/1, get_user_lists/2, import/4, import_start/2,
+         p1db_to_items/1, items_to_p1db/1, import_stop/2]).
 
 %% For mod_blocking
 -export([sql_add_privacy_list/2,
@@ -1292,11 +1292,6 @@ sql_get_privacy_list_data(LUser, LServer, Name) ->
     odbc_queries:get_privacy_list_data(LServer, Username,
 				       SName).
 
-sql_get_privacy_list_data_t(LUser, Name) ->
-    Username = ejabberd_odbc:escape(LUser),
-    SName = ejabberd_odbc:escape(Name),
-    odbc_queries:get_privacy_list_data_t(Username, SName).
-
 sql_get_privacy_list_data_by_id(ID, LServer) ->
     odbc_queries:get_privacy_list_data_by_id(LServer, ID).
 
@@ -1431,54 +1426,86 @@ get_id() ->
     put(id, ID + 1),
     ID + 1.
 
-import(LServer) ->
-    [{<<"select username from privacy_list;">>,
-      fun([LUser]) ->
-              Default = case sql_get_default_privacy_list_t(LUser) of
-                            {selected, [<<"name">>], []} ->
-                                none;
-                            {selected, [<<"name">>], [[DefName]]} ->
-                                DefName;
-                            _ ->
-                                none
-                        end,
-              {selected, [<<"name">>], Names} =
-                  sql_get_privacy_list_names_t(LUser),
-              Lists = lists:flatmap(
-                        fun([Name]) ->
-                                case sql_get_privacy_list_data_t(LUser, Name) of
-                                    {selected, _, RItems} ->
-                                        [{Name,
-                                          lists:map(fun raw_to_item/1,
-                                                    RItems)}];
-                                    _ ->
-                                        []
-                                end
-                        end, Names),
-              #privacy{default = Default,
-                       us = {LUser, LServer},
-                       lists = Lists}
-      end}].
+import_info() ->
+    [{<<"privacy_default_list">>, 2},
+     {<<"privacy_list_data">>, 10},
+     {<<"privacy_list">>, 4}].
 
-import(_LServer, mnesia, #privacy{} = P) ->
-    mnesia:dirty_write(P);
-import(_LServer, p1db, #privacy{us = {LUser, LServer},
-                                default = Default,
-                                lists = Lists}) ->
-    case Default of
-        none ->
-            ok;
+import_start(_LServer, odbc) ->
+    ok;
+import_start(_LServer, _DBType) ->
+    ets:new(privacy_default_list_tmp, [private, named_table]),
+    ets:new(privacy_list_data_tmp, [private, named_table]),
+    ets:new(privacy_list_tmp, [private, named_table, bag,
+                               {keypos, #privacy.us}]).
+
+import(LServer, DBType, <<"privacy_default_list">>, [LUser, Name])
+  when DBType == riak; DBType == mnesia; DBType == p1db ->
+    US = {LUser, LServer},
+    ets:insert(privacy_default_list_tmp, {US, Name});
+import(LServer, DBType, <<"privacy_list_data">>, [ID|Row])
+  when DBType == riak; DBType == mnesia; DBType == p1db ->
+    Item = raw_to_item(Row),
+    IS = {jlib:binary_to_integer(ID), LServer},
+    ets:insert(privacy_list_data_tmp, {IS, Item});
+import(LServer, DBType, <<"privacy_list">>, [LUser, Name, ID|_])
+  when DBType == riak; DBType == mnesia; DBType == p1db ->
+    US = {LUser, LServer},
+    IS = {jlib:binary_to_integer(ID), LServer},
+    Default = case ets:lookup(privacy_list_default_tmp, US) of
+                  [{_, Name}] -> Name;
+                  _ -> none
+              end,
+    case ets:lookup(privacy_list_data_tmp, IS) of
+        [{_, Item}] ->
+            Privacy = #privacy{us = {LUser, LServer},
+                               default = Default,
+                               lists = [{Name, Item}]},
+            ets:insert(privacy_list_tmp, Privacy),
+            ets:delete(privacy_list_data_tmp, IS);
         _ ->
-            DefaultKey = default_key(LUser, LServer),
-            p1db:async_insert(privacy, DefaultKey, Default)
+            ok
+    end;
+import(_LServer, odbc, _, _) ->
+    ok.
+
+import_stop(_LServer, odbc) ->
+    ok;
+import_stop(_LServer, DBType) ->
+    import_next(DBType, ets:first(privacy_list_tmp)),
+    ets:delete(privacy_default_list_tmp),
+    ets:delete(privacy_list_data_tmp),
+    ets:delete(privacy_list_tmp).
+
+import_next(_DBType, '$end_of_table') ->
+    ok;
+import_next(DBType, {LUser, LServer} = US) ->
+    [P|_] = Ps = ets:lookup(privacy_list_tmp, US),
+    Lists = lists:flatmap(
+              fun(#privacy{lists = Lists}) ->
+                      Lists
+              end, Ps),
+    Privacy = P#privacy{lists = Lists},
+    case DBType of
+        mnesia ->
+            mnesia:dirty_write(Privacy);
+        riak ->
+            ejabberd_riak:put(Privacy);
+        odbc ->
+            ok;
+        p1db ->
+            case P#privacy.default of
+                none ->
+                    ok;
+                Default ->
+                    DefaultKey = default_key(LUser, LServer),
+                    p1db:async_insert(privacy, DefaultKey, Default)
+            end,
+            lists:foreach(
+              fun({Name, List}) ->
+                      USNKey = usn2key(LUser, LServer, Name),
+                      Val = items_to_p1db(List),
+                      p1db:async_insert(privacy, USNKey, Val)
+              end, Lists)
     end,
-    lists:foreach(
-      fun({Name, List}) ->
-              USNKey = usn2key(LUser, LServer, Name),
-              Val = items_to_p1db(List),
-              p1db:async_insert(privacy, USNKey, Val)
-      end, Lists);
-import(_LServer, riak, #privacy{} = P) ->
-    ejabberd_riak:put(P);
-import(_, _, _) ->
-    pass.
+    import_next(DBType, ets:next(privacy_list_tmp, US)).

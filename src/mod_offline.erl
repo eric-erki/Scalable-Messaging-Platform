@@ -37,7 +37,7 @@
 	 remove_expired_messages/1, remove_old_messages/2,
 	 remove_user/2, get_queue_length/2, webadmin_page/3, webadmin_user/4,
 	 webadmin_user_parse_query/5, count_offline_messages/3,
-         export/1, import/1, import/3]).
+         export/1, import_info/0, import/4]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -1208,35 +1208,36 @@ export(_Server) ->
               []
       end}].
 
-import(LServer) ->
-    [{<<"select username, xml from spool;">>,
-      fun([LUser, XML]) ->
-              El = #xmlel{} = xml_stream:parse_element(XML),
-              From = #jid{} = jlib:string_to_jid(
-                                xml:get_attr_s(<<"from">>, El#xmlel.attrs)),
-              To = #jid{} = jlib:string_to_jid(
-                              xml:get_attr_s(<<"to">>, El#xmlel.attrs)),
-              Stamp = xml:get_path_s(El, [{elem, <<"delay">>},
-                                          {attr, <<"stamp">>}]),
-              TS = case jlib:datetime_string_to_timestamp(Stamp) of
-                       {_, _, _} = Now ->
-                           Now;
-                       undefined ->
-                           now()
-                   end,
-              Expire = find_x_expire(TS, El#xmlel.children),
-              #offline_msg{us = {LUser, LServer},
-                           from = From, to = To,
-                           timestamp = TS, expire = Expire}
-      end}].
+import_info() ->
+    [{<<"spool">>, 4}].
 
-import(_LServer, mnesia, #offline_msg{} = Msg) ->
-    mnesia:dirty_write(Msg);
-import(_LServer, p1db, #offline_msg{us = {LUser, LServer},
-                                    timestamp = Now} = Msg) ->
-    USNKey = usn2key(LUser, LServer, Now),
-    p1db:async_insert(offline_msg, USNKey, offmsg_to_p1db(Msg));
-import(_LServer, riak, #offline_msg{us = US, timestamp = TS} = M) ->
-    ejabberd_riak:put(M, [{i, TS}, {'2i', [{<<"us">>, US}]}]);
-import(_, _, _) ->
-    pass.
+import(LServer, DBType, <<"spool">>, [LUser, XML]) ->
+    El = #xmlel{} = xml_stream:parse_element(XML),
+    From = #jid{} = jlib:string_to_jid(
+                      xml:get_attr_s(<<"from">>, El#xmlel.attrs)),
+    To = #jid{} = jlib:string_to_jid(
+                    xml:get_attr_s(<<"to">>, El#xmlel.attrs)),
+    Stamp = xml:get_path_s(El, [{elem, <<"delay">>},
+                                {attr, <<"stamp">>}]),
+    TS = case jlib:datetime_string_to_timestamp(Stamp) of
+             {_, _, _} = Now ->
+                 Now;
+             undefined ->
+                 now()
+         end,
+    US = {LUser, LServer},
+    Expire = find_x_expire(TS, El#xmlel.children),
+    Msg = #offline_msg{us = US,
+                       from = From, to = To,
+                       timestamp = TS, expire = Expire},
+    case DBType of
+        mnesia ->
+            mnesia:dirty_write(Msg);
+        riak ->
+            ejabberd_riak:put(Msg, [{i, TS}, {'2i', [{<<"us">>, US}]}]);
+        p1db ->
+            USNKey = usn2key(LUser, LServer, TS),
+            p1db:async_insert(offline_msg, USNKey, offmsg_to_p1db(Msg));
+        odbc ->
+            ok
+    end.

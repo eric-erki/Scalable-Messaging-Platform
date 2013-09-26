@@ -35,8 +35,8 @@
 	 check_password/5, check_password_with_authmodule/3,
 	 check_password_with_authmodule/5, try_register/3,
 	 dirty_get_registered_users/0, get_vh_registered_users/1,
-	 get_vh_registered_users/2, export/1, import/1,
-	 get_vh_registered_users_number/1, import/3,
+	 get_vh_registered_users/2, export/1, import/4,
+	 get_vh_registered_users_number/1, import_info/0,
 	 get_vh_registered_users_number/2, get_password/2,
 	 get_password_s/2, get_password_with_authmodule/2,
 	 is_user_exists/2, is_user_exists_in_other_modules/3,
@@ -458,17 +458,17 @@ auth_modules(Server) ->
 export(Server) ->
     ejabberd_auth_internal:export(Server).
 
-import(Server) ->
-    ejabberd_auth_internal:import(Server).
+import_info() ->
+    [{<<"users">>, 3}].
 
-import(Server, mnesia, Passwd) ->
-    ejabberd_auth_internal:import(Server, mnesia, Passwd);
-import(Server, p1db, Passwd) ->
-    ejabberd_auth_p1db:import(Server, p1db, Passwd);
-import(Server, riak, Passwd) ->
-    ejabberd_auth_riak:import(Server, riak, Passwd);
-import(_, _, _) ->
-    pass.
+import(Server, mnesia, Tab, Fields) ->
+    ejabberd_auth_internal:import(Server, mnesia, Tab, Fields);
+import(Server, p1db, Tab, Fields) ->
+    ejabberd_auth_p1db:import(Server, p1db, Tab, Fields);
+import(Server, riak, Tab, Fields) ->
+    ejabberd_auth_riak:import(Server, riak, Tab, Fields);
+import(_, odbc, _, _) ->
+    ok.
 
 -spec create_users(binary(), binary(), binary(),
                    pos_integer(), gen_mod:db_type()) -> any().

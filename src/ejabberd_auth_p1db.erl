@@ -39,13 +39,10 @@
 	 get_vh_registered_users_number/2, get_password/2,
 	 get_password_s/2, is_user_exists/2, remove_user/2,
 	 remove_user/3, store_type/0, export/1,
-	 import/3, plain_password_required/0]).
+	 import/4, plain_password_required/0]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
-
--record(passwd, {us = {<<"">>, <<"">>} :: {binary(), binary()},
-                 password = <<"">> :: binary() | scram()}).
 
 %%%----------------------------------------------------------------------
 %%% API
@@ -242,9 +239,6 @@ export(_Server) ->
               end
       end}].
 
-import(_LServer, p1db, #passwd{us = {User, Server}, password = Pass})
-  when is_binary(Pass) ->
-    US = us2key(User, Server),
-    p1db:async_insert(passwd, US, Pass);
-import(_, _, _) ->
-    pass.
+import(LServer, p1db, <<"users">>, [LUser, Password|_]) ->
+    US = us2key(LUser, LServer),
+    p1db:async_insert(passwd, US, Password).

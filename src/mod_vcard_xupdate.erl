@@ -13,7 +13,7 @@
 -export([start/2, stop/1]).
 
 %% hooks
--export([update_presence/3, vcard_set/3, export/1, import/1, import/3]).
+-export([update_presence/3, vcard_set/3, export/1, import_info/0, import/4]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -247,18 +247,17 @@ export(_Server) ->
               []
       end}].
 
-import(LServer) ->
-    [{<<"select username, hash from vcard_xupdate;">>,
-      fun([LUser, Hash]) ->
-              #vcard_xupdate{us = {LUser, LServer}, hash = Hash}
-      end}].
+import_info() ->
+    [{<<"vcard_xupdate">>, 3}].
 
-import(_LServer, mnesia, #vcard_xupdate{} = R) ->
-    mnesia:dirty_write(R);
-import(_LServer, p1db, #vcard_xupdate{us = {LUser, LServer}, hash = Hash}) ->
+import(LServer, mnesia, <<"vcard_xupdate">>, [LUser, Hash|_]) ->
+    mnesia:dirty_write(
+      #vcard_xupdate{us = {LUser, LServer}, hash = Hash});
+import(LServer, p1db, <<"vcard_xupdate">>, [LUser, Hash|_]) ->
     USKey = us2key(LUser, LServer),
     p1db:async_insert(vcard_xupdate, USKey, Hash);
-import(_LServer, riak, #vcard_xupdate{} = R) ->
-    ejabberd_riak:put(R);
-import(_, _, _) ->
-    pass.
+import(LServer, riak, <<"vcard_xupdate">>, [LUser, Hash|_]) ->
+    ejabberd_riak:put(
+      #vcard_xupdate{us = {LUser, LServer}, hash = Hash});
+import(_LServer, odbc, <<"vcard_xupdate">>, _) ->
+    ok.

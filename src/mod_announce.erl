@@ -36,8 +36,8 @@
 	 init/0,
 	 stop/1,
 	 export/1,
-         import/1,
-         import/3,
+         import_info/0,
+         import/4,
 	 announce/3,
 	 send_motd/1,
 	 disco_identity/5,
@@ -1217,31 +1217,25 @@ export(_Server) ->
               []
       end}].
 
-import(LServer) ->
-    [{<<"select xml from motd where username='';">>,
-      fun([XML]) ->
-              El = xml_stream:parse_element(XML),
-              #motd{server = LServer, packet = El}
-      end},
-     {<<"select username from motd where xml='';">>,
-      fun([LUser]) ->
-              #motd_users{us = {LUser, LServer}}
-      end}].
+import_info() ->
+    [{<<"motd">>, 3}].
 
-import(_LServer, mnesia, #motd{} = Motd) ->
-    mnesia:dirty_write(Motd);
-import(_LServer, mnesia, #motd_users{} = Users) ->
-    mnesia:dirty_write(Users);
-import(_LServer, p1db, #motd{server = LServer, packet = El}) ->
+import(LServer, mnesia, <<"motd">>, [<<>>, XML|_]) ->
+    El = xml_stream:parse_element(XML),
+    mnesia:dirty_write(#motd{server = LServer, packet = El});
+import(LServer, mnesia, <<"motd">>, [LUser|_]) ->
+    mnesia:dirty_write(#motd_users{us = {LUser, LServer}});
+import(LServer, p1db, <<"motd">>, [<<>>, XML|_]) ->
     MsgKey = msg_key(LServer),
-    XML = xml:element_to_binary(El),
     p1db:async_insert(motd, MsgKey, XML);
-import(_LServer, p1db, #motd_users{us = {LUser, LServer}}) ->
+import(LServer, p1db, <<"motd">>, [LUser|_]) ->
     USKey = us2key(LUser, LServer),
     p1db:async_insert(motd, USKey, <<>>);
-import(_LServer, riak, #motd{} = Motd) ->
-    ejabberd_riak:put(Motd);
-import(_LServer, riak, #motd_users{us = {_, S}} = Users) ->
-    ejabberd_riak:put(Users, [{'2i', [{<<"server">>, S}]}]);
-import(_, _, _) ->
-    pass.
+import(LServer, riak, <<"motd">>, [<<>>, XML|_]) ->
+    El = xml_stream:parse_element(XML),
+    ejabberd_riak:put(#motd{server = LServer, packet = El});
+import(LServer, riak, <<"motd">>, [LUser|_]) ->
+    Users = #motd_users{us = {LUser, LServer}},
+    ejabberd_riak:put(Users, [{'2i', [{<<"server">>, LServer}]}]);
+import(_, _, _, _) ->
+    ok.

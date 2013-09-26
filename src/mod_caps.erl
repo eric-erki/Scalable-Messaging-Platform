@@ -36,7 +36,7 @@
 
 -export([read_caps/1, caps_stream_features/2,
 	 disco_features/5, disco_identity/5, disco_info/5,
-	 get_features/2, export/1, import/1, import/3]).
+	 get_features/2, export/1, import_info/0]).
 
 %% gen_mod callbacks
 -export([start/2, start_link/2, stop/1]).
@@ -772,46 +772,5 @@ export(_Server) ->
               []
       end}].
 
-import(_LServer) ->
-    [{<<"select node, subnode from caps_features;">>,
-      fun([Node, SubNode]) ->
-              SNode = ejabberd_odbc:escape(Node),
-              SSubNode = ejabberd_odbc:escape(SubNode),
-              {selected, _, Rows} =
-                  ejabberd_odbc:sql_query_t(
-                    [<<"select feature from caps_features "
-                       "where node='">>, SNode,
-                     <<"' and subnode='">>, SSubNode, <<"';">>]),
-              Features = case Rows of
-                             [[Stamp]] ->
-                                 case catch jlib:binary_to_integer(Stamp) of
-                                     Int when is_integer(Int), Int>=0 ->
-                                         Int;
-                                     _ ->
-                                         [Stamp]
-                                 end;
-                             _ ->
-                                 [Feature || [Feature] <- Rows]
-                         end,
-              #caps_features{node_pair = {Node, SubNode},
-                             features = Features}
-      end}].
-
-import(_LServer, mnesia, #caps_features{} = Caps) ->
-    mnesia:dirty_write(Caps);
-import(_LServer, p1db, #caps_features{node_pair = Node, features = Feats}) ->
-    if is_list(Feats) ->
-            lists:foreach(
-              fun(Feature) ->
-                      NVFKey = nvf2key(Node, Feature),
-                      p1db:async_insert(caps_features,
-                                        NVFKey, <<(now_ts()):32>>)
-              end, Feats);
-       true ->
-            NVFKey = null_feature(Node),
-            p1db:async_insert(caps_features, NVFKey, <<Feats:32>>)
-    end;
-import(_LServer, riak, #caps_features{} = Caps) ->
-    ejabberd_riak:put(Caps);
-import(_, _, _) ->
-    pass.
+import_info() ->
+    [].

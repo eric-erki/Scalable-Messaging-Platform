@@ -32,7 +32,7 @@
 
 -export([start/2, init/3, stop/1, get_sm_features/5,
 	 process_local_iq/3, process_sm_iq/3, reindex_vcards/0,
-	 remove_user/2, export/1, import/1, import/3]).
+	 remove_user/2, export/1, import_info/0, import/4]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -1099,44 +1099,40 @@ export(_Server) ->
               []
       end}].
 
-import(LServer) ->
-    [{<<"select username, vcard from vcard;">>,
-      fun([LUser, SVCard]) ->
-              #xmlel{} = VCARD = xml_stream:parse_element(SVCard),
-              #vcard{us = {LUser, LServer}, vcard = VCARD}
-      end},
-     {<<"select username, lusername, fn, lfn, family, lfamily, "
-        "given, lgiven, middle, lmiddle, nickname, lnickname, "
-        "bday, lbday, ctry, lctry, locality, llocality, email, "
-        "lemail, orgname, lorgname, orgunit, lorgunit from vcard_search;">>,
-      fun([User, LUser, FN, LFN,
-           Family, LFamily, Given, LGiven,
-           Middle, LMiddle, Nickname, LNickname,
-           BDay, LBDay, CTRY, LCTRY, Locality, LLocality,
-           EMail, LEMail, OrgName, LOrgName, OrgUnit, LOrgUnit]) ->
-              #vcard_search{us = {LUser, LServer},
-                            user = {User, LServer}, luser = LUser,
-                            fn = FN, lfn = LFN, family = Family,
-                            lfamily = LFamily, given = Given,
-                            lgiven = LGiven, middle = Middle,
-                            lmiddle = LMiddle, nickname = Nickname,
-                            lnickname = LNickname, bday = BDay,
-                            lbday = LBDay, ctry = CTRY, lctry = LCTRY,
-                            locality = Locality, llocality = LLocality,
-                            email = EMail, lemail = LEMail,
-                            orgname = OrgName, lorgname = LOrgName,
-                            orgunit = OrgUnit, lorgunit = LOrgUnit}
-      end}].
+import_info() ->
+    [{<<"vcard">>, 3}, {<<"vcard_search">>, 24}].
 
-import(_LServer, mnesia, #vcard{} = VCard) ->
+import(LServer, mnesia, <<"vcard">>, [LUser, XML|_]) ->
+    #xmlel{} = El = xml_stream:parse_element(XML),
+    VCard = #vcard{us = {LUser, LServer}, vcard = El},
     mnesia:dirty_write(VCard);
-import(_LServer, mnesia, #vcard_search{} = S) ->
-    mnesia:dirty_write(S);
-import(_LServer, p1db, #vcard{us = {LUser, LServer}, vcard = El}) ->
+import(LServer, mnesia, <<"vcard_search">>,
+       [User, LUser, FN, LFN,
+        Family, LFamily, Given, LGiven,
+        Middle, LMiddle, Nickname, LNickname,
+        BDay, LBDay, CTRY, LCTRY, Locality, LLocality,
+        EMail, LEMail, OrgName, LOrgName, OrgUnit, LOrgUnit]) ->
+    mnesia:dirty_write(
+      #vcard_search{us = {LUser, LServer},
+                    user = {User, LServer}, luser = LUser,
+                    fn = FN, lfn = LFN, family = Family,
+                    lfamily = LFamily, given = Given,
+                    lgiven = LGiven, middle = Middle,
+                    lmiddle = LMiddle, nickname = Nickname,
+                    lnickname = LNickname, bday = BDay,
+                    lbday = LBDay, ctry = CTRY, lctry = LCTRY,
+                    locality = Locality, llocality = LLocality,
+                    email = EMail, lemail = LEMail,
+                    orgname = OrgName, lorgname = LOrgName,
+                    orgunit = OrgUnit, lorgunit = LOrgUnit});
+import(LServer, p1db, <<"vcard">>, [LUser, XML|_]) ->
     USKey = us2key(LUser, LServer),
-    XML = xml:element_to_binary(El),
     p1db:async_insert(vcard, USKey, XML);
-import(_LServer, riak, #vcard{us = {LUser, _}, vcard = El} = VCard) ->
+import(_LServer, p1db, <<"vcard_search">>, _) ->
+    ok;
+import(LServer, riak, <<"vcard">>, [LUser, XML|_]) ->
+    El = xml_stream:parse_element(XML),
+    VCard = #vcard{us = {LUser, LServer}, vcard = El},
     FN = xml:get_path_s(El, [{elem, <<"FN">>}, cdata]),
     Family = xml:get_path_s(El,
 			    [{elem, <<"N">>}, {elem, <<"FAMILY">>}, cdata]),
@@ -1201,7 +1197,9 @@ import(_LServer, riak, #vcard{us = {LUser, _}, vcard = El} = VCard) ->
                                {<<"lorgname">>, LOrgName},
                                {<<"orgunit">>, OrgUnit},
                                {<<"lorgunit">>, LOrgUnit}]}]);
-import(_LServer, riak, #vcard_search{}) ->
+import(_LServer, riak, <<"vcard_search">>, _) ->
     ok;
-import(_, _, _) ->
-    pass.
+import(_LServer, odbc, <<"vcard">>, _) ->
+    ok;
+import(_LServer, odbc, <<"vcard_search">>, _) ->
+    ok.
