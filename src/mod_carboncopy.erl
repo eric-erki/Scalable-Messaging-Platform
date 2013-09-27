@@ -114,7 +114,9 @@ iq_handler(From, _To,  #iq{type=set, sub_el = #xmlel{name = Operation, children 
             enable(S,U,R,CC);
         <<"disable">>->
 	    ?INFO_MSG("carbons disabled for user ~s@~s/~s", [U,S,R]),
-            disable(S, U, R)
+            disable(S, U, R);
+        _ ->
+            {error, bad_request}
     end,
     case Result of 
         ok ->
