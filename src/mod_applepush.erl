@@ -426,7 +426,7 @@ offline_resend_badge() ->
     multi_resend_badge(JIDs).
 
 lookup_cache(JID) ->
-    case gen_mod:db_type(JID#jid.lserver) of
+    case gen_mod:db_type(JID#jid.lserver, ?MODULE) of
         mnesia ->
             lookup_cache_mnesia(JID);
         odbc ->
@@ -447,7 +447,7 @@ lookup_cache_sql(JID) ->
         "where username='">>, Username, <<"'">>]).
 
 lookup_cache(JID, DeviceID) ->
-    case gen_mod:db_type(JID#jid.lserver) of
+    case gen_mod:db_type(JID#jid.lserver, ?MODULE) of
         mnesia ->
             lookup_cache_mnesia(JID, DeviceID);
         odbc ->
@@ -511,7 +511,7 @@ do_lookup_cache_sql(LServer, Query) ->
 
 
 store_cache(JID, DeviceID, AppID, SendBody, SendFrom, TimeStamp) ->
-    case gen_mod:db_type(JID#jid.lserver) of
+    case gen_mod:db_type(JID#jid.lserver, ?MODULE) of
         mnesia ->
             Options =
                 [{appid, AppID},
@@ -576,7 +576,7 @@ store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom) ->
     odbc_queries:sql_transaction(LServer, F).
 
 delete_cache(JID, DeviceID) ->
-    case gen_mod:db_type(JID#jid.lserver) of
+    case gen_mod:db_type(JID#jid.lserver, ?MODULE) of
         mnesia ->
             delete_cache_mnesia(JID, DeviceID);
         odbc ->
@@ -599,7 +599,7 @@ delete_cache_sql(JID, DeviceID) ->
        <<"device_id='">>, SDeviceID, <<"';">>]).
 
 delete_cache(JID) ->
-    case gen_mod:db_type(JID#jid.lserver) of
+    case gen_mod:db_type(JID#jid.lserver, ?MODULE) of
         mnesia ->
             delete_cache_mnesia(JID);
         odbc ->
