@@ -274,6 +274,19 @@ CREATE TABLE pubsub_subscription_opt (
 );
 CREATE UNIQUE INDEX i_pubsub_subscription_opt ON pubsub_subscription_opt USING btree (subid, opt_name);
 
+
+CREATE TABLE applepush_cache (
+    username text NOT NULL,
+    device_id text NOT NULL,
+    app_id text NOT NULL,
+    send_body character(1) NOT NULL,
+    send_from character(1) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX i_applepush_cache_username_device_id ON applepush_cache
+USING btree (username, device_id);
+
 CREATE TABLE muc_room (
     name text NOT NULL,
     host text NOT NULL,

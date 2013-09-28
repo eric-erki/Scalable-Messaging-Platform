@@ -27,7 +27,8 @@
          device_reset_badge/5,
 	 remove_user/2,
          transform_module_options/1,
-         process_sm_iq/3]).
+         process_sm_iq/3,
+         export/1]).
 
 
 %% Debug commands
@@ -750,6 +751,45 @@ get_push_service(Host, JID, AppID) ->
 		PS
 	end,
     PushService.
+
+export(_Server) ->
+    [{applepush_cache,
+      fun(Host, #applepush_cache{us = {LUser, LServer},
+                                 device_id = DeviceID,
+                                 options = Options})
+	 when LServer == Host ->
+	      Username = ejabberd_odbc:escape(LUser),
+              SDeviceID = erlang:integer_to_list(DeviceID, 16),
+              AppID = proplists:get_value(appid, Options, "applepush.localhost"),
+              SendBody = proplists:get_value(send_body, Options, none),
+              SendFrom = proplists:get_value(send_from, Options, true),
+              SAppID = ejabberd_odbc:escape(AppID),
+              SSendBody =
+                  case SendBody of
+                      all -> "A";
+                      first_per_user -> "U";
+                      first -> "F";
+                      _ -> "-"
+                  end,
+              SSendFrom =
+                  case SendFrom of
+                      jid -> "J";
+                      username -> "U";
+                      name -> "N";
+                      _ -> "-"
+                  end,
+              [["delete from applepush_cache "
+                "where username='", Username, "' and "
+                "device_id='", SDeviceID, "';"],
+               ["insert into applepush_cache(username, device_id, app_id, "
+                "                            send_body, send_from) "
+                "values ('", Username, "', '", SDeviceID, "', '",
+                SAppID, "', '", SSendBody, "', '", SSendFrom, "');"]];
+	 (_Host, _R) ->
+      	      []
+      end
+     }].
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Internal module protection
