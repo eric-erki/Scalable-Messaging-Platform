@@ -304,8 +304,12 @@ init_db(mnesia) ->
     mnesia:add_table_copy(caps_features, node(),
                           disc_only_copies);
 init_db(p1db) ->
+    MapSize = ejabberd_config:get_option(
+                p1db_mapsize,
+                fun(I) when is_integer(I), I>0 -> I end,
+                1024*1024*10),
     p1db:open_table(caps_features,
-                    [{mapsize, 1024*1024*100},
+                    [{mapsize, MapSize},
                      {schema, [{keys, [node, ver, feature]},
                                {vals, [timestamp]},
                                {enc_key, fun enc_key/1},

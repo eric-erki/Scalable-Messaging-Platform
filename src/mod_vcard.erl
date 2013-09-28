@@ -94,8 +94,12 @@ init_db(mnesia) ->
     mnesia:add_table_index(vcard_search, lorgname),
     mnesia:add_table_index(vcard_search, lorgunit);
 init_db(p1db) ->
+    MapSize = ejabberd_config:get_option(
+                p1db_mapsize,
+                fun(I) when is_integer(I), I>0 -> I end,
+                1024*1024*10),
     p1db:open_table(vcard,
-                    [{mapsize, 1024*1024*100},
+                    [{mapsize, MapSize},
                      {schema, [{keys, [server, user]},
                                {vals, [vcard]},
                                {enc_key, fun enc_key/1},

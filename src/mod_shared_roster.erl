@@ -105,13 +105,17 @@ init_db(mnesia) ->
     mnesia:add_table_index(sr_user, group_host);
 init_db(p1db) ->
     OptsFields = [Field || {Field, _} <- default_group_opts()],
+    MapSize = ejabberd_config:get_option(
+                p1db_mapsize,
+                fun(I) when is_integer(I), I>0 -> I end,
+                1024*1024*10),
     p1db:open_table(sr_group,
-                    [{mapsize, 1024*1024*100},
+                    [{mapsize, MapSize},
                      {schema, [{keys, [host, group, server, user]},
                                {enc_key, fun enc_key/1},
                                {dec_key, fun dec_key/1}]}]),
     p1db:open_table(sr_opts,
-                    [{mapsize, 1024*1024*100},
+                    [{mapsize, MapSize},
                      {schema, [{keys, [host, group]},
                                {vals, OptsFields},
                                {enc_key, fun enc_key/1},
@@ -119,7 +123,7 @@ init_db(p1db) ->
                                {enc_val, fun enc_val/2},
                                {dec_val, fun dec_val/2}]}]),
     p1db:open_table(sr_user,
-                    [{mapsize, 1024*1024*100},
+                    [{mapsize, MapSize},
                      {schema, [{keys, [host, server, user, group]},
                                {enc_key, fun enc_key/1},
                                {dec_key, fun dec_key/1}]}]);

@@ -66,8 +66,12 @@ init_db(mnesia) ->
                         [{disc_only_copies, [node()]},
                          {attributes, record_info(fields, archive_prefs)}]);
 init_db(p1db) ->
+    MapSize = ejabberd_config:get_option(
+                p1db_mapsize,
+                fun(I) when is_integer(I), I>0 -> I end,
+                1024*1024*10),
     p1db:open_table(archive_msg,
-                    [{mapsize, 1024*1024*100},
+                    [{mapsize, MapSize},
                      {schema, [{keys, [server, user, timestamp]},
                                {vals, [peer, packet]},
                                {enc_key, fun enc_key/1},
@@ -75,7 +79,7 @@ init_db(p1db) ->
                                {enc_val, fun enc_val/2},
                                {dec_val, fun dec_val/2}]}]),
     p1db:open_table(archive_prefs,
-                    [{mapsize, 1024*1024*100},
+                    [{mapsize, MapSize},
                      {schema, [{keys, [server, user]},
                                {vals, [default, always, never]},
                                {enc_key, fun enc_key/1},

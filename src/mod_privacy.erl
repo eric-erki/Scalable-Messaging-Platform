@@ -81,8 +81,12 @@ init_db(mnesia) ->
                          {attributes, record_info(fields, privacy)}]),
     update_table();
 init_db(p1db) ->
+    MapSize = ejabberd_config:get_option(
+                p1db_mapsize,
+                fun(I) when is_integer(I), I>0 -> I end,
+                1024*1024*10),
     p1db:open_table(privacy,
-                    [{mapsize, 1024*1024*100},
+                    [{mapsize, MapSize},
                      {schema, [{keys, [server, user, name]},
                                {vals, [list]},
                                {enc_key, fun enc_key/1},

@@ -43,8 +43,12 @@ init_db(mnesia) ->
                           record_info(fields, vcard_xupdate)}]),
     update_table();
 init_db(p1db) ->
+    MapSize = ejabberd_config:get_option(
+                p1db_mapsize,
+                fun(I) when is_integer(I), I>0 -> I end,
+                1024*1024*10),
     p1db:open_table(vcard_xupdate,
-                    [{mapsize, 1024*1024*100},
+                    [{mapsize, MapSize},
                      {schema, [{keys, [server, user]},
                                {vals, [hash]},
                                {enc_key, fun enc_key/1},
