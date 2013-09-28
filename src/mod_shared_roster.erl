@@ -37,7 +37,7 @@
 	 user_available/1, unset_presence/4, register_user/2,
 	 remove_user/2, list_groups/1, create_group/2,
 	 create_group/3, delete_group/2, get_group_opts/2,
-	 set_group_opts/3, get_group_users/2,
+	 set_group_opts/3, get_group_users/2, import_start/2,
 	 get_group_explicit_users/2, is_user_in_group/3,
 	 add_user_to_group/3, remove_user_from_group/3]).
 
@@ -1682,6 +1682,9 @@ export(_Server) ->
 
 import_info() ->
     [{<<"sr_group">>, 3}, {<<"sr_user">>, 3}].
+
+import_start(_LServer, DBType) ->
+    init_db(DBType).
 
 import(LServer, {odbc, _}, mnesia, <<"sr_group">>,
        [Group, SOpts, _TimeStamp]) ->

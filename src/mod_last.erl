@@ -33,7 +33,7 @@
 -export([start/2, stop/1, process_local_iq/3, export/1,
 	 process_sm_iq/3, on_presence_update/4, import_info/0, import/5,
 	 store_last_info/4, get_last_info/2, remove_user/2,
-         transform_options/1]).
+         transform_options/1, import_start/2]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -373,6 +373,9 @@ export(_Server) ->
 
 import_info() ->
     [{<<"last">>, 3}].
+
+import_start(_LServer, DBType) ->
+    init_db(DBType).
 
 import(LServer, {odbc, _}, DBType, <<"last">>, [LUser, TimeStamp, State]) ->
     TS = case TimeStamp of

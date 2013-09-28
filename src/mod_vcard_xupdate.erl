@@ -13,7 +13,8 @@
 -export([start/2, stop/1]).
 
 %% hooks
--export([update_presence/3, vcard_set/3, export/1, import_info/0, import/5]).
+-export([update_presence/3, vcard_set/3, export/1,
+         import_info/0, import/5, import_start/2]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -250,6 +251,9 @@ export(_Server) ->
 
 import_info() ->
     [{<<"vcard_xupdate">>, 3}].
+
+import_start(_LServer, DBType) ->
+    init_db(DBType).
 
 import(LServer, {odbc, _}, mnesia, <<"vcard_xupdate">>,
        [LUser, Hash, _TimeStamp]) ->

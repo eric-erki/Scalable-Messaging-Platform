@@ -1823,8 +1823,9 @@ import_info() ->
 
 import_start(_LServer, odbc) ->
     ok;
-import_start(_LServer, _DBType) ->
+import_start(_LServer, DBType) ->
     ets:new(rostergroups_tmp, [private, named_table, bag]),
+    init_db(DBType),
     ok.
 
 import_stop(_LServer, odbc) ->

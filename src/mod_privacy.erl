@@ -1463,11 +1463,12 @@ import_info() ->
 
 import_start(_LServer, odbc) ->
     ok;
-import_start(_LServer, _DBType) ->
+import_start(_LServer, DBType) ->
     ets:new(privacy_default_list_tmp, [private, named_table]),
     ets:new(privacy_list_data_tmp, [private, named_table, bag]),
     ets:new(privacy_list_tmp, [private, named_table, bag,
                                {keypos, #privacy.us}]),
+    init_db(DBType),
     ok.
 
 import(LServer, {odbc, _}, DBType, <<"privacy_default_list">>, [LUser, Name])

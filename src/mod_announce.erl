@@ -37,6 +37,7 @@
 	 stop/1,
 	 export/1,
          import_info/0,
+         import_start/2,
          import/5,
 	 announce/3,
 	 send_motd/1,
@@ -1219,6 +1220,9 @@ export(_Server) ->
 
 import_info() ->
     [{<<"motd">>, 3}].
+
+import_start(_LServer, DBType) ->
+    init_db(DBType).
 
 import(LServer, {odbc, _}, mnesia, <<"motd">>, [<<>>, XML, _TimeStamp]) ->
     El = xml_stream:parse_element(XML),

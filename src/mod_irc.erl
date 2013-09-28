@@ -34,7 +34,8 @@
 
 %% API
 -export([start_link/2, start/2, stop/1, export/1, import_info/0,
-	 import/5, closed_connection/3, get_connection_params/3]).
+	 import/5, closed_connection/3, get_connection_params/3,
+         import_start/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
@@ -1364,6 +1365,10 @@ export(_Server) ->
 
 import_info() ->
     [{<<"irc_custom">>, 4}].
+
+import_start(_LServer, DBType) ->
+    init_db(DBType),
+    ok.
 
 import(_LServer, {odbc, _}, mnesia, <<"irc_custom">>,
        [SJID, IRCHost, SData, _TimeStamp]) ->

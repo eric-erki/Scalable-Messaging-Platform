@@ -30,7 +30,7 @@
 
 -include("logger.hrl").
 
--export([export/2, export/3, import/2, import/3, import_info/1]).
+-export([export/2, export/3, import/3, import/4, import_info/1]).
 
 -record(sql_dump, {fd, type}).
 
@@ -80,13 +80,12 @@ export(Server, Output, Module) ->
       end, Module:export(Server)),
     close_output(Output, IO).
 
-import(Server, Dir) ->
-    Res = rpc:pmap({?MODULE, import}, [Server, Dir], modules()),
+import(Server, Dir, ToType) ->
+    Res = rpc:pmap({?MODULE, import}, [Server, Dir, ToType], modules()),
     lists:zip(modules(), Res).
 
-import(Mod, Server, Dir) ->
+import(Mod, Server, Dir, ToType) ->
     LServer = jlib:nameprep(iolist_to_binary(Server)),
-    ToType = db_type(LServer, Mod),
     try Mod:import_start(LServer, ToType)
     catch error:undef -> ok end,
     lists:foreach(
@@ -186,16 +185,6 @@ flatten1([H|T], Acc) ->
     flatten1(T, [[H, $\n]|Acc]);
 flatten1([], Acc) ->
     Acc.
-
-db_type(LServer, ejabberd_auth) ->
-    case ejabberd_auth:auth_modules(LServer) of
-        [ejabberd_auth_riak|_] -> riak;
-        [ejabberd_auth_p1db|_] -> p1db;
-        [ejabberd_auth_odbc|_] -> odbc;
-        _ -> mnesia
-    end;
-db_type(LServer, Mod) ->
-    gen_mod:db_type(LServer, Mod).
 
 import_rows(LServer, FromType, ToType, Tab, Mod, Dump, FieldsNumber) ->
     case read_row_from_sql_dump(Dump, FieldsNumber) of

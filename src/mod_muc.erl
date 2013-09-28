@@ -40,7 +40,7 @@
 	 get_vh_rooms/1, shutdown_rooms/1,
 	 is_broadcasted/1, moderate_room_history/2, import/5,
 	 persist_recent_messages/1, can_use_nick/4,
-         rh_prefix/2, key2us/2, rhus2key/4]).
+         rh_prefix/2, key2us/2, rhus2key/4, import_start/2]).
 
 %% DHT callbacks
 -export([merge_write/2, merge_delete/2, clean/1]).
@@ -1587,6 +1587,9 @@ export(_Server) ->
 
 import_info() ->
     [{<<"muc_room">>, 4}, {<<"muc_registered">>, 4}].
+
+import_start(_LServer, DBType) ->
+    init_db(DBType).
 
 import(_LServer, {odbc, _}, mnesia, <<"muc_room">>,
        [Name, RoomHost, SOpts, _TimeStamp]) ->

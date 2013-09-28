@@ -41,7 +41,7 @@
 	 get_password_s/2, get_password_with_authmodule/2,
 	 is_user_exists/2, is_user_exists_in_other_modules/3,
 	 remove_user/2, remove_user/3, plain_password_required/1,
-	 store_type/1, entropy/1]).
+	 store_type/1, entropy/1, import_start/2]).
 
 -export([auth_modules/1]).
 
@@ -460,6 +460,13 @@ export(Server) ->
 
 import_info() ->
     [{<<"users">>, 3}].
+
+import_start(_LServer, mnesia) ->
+    ejabberd_auth_internal:init_db();
+import_start(_LServer, p1db) ->
+    ejabberd_auth_p1db:init_db();
+import_start(_LServer, _) ->
+    ok.
 
 import(Server, {odbc, _}, mnesia, <<"users">>, Fields) ->
     ejabberd_auth_internal:import(Server, Fields);

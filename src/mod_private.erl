@@ -31,7 +31,7 @@
 -behaviour(gen_mod).
 
 -export([start/2, stop/1, process_sm_iq/3, import_info/0,
-	 remove_user/2, get_data/2, export/1, import/5]).
+	 remove_user/2, get_data/2, export/1, import/5, import_start/2]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -374,6 +374,9 @@ export(_Server) ->
 
 import_info() ->
     [{<<"private_storage">>, 4}].
+
+import_start(_LServer, DBType) ->
+    init_db(DBType).
 
 import(LServer, {odbc, _}, mnesia, <<"private_storage">>,
        [LUser, XMLNS, XML, _TimeStamp]) ->

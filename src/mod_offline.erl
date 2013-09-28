@@ -37,7 +37,7 @@
 	 remove_expired_messages/1, remove_old_messages/2,
 	 remove_user/2, get_queue_length/2, webadmin_page/3, webadmin_user/4,
 	 webadmin_user_parse_query/5, count_offline_messages/3,
-         export/1, import_info/0, import/5]).
+         export/1, import_info/0, import/5, import_start/2]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -1211,6 +1211,9 @@ export(_Server) ->
 
 import_info() ->
     [{<<"spool">>, 4}].
+
+import_start(_LServer, DBType) ->
+    init_db(DBType).
 
 import(LServer, {odbc, _}, DBType, <<"spool">>,
        [LUser, XML, _Seq, _TimeStamp]) ->

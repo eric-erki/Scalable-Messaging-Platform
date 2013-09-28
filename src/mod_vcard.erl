@@ -32,7 +32,7 @@
 
 -export([start/2, init/3, stop/1, get_sm_features/5,
 	 process_local_iq/3, process_sm_iq/3, reindex_vcards/0,
-	 remove_user/2, export/1, import_info/0, import/5]).
+	 remove_user/2, export/1, import_info/0, import/5, import_start/2]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -1102,6 +1102,9 @@ export(_Server) ->
 
 import_info() ->
     [{<<"vcard">>, 3}, {<<"vcard_search">>, 24}].
+
+import_start(_LServer, DBType) ->
+    init_db(DBType).
 
 import(LServer, {odbc, _}, mnesia, <<"vcard">>, [LUser, XML, _TimeStamp]) ->
     #xmlel{} = El = xml_stream:parse_element(XML),

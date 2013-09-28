@@ -776,8 +776,9 @@ export(_Server) ->
 import_info() ->
     [{<<"caps_features">>, 4}].
 
-import_start(_LServer, _DBType) ->
+import_start(_LServer, DBType) ->
     ets:new(caps_features_tmp, [private, named_table, bag]),
+    init_db(DBType),
     ok.
 
 import(_LServer, {odbc, _}, _DBType, <<"caps_features">>,
