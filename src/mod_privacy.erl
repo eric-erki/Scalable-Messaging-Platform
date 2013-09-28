@@ -58,23 +58,7 @@
 start(Host, Opts) ->
     IQDisc = gen_mod:get_opt(iqdisc, Opts, fun gen_iq_handler:check_type/1,
                              one_queue),
-    case gen_mod:db_type(Opts) of
-      mnesia ->
-	  mnesia:create_table(privacy,
-			      [{disc_copies, [node()]},
-			       {attributes, record_info(fields, privacy)}]),
-	  update_table();
-      p1db ->
-          p1db:open_table(privacy,
-                          [{mapsize, 1024*1024*100},
-                           {schema, [{keys, [server, user, name]},
-                                     {vals, [list]},
-                                     {enc_key, fun enc_key/1},
-                                     {dec_key, fun dec_key/1},
-                                     {enc_val, fun enc_val/2},
-                                     {dec_val, fun dec_val/2}]}]);
-      _ -> ok
-    end,
+    init_db(gen_mod:db_type(Opts)),
     mod_disco:register_feature(Host, ?NS_PRIVACY),
     ejabberd_hooks:add(privacy_iq_get, Host, ?MODULE,
 		       process_iq_get, 50),
@@ -90,6 +74,23 @@ start(Host, Opts) ->
 		       remove_user, 50),
     gen_iq_handler:add_iq_handler(ejabberd_sm, Host,
 				  ?NS_PRIVACY, ?MODULE, process_iq, IQDisc).
+
+init_db(mnesia) ->
+    mnesia:create_table(privacy,
+                        [{disc_copies, [node()]},
+                         {attributes, record_info(fields, privacy)}]),
+    update_table();
+init_db(p1db) ->
+    p1db:open_table(privacy,
+                    [{mapsize, 1024*1024*100},
+                     {schema, [{keys, [server, user, name]},
+                               {vals, [list]},
+                               {enc_key, fun enc_key/1},
+                               {dec_key, fun dec_key/1},
+                               {enc_val, fun enc_val/2},
+                               {dec_val, fun dec_val/2}]}]);
+init_db(_) ->
+    ok.
 
 stop(Host) ->
     mod_disco:unregister_feature(Host, ?NS_PRIVACY),

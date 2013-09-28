@@ -50,26 +50,27 @@
 start(Host, Opts) ->
     IQDisc = gen_mod:get_opt(iqdisc, Opts, fun gen_iq_handler:check_type/1,
                              one_queue),
-    case gen_mod:db_type(Opts) of
-      mnesia ->
-	  mnesia:create_table(private_storage,
-			      [{disc_only_copies, [node()]},
-			       {attributes,
-				record_info(fields, private_storage)}]),
-	  update_table();
-      p1db ->
-          p1db:open_table(private_storage,
-                          [{mapsize, 1024*1024*100},
-                           {schema, [{keys, [server, user, xmlns]},
-                                     {vals, [xml]},
-                                     {enc_key, fun enc_key/1},
-                                     {dec_key, fun dec_key/1}]}]);
-      _ -> ok
-    end,
+    init_db(gen_mod:db_type(Opts)),
     ejabberd_hooks:add(remove_user, Host, ?MODULE,
 		       remove_user, 50),
     gen_iq_handler:add_iq_handler(ejabberd_sm, Host,
 				  ?NS_PRIVATE, ?MODULE, process_sm_iq, IQDisc).
+
+init_db(mnesia) ->
+    mnesia:create_table(private_storage,
+                        [{disc_only_copies, [node()]},
+                         {attributes,
+                          record_info(fields, private_storage)}]),
+    update_table();
+init_db(p1db) ->
+    p1db:open_table(private_storage,
+                    [{mapsize, 1024*1024*100},
+                     {schema, [{keys, [server, user, xmlns]},
+                               {vals, [xml]},
+                               {enc_key, fun enc_key/1},
+                               {dec_key, fun dec_key/1}]}]);
+init_db(_) ->
+    ok.
 
 stop(Host) ->
     ejabberd_hooks:delete(remove_user, Host, ?MODULE,

@@ -334,50 +334,7 @@ can_use_nick(LServer, Host, JID, Nick, odbc) ->
 init([Host, Opts]) ->
     MyHost = gen_mod:get_opt_host(Host, Opts,
 				  <<"conference.@HOST@">>),
-    case gen_mod:db_type(Opts) of
-      mnesia ->
-	  mnesia:create_table(muc_room,
-			      [{disc_copies, [node()]},
-			       {attributes, record_info(fields, muc_room)}]),
-	  mnesia:create_table(muc_registered,
-			      [{disc_copies, [node()]},
-			       {attributes,
-				record_info(fields, muc_registered)}]),
-	  update_tables(),
-	  mnesia:add_table_index(muc_registered, nick);
-      p1db ->
-          p1db:open_table(muc_config,
-                          [{mapsize, 1024*1024*100},
-                           {schema, [{keys, [service, room]},
-                                     {vals, mod_muc_room:config_fields()},
-                                     {enc_key, fun enc_key/1},
-                                     {dec_key, fun dec_key/1},
-                                     {enc_val,
-                                      fun mod_muc_room:encode_opts/2},
-                                     {dec_val,
-                                      fun mod_muc_room:decode_opts/2}]}]),
-          p1db:open_table(muc_affiliations,
-                          [{mapsize, 1024*1024*100},
-                           {schema, [{keys, [service, room, server, user]},
-                                     {vals, [affiliation, reason]},
-                                     {enc_key, fun enc_key/1},
-                                     {dec_key, fun dec_key/1},
-                                     {enc_val, fun enc_aff/2},
-                                     {dec_val, fun dec_aff/2}]}]),
-          p1db:open_table(muc_nick,
-                          [{mapsize, 1024*1024*100},
-                           {schema, [{keys, [service, nick]},
-                                     {vals, [jid]},
-                                     {enc_key, fun enc_key/1},
-                                     {dec_key, fun dec_key/1}]}]),
-          p1db:open_table(muc_user,
-                          [{mapsize, 1024*1024*100},
-                           {schema, [{keys, [service, server, user]},
-                                     {vals, [nick]},
-                                     {enc_key, fun enc_key/1},
-                                     {dec_key, fun dec_key/1}]}]);
-      _ -> ok
-    end,
+    init_db(gen_mod:db_type(Opts)),
     update_muc_online_table(),
     mnesia:create_table(muc_online_room,
 			[{ram_copies, [node()]}, {local_content, true},
@@ -488,6 +445,48 @@ terminate(_Reason, State) ->
     ok.
 
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
+
+init_db(mnesia) ->
+    mnesia:create_table(muc_room,
+                        [{disc_copies, [node()]},
+                         {attributes, record_info(fields, muc_room)}]),
+    mnesia:create_table(muc_registered,
+                        [{disc_copies, [node()]},
+                         {attributes,
+                          record_info(fields, muc_registered)}]),
+    update_tables(),
+    mnesia:add_table_index(muc_registered, nick);
+init_db(p1db) ->
+    p1db:open_table(muc_config,
+                    [{mapsize, 1024*1024*100},
+                     {schema, [{keys, [service, room]},
+                               {vals, mod_muc_room:config_fields()},
+                               {enc_key, fun enc_key/1},
+                               {dec_key, fun dec_key/1},
+                               {enc_val, fun mod_muc_room:encode_opts/2},
+                               {dec_val, fun mod_muc_room:decode_opts/2}]}]),
+    p1db:open_table(muc_affiliations,
+                    [{mapsize, 1024*1024*100},
+                     {schema, [{keys, [service, room, server, user]},
+                               {vals, [affiliation, reason]},
+                               {enc_key, fun enc_key/1},
+                               {dec_key, fun dec_key/1},
+                               {enc_val, fun enc_aff/2},
+                               {dec_val, fun dec_aff/2}]}]),
+    p1db:open_table(muc_nick,
+                    [{mapsize, 1024*1024*100},
+                     {schema, [{keys, [service, nick]},
+                               {vals, [jid]},
+                               {enc_key, fun enc_key/1},
+                               {dec_key, fun dec_key/1}]}]),
+    p1db:open_table(muc_user,
+                    [{mapsize, 1024*1024*100},
+                     {schema, [{keys, [service, server, user]},
+                               {vals, [nick]},
+                               {enc_key, fun enc_key/1},
+                               {dec_key, fun dec_key/1}]}]);
+init_db(_) ->
+    ok.
 
 start_supervisor(Host) ->
     Proc = gen_mod:get_module_proc(Host,

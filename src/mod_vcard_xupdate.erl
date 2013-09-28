@@ -28,26 +28,27 @@
 %%====================================================================
 
 start(Host, Opts) ->
-    case gen_mod:db_type(Opts) of
-      mnesia ->
-	  mnesia:create_table(vcard_xupdate,
-			      [{disc_copies, [node()]},
-			       {attributes,
-				record_info(fields, vcard_xupdate)}]),
-          update_table();
-     p1db ->
-          p1db:open_table(vcard_xupdate,
-                          [{mapsize, 1024*1024*100},
-                           {schema, [{keys, [server, user]},
-                                     {vals, [hash]},
-                                     {enc_key, fun enc_key/1},
-                                     {dec_key, fun dec_key/1}]}]);
-      _ -> ok
-    end,
+    init_db(gen_mod:db_type(Opts)),
     ejabberd_hooks:add(c2s_update_presence, Host, ?MODULE,
 		       update_presence, 100),
     ejabberd_hooks:add(vcard_set, Host, ?MODULE, vcard_set,
 		       100),
+    ok.
+
+init_db(mnesia) ->
+    mnesia:create_table(vcard_xupdate,
+                        [{disc_copies, [node()]},
+                         {attributes,
+                          record_info(fields, vcard_xupdate)}]),
+    update_table();
+init_db(p1db) ->
+    p1db:open_table(vcard_xupdate,
+                    [{mapsize, 1024*1024*100},
+                     {schema, [{keys, [server, user]},
+                               {vals, [hash]},
+                               {enc_key, fun enc_key/1},
+                               {dec_key, fun dec_key/1}]}]);
+init_db(_) ->
     ok.
 
 stop(Host) ->

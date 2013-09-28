@@ -41,37 +41,7 @@
 start(Host, Opts) ->
     IQDisc = gen_mod:get_opt(iqdisc, Opts, fun gen_iq_handler:check_type/1,
                              one_queue),
-    case gen_mod:db_type(Opts) of
-        mnesia ->
-            mnesia:create_table(
-              archive_msg,
-              [{disc_only_copies, [node()]},
-               {type, bag},
-               {attributes, record_info(fields, archive_msg)}]),
-            mnesia:create_table(
-              archive_prefs,
-              [{disc_only_copies, [node()]},
-               {attributes, record_info(fields, archive_prefs)}]);
-        p1db ->
-            p1db:open_table(archive_msg,
-                            [{mapsize, 1024*1024*100},
-                             {schema, [{keys, [server, user, timestamp]},
-                                       {vals, [peer, packet]},
-                                       {enc_key, fun enc_key/1},
-                                       {dec_key, fun dec_key/1},
-                                       {enc_val, fun enc_val/2},
-                                       {dec_val, fun dec_val/2}]}]),
-            p1db:open_table(archive_prefs,
-                            [{mapsize, 1024*1024*100},
-                             {schema, [{keys, [server, user]},
-                                       {vals, [default, always, never]},
-                                       {enc_key, fun enc_key/1},
-                                       {dec_key, fun dec_key/1},
-                                       {enc_val, fun enc_prefs/2},
-                                       {dec_val, fun dec_prefs/2}]}]);
-        _ ->
-            ok
-    end,
+    init_db(gen_mod:db_type(Opts)),
     cache_tab:new(archive_prefs, []),
     gen_iq_handler:add_iq_handler(ejabberd_local, Host,
         			  ?NS_MAM, ?MODULE, process_iq, IQDisc),
@@ -85,6 +55,34 @@ start(Host, Opts) ->
 		       remove_user, 50),
     ejabberd_hooks:add(anonymous_purge_hook, Host, ?MODULE,
 		       remove_user, 50),
+    ok.
+
+init_db(mnesia) ->
+    mnesia:create_table(archive_msg,
+                        [{disc_only_copies, [node()]},
+                         {type, bag},
+                         {attributes, record_info(fields, archive_msg)}]),
+    mnesia:create_table(archive_prefs,
+                        [{disc_only_copies, [node()]},
+                         {attributes, record_info(fields, archive_prefs)}]);
+init_db(p1db) ->
+    p1db:open_table(archive_msg,
+                    [{mapsize, 1024*1024*100},
+                     {schema, [{keys, [server, user, timestamp]},
+                               {vals, [peer, packet]},
+                               {enc_key, fun enc_key/1},
+                               {dec_key, fun dec_key/1},
+                               {enc_val, fun enc_val/2},
+                               {dec_val, fun dec_val/2}]}]),
+    p1db:open_table(archive_prefs,
+                    [{mapsize, 1024*1024*100},
+                     {schema, [{keys, [server, user]},
+                               {vals, [default, always, never]},
+                               {enc_key, fun enc_key/1},
+                               {dec_key, fun dec_key/1},
+                               {enc_val, fun enc_prefs/2},
+                               {dec_val, fun dec_prefs/2}]}]);
+init_db(_) ->
     ok.
 
 stop(Host) ->

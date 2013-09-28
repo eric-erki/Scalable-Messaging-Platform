@@ -65,27 +65,7 @@
 tokenize(Node) -> str:tokens(Node, <<"/#">>).
 
 start(Host, Opts) ->
-    case gen_mod:db_type(Opts) of
-        mnesia ->
-            mnesia:create_table(motd,
-                                [{disc_copies, [node()]},
-                                 {attributes,
-                                  record_info(fields, motd)}]),
-            mnesia:create_table(motd_users,
-                                [{disc_copies, [node()]},
-                                 {attributes,
-                                  record_info(fields, motd_users)}]),
-            update_tables();
-        p1db ->
-            p1db:open_table(motd,
-                            [{mapsize, 1024*1024*100},
-                             {schema, [{keys, [server, user]},
-                                       {vals, [motd]},
-                                       {enc_key, fun enc_key/1},
-                                       {dec_key, fun dec_key/1}]}]);
-        _ ->
-            ok
-    end,
+    init_db(gen_mod:db_type(Opts)),
     ejabberd_hooks:add(local_send_to_resource_hook, Host,
 		       ?MODULE, announce, 50),
     ejabberd_hooks:add(disco_local_identity, Host, ?MODULE, disco_identity, 50),
@@ -97,6 +77,26 @@ start(Host, Opts) ->
 		       ?MODULE, send_motd, 50),
     register(gen_mod:get_module_proc(Host, ?PROCNAME),
 	     proc_lib:spawn(?MODULE, init, [])).
+
+init_db(mnesia) ->
+    mnesia:create_table(motd,
+                        [{disc_copies, [node()]},
+                         {attributes,
+                          record_info(fields, motd)}]),
+    mnesia:create_table(motd_users,
+                        [{disc_copies, [node()]},
+                         {attributes,
+                          record_info(fields, motd_users)}]),
+    update_tables();
+init_db(p1db) ->
+    p1db:open_table(motd,
+                    [{mapsize, 1024*1024*100},
+                     {schema, [{keys, [server, user]},
+                               {vals, [motd]},
+                               {enc_key, fun enc_key/1},
+                               {dec_key, fun dec_key/1}]}]);
+init_db(_) ->
+    ok.
 
 init() ->
     loop().

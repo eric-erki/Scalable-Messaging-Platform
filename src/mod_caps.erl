@@ -286,37 +286,37 @@ c2s_broadcast_recipients(InAcc, Host, C2SState,
     end;
 c2s_broadcast_recipients(Acc, _, _, _, _, _) -> Acc.
 
-init([Host, Opts]) ->
-    case gen_mod:db_type(Opts) of
-        mnesia ->
-            case catch mnesia:table_info(caps_features, storage_type) of
-                {'EXIT', _} ->
-                    ok;
-                disc_only_copies ->
-                    ok;
-                _ ->
-                    mnesia:delete_table(caps_features)
-            end,
-            mnesia:create_table(caps_features,
-                                [{disc_only_copies, [node()]},
-                                 {local_content, true},
-                                 {attributes,
-                                  record_info(fields, caps_features)}]),
-            update_table(),
-            mnesia:add_table_copy(caps_features, node(),
-                                  disc_only_copies);
-        p1db ->
-            p1db:open_table(caps_features,
-                            [{mapsize, 1024*1024*100},
-                             {schema, [{keys, [node, ver, feature]},
-                                       {vals, [timestamp]},
-                                       {enc_key, fun enc_key/1},
-                                       {dec_key, fun dec_key/1},
-                                       {enc_val, fun enc_val/2},
-                                       {dec_val, fun dec_val/2}]}]);
+init_db(mnesia) ->
+    case catch mnesia:table_info(caps_features, storage_type) of
+        {'EXIT', _} ->
+            ok;
+        disc_only_copies ->
+            ok;
         _ ->
-            ok
+            mnesia:delete_table(caps_features)
     end,
+    mnesia:create_table(caps_features,
+                        [{disc_only_copies, [node()]},
+                         {local_content, true},
+                         {attributes,
+                          record_info(fields, caps_features)}]),
+    update_table(),
+    mnesia:add_table_copy(caps_features, node(),
+                          disc_only_copies);
+init_db(p1db) ->
+    p1db:open_table(caps_features,
+                    [{mapsize, 1024*1024*100},
+                     {schema, [{keys, [node, ver, feature]},
+                               {vals, [timestamp]},
+                               {enc_key, fun enc_key/1},
+                               {dec_key, fun dec_key/1},
+                               {enc_val, fun enc_val/2},
+                               {dec_val, fun dec_val/2}]}]);
+init_db(_) ->
+    ok.
+
+init([Host, Opts]) ->
+    init_db(gen_mod:db_type(Opts)),
     MaxSize = gen_mod:get_opt(cache_size, Opts,
                               fun(I) when is_integer(I), I>0 -> I end,
                               1000),

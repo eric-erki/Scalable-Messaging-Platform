@@ -50,12 +50,7 @@
 start(Host, Opts) ->
     case init_host(Host) of
 	true ->
-	    mnesia:create_table(
-	      applepush_cache,
-	      [{disc_copies, [node()]},
-	       {attributes, record_info(fields, applepush_cache)}, {type, bag}]),
-            mnesia:add_table_index(applepush_cache, device_id),
-	    mnesia:add_table_copy(applepush_cache, node(), ram_copies),
+            init_db(gen_mod:db_type(Opts)),
 	    ejabberd_hooks:add(p1_push_notification, Host,
 			       ?MODULE, push_notification, 50),
 	    ejabberd_hooks:add(p1_push_notification_custom, Host,
@@ -79,6 +74,16 @@ start(Host, Opts) ->
                registered users", [?MODULE, Host]),
 	    ok
     end.
+
+init_db(mnesia) ->
+    mnesia:create_table(
+      applepush_cache,
+      [{disc_copies, [node()]},
+       {attributes, record_info(fields, applepush_cache)}, {type, bag}]),
+    mnesia:add_table_index(applepush_cache, device_id),
+    mnesia:add_table_copy(applepush_cache, node(), ram_copies);
+init_db(_) ->
+    ok.
 
 stop(Host) ->
     ejabberd_hooks:delete(p1_push_notification, Host,

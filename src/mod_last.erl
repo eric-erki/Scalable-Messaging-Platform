@@ -49,24 +49,7 @@
 start(Host, Opts) ->
     IQDisc = gen_mod:get_opt(iqdisc, Opts, fun gen_iq_handler:check_type/1,
                              one_queue),
-    case gen_mod:db_type(Opts) of
-      mnesia ->
-	  mnesia:create_table(last_activity,
-			      [{disc_copies, [node()]},
-			       {attributes,
-				record_info(fields, last_activity)}]),
-	  update_table();
-      p1db ->
-          p1db:open_table(last_activity,
-                          [{mapsize, 1024*1024*100},
-                           {schema, [{keys, [server, user]},
-                                     {vals, [timestamp, status]},
-                                     {enc_key, fun enc_key/1},
-                                     {dec_key, fun dec_key/1},
-                                     {enc_val, fun enc_val/2},
-                                     {dec_val, fun dec_val/2}]}]);
-      _ -> ok
-    end,
+    init_db(gen_mod:db_type(Opts)),
     gen_iq_handler:add_iq_handler(ejabberd_local, Host,
 				  ?NS_LAST, ?MODULE, process_local_iq, IQDisc),
     gen_iq_handler:add_iq_handler(ejabberd_sm, Host,
@@ -75,6 +58,24 @@ start(Host, Opts) ->
 		       remove_user, 50),
     ejabberd_hooks:add(unset_presence_hook, Host, ?MODULE,
 		       on_presence_update, 50).
+
+init_db(mnesia) ->
+    mnesia:create_table(last_activity,
+                        [{disc_copies, [node()]},
+                         {attributes,
+                          record_info(fields, last_activity)}]),
+    update_table();
+init_db(p1db) ->
+    p1db:open_table(last_activity,
+                    [{mapsize, 1024*1024*100},
+                     {schema, [{keys, [server, user]},
+                               {vals, [timestamp, status]},
+                               {enc_key, fun enc_key/1},
+                               {dec_key, fun dec_key/1},
+                               {enc_val, fun enc_val/2},
+                               {dec_val, fun dec_val/2}]}]);
+init_db(_) ->
+    ok.
 
 stop(Host) ->
     ejabberd_hooks:delete(remove_user, Host, ?MODULE,

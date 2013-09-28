@@ -68,37 +68,7 @@
 start(Host, Opts) ->
     IQDisc = gen_mod:get_opt(iqdisc, Opts, fun gen_iq_handler:check_type/1,
                              one_queue),
-    case gen_mod:db_type(Opts) of
-      mnesia ->
-	  mnesia:create_table(roster,
-			      [{disc_copies, [node()]},
-			       {attributes, record_info(fields, roster)}]),
-	  mnesia:create_table(roster_version,
-			      [{disc_copies, [node()]},
-			       {attributes,
-				record_info(fields, roster_version)}]),
-	  update_tables(),
-	  mnesia:add_table_index(roster, us),
-	  mnesia:add_table_index(roster_version, us);
-      p1db ->
-          p1db:open_table(roster,
-                          [{mapsize, 1024*1024*100},
-                           {schema, [{keys, [server, user, jid]},
-                                     {vals, [name, subscription,
-                                             ask, groups, askmessage,
-                                             xs]},
-                                     {enc_key, fun enc_key/1},
-                                     {dec_key, fun dec_roster_key/1},
-                                     {enc_val, fun enc_val/2},
-                                     {dec_val, fun dec_val/2}]}]),
-          p1db:open_table(roster_version,
-                          [{mapsize, 1024*1024*100},
-                           {schema, [{keys, [server, user]},
-                                     {vals, [version]},
-                                     {dec_key, fun dec_roster_version_key/1},
-                                     {enc_key, fun enc_key/1}]}]);
-      _ -> ok
-    end,
+    init_db(gen_mod:db_type(Opts)),
     ejabberd_hooks:add(roster_get, Host, ?MODULE,
 		       get_user_roster, 50),
     ejabberd_hooks:add(roster_in_subscription, Host,
@@ -123,6 +93,37 @@ start(Host, Opts) ->
 		       webadmin_user, 50),
     gen_iq_handler:add_iq_handler(ejabberd_sm, Host,
 				  ?NS_ROSTER, ?MODULE, process_iq, IQDisc).
+
+init_db(mnesia) ->
+    mnesia:create_table(roster,
+                        [{disc_copies, [node()]},
+                         {attributes, record_info(fields, roster)}]),
+    mnesia:create_table(roster_version,
+                        [{disc_copies, [node()]},
+                         {attributes,
+                          record_info(fields, roster_version)}]),
+    update_tables(),
+    mnesia:add_table_index(roster, us),
+    mnesia:add_table_index(roster_version, us);
+init_db(p1db) ->
+    p1db:open_table(roster,
+                    [{mapsize, 1024*1024*100},
+                     {schema, [{keys, [server, user, jid]},
+                               {vals, [name, subscription,
+                                       ask, groups, askmessage,
+                                       xs]},
+                               {enc_key, fun enc_key/1},
+                               {dec_key, fun dec_roster_key/1},
+                               {enc_val, fun enc_val/2},
+                               {dec_val, fun dec_val/2}]}]),
+    p1db:open_table(roster_version,
+                    [{mapsize, 1024*1024*100},
+                     {schema, [{keys, [server, user]},
+                               {vals, [version]},
+                               {dec_key, fun dec_roster_version_key/1},
+                               {enc_key, fun enc_key/1}]}]);
+init_db(_) ->
+    ok.
 
 stop(Host) ->
     ejabberd_hooks:delete(roster_get, Host, ?MODULE,

@@ -56,16 +56,19 @@
 %%% API
 %%%----------------------------------------------------------------------
 start(Host) ->
+    init_db(),
+    update_table(),
+    update_reg_users_counter_table(Host),
+    maybe_alert_password_scrammed_without_option(),
+    ok.
+
+init_db() ->
     mnesia:create_table(passwd,
 			[{disc_copies, [node()]},
 			 {attributes, record_info(fields, passwd)}]),
     mnesia:create_table(reg_users_counter,
 			[{ram_copies, [node()]},
-			 {attributes, record_info(fields, reg_users_counter)}]),
-    update_table(),
-    update_reg_users_counter_table(Host),
-    maybe_alert_password_scrammed_without_option(),
-    ok.
+			 {attributes, record_info(fields, reg_users_counter)}]).
 
 update_reg_users_counter_table(Server) ->
     Set = get_vh_registered_users(Server),

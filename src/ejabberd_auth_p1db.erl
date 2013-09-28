@@ -48,12 +48,16 @@
 %%% API
 %%%----------------------------------------------------------------------
 start(_Host) ->
-    p1db:open_table(passwd, [{mapsize, 1024*1024*100},
-                             {schema, [{keys, [server, user]},
-                                       {vals, [password]},
-                                       {enc_key, fun enc_key/1},
-                                       {dec_key, fun dec_key/1}]}]),
+    init_db(),
     ok.
+
+init_db() ->
+    p1db:open_table(passwd,
+                    [{mapsize, 1024*1024*100},
+                     {schema, [{keys, [server, user]},
+                               {vals, [password]},
+                               {enc_key, fun enc_key/1},
+                               {dec_key, fun dec_key/1}]}]).
 
 plain_password_required() -> false.
 

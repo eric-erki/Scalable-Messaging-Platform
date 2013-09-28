@@ -116,23 +116,7 @@ init([Host, Opts]) ->
     ejabberd:start_app(p1_iconv),
     MyHost = gen_mod:get_opt_host(Host, Opts,
 				  <<"irc.@HOST@">>),
-    case gen_mod:db_type(Opts) of
-      mnesia ->
-	  mnesia:create_table(irc_custom,
-			      [{disc_copies, [node()]},
-			       {attributes, record_info(fields, irc_custom)}]),
-	  update_table();
-      p1db ->
-          p1db:open_table(irc_custom,
-                          [{mapsize, 1024*1024*100},
-                           {schema, [{keys, [service, server, user]},
-                                     {vals, [data]},
-                                     {enc_key, fun enc_key/1},
-                                     {dec_key, fun dec_key/1},
-                                     {enc_val, fun enc_val/2},
-                                     {dec_val, fun dec_val/2}]}]);
-      _ -> ok
-    end,
+    init_db(gen_mod:db_type(Opts)),
     Access = gen_mod:get_opt(access, Opts,
                              fun(A) when is_atom(A) -> A end,
                              all),
@@ -202,6 +186,23 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
+init_db(mnesia) ->
+    mnesia:create_table(irc_custom,
+                        [{disc_copies, [node()]},
+                         {attributes, record_info(fields, irc_custom)}]),
+    update_table();
+init_db(p1db) ->
+    p1db:open_table(irc_custom,
+                    [{mapsize, 1024*1024*100},
+                     {schema, [{keys, [service, server, user]},
+                               {vals, [data]},
+                               {enc_key, fun enc_key/1},
+                               {dec_key, fun dec_key/1},
+                               {enc_val, fun enc_val/2},
+                               {dec_val, fun dec_val/2}]}]);
+init_db(_) ->
+    ok.
+
 start_supervisor(Host) ->
     Proc = gen_mod:get_module_proc(Host,
 				   ejabberd_mod_irc_sup),

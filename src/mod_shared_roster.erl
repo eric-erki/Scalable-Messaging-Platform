@@ -65,38 +65,7 @@
                   group_host = {<<"">>, <<"">>} :: {binary(), binary()}}).
 
 start(Host, Opts) ->
-    case gen_mod:db_type(Opts) of
-      mnesia ->
-	  mnesia:create_table(sr_group,
-			      [{disc_copies, [node()]},
-			       {attributes, record_info(fields, sr_group)}]),
-	  mnesia:create_table(sr_user,
-			      [{disc_copies, [node()]}, {type, bag},
-			       {attributes, record_info(fields, sr_user)}]),
-          update_tables(),
-	  mnesia:add_table_index(sr_user, group_host);
-      p1db ->
-          OptsFields = [Field || {Field, _} <- default_group_opts()],
-          p1db:open_table(sr_group,
-                          [{mapsize, 1024*1024*100},
-                           {schema, [{keys, [host, group, server, user]},
-                                     {enc_key, fun enc_key/1},
-                                     {dec_key, fun dec_key/1}]}]),
-          p1db:open_table(sr_opts,
-                          [{mapsize, 1024*1024*100},
-                           {schema, [{keys, [host, group]},
-                                     {vals, OptsFields},
-                                     {enc_key, fun enc_key/1},
-                                     {dec_key, fun dec_key/1},
-                                     {enc_val, fun enc_val/2},
-                                     {dec_val, fun dec_val/2}]}]),
-          p1db:open_table(sr_user,
-                          [{mapsize, 1024*1024*100},
-                           {schema, [{keys, [host, server, user, group]},
-                                     {enc_key, fun enc_key/1},
-                                     {dec_key, fun dec_key/1}]}]);
-      _ -> ok
-    end,
+    init_db(gen_mod:db_type(Opts)),
     ejabberd_hooks:add(webadmin_menu_host, Host, ?MODULE,
 		       webadmin_menu, 70),
     ejabberd_hooks:add(webadmin_page_host, Host, ?MODULE,
@@ -125,8 +94,37 @@ start(Host, Opts) ->
 		       remove_user, 50),
     ejabberd_commands:register_commands(commands()).
 
-%%ejabberd_hooks:add(remove_user, Host,
-%%    	       ?MODULE, remove_user, 50),
+init_db(mnesia) ->
+    mnesia:create_table(sr_group,
+                        [{disc_copies, [node()]},
+                         {attributes, record_info(fields, sr_group)}]),
+    mnesia:create_table(sr_user,
+                        [{disc_copies, [node()]}, {type, bag},
+                         {attributes, record_info(fields, sr_user)}]),
+    update_tables(),
+    mnesia:add_table_index(sr_user, group_host);
+init_db(p1db) ->
+    OptsFields = [Field || {Field, _} <- default_group_opts()],
+    p1db:open_table(sr_group,
+                    [{mapsize, 1024*1024*100},
+                     {schema, [{keys, [host, group, server, user]},
+                               {enc_key, fun enc_key/1},
+                               {dec_key, fun dec_key/1}]}]),
+    p1db:open_table(sr_opts,
+                    [{mapsize, 1024*1024*100},
+                     {schema, [{keys, [host, group]},
+                               {vals, OptsFields},
+                               {enc_key, fun enc_key/1},
+                               {dec_key, fun dec_key/1},
+                               {enc_val, fun enc_val/2},
+                               {dec_val, fun dec_val/2}]}]),
+    p1db:open_table(sr_user,
+                    [{mapsize, 1024*1024*100},
+                     {schema, [{keys, [host, server, user, group]},
+                               {enc_key, fun enc_key/1},
+                               {dec_key, fun dec_key/1}]}]);
+init_db(_) ->
+    ok.
 
 stop(Host) ->
     ejabberd_hooks:delete(webadmin_menu_host, Host, ?MODULE,

@@ -63,23 +63,7 @@
 -define(MAX_USER_MESSAGES, infinity).
 
 start(Host, Opts) ->
-    case gen_mod:db_type(Opts) of
-      mnesia ->
-	  mnesia:create_table(offline_msg,
-			      [{disc_only_copies, [node()]}, {type, bag},
-			       {attributes, record_info(fields, offline_msg)}]),
-	  update_table();
-      p1db ->
-          p1db:open_table(offline_msg,
-                          [{mapsize, 1024*1024*100},
-                           {schema, [{keys, [server, user, timestamp]},
-                                     {vals, [expire, packet]},
-                                     {enc_key, fun enc_key/1},
-                                     {dec_key, fun dec_key/1},
-                                     {enc_val, fun enc_val/2},
-                                     {dec_val, fun dec_val/2}]}]);
-      _ -> ok
-    end,
+    init_db(gen_mod:db_type(Opts)),
     ejabberd_hooks:add(offline_message_hook, Host, ?MODULE,
 		       store_packet, 50),
     ejabberd_hooks:add(resend_offline_messages_hook, Host,
@@ -102,6 +86,23 @@ start(Host, Opts) ->
 			max_user_offline_messages),
     register(gen_mod:get_module_proc(Host, ?PROCNAME),
 	     spawn(?MODULE, loop, [Host, AccessMaxOfflineMsgs])).
+
+init_db(mnesia) ->
+    mnesia:create_table(offline_msg,
+                        [{disc_only_copies, [node()]}, {type, bag},
+                         {attributes, record_info(fields, offline_msg)}]),
+    update_table();
+init_db(p1db) ->
+    p1db:open_table(offline_msg,
+                    [{mapsize, 1024*1024*100},
+                     {schema, [{keys, [server, user, timestamp]},
+                               {vals, [expire, packet]},
+                               {enc_key, fun enc_key/1},
+                               {dec_key, fun dec_key/1},
+                               {enc_val, fun enc_val/2},
+                               {dec_val, fun dec_val/2}]}]);
+init_db(_) ->
+    ok.
 
 loop(Host, AccessMaxOfflineMsgs) ->
     receive

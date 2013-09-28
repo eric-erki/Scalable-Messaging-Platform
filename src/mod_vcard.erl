@@ -53,37 +53,7 @@
 -define(PROCNAME, ejabberd_mod_vcard).
 
 start(Host, Opts) ->
-    case gen_mod:db_type(Opts) of
-      mnesia ->
-	  mnesia:create_table(vcard,
-			      [{disc_only_copies, [node()]},
-			       {attributes, record_info(fields, vcard)}]),
-	  mnesia:create_table(vcard_search,
-			      [{disc_copies, [node()]},
-			       {attributes,
-				record_info(fields, vcard_search)}]),
-	  update_tables(),
-	  mnesia:add_table_index(vcard_search, luser),
-	  mnesia:add_table_index(vcard_search, lfn),
-	  mnesia:add_table_index(vcard_search, lfamily),
-	  mnesia:add_table_index(vcard_search, lgiven),
-	  mnesia:add_table_index(vcard_search, lmiddle),
-	  mnesia:add_table_index(vcard_search, lnickname),
-	  mnesia:add_table_index(vcard_search, lbday),
-	  mnesia:add_table_index(vcard_search, lctry),
-	  mnesia:add_table_index(vcard_search, llocality),
-	  mnesia:add_table_index(vcard_search, lemail),
-	  mnesia:add_table_index(vcard_search, lorgname),
-	  mnesia:add_table_index(vcard_search, lorgunit);
-      p1db ->
-          p1db:open_table(vcard,
-                          [{mapsize, 1024*1024*100},
-                           {schema, [{keys, [server, user]},
-                                     {vals, [vcard]},
-                                     {enc_key, fun enc_key/1},
-                                     {dec_key, fun dec_key/1}]}]);
-      _ -> ok
-    end,
+    init_db(gen_mod:db_type(Opts)),
     ejabberd_hooks:add(remove_user, Host, ?MODULE,
 		       remove_user, 50),
     IQDisc = gen_mod:get_opt(iqdisc, Opts, fun gen_iq_handler:check_type/1,
@@ -101,6 +71,37 @@ start(Host, Opts) ->
                              true),
     register(gen_mod:get_module_proc(Host, ?PROCNAME),
 	     spawn(?MODULE, init, [MyHost, Host, Search])).
+
+init_db(mnesia) ->
+    mnesia:create_table(vcard,
+                        [{disc_only_copies, [node()]},
+                         {attributes, record_info(fields, vcard)}]),
+    mnesia:create_table(vcard_search,
+                        [{disc_copies, [node()]},
+                         {attributes,
+                          record_info(fields, vcard_search)}]),
+    update_tables(),
+    mnesia:add_table_index(vcard_search, luser),
+    mnesia:add_table_index(vcard_search, lfn),
+    mnesia:add_table_index(vcard_search, lfamily),
+    mnesia:add_table_index(vcard_search, lgiven),
+    mnesia:add_table_index(vcard_search, lmiddle),
+    mnesia:add_table_index(vcard_search, lnickname),
+    mnesia:add_table_index(vcard_search, lbday),
+    mnesia:add_table_index(vcard_search, lctry),
+    mnesia:add_table_index(vcard_search, llocality),
+    mnesia:add_table_index(vcard_search, lemail),
+    mnesia:add_table_index(vcard_search, lorgname),
+    mnesia:add_table_index(vcard_search, lorgunit);
+init_db(p1db) ->
+    p1db:open_table(vcard,
+                    [{mapsize, 1024*1024*100},
+                     {schema, [{keys, [server, user]},
+                               {vals, [vcard]},
+                               {enc_key, fun enc_key/1},
+                               {dec_key, fun dec_key/1}]}]);
+init_db(_) ->
+    ok.
 
 init(Host, ServerHost, Search) ->
     case Search of
