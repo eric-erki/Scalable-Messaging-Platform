@@ -38,7 +38,7 @@
 	 forget_room/3, create_room/5, process_iq_disco_items/4,
 	 broadcast_service_message/2, register_room/3,
 	 get_vh_rooms/1, shutdown_rooms/1,
-	 is_broadcasted/1, moderate_room_history/2, import/4,
+	 is_broadcasted/1, moderate_room_history/2, import/5,
 	 persist_recent_messages/1, can_use_nick/4,
          rh_prefix/2, key2us/2, rhus2key/4]).
 
@@ -1589,26 +1589,31 @@ export(_Server) ->
 import_info() ->
     [{<<"muc_room">>, 4}, {<<"muc_registered">>, 4}].
 
-import(_LServer, mnesia, <<"muc_room">>, [Name, RoomHost, SOpts|_]) ->
+import(_LServer, {odbc, _}, mnesia, <<"muc_room">>,
+       [Name, RoomHost, SOpts, _TimeStamp]) ->
     Opts = opts_to_binary(ejabberd_odbc:decode_term(SOpts)),
     mnesia:dirty_write(
       #muc_room{name_host = {Name, RoomHost},
                 opts = Opts});
-import(_LServer, mnesia, <<"muc_registered">>, [J, RoomHost, Nick|_]) ->
+import(_LServer, {odbc, _}, mnesia, <<"muc_registered">>,
+       [J, RoomHost, Nick, _TimeStamp]) ->
     #jid{user = U, server = S} = jlib:string_to_jid(J),
     mnesia:dirty_write(
       #muc_registered{us_host = {{U, S}, RoomHost},
                       nick = Nick});
-import(_LServer, riak, <<"muc_room">>, [Name, RoomHost, SOpts|_]) ->
+import(_LServer, {odbc, _}, riak, <<"muc_room">>,
+       [Name, RoomHost, SOpts, _TimeStamp]) ->
     Opts = opts_to_binary(ejabberd_odbc:decode_term(SOpts)),
     ejabberd_riak:put(
       #muc_room{name_host = {Name, RoomHost},
                 opts = Opts});
-import(_LServer, riak, <<"muc_registered">>, [J, RoomHost, Nick|_]) ->
+import(_LServer, {odbc, _}, riak, <<"muc_registered">>,
+       [J, RoomHost, Nick, _TimeStamp]) ->
     #jid{user = U, server = S} = jlib:string_to_jid(J),
     R = #muc_registered{us_host = {{U, S}, RoomHost}, nick = Nick},
     ejabberd_riak:put(R, [{'2i', [{<<"nick_host">>, {Nick, RoomHost}}]}]);
-import(_LServer, p1db, <<"muc_room">>, [Room, Host, SOpts|_]) ->
+import(_LServer, {odbc, _}, p1db, <<"muc_room">>,
+       [Room, Host, SOpts, _TimeStamp]) ->
     Opts = opts_to_binary(ejabberd_odbc:decode_term(SOpts)),
     {Affiliations, Config} = lists:partition(
                                fun({affiliations, _}) -> true;
@@ -1631,12 +1636,13 @@ import(_LServer, p1db, <<"muc_room">>, [Room, Host, SOpts|_]) ->
                         p1db:async_insert(muc_affiliations, RHUSKey, Val)
                 end, Affs)
       end, Affiliations);
-import(_LServer, p1db, <<"muc_registered">>, [J, Host, Nick|_]) ->
+import(_LServer, {odbc, _}, p1db, <<"muc_registered">>,
+       [J, Host, Nick, _TimeStamp]) ->
     #jid{user = U, server = S} = jlib:string_to_jid(J),
     NHKey = nh2key(Nick, Host),
     USHKey = ush2key(U, S, Host),
     SJID = jlib:jid_to_string({U, S, <<"">>}),
     p1db:async_insert(muc_nick, NHKey, SJID),
     p1db:async_insert(muc_user, USHKey, Nick);
-import(_LServer, odbc, _, _) ->
+import(_LServer, {odbc, _}, odbc, _, _) ->
     ok.

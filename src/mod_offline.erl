@@ -37,7 +37,7 @@
 	 remove_expired_messages/1, remove_old_messages/2,
 	 remove_user/2, get_queue_length/2, webadmin_page/3, webadmin_user/4,
 	 webadmin_user_parse_query/5, count_offline_messages/3,
-         export/1, import_info/0, import/4]).
+         export/1, import_info/0, import/5]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -1211,7 +1211,8 @@ export(_Server) ->
 import_info() ->
     [{<<"spool">>, 4}].
 
-import(LServer, DBType, <<"spool">>, [LUser, XML|_]) ->
+import(LServer, {odbc, _}, DBType, <<"spool">>,
+       [LUser, XML, _Seq, _TimeStamp]) ->
     El = #xmlel{} = xml_stream:parse_element(XML),
     From = #jid{} = jlib:string_to_jid(
                       xml:get_attr_s(<<"from">>, El#xmlel.attrs)),
@@ -1220,8 +1221,9 @@ import(LServer, DBType, <<"spool">>, [LUser, XML|_]) ->
     Stamp = xml:get_path_s(El, [{elem, <<"delay">>},
                                 {attr, <<"stamp">>}]),
     TS = case jlib:datetime_string_to_timestamp(Stamp) of
-             {_, _, _} = Now ->
-                 Now;
+             {MegaSecs, Secs, _} ->
+                 {_, _, USecs} = now(),
+                 {MegaSecs, Secs, USecs};
              undefined ->
                  now()
          end,

@@ -34,7 +34,7 @@
 
 %% API
 -export([start_link/2, start/2, stop/1, export/1, import_info/0,
-	 import/4, closed_connection/3, get_connection_params/3]).
+	 import/5, closed_connection/3, get_connection_params/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
@@ -1364,22 +1364,25 @@ export(_Server) ->
 import_info() ->
     [{<<"irc_custom">>, 4}].
 
-import(_LServer, mnesia, <<"irc_custom">>, [SJID, IRCHost, SData|_]) ->
+import(_LServer, {odbc, _}, mnesia, <<"irc_custom">>,
+       [SJID, IRCHost, SData, _TimeStamp]) ->
     #jid{luser = U, lserver = S} = jlib:string_to_jid(SJID),
     Data = ejabberd_odbc:decode_term(SData),
     mnesia:dirty_write(
       #irc_custom{us_host = {{U, S}, IRCHost},
                   data = Data});
-import(_LServer, p1db, <<"irc_custom">>, [SJID, IRCHost, SData|_]) ->
+import(_LServer, {odbc, _}, p1db, <<"irc_custom">>,
+       [SJID, IRCHost, SData, _TimeStamp]) ->
     #jid{luser = U, lserver = S} = jlib:string_to_jid(SJID),
     Data = ejabberd_odbc:decode_term(SData),
     USHKey = ush2key(U, S, IRCHost),
     p1db:async_insert(irc_custom, USHKey, term_to_binary(Data));
-import(_LServer, riak, <<"irc_custom">>, [SJID, IRCHost, SData|_]) ->
+import(_LServer, {odbc, _}, riak, <<"irc_custom">>,
+       [SJID, IRCHost, SData, _TimeStamp]) ->
     #jid{luser = U, lserver = S} = jlib:string_to_jid(SJID),
     Data = ejabberd_odbc:decode_term(SData),
     ejabberd_riak:put(
       #irc_custom{us_host = {{U, S}, IRCHost},
                   data = Data});
-import(_, _, _, _) ->
-    pass.
+import(_LServer, {odbc, _}, odbc, <<"irc_custom">>, _) ->
+    ok.

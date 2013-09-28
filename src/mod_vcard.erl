@@ -32,7 +32,7 @@
 
 -export([start/2, init/3, stop/1, get_sm_features/5,
 	 process_local_iq/3, process_sm_iq/3, reindex_vcards/0,
-	 remove_user/2, export/1, import_info/0, import/4]).
+	 remove_user/2, export/1, import_info/0, import/5]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -108,8 +108,8 @@ init(Host, ServerHost, Search) ->
       _ ->
           case gen_mod:db_type(ServerHost, ?MODULE) of
               p1db ->
-                  ?WARNING_MSG("VCard search functionality is "
-                               "not implemented for P1DB backend", []);
+                  ?WARNING_MSG("vcard search functionality is "
+                               "not implemented for p1db backend", []);
               _ ->
                   ejabberd_router:register_route(Host)
           end,
@@ -1102,11 +1102,11 @@ export(_Server) ->
 import_info() ->
     [{<<"vcard">>, 3}, {<<"vcard_search">>, 24}].
 
-import(LServer, mnesia, <<"vcard">>, [LUser, XML|_]) ->
+import(LServer, {odbc, _}, mnesia, <<"vcard">>, [LUser, XML, _TimeStamp]) ->
     #xmlel{} = El = xml_stream:parse_element(XML),
     VCard = #vcard{us = {LUser, LServer}, vcard = El},
     mnesia:dirty_write(VCard);
-import(LServer, mnesia, <<"vcard_search">>,
+import(LServer, {odbc, _}, mnesia, <<"vcard_search">>,
        [User, LUser, FN, LFN,
         Family, LFamily, Given, LGiven,
         Middle, LMiddle, Nickname, LNickname,
@@ -1125,12 +1125,10 @@ import(LServer, mnesia, <<"vcard_search">>,
                     email = EMail, lemail = LEMail,
                     orgname = OrgName, lorgname = LOrgName,
                     orgunit = OrgUnit, lorgunit = LOrgUnit});
-import(LServer, p1db, <<"vcard">>, [LUser, XML|_]) ->
+import(LServer, {odbc, _}, p1db, <<"vcard">>, [LUser, XML, _TimeStamp]) ->
     USKey = us2key(LUser, LServer),
     p1db:async_insert(vcard, USKey, XML);
-import(_LServer, p1db, <<"vcard_search">>, _) ->
-    ok;
-import(LServer, riak, <<"vcard">>, [LUser, XML|_]) ->
+import(LServer, {odbc, _}, riak, <<"vcard">>, [LUser, XML, _TimeStamp]) ->
     El = xml_stream:parse_element(XML),
     VCard = #vcard{us = {LUser, LServer}, vcard = El},
     FN = xml:get_path_s(El, [{elem, <<"FN">>}, cdata]),
@@ -1197,9 +1195,11 @@ import(LServer, riak, <<"vcard">>, [LUser, XML|_]) ->
                                {<<"lorgname">>, LOrgName},
                                {<<"orgunit">>, OrgUnit},
                                {<<"lorgunit">>, LOrgUnit}]}]);
-import(_LServer, riak, <<"vcard_search">>, _) ->
+import(_LServer, {odbc, _}, p1db, <<"vcard_search">>, _) ->
     ok;
-import(_LServer, odbc, <<"vcard">>, _) ->
+import(_LServer, {odbc, _}, riak, <<"vcard_search">>, _) ->
     ok;
-import(_LServer, odbc, <<"vcard_search">>, _) ->
+import(_LServer, {odbc, _}, odbc, <<"vcard">>, _) ->
+    ok;
+import(_LServer, {odbc, _}, odbc, <<"vcard_search">>, _) ->
     ok.

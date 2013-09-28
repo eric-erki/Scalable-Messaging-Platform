@@ -31,7 +31,7 @@
 -behaviour(gen_mod).
 
 -export([start/2, stop/1, process_sm_iq/3, import_info/0,
-	 remove_user/2, get_data/2, export/1, import/4]).
+	 remove_user/2, get_data/2, export/1, import/5]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -374,16 +374,19 @@ export(_Server) ->
 import_info() ->
     [{<<"private_storage">>, 4}].
 
-import(LServer, mnesia, <<"private_storage">>, [LUser, XMLNS, XML|_]) ->
+import(LServer, {odbc, _}, mnesia, <<"private_storage">>,
+       [LUser, XMLNS, XML, _TimeStamp]) ->
     El = #xmlel{} = xml_stream:parse_element(XML),
     PS = #private_storage{usns = {LUser, LServer, XMLNS}, xml = El},
     mnesia:dirty_write(PS);
-import(LServer, riak, <<"private_storage">>, [LUser, XMLNS, XML|_]) ->
+import(LServer, {odbc, _}, riak, <<"private_storage">>,
+       [LUser, XMLNS, XML, _TimeStamp]) ->
     El = #xmlel{} = xml_stream:parse_element(XML),
     PS = #private_storage{usns = {LUser, LServer, XMLNS}, xml = El},
     ejabberd_riak:put(PS, [{'2i', [{<<"us">>, {LUser, LServer}}]}]);
-import(LServer, p1db, <<"private_storage">>, [LUser, XMLNS, XML|_]) ->
+import(LServer, {odbc, _}, p1db, <<"private_storage">>,
+       [LUser, XMLNS, XML, _TimeStamp]) ->
     USNKey = usn2key(LUser, LServer, XMLNS),
     p1db:async_insert(private_storage, USNKey, XML);
-import(_LServer, odbc, <<"private_storage">>, _) ->
+import(_LServer, {odbc, _}, odbc, <<"private_storage">>, _) ->
     ok.

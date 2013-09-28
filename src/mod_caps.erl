@@ -36,7 +36,8 @@
 
 -export([read_caps/1, caps_stream_features/2,
 	 disco_features/5, disco_identity/5, disco_info/5,
-	 get_features/2, export/1, import_info/0]).
+	 get_features/2, export/1, import_info/0, import/5,
+         import_start/2, import_stop/2]).
 
 %% gen_mod callbacks
 -export([start/2, start_link/2, stop/1]).
@@ -773,4 +774,54 @@ export(_Server) ->
       end}].
 
 import_info() ->
-    [].
+    [{<<"caps_features">>, 4}].
+
+import_start(_LServer, _DBType) ->
+    ets:new(caps_features_tmp, [private, named_table, bag]),
+    ok.
+
+import(_LServer, {odbc, _}, _DBType, <<"caps_features">>,
+       [Node, SubNode, Feature, _TimeStamp]) ->
+    Feature1 = case catch jlib:binary_to_integer(Feature) of
+                   I when is_integer(I), I>0 -> I;
+                   _ -> Feature
+               end,
+    ets:insert(caps_features_tmp, {{Node, SubNode}, Feature1}),
+    ok.
+
+import_stop(LServer, DBType) ->
+    import_next(LServer, DBType, ets:first(caps_features_tmp)),
+    ets:delete(caps_features_tmp),
+    ok.
+
+import_next(_LServer, _DBType, '$end_of_table') ->
+    ok;
+import_next(LServer, DBType, NodePair) ->
+    Features = [F || {_, F} <- ets:lookup(caps_features_tmp, NodePair)],
+    case Features of
+        [I] when is_integer(I), DBType == mnesia ->
+            mnesia:dirty_write(
+              #caps_features{node_pair = NodePair, features = I});
+        [I] when is_integer(I), DBType == riak ->
+            ejabberd_riak:put(
+              #caps_features{node_pair = NodePair, features = I});
+        [I] when is_integer(I), DBType == p1db ->
+            NVFKey = null_feature(NodePair),
+            p1db:async_insert(caps_features, NVFKey, <<I:32>>);
+        _ when DBType == mnesia ->
+            mnesia:dirty_write(
+              #caps_features{node_pair = NodePair, features = Features});
+        _ when DBType == riak ->
+            ejabberd_riak:put(
+              #caps_features{node_pair = NodePair, features = Features});
+        _ when DBType == p1db ->
+            lists:foreach(
+              fun(Feature) ->
+                      NVFKey = nvf2key(NodePair, Feature),
+                      p1db:async_insert(caps_features,
+                                        NVFKey, <<(now_ts()):32>>)
+              end, Features);
+        _ when DBType == odbc ->
+            ok
+    end,
+    import_next(LServer, DBType, ets:next(caps_features_tmp, NodePair)).

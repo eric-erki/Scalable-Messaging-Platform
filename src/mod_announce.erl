@@ -37,7 +37,7 @@
 	 stop/1,
 	 export/1,
          import_info/0,
-         import/4,
+         import/5,
 	 announce/3,
 	 send_motd/1,
 	 disco_identity/5,
@@ -1220,22 +1220,22 @@ export(_Server) ->
 import_info() ->
     [{<<"motd">>, 3}].
 
-import(LServer, mnesia, <<"motd">>, [<<>>, XML|_]) ->
+import(LServer, {odbc, _}, mnesia, <<"motd">>, [<<>>, XML, _TimeStamp]) ->
     El = xml_stream:parse_element(XML),
     mnesia:dirty_write(#motd{server = LServer, packet = El});
-import(LServer, mnesia, <<"motd">>, [LUser|_]) ->
+import(LServer, {odbc, _}, mnesia, <<"motd">>, [LUser, <<>>, _TimeStamp]) ->
     mnesia:dirty_write(#motd_users{us = {LUser, LServer}});
-import(LServer, p1db, <<"motd">>, [<<>>, XML|_]) ->
+import(LServer, {odbc, _}, p1db, <<"motd">>, [<<>>, XML, _TimeStamp]) ->
     MsgKey = msg_key(LServer),
     p1db:async_insert(motd, MsgKey, XML);
-import(LServer, p1db, <<"motd">>, [LUser|_]) ->
+import(LServer, {odbc, _}, p1db, <<"motd">>, [LUser, <<>>, _TimeStamp]) ->
     USKey = us2key(LUser, LServer),
     p1db:async_insert(motd, USKey, <<>>);
-import(LServer, riak, <<"motd">>, [<<>>, XML|_]) ->
+import(LServer, {odbc, _}, riak, <<"motd">>, [<<>>, XML, _TimeStamp]) ->
     El = xml_stream:parse_element(XML),
     ejabberd_riak:put(#motd{server = LServer, packet = El});
-import(LServer, riak, <<"motd">>, [LUser|_]) ->
+import(LServer, {odbc, _}, riak, <<"motd">>, [LUser, <<>>, _TimeStamp]) ->
     Users = #motd_users{us = {LUser, LServer}},
     ejabberd_riak:put(Users, [{'2i', [{<<"server">>, LServer}]}]);
-import(_, _, _, _) ->
+import(_LServer, {odbc, _}, odbc, <<"motd">>, _) ->
     ok.

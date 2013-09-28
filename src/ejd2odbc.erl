@@ -81,22 +81,21 @@ export(Server, Output, Module) ->
     close_output(Output, IO).
 
 import(Server, Dir) ->
-    lists:foreach(
-      fun(Mod) ->
-              import(Server, Dir, Mod)
-      end, modules()).
+    Res = rpc:pmap({?MODULE, import}, [Server, Dir], modules()),
+    lists:zip(modules(), Res).
 
-import(Server, Dir, Mod) ->
+import(Mod, Server, Dir) ->
     LServer = jlib:nameprep(iolist_to_binary(Server)),
+    ToType = db_type(LServer, Mod),
+    try Mod:import_start(LServer, ToType)
+    catch error:undef -> ok end,
     lists:foreach(
       fun({File, Tab, _Mod, FieldsNumber}) ->
               FileName = filename:join([Dir, File]),
               case open_sql_dump(FileName) of
-                  {ok, Dump} ->
-                      DBType = db_type(LServer, Mod),
-                      catch (Mod:import_start(LServer, DBType)),
-                      import_rows(LServer, DBType, Tab, Mod, Dump, FieldsNumber),
-                      catch (Mod:import_end(LServer, DBType)),
+                  {ok, #sql_dump{type = FromType} = Dump} ->
+                      import_rows(LServer, {odbc, FromType}, ToType,
+                                  Tab, Mod, Dump, FieldsNumber),
                       close_sql_dump(Dump);
                   {error, enoent} ->
                       ok;
@@ -106,7 +105,9 @@ import(Server, Dir, Mod) ->
                       ?ERROR_MSG("Failed to open SQL dump ~s: ~s",
                                  [FileName, format_error(Err)])
               end
-      end, import_info(Mod)).
+      end, import_info(Mod)),
+    try Mod:import_stop(LServer, ToType)
+    catch error:undef -> ok end.
 
 import_info(Mod) ->
     Info = Mod:import_info(),
@@ -196,11 +197,17 @@ db_type(LServer, ejabberd_auth) ->
 db_type(LServer, Mod) ->
     gen_mod:db_type(LServer, Mod).
 
-import_rows(LServer, DBType, Tab, Mod, Dump, FieldsNumber) ->
+import_rows(LServer, FromType, ToType, Tab, Mod, Dump, FieldsNumber) ->
     case read_row_from_sql_dump(Dump, FieldsNumber) of
         {ok, Fields} ->
-            Mod:import(LServer, DBType, Tab, Fields),
-            import_rows(LServer, DBType, Tab, Mod, Dump, FieldsNumber);
+            case catch Mod:import(LServer, FromType, ToType, Tab, Fields) of
+                ok ->
+                    import_rows(LServer, FromType, ToType,
+                                Tab, Mod, Dump, FieldsNumber);
+                Err ->
+                    ?ERROR_MSG("Failed to import fields ~p for tab ~p: ~p",
+                               [Fields, Tab, Err])
+            end;
         eof ->
             ok;
         Err ->

@@ -40,7 +40,7 @@
 -behaviour(gen_mod).
 
 -export([start/2, stop/1, process_iq/3, export/1, import_info/0,
-	 process_local_iq/3, get_user_roster/2, import/4,
+	 process_local_iq/3, get_user_roster/2, import/5,
 	 get_subscription_lists/3, get_roster/2, import_start/2,
 	 get_in_pending_subscriptions/3, in_subscription/6,
 	 out_subscription/4, set_items/3, remove_user/2,
@@ -1823,18 +1823,21 @@ import_info() ->
 import_start(_LServer, odbc) ->
     ok;
 import_start(_LServer, _DBType) ->
-    ets:new(rostergroups_tmp, [private, named_table, bag]).
+    ets:new(rostergroups_tmp, [private, named_table, bag]),
+    ok.
 
 import_stop(_LServer, odbc) ->
     ok;
 import_stop(_LServer, _DBType) ->
-    ets:delete(rostergroups_tmp).
+    ets:delete(rostergroups_tmp),
+    ok.
 
-import(LServer, DBType, <<"rostergroups">>, [LUser, SJID, Group])
+import(LServer, {odbc, _}, DBType, <<"rostergroups">>, [LUser, SJID, Group])
   when DBType == riak; DBType == mnesia; DBType == p1db ->
     LJID = jlib:jid_tolower(jlib:string_to_jid(SJID)),
-    ets:insert(rostergroups_tmp, {{LUser, LServer, LJID}, Group});
-import(LServer, DBType, <<"rosterusers">>, Row) ->
+    ets:insert(rostergroups_tmp, {{LUser, LServer, LJID}, Group}),
+    ok;
+import(LServer, {odbc, _}, DBType, <<"rosterusers">>, Row) ->
     I = raw_to_record(LServer, lists:sublist(Row, 9)),
     {LUser, _LServer, LJID} = I#roster.usj,
     Groups = [G || {_, G} <- ets:lookup(rostergroups_tmp, I#roster.usj)],
@@ -1852,18 +1855,16 @@ import(LServer, DBType, <<"rosterusers">>, Row) ->
         odbc ->
             ok
     end;
-import(LServer, mnesia, <<"roster_version">>, [LUser, Ver]) ->
+import(LServer, {odbc, _}, mnesia, <<"roster_version">>, [LUser, Ver]) ->
     RV = #roster_version{us = {LUser, LServer}, version = Ver},
     mnesia:dirty_write(RV);
-import(LServer, riak, <<"roster_version">>, [LUser, Ver]) ->
+import(LServer, {odbc, _}, riak, <<"roster_version">>, [LUser, Ver]) ->
     RV = #roster_version{us = {LUser, LServer}, version = Ver},
     ejabberd_riak:put(RV);
-import(LServer, p1db, <<"roster_version">>, [LUser, Ver]) ->
+import(LServer, {odbc, _}, p1db, <<"roster_version">>, [LUser, Ver]) ->
     USKey = us2key(LUser, LServer),
     p1db:async_insert(roster_version, USKey, Ver);
-import(_LServer, odbc, Tab, _)
-  when Tab == <<"roster_version">>; Tab == <<"rostergroups">>;
-       Tab == <<"rosterusers">> ->
+import(_LServer, {odbc, _}, odbc, _Tab, _) ->
     ok.
 
 %% For benchmarks

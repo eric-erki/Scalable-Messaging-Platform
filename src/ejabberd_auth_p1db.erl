@@ -39,7 +39,7 @@
 	 get_vh_registered_users_number/2, get_password/2,
 	 get_password_s/2, is_user_exists/2, remove_user/2,
 	 remove_user/3, store_type/0, export/1,
-	 import/4, plain_password_required/0]).
+	 import/2, plain_password_required/0]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -239,6 +239,6 @@ export(_Server) ->
               end
       end}].
 
-import(LServer, p1db, <<"users">>, [LUser, Password|_]) ->
+import(LServer, [LUser, Password, _TimeStamp]) ->
     US = us2key(LUser, LServer),
     p1db:async_insert(passwd, US, Password).

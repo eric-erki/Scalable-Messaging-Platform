@@ -31,7 +31,7 @@
 -behaviour(gen_mod).
 
 -export([start/2, stop/1, process_local_iq/3, export/1,
-	 process_sm_iq/3, on_presence_update/4, import_info/0, import/4,
+	 process_sm_iq/3, on_presence_update/4, import_info/0, import/5,
 	 store_last_info/4, get_last_info/2, remove_user/2,
          transform_options/1]).
 
@@ -373,7 +373,7 @@ export(_Server) ->
 import_info() ->
     [{<<"last">>, 3}].
 
-import(LServer, DBType, <<"last">>, [LUser, TimeStamp, State|_]) ->
+import(LServer, {odbc, _}, DBType, <<"last">>, [LUser, TimeStamp, State]) ->
     TS = case TimeStamp of
              <<"">> -> 0;
              _ -> jlib:binary_to_integer(TimeStamp)
@@ -389,7 +389,7 @@ import(LServer, DBType, <<"last">>, [LUser, TimeStamp, State|_]) ->
         p1db ->
             USKey = us2key(LUser, LServer),
             p1db:async_insert(last_activity, USKey, la_to_p1db(LA));
-        _ ->
+        odbc ->
             ok
     end.
 

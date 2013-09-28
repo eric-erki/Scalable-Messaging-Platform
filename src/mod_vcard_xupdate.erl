@@ -13,7 +13,7 @@
 -export([start/2, stop/1]).
 
 %% hooks
--export([update_presence/3, vcard_set/3, export/1, import_info/0, import/4]).
+-export([update_presence/3, vcard_set/3, export/1, import_info/0, import/5]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -250,14 +250,17 @@ export(_Server) ->
 import_info() ->
     [{<<"vcard_xupdate">>, 3}].
 
-import(LServer, mnesia, <<"vcard_xupdate">>, [LUser, Hash|_]) ->
+import(LServer, {odbc, _}, mnesia, <<"vcard_xupdate">>,
+       [LUser, Hash, _TimeStamp]) ->
     mnesia:dirty_write(
       #vcard_xupdate{us = {LUser, LServer}, hash = Hash});
-import(LServer, p1db, <<"vcard_xupdate">>, [LUser, Hash|_]) ->
+import(LServer, {odbc, _}, p1db, <<"vcard_xupdate">>,
+       [LUser, Hash, _TimeStamp]) ->
     USKey = us2key(LUser, LServer),
     p1db:async_insert(vcard_xupdate, USKey, Hash);
-import(LServer, riak, <<"vcard_xupdate">>, [LUser, Hash|_]) ->
+import(LServer, {odbc, _}, riak, <<"vcard_xupdate">>,
+       [LUser, Hash, _TimeStamp]) ->
     ejabberd_riak:put(
       #vcard_xupdate{us = {LUser, LServer}, hash = Hash});
-import(_LServer, odbc, <<"vcard_xupdate">>, _) ->
+import(_LServer, {odbc, _}, odbc, <<"vcard_xupdate">>, _) ->
     ok.

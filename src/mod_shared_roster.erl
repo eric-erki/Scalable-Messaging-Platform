@@ -32,7 +32,7 @@
 
 -export([start/2, stop/1, item_to_xml/1, export/1, import_info/0,
 	 webadmin_menu/3, webadmin_page/3, get_user_roster/2,
-	 get_subscription_lists/3, get_jid_info/4, import/4,
+	 get_subscription_lists/3, get_jid_info/4, import/5,
 	 process_item/2, in_subscription/6, out_subscription/4,
 	 user_available/1, unset_presence/4, register_user/2,
 	 remove_user/2, list_groups/1, create_group/2,
@@ -1685,40 +1685,43 @@ export(_Server) ->
 import_info() ->
     [{<<"sr_group">>, 3}, {<<"sr_user">>, 3}].
 
-import(LServer, mnesia, <<"sr_group">>, [Group, SOpts|_]) ->
+import(LServer, {odbc, _}, mnesia, <<"sr_group">>,
+       [Group, SOpts, _TimeStamp]) ->
     G = #sr_group{group_host = {Group, LServer},
                   opts = ejabberd_odbc:decode_term(SOpts)},
     mnesia:dirty_write(G);
-import(LServer, mnesia, <<"sr_user">>, [SJID, Group|_]) ->
+import(LServer, {odbc, _}, mnesia, <<"sr_user">>,
+       [SJID, Group, _TimeStamp]) ->
     #jid{luser = U, lserver = S} = jlib:string_to_jid(SJID),
     U = #sr_user{us = {U, S}, group_host = {Group, LServer}},
     mnesia:dirty_write(U);
-import(LServer, riak, <<"sr_group">>, [Group, SOpts|_]) ->
+import(LServer, {odbc, _}, riak, <<"sr_group">>,
+       [Group, SOpts, _TimeStamp]) ->
     G = #sr_group{group_host = {Group, LServer},
                   opts = ejabberd_odbc:decode_term(SOpts)},
     ejabberd_riak:put(G, [{'2i', [{<<"host">>, LServer}]}]);
-import(LServer, riak, <<"sr_user">>, [SJID, Group|_]) ->
+import(LServer, {odbc, _}, riak, <<"sr_user">>, [SJID, Group|_]) ->
     #jid{luser = U, lserver = S} = jlib:string_to_jid(SJID),
     User = #sr_user{us = {U, S}, group_host = {Group, LServer}},
     ejabberd_riak:put(User,
                       [{i, {{U, S}, {Group, LServer}}},
                        {'2i', [{<<"us">>, {U, S}},
                                {<<"group_host">>, {Group, LServer}}]}]);
-import(LServer, p1db, <<"sr_group">>, [Group, SOpts]) ->
+import(LServer, {odbc, _}, p1db, <<"sr_group">>,
+       [Group, SOpts, _TimeStamp]) ->
     Opts = ejabberd_odbc:decode_term(SOpts),
     GHKey = gh2key(Group, LServer),
     Val = term_to_binary(Opts),
     p1db:async_insert(sr_opts, GHKey, Val);
-import(LServer, p1db, <<"sr_user">>, [SJID, Group|_]) ->
+import(LServer, {odbc, _}, p1db, <<"sr_user">>,
+       [SJID, Group, _TimeStamp]) ->
     #jid{luser = U, lserver = S} = jlib:string_to_jid(SJID),
     US = {U, S},
     GHUSKey = ghus2key(Group, LServer, US),
     USHGKey = ushg2key(US, LServer, Group),
     p1db:async_insert(sr_group, GHUSKey, <<>>),
     p1db:async_insert(sr_user, USHGKey, <<>>);
-import(_, odbc, <<"sr_group">>, _) ->
-    ok;
-import(_, odbc, <<"sr_user">>, _) ->
+import(_, {odbc, _}, odbc, _Tab, _) ->
     ok.
 
 commands() ->

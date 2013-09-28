@@ -35,7 +35,7 @@
 	 check_password/5, check_password_with_authmodule/3,
 	 check_password_with_authmodule/5, try_register/3,
 	 dirty_get_registered_users/0, get_vh_registered_users/1,
-	 get_vh_registered_users/2, export/1, import/4,
+	 get_vh_registered_users/2, export/1, import/5,
 	 get_vh_registered_users_number/1, import_info/0,
 	 get_vh_registered_users_number/2, get_password/2,
 	 get_password_s/2, get_password_with_authmodule/2,
@@ -461,13 +461,13 @@ export(Server) ->
 import_info() ->
     [{<<"users">>, 3}].
 
-import(Server, mnesia, Tab, Fields) ->
-    ejabberd_auth_internal:import(Server, mnesia, Tab, Fields);
-import(Server, p1db, Tab, Fields) ->
-    ejabberd_auth_p1db:import(Server, p1db, Tab, Fields);
-import(Server, riak, Tab, Fields) ->
-    ejabberd_auth_riak:import(Server, riak, Tab, Fields);
-import(_, odbc, _, _) ->
+import(Server, {odbc, _}, mnesia, <<"users">>, Fields) ->
+    ejabberd_auth_internal:import(Server, Fields);
+import(Server, {odbc, _}, p1db, <<"users">>, Fields) ->
+    ejabberd_auth_p1db:import(Server, Fields);
+import(Server, {odbc, _}, riak, <<"users">>, Fields) ->
+    ejabberd_auth_riak:import(Server, Fields);
+import(_LServer, {odbc, _}, odbc, <<"users">>, _) ->
     ok.
 
 -spec create_users(binary(), binary(), binary(),

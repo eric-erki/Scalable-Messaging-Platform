@@ -34,7 +34,7 @@
 	 process_iq_set/4, process_iq_get/5, get_user_list/3,
 	 check_packet/6, remove_user/2, item_to_raw/1,
 	 raw_to_item/1, is_list_needdb/1, updated_list/3,
-         item_to_xml/1, get_user_lists/2, import/4, import_start/2,
+         item_to_xml/1, get_user_lists/2, import/5, import_start/2,
          p1db_to_items/1, items_to_p1db/1, import_stop/2]).
 
 %% For mod_blocking
@@ -1426,6 +1426,35 @@ get_id() ->
     put(id, ID + 1),
     ID + 1.
 
+numeric_to_binary(<<0, 0, _/binary>>) ->
+    <<"0">>;
+numeric_to_binary(<<0, 1, _:6/binary, I:16>>) ->
+    jlib:integer_to_binary(I);
+numeric_to_binary(<<0, 2, _:6/binary, X:16, Y:16>>) ->
+    jlib:integer_to_binary(X*10000 + Y).
+
+bool_to_binary(<<0>>) -> <<"0">>;
+bool_to_binary(<<1>>) -> <<"1">>.
+
+prepare_list_data(mysql, [ID|Row]) ->
+    [jlib:binary_to_integer(ID)|Row];
+prepare_list_data(pgsql, [<<ID:64>>,
+                          SType, SValue, SAction, SOrder, SMatchAll,
+                          SMatchIQ, SMatchMessage, SMatchPresenceIn,
+                          SMatchPresenceOut]) ->
+    [ID, SType, SValue, SAction,
+     numeric_to_binary(SOrder),
+     bool_to_binary(SMatchAll),
+     bool_to_binary(SMatchIQ),
+     bool_to_binary(SMatchMessage),
+     bool_to_binary(SMatchPresenceIn),
+     bool_to_binary(SMatchPresenceOut)].
+
+prepare_id(mysql, ID) ->
+    jlib:binary_to_integer(ID);
+prepare_id(pgsql, <<ID:32>>) ->
+    ID.
+
 import_info() ->
     [{<<"privacy_default_list">>, 2},
      {<<"privacy_list_data">>, 10},
@@ -1435,38 +1464,44 @@ import_start(_LServer, odbc) ->
     ok;
 import_start(_LServer, _DBType) ->
     ets:new(privacy_default_list_tmp, [private, named_table]),
-    ets:new(privacy_list_data_tmp, [private, named_table]),
+    ets:new(privacy_list_data_tmp, [private, named_table, bag]),
     ets:new(privacy_list_tmp, [private, named_table, bag,
-                               {keypos, #privacy.us}]).
+                               {keypos, #privacy.us}]),
+    ok.
 
-import(LServer, DBType, <<"privacy_default_list">>, [LUser, Name])
+import(LServer, {odbc, _}, DBType, <<"privacy_default_list">>, [LUser, Name])
   when DBType == riak; DBType == mnesia; DBType == p1db ->
     US = {LUser, LServer},
-    ets:insert(privacy_default_list_tmp, {US, Name});
-import(LServer, DBType, <<"privacy_list_data">>, [ID|Row])
+    ets:insert(privacy_default_list_tmp, {US, Name}),
+    ok;
+import(LServer, {odbc, SQLType}, DBType, <<"privacy_list_data">>, Row1)
   when DBType == riak; DBType == mnesia; DBType == p1db ->
+    [ID|Row] = prepare_list_data(SQLType, Row1),
     Item = raw_to_item(Row),
-    IS = {jlib:binary_to_integer(ID), LServer},
-    ets:insert(privacy_list_data_tmp, {IS, Item});
-import(LServer, DBType, <<"privacy_list">>, [LUser, Name, ID|_])
+    IS = {ID, LServer},
+    ets:insert(privacy_list_data_tmp, {IS, Item}),
+    ok;
+import(LServer, {odbc, SQLType}, DBType, <<"privacy_list">>,
+       [LUser, Name, ID, _TimeStamp])
   when DBType == riak; DBType == mnesia; DBType == p1db ->
     US = {LUser, LServer},
-    IS = {jlib:binary_to_integer(ID), LServer},
-    Default = case ets:lookup(privacy_list_default_tmp, US) of
+    IS = {prepare_id(SQLType, ID), LServer},
+    Default = case ets:lookup(privacy_default_list_tmp, US) of
                   [{_, Name}] -> Name;
                   _ -> none
               end,
-    case ets:lookup(privacy_list_data_tmp, IS) of
-        [{_, Item}] ->
+    case [Item || {_, Item} <- ets:lookup(privacy_list_data_tmp, IS)] of
+        [_|_] = Items ->
             Privacy = #privacy{us = {LUser, LServer},
                                default = Default,
-                               lists = [{Name, Item}]},
+                               lists = [{Name, Items}]},
             ets:insert(privacy_list_tmp, Privacy),
-            ets:delete(privacy_list_data_tmp, IS);
+            ets:delete(privacy_list_data_tmp, IS),
+            ok;
         _ ->
             ok
     end;
-import(_LServer, odbc, _, _) ->
+import(_LServer, {odbc, _}, odbc, _, _) ->
     ok.
 
 import_stop(_LServer, odbc) ->
@@ -1475,7 +1510,8 @@ import_stop(_LServer, DBType) ->
     import_next(DBType, ets:first(privacy_list_tmp)),
     ets:delete(privacy_default_list_tmp),
     ets:delete(privacy_list_data_tmp),
-    ets:delete(privacy_list_tmp).
+    ets:delete(privacy_list_tmp),
+    ok.
 
 import_next(_DBType, '$end_of_table') ->
     ok;
