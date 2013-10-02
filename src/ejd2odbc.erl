@@ -81,8 +81,14 @@ export(Server, Output, Module) ->
     close_output(Output, IO).
 
 import(Server, Dir, ToType) ->
-    Res = rpc:pmap({?MODULE, import}, [Server, Dir, ToType], modules()),
-    lists:zip(modules(), Res).
+    Procs = lists:map(
+              fun(Mod) ->
+                      spawn(fun() -> import(Mod, Server, Dir, ToType) end)
+              end, modules()),
+    lists:foreach(
+      fun(Proc) ->
+              catch gen_server:call(Proc, foo, infinity)
+      end, Procs).
 
 import(Mod, Server, Dir, ToType) ->
     LServer = jlib:nameprep(iolist_to_binary(Server)),
