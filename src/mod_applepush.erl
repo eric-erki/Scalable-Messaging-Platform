@@ -28,7 +28,8 @@
 	 remove_user/2,
          transform_module_options/1,
          process_sm_iq/3,
-         export/1]).
+         export/1,
+    set_local_badge/3]).
 
 
 %% Debug commands
@@ -101,6 +102,41 @@ stop(Host) ->
     gen_iq_handler:remove_iq_handler(ejabberd_local, Host, ?NS_P1_PUSH).
 
 
+
+set_local_badge(JID, DeviceID, Count) ->
+    case get_storage(JID#jid.lserver) of
+        mnesia ->
+            set_local_badge_mnesia(JID, DeviceID, Count);
+        sql ->
+            set_local_badge_sql(JID, DeviceID, Count)
+    end.
+
+set_local_badge_mnesia(JID, DeviceID, Count) ->
+    #jid{luser = LUser, lserver = LServer} = JID,
+    LUS = {LUser, LServer},
+    case mnesia:dirty_match_object({applepush_cache, LUS, DeviceID, '_'}) of
+        [] ->
+            {error, device_not_found};
+        [#applepush_cache{options=Opts}=Record] ->
+            %% The table is of type bag. If we just dirty_write, it will insert a new item, not update the existing one.
+            %% This dirty_delete + dirty_write aren't atomic so entries could be lost in the middle.. but this is what
+            %% store_cache_mnesia() uses
+            mnesia:dirty_delete_object(Record),
+            mnesia:dirty_write(Record#applepush_cache{options = lists:keystore(local_badge, 1, Opts, {local_badge, Count})})
+    end.
+
+
+set_local_badge_sql(#jid{luser =LUser, lserver=LServer}, DeviceID, Count) ->
+    Username = ejabberd_odbc:escape(LUser),
+    SDeviceID = erlang:integer_to_list(DeviceID, 16),
+    case ejabberd_odbc:sql_query(LServer,
+      [<<"UPDATE applepush_cache SET local_badge =">>, integer_to_list(Count), <<" WHERE" 
+        " username='">>, Username, <<"' and ">>, <<"device_id='">>, SDeviceID, <<"';">>]) of
+        {updated, 1} ->
+            ok;
+        {updated, 0} ->
+            {error, device_not_found}  %%same contract than set_local_badge_mnesia
+    end.
 
 push_notification(Host, JID, Notification, Msg, Unread, Sound, AppID, Sender) ->
     push_notification_with_custom_fields(Host, JID, Notification, Msg, Unread, Sound, AppID, Sender, []).
@@ -296,7 +332,7 @@ send_offline_packet_notification(From, To, Packet, SDeviceID, BadgeCount) ->
     case catch erlang:list_to_integer(DeviceID, 16) of
         ID1 when is_integer(ID1) ->
             case lookup_cache(To, ID1) of
-                [{ID, AppID, SendBody, SendFrom}] ->
+                [{ID, AppID, SendBody, SendFrom, _LocalBadge}] -> %% LocalBadge is already counted here..
                     do_send_offline_packet_notification(From, To, Packet, ID, AppID, SendBody, SendFrom, BadgeCount);
                 _ ->
                     ok
@@ -319,9 +355,9 @@ receive_offline_packet(From, To, Packet) ->
                                 Host,
                                 0,
                                 [To#jid.luser, Host]) + 1,
-                    lists:foreach(fun({ID, AppID, SendBody, SendFrom}) ->
-                                          ?DEBUG("lookup: ~p~n", [{ID, AppID, SendBody, SendFrom}]),
-                                          do_send_offline_packet_notification(From, To, Packet, ID, AppID, SendBody, SendFrom, Offline)
+                    lists:foreach(fun({ID, AppID, SendBody, SendFrom, LocalBadge}) ->
+                                          ?DEBUG("lookup: ~p~n", [{ID, AppID, SendBody, SendFrom, LocalBadge}]),
+                                          do_send_offline_packet_notification(From, To, Packet, ID, AppID, SendBody, SendFrom, Offline + LocalBadge)
                                   end, DeviceList)
             end;
 	false ->
@@ -337,7 +373,7 @@ process_sm_iq(From, To, #iq{type = Type, sub_el = SubEl} = IQ) ->
             DeviceID =
                 erlang:list_to_integer(binary_to_list(SDeviceID), 16),
             case lookup_cache(To, DeviceID) of
-                [{_ID, AppID, _SendBody, _SendFrom}] ->
+                [{_ID, AppID, _SendBody, _SendFrom, _LocalBadge}] ->
                     PushService = get_push_service(Host, To, AppID),
                     ServiceJID = jlib:make_jid(<<"">>, PushService, <<"">>),
                     if
@@ -384,8 +420,8 @@ resend_badge(To) ->
 		false ->
 		    {error, "no cached data for the user"};
                 DeviceList ->
-                    lists:foreach(fun({ID, AppID, SendBody, SendFrom}) ->
-                        ?DEBUG("lookup: ~p~n", [{ID, AppID, SendBody, SendFrom}]),
+                    lists:foreach(fun({ID, AppID, SendBody, SendFrom, LocalBadge}) ->
+                        ?DEBUG("lookup: ~p~n", [{ID, AppID, SendBody, SendFrom, LocalBadge}]),
                         PushService = get_push_service(Host, To, AppID),
                         ServiceJID = jlib:make_jid(<<"">>, PushService, <<"">>),
                         Offline = ejabberd_hooks:run_fold(
@@ -397,7 +433,7 @@ resend_badge(To) ->
                             Offline == 0 ->
                                 ok;
                             true ->
-                                Badge = jlib:integer_to_binary(Offline),
+                                Badge = jlib:integer_to_binary(Offline + LocalBadge),
                                 DeviceID = jlib:integer_to_binary(ID, 16),
                                 Packet1 =
                                     #xmlel{name = <<"message">>,
@@ -448,7 +484,7 @@ lookup_cache_sql(JID) ->
     Username = ejabberd_odbc:escape(LUser),
     do_lookup_cache_sql(
       LServer,
-      [<<"select device_id, app_id, send_body, send_from from applepush_cache "
+      [<<"select device_id, app_id, send_body, send_from, local_badge from applepush_cache "
         "where username='">>, Username, <<"'">>]).
 
 lookup_cache(JID, DeviceID) ->
@@ -470,7 +506,7 @@ lookup_cache_sql(JID, DeviceID) ->
     SDeviceID = erlang:integer_to_list(DeviceID, 16),
     do_lookup_cache_sql(
       LServer,
-      [<<"select device_id, app_id, send_body, send_from from applepush_cache "
+      [<<"select device_id, app_id, send_body, send_from, local_badge from applepush_cache "
         "where username='">>, Username, <<"' and device_id='">>,
        SDeviceID, <<"'">>]).
 
@@ -481,7 +517,8 @@ do_lookup_cache_mnesia(MatchSpec) ->
         	    AppID = proplists:get_value(appid, Options, <<"applepush.localhost">>),
 	            SendBody = proplists:get_value(send_body, Options, none),
         	    SendFrom = proplists:get_value(send_from, Options, true),
-	            {DeviceID, AppID, SendBody, SendFrom}
+        	    LocalBadge = proplists:get_value(local_badge, Options, 0),
+	            {DeviceID, AppID, SendBody, SendFrom, LocalBadge}
             end, EntryList);
 	_ ->
 	    false
@@ -489,11 +526,11 @@ do_lookup_cache_mnesia(MatchSpec) ->
 
 do_lookup_cache_sql(LServer, Query) ->
     case ejabberd_odbc:sql_query(LServer, Query) of
-        {selected, [<<"device_id">>, <<"app_id">>, <<"send_body">>, <<"send_from">>],
+        {selected, [<<"device_id">>, <<"app_id">>, <<"send_body">>, <<"send_from">>, <<"local_badge">>],
          EntryList} ->
             lists:map(
-              fun({SDeviceID, AppID, SSendBody, SSendFrom}) ->
-                      DeviceID = erlang:list_to_integer(SDeviceID, 16),
+              fun([SDeviceID, AppID, SSendBody, SSendFrom, LocalBadgeStr]) ->
+                      DeviceID = jlib:binary_to_integer(SDeviceID, 16),
                       SendBody =
                           case SSendBody of
                               <<"A">> -> all;
@@ -508,7 +545,14 @@ do_lookup_cache_sql(LServer, Query) ->
                               <<"N">> -> name;
                               _ -> none
                           end,
-                      {DeviceID, AppID, SendBody, SendFrom}
+                      LocalBadge = 
+                        if 
+                            is_binary(LocalBadgeStr) -> 
+                                jlib:binary_to_integer(LocalBadgeStr);
+                            true ->
+                                0  %%is null
+                        end,
+                      {DeviceID, AppID, SendBody, SendFrom, LocalBadge}
             end, EntryList);
 	_ ->
 	    false
@@ -535,18 +579,34 @@ store_cache_mnesia(JID, DeviceID, Options) ->
     R = #applepush_cache{us = LUS,
 			 device_id = DeviceID,
 			 options = Options},
-    case catch mnesia:dirty_read(applepush_cache, LUS) of
-	[R] ->
-	    ok;
-	_ ->
-            lists:foreach(
-              fun(R1) ->
-                      mnesia:dirty_delete_object(R1)
-              end,
-              mnesia:dirty_index_read(
-                applepush_cache, DeviceID, #applepush_cache.device_id)),
-	    catch mnesia:dirty_write(R)
+   case mnesia:dirty_match_object({applepush_cache, LUS, DeviceID, '_'}) of
+        [] ->
+            %%no previous entry, just write the new record
+            mnesia:dirty_write(R);  
+
+        [R] ->
+            %%previous entry exists but is equal, don't do anything
+            ok; 
+
+        [#applepush_cache{options = OldOptions} = OldRecord] ->
+            case lists:keyfind(local_badge, 1, OldOptions) of
+                false ->
+                    %% There was no local_badge set in previous record. 
+                    %% As the record don't match anyway, write the new one
+                    mnesia:dirty_delete_object(OldRecord),
+                    mnesia:dirty_write(R);
+                {local_badge, Count} ->
+                    %% Use the new record, but copy the previous local_badge value
+                    %% We keep that as local_badge isn't provide in the enable notification
+                    %% call.
+                    mnesia:dirty_delete_object(OldRecord),
+                    mnesia:dirty_write(R#applepush_cache{options = [{local_badge, Count} | Options]})
+            end
+       %% Other cases are error. If there is more than one entry for the same UserServer and same DeviceID,
+       %% it is an error.
     end.
+
+
 
 store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom) ->
     #jid{luser = LUser, lserver = LServer} = JID,
@@ -568,17 +628,31 @@ store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom) ->
             _ -> <<"-">>
         end,
     F = fun() ->
-                ejabberd_odbc:sql_query_t(
-                  [<<"delete from applepush_cache "
+                %% We must keep the previous local_badge if it exists.
+                case ejabberd_odbc:sql_query_t(
+                  [<<"select app_id, send_body, send_from from applepush_cache "
                     "where username='">>, Username, <<"' and ">>,
-                   <<"device_id='">>, SDeviceID, <<"';">>]),
-                ejabberd_odbc:sql_query_t(
-                  [<<"insert into applepush_cache(username, device_id, app_id, "
-                    "                            send_body, send_from) "
-                    "values ('">>, Username, <<"', '">>, SDeviceID, <<"', '">>,
-                   SAppID, <<"', '">>, SSendBody, <<"', '">>, SSendFrom, <<"');">>])
+                   <<"device_id='">>, SDeviceID, <<"';">>]) of
+                        {selected, _Fields, [[AppID, SSendBody, SSendFrom]]} ->
+                            %% Nothing to change
+                            ok;
+                        {selected, _Fields, [[_AppId, _SSendBody, _SSendFrom]]} ->
+                            %% Something changed,  use the new values (but keep the previous local_badge)
+                            ejabberd_odbc:sql_query_t(
+                              [<<"UPDATE applepush_cache SET app_id ='">>, SAppID, <<"', send_body='">>,
+                                SSendBody, <<"', send_from='">>, SSendFrom, <<"' WHERE" 
+                                " username='">>, Username, <<"' and ">>, <<"device_id='">>, SDeviceID, <<"';">>]);
+
+                        {selected, _Fields, []} ->
+                            %% No previous entry, add the new one
+                            ejabberd_odbc:sql_query_t(
+                              [<<"insert into applepush_cache(username, device_id, app_id, "
+                                "                            send_body, send_from) "
+                                "values ('">>, Username, <<"', '">>, SDeviceID, <<"', '">>,
+                               SAppID, <<"', '">>, SSendBody, <<"', '">>, SSendFrom, <<"');">>])
+                end
         end,
-    odbc_queries:sql_transaction(LServer, F).
+        {atomic, _} = odbc_queries:sql_transaction(LServer, F).
 
 delete_cache(JID, DeviceID) ->
     case gen_mod:db_type(JID#jid.lserver, ?MODULE) of

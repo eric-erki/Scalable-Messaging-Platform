@@ -281,6 +281,7 @@ CREATE TABLE applepush_cache (
     app_id text NOT NULL,
     send_body character(1) NOT NULL,
     send_from character(1) NOT NULL,
+    local_badge integer,
     created_at TIMESTAMP NOT NULL DEFAULT now()
 );
 

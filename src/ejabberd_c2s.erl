@@ -3243,7 +3243,15 @@ process_push_iq(From, To,
 					end,
 				NSD1 = StateData#state{oor_unread_client =
 							   Badge},
-				{{result, []}, NSD1};
+                if 
+                   StateData#state.oor_notification == undefined ->
+                        %% User didn't enable push before in this session, we have no idea of the token.
+                        {{error, ?ERR_BAD_REQUEST}, StateData};  
+                    true ->
+	                    DeviceID = xml:get_path_s(StateData#state.oor_notification, [{elem, <<"id">>}, cdata]),
+                        ok = mod_applepush:set_local_badge(From, jlib:binary_to_integer(DeviceID,16), Badge), 
+		        		{{result, []}, NSD1}
+                end;
 			    _ -> {{error, ?ERR_BAD_REQUEST}, StateData}
 			  end,
     IQRes = case Res of
