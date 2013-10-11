@@ -324,6 +324,7 @@ CREATE TABLE `applepush_cache` (
    `app_id` varchar(255) NOT NULL,
    `send_body` char(1) NOT NULL,
    `send_from` char(1) NOT NULL,
+   `local_badge` integer,
    `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
    UNIQUE KEY `i_applepush_cache_username_device_id` (`username`,`device_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
