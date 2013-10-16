@@ -104,10 +104,10 @@ stop(Host) ->
 
 
 set_local_badge(JID, DeviceID, Count) ->
-    case get_storage(JID#jid.lserver) of
+    case gen_mod:db_type(JID#jid.lserver, ?MODULE) of
         mnesia ->
             set_local_badge_mnesia(JID, DeviceID, Count);
-        sql ->
+        odbc ->
             set_local_badge_sql(JID, DeviceID, Count)
     end.
 
