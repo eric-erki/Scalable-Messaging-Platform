@@ -34,12 +34,12 @@ start_link() ->
 new(Tab, Mod) ->
     gen_server:cast(?MODULE, {new, Tab, Mod}).
 
--spec write(record()) -> ok.
+-spec write(tuple()) -> ok.
 
 write(Obj) ->
     write(Obj, element(2, Obj)).
 
--spec write(record(), any()) -> ok.
+-spec write(tuple(), any()) -> ok.
 
 write(Obj, HashKey) ->
     gen_server:call(?MODULE, {write, Obj, HashKey}).
@@ -49,17 +49,17 @@ write(Obj, HashKey) ->
 write_everywhere(Obj) ->
     write_everywhere(Obj, element(2, Obj)).
 
--spec write_everywhere(record(), any()) -> ok.
+-spec write_everywhere(tuple(), any()) -> ok.
 
 write_everywhere(Obj, HashKey) ->
     gen_server:call(?MODULE, {write_everywhere, Obj, HashKey}).
 
--spec delete(record()) -> ok.
+-spec delete(tuple()) -> ok.
 
 delete(Obj) ->
     delete(Obj, element(2, Obj)).
 
--spec delete(record(), any()) -> ok.
+-spec delete(tuple(), any()) -> ok.
 
 delete(Obj, HashKey) ->
     gen_server:call(?MODULE, {delete, Obj, HashKey}).
