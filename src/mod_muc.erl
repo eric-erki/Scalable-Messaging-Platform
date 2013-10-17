@@ -1327,13 +1327,13 @@ get_vh_rooms_all_nodes(Host) ->
     lists:ukeysort(#muc_online_room.name_host, lists:flatten(Rooms)).
 
 get_vh_rooms(Host) ->
-    Rs = catch mnesia:dirty_select(
+    Rs = (catch mnesia:dirty_select(
       muc_online_room,
       ets:fun2ms(
         fun(#muc_online_room{name_host = {_, H}, pid = Pid} = R)
               when Host == H, node(Pid) == node() ->
                 R
-        end)).
+        end))),
     case Rs of
            {'EXIT', Reason} -> ?ERROR_MSG("Problem getting online rooms: ~p", [Reason]), [];
            Rs -> Rs
