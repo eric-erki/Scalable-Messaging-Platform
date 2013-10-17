@@ -1471,7 +1471,7 @@ set_item(Item) ->
 				       <<"', '">>, S(C), <<"', '">>, S(M),
 				       <<"', '">>, XML, <<"');">>])
     end,
-    {result, []}.
+    ok.
 
 %% @spec (NodeId, ItemId) -> ok | {error, Reason::stanzaError()}
 %%	 NodeId = mod_pubsub:pubsubNodeId()
