@@ -108,7 +108,8 @@ publish_item(NodeId, Publisher, Model, MaxItems, ItemId,
 						     ItemId, Payload)
 		  end,
 		  nodetree_tree:get_subnodes(NodeId, Publisher,
-					     Publisher)).
+					     Publisher)),
+    {result, {default, broadcast, []}}.
 
 remove_extra_items(_NodeId, _MaxItems, ItemIds) ->
     {result, {ItemIds, []}}.
@@ -123,7 +124,7 @@ get_entity_affiliations(_Host, _Owner) -> {result, []}.
 
 get_node_affiliations(_NodeId) -> {result, []}.
 
-get_affiliation(_NodeId, _Owner) -> {result, []}.
+get_affiliation(_NodeId, _Owner) -> {result, none}.
 
 set_affiliation(NodeId, Owner, Affiliation) ->
     node_hometree:set_affiliation(NodeId, Owner,

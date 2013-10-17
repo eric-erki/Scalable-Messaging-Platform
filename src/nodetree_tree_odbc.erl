@@ -323,15 +323,6 @@ delete_node(Host, Node) ->
     Removed.
 
 %% helpers
--spec(raw_to_node/2 ::
-(
-  Host :: mod_pubsub:host(),
-  _    :: {NodeId::mod_pubsub:nodeId(),
-           Parent::mod_pubsub:nodeId(),
-           Type::binary(),
-           NodeIdx::mod_pubsub:nodeIdx()})
-    -> mod_pubsub:pubsubNode()
-).
 raw_to_node(Host, [Node, Parent, Type, NodeIdx]) ->
     Options = case catch
 		     ejabberd_odbc:sql_query_t([<<"select name,val from pubsub_node_option "

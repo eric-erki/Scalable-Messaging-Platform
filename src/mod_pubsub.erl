@@ -254,9 +254,7 @@ stop(Host) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 -spec(init/1 ::
-(
-    _:: _)
-    -> {ok, state()}
+    ([binary() | [{_,_}],...]) -> {'ok',#state{server_host::binary(),host::binary(),nodetree::atom(),plugins::[any()]}}
 ).
 
 init([ServerHost, Opts]) ->
@@ -1171,12 +1169,7 @@ disco_items(Host, <<>>, From) ->
 			   [#xmlel{name = <<"item">>,
 				   attrs =
 				       [{<<"node">>, (NodeID)},
-					{<<"jid">>,
-					 case Host of
-					   {_, _, _} ->
-					       jlib:jid_to_string(Host);
-					   _Host -> Host
-					 end}
+					{<<"jid">>, jlib:jid_to_string(Host)}
 					| case get_option(Options, title) of
 					    false -> [];
 					    [Title] -> [{<<"name">>, Title}]
@@ -1200,12 +1193,7 @@ disco_items(Host, Node, From) ->
 			   {result,
 			    [#xmlel{name = <<"item">>,
 				    attrs =
-					[{<<"jid">>,
-					  case Host of
-					    {_, _, _} ->
-						jlib:jid_to_string(Host);
-					    _Host -> Host
-					  end},
+					[{<<"jid">>, jlib:jid_to_string(Host)},
 					 {<<"name">>, ItemID}],
 				    children = []}
 			     || #pubsub_item{itemid = {ItemID, _}} <- Items]};
