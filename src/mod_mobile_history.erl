@@ -257,12 +257,8 @@ parse_receipt_response(#xmlel{name = <<"message">>,
     end;
 parse_receipt_response(_) -> false.
 
-normalize_rsm_in(#rsm_in{id = Id} = R)
-    when is_binary(Id) ->
-    normalize_rsm_in(R#rsm_in{id =
-				  jlib:binary_to_integer(Id)});
 normalize_rsm_in(#rsm_in{id = undefined} = R) ->
-    normalize_rsm_in(R#rsm_in{id = 0});
+    normalize_rsm_in(R#rsm_in{id = <<"0">>});
 normalize_rsm_in(#rsm_in{max = undefined} = R) ->
     normalize_rsm_in(R#rsm_in{max = 50});
 normalize_rsm_in(R) -> R.
@@ -274,7 +270,7 @@ process_sm_iq(From, _To,
                        none ->
                            {50, 0};
                        #rsm_in{max = M, id = I} ->
-                           {M, I}
+                           {M, jlib:binary_to_integer(I)}
                    end,
     {History, Count} = get_user_history(From, Date, Index, Max),
     Res = [#xmlel{name = <<"history">>,
@@ -352,7 +348,7 @@ get_user_history(JID, StartingDate, Index, Max) ->
 			       fun () ->
 				       {selected, _, Rows} =
 					   ejabberd_odbc:sql_query_t(lists:flatten(Query)),
-                                       {selected, _, [[Count]]} = ejabberd_odbc:sql_query_t(<<"SELECT FOUND_ROWS()">>),
+                                       {selected, _, [[Count]]} = ejabberd_odbc:sql_query_t([<<"SELECT FOUND_ROWS()">>]),
 				       {Rows, jlib:binary_to_integer(Count)}
 			       end),
     {Rows, Count}.
@@ -429,4 +425,3 @@ remove_user_history(Host) ->
 %ejabberd_odbc:sql_query(Host, "CALL set_read(JID, ID)");
 
 %"SELECT * from message_view where user=user and at >= date offset = ? limit = ?"
-
