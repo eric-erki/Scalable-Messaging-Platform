@@ -59,7 +59,7 @@
                    opts = [] :: list() | '_'}).
 
 -record(muc_online_room,
-        {name_host = {<<"">>, <<"">>} :: {binary(), binary()} | '$1' | '_',
+        {name_host = {<<"">>, <<"">>} :: {binary(), binary()} | {'_', '$1'} | '$1' | '_',
          timestamp = now() :: erlang:timestamp() | '_',
          pid = self() :: pid() | '$1' | '$2' | '_'}).
 
@@ -1327,13 +1327,17 @@ get_vh_rooms_all_nodes(Host) ->
     lists:ukeysort(#muc_online_room.name_host, lists:flatten(Rooms)).
 
 get_vh_rooms(Host) ->
-    mnesia:dirty_select(
+    Rs = catch mnesia:dirty_select(
       muc_online_room,
       ets:fun2ms(
         fun(#muc_online_room{name_host = {_, H}, pid = Pid} = R)
               when Host == H, node(Pid) == node() ->
                 R
         end)).
+    case Rs of
+           {'EXIT', Reason} -> ?ERROR_MSG("Problem getting online rooms: ~p", [Reason]), [];
+           Rs -> Rs
+    end.
 
 opts_to_binary(Opts) ->
     lists:map(
@@ -1463,8 +1467,7 @@ get_node({_, RoomHost} = Key) ->
                 [#muc_online_room{pid = Pid}] ->
                     node(Pid)
             end
-    end;
-get_node(RoomHost) -> get_node({<<"">>, RoomHost}).
+    end.
 
 get_nodes(RoomHost) ->
     case is_broadcasted(RoomHost) of
