@@ -306,32 +306,25 @@ has_receipt(#xmlel{name = <<"message">>,
 	    <<"request">> ->
 		false; %% Message must have an ID to ask a request for ack.
 	    <<"received">> ->
-		case xml:get_subtag(Packet, <<"received">>) of
-		  false -> false;
-		  #xmlel{attrs = Attrs} ->
-		      case xml:get_attr_s(<<"xmlns">>, Attrs) of
-			?NS_RECEIPTS ->
-			    case xml:get_attr_s(<<"id">>, Attrs) of
-			      <<"">> -> false;
-			      SubTagID -> {true, SubTagID}
-			    end;
-			_ -> false
-		      end
-		end
+                  case xml:get_subtag_with_xmlns(
+                         Packet, <<"received">>, ?NS_RECEIPTS) of
+                      false -> false;
+                      #xmlel{attrs = Attrs} ->
+                          case xml:get_attr_s(<<"id">>, Attrs) of
+                              <<"">> -> false;
+                              SubTagID -> {true, SubTagID}
+                          end
+                  end
 	  end;
       ID ->
-	  case xml:get_subtag(Packet, Type) of
-	    false -> false;
-	    #xmlel{attrs = Attrs} ->
-		case xml:get_attr_s(<<"xmlns">>, Attrs) of
-		  ?NS_RECEIPTS ->
-		      case xml:get_attr_s(<<"id">>, Attrs) of
+            case xml:get_subtag_with_xmlns(Packet, Type, ?NS_RECEIPTS) of
+                false -> false;
+                #xmlel{attrs = Attrs} ->
+                    case xml:get_attr_s(<<"id">>, Attrs) of
 			<<"">> -> {true, ID};
 			SubTagID -> {true, SubTagID}
-		      end;
-		  _ -> false
-		end
-	  end
+                    end
+            end
     end.
 
 are_receipts_supported(Server,
