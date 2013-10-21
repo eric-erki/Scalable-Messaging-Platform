@@ -16,7 +16,22 @@
 %%
 %% %CopyrightEnd%
 %%
--module(gen_server).
+%% The code has been modified and improved by ProcessOne.
+%% Copyright 2007-2013, ProcessOne
+%%
+%%  The change adds the following features:
+%%   - You can send exit(priority_shutdown) to the p1_fsm process to
+%%   terminate immediatetly. If the fsm trap_exit process flag has been
+%%   set to true, the FSM terminate function will called.
+%%   - You can pass the gen_fsm options to control resource usage.
+%%   {max_queue, N} will exit the process with priority_shutdown
+%%   - You can limit the time processing a message (TODO): If the
+%%   message processing does not return in a given period of time, the
+%%   process will be terminated.
+%%   - You might customize the State data before sending it to error_logger
+%%   in case of a crash (just export the function print_state/1)
+%%
+-module(p1_server).
 
 %%% ---------------------------------------------------
 %%%
@@ -92,7 +107,7 @@
 	 cast/2, reply/2,
 	 abcast/2, abcast/3,
 	 multi_call/2, multi_call/3, multi_call/4,
-	 enter_loop/3, enter_loop/4, enter_loop/5, wake_hib/5]).
+	 enter_loop/3, enter_loop/4, enter_loop/5, wake_hib/6]).
 
 %% System exports
 -export([system_continue/3,
@@ -104,6 +119,10 @@
 -export([init_it/6]).
 
 -import(error_logger, [format/2]).
+
+%%% Internal gen_fsm state
+%%% This state is used to defined resource control values:
+-record(limits, {max_queue :: non_neg_integer()}).
 
 %%%=========================================================================
 %%%  API
@@ -283,7 +302,11 @@ enter_loop(Mod, Options, State, ServerName, Timeout) ->
     Name = get_proc_name(ServerName),
     Parent = get_parent(),
     Debug = debug_options(Name, Options),
-    loop(Parent, Name, State, Mod, Timeout, Debug).
+    Limits = limit_options(Options),
+    Queue = queue:new(),
+    QueueLen = 0,
+    loop(Parent, Name, State, Mod, Timeout, Debug,
+         Limits, Queue, QueueLen).
 
 %%%========================================================================
 %%% Gen-callback functions
@@ -301,13 +324,18 @@ init_it(Starter, self, Name, Mod, Args, Options) ->
 init_it(Starter, Parent, Name0, Mod, Args, Options) ->
     Name = name(Name0),
     Debug = debug_options(Name, Options),
+    Limits = limit_options(Options),
+    Queue = queue:new(),
+    QueueLen = 0,
     case catch Mod:init(Args) of
 	{ok, State} ->
 	    proc_lib:init_ack(Starter, {ok, self()}), 	    
-	    loop(Parent, Name, State, Mod, infinity, Debug);
+	    loop(Parent, Name, State, Mod, infinity, Debug,
+                 Limits, Queue, QueueLen);
 	{ok, State, Timeout} ->
 	    proc_lib:init_ack(Starter, {ok, self()}), 	    
-	    loop(Parent, Name, State, Mod, Timeout, Debug);
+	    loop(Parent, Name, State, Mod, Timeout, Debug,
+                 Limits, Queue, QueueLen);
 	{stop, Reason} ->
 	    %% For consistency, we must make sure that the
 	    %% registered name (if any) is unregistered before
@@ -352,44 +380,107 @@ unregister_name(Pid) when is_pid(Pid) ->
 %%% ---------------------------------------------------
 %%% The MAIN loop.
 %%% ---------------------------------------------------
-loop(Parent, Name, State, Mod, hibernate, Debug) ->
-    proc_lib:hibernate(?MODULE,wake_hib,[Parent, Name, State, Mod, Debug]);
-loop(Parent, Name, State, Mod, Time, Debug) ->
-    Msg = receive
-	      Input ->
-		    Input
-	  after Time ->
-		  timeout
-	  end,
-    decode_msg(Msg, Parent, Name, State, Mod, Time, Debug, false).
+loop(Parent, Name, State, Mod, hibernate, Debug,
+     Limits, Queue, QueueLen)
+  when QueueLen > 0 ->
+    case queue:out(Queue) of
+	{{value, Msg}, Queue1} ->
+	    decode_msg(Msg, Parent, Name, State, Mod, hibernate,
+		       Debug, Limits, Queue1, QueueLen - 1, false);
+	{empty, _} ->
+	    Reason = internal_queue_error,
+	    error_info(Mod, Reason, Name, hibernate, State, Debug),
+	    exit(Reason)
+    end;
+loop(Parent, Name, State, Mod, hibernate, Debug,
+     Limits, _Queue, _QueueLen) ->
+    proc_lib:hibernate(?MODULE,wake_hib,[Parent, Name, State, Mod, Debug,
+                                         Limits]);
+%% First we test if we have reach a defined limit ...
+loop(Parent, Name, State, Mod, Time, Debug,
+     Limits, Queue, QueueLen) ->
+    try
+	message_queue_len(Limits, QueueLen)
+	%% TODO: We can add more limit checking here...
+    catch
+	{process_limit, Limit} ->
+	    Reason = {process_limit, Limit},
+	    Msg = {'EXIT', Parent, {error, {process_limit, Limit}}},
+	    terminate(Reason, Name, Msg, Mod, State, Debug,
+                      queue:new())
+    end,
+    process_message(Parent, Name, State, Mod, Time, Debug,
+                    Limits, Queue, QueueLen).
 
-wake_hib(Parent, Name, State, Mod, Debug) ->
+%% ... then we can process a new message:
+process_message(Parent, Name, State, Mod, Time, Debug,
+		Limits, Queue, QueueLen) ->
+    {Msg, Queue1, QueueLen1} = collect_messages(Queue, QueueLen, Time),
+    decode_msg(Msg, Parent, Name, State, Mod, Time, Debug,
+               Limits, Queue1, QueueLen1, false).
+
+collect_messages(Queue, QueueLen, Time) ->
+    receive
+	Input ->
+	    case Input of
+		{'EXIT', _Parent, priority_shutdown} ->
+		    {Input, Queue, QueueLen};
+		_ ->
+		    collect_messages(
+		      queue:in(Input, Queue), QueueLen + 1, Time)
+	    end
+    after 0 ->
+	    case queue:out(Queue) of
+		{{value, Msg}, Queue1} ->
+		    {Msg, Queue1, QueueLen - 1};
+		{empty, _} ->
+		    receive
+			Input ->
+			    {Input, Queue, QueueLen}
+		    after Time ->
+			    {{'$gen_event', timeout}, Queue, QueueLen}
+		    end
+	    end
+    end.
+
+wake_hib(Parent, Name, State, Mod, Debug,
+	 Limits) ->
     Msg = receive
 	      Input ->
 		  Input
 	  end,
-    decode_msg(Msg, Parent, Name, State, Mod, hibernate, Debug, true).
+    Queue = queue:new(),
+    QueueLen = 0,
+    decode_msg(Msg, Parent, Name, State, Mod, hibernate, Debug,
+               Limits, Queue, QueueLen, true).
 
-decode_msg(Msg, Parent, Name, State, Mod, Time, Debug, Hib) ->
+decode_msg(Msg, Parent, Name, State, Mod, Time, Debug,
+	   Limits, Queue, QueueLen, Hib) ->
+    put('$internal_queue_len', QueueLen),
     case Msg of
 	{system, From, get_state} ->
 	    sys:handle_system_msg(get_state, From, Parent, ?MODULE, Debug,
-				  {State, [Name, State, Mod, Time]}, Hib);
+				  {State, [Name, State, Mod, Time,
+                                           Limits, Queue, QueueLen]}, Hib);
 	{system, From, {replace_state, StateFun}} ->
 	    NState = try StateFun(State) catch _:_ -> State end,
 	    sys:handle_system_msg(replace_state, From, Parent, ?MODULE, Debug,
-				  {NState, [Name, NState, Mod, Time]}, Hib);
+				  {NState, [Name, NState, Mod, Time,
+                                            Limits, Queue, QueueLen]}, Hib);
 	{system, From, Req} ->
 	    sys:handle_system_msg(Req, From, Parent, ?MODULE, Debug,
-				  [Name, State, Mod, Time], Hib);
+				  [Name, State, Mod, Time,
+                                   Limits, Queue, QueueLen], Hib);
 	{'EXIT', Parent, Reason} ->
-	    terminate(Reason, Name, Msg, Mod, State, Debug);
+	    terminate(Reason, Name, Msg, Mod, State, Debug, Queue);
 	_Msg when Debug =:= [] ->
-	    handle_msg(Msg, Parent, Name, State, Mod);
+	    handle_msg(Msg, Parent, Name, State, Mod,
+                       Limits, Queue, QueueLen);
 	_Msg ->
 	    Debug1 = sys:handle_debug(Debug, fun print_event/3,
 				      Name, {in, Msg}),
-	    handle_msg(Msg, Parent, Name, State, Mod, Debug1)
+	    handle_msg(Msg, Parent, Name, State, Mod, Debug1,
+                       Limits, Queue, QueueLen)
     end.
 
 %%% ---------------------------------------------------
@@ -581,87 +672,111 @@ dispatch({'$gen_cast', Msg}, Mod, State) ->
 dispatch(Info, Mod, State) ->
     Mod:handle_info(Info, State).
 
-handle_msg({'$gen_call', From, Msg}, Parent, Name, State, Mod) ->
+handle_msg({'$gen_call', From, Msg}, Parent, Name, State, Mod,
+	   Limits, Queue, QueueLen) ->
     case catch Mod:handle_call(Msg, From, State) of
 	{reply, Reply, NState} ->
 	    reply(From, Reply),
-	    loop(Parent, Name, NState, Mod, infinity, []);
+	    loop(Parent, Name, NState, Mod, infinity, [],
+                 Limits, Queue, QueueLen);
 	{reply, Reply, NState, Time1} ->
 	    reply(From, Reply),
-	    loop(Parent, Name, NState, Mod, Time1, []);
+	    loop(Parent, Name, NState, Mod, Time1, [],
+                 Limits, Queue, QueueLen);
 	{noreply, NState} ->
-	    loop(Parent, Name, NState, Mod, infinity, []);
+	    loop(Parent, Name, NState, Mod, infinity, [],
+                 Limits, Queue, QueueLen);
 	{noreply, NState, Time1} ->
-	    loop(Parent, Name, NState, Mod, Time1, []);
+	    loop(Parent, Name, NState, Mod, Time1, [],
+                 Limits, Queue, QueueLen);
 	{stop, Reason, Reply, NState} ->
 	    {'EXIT', R} = 
-		(catch terminate(Reason, Name, Msg, Mod, NState, [])),
+		(catch terminate(Reason, Name, Msg, Mod, NState, [], Queue)),
 	    reply(From, Reply),
 	    exit(R);
-	Other -> handle_common_reply(Other, Parent, Name, Msg, Mod, State)
+	Other -> handle_common_reply(Other, Parent, Name, Msg, Mod, State,
+                                     Limits, Queue, QueueLen)
     end;
-handle_msg(Msg, Parent, Name, State, Mod) ->
+handle_msg(Msg, Parent, Name, State, Mod,
+	   Limits, Queue, QueueLen) ->
     Reply = (catch dispatch(Msg, Mod, State)),
-    handle_common_reply(Reply, Parent, Name, Msg, Mod, State).
+    handle_common_reply(Reply, Parent, Name, Msg, Mod, State,
+                        Limits, Queue, QueueLen).
 
-handle_msg({'$gen_call', From, Msg}, Parent, Name, State, Mod, Debug) ->
+handle_msg({'$gen_call', From, Msg}, Parent, Name, State, Mod, Debug,
+	   Limits, Queue, QueueLen) ->
     case catch Mod:handle_call(Msg, From, State) of
 	{reply, Reply, NState} ->
 	    Debug1 = reply(Name, From, Reply, NState, Debug),
-	    loop(Parent, Name, NState, Mod, infinity, Debug1);
+	    loop(Parent, Name, NState, Mod, infinity, Debug1,
+                 Limits, Queue, QueueLen);
 	{reply, Reply, NState, Time1} ->
 	    Debug1 = reply(Name, From, Reply, NState, Debug),
-	    loop(Parent, Name, NState, Mod, Time1, Debug1);
+	    loop(Parent, Name, NState, Mod, Time1, Debug1,
+                 Limits, Queue, QueueLen);
 	{noreply, NState} ->
 	    Debug1 = sys:handle_debug(Debug, fun print_event/3, Name,
 				      {noreply, NState}),
-	    loop(Parent, Name, NState, Mod, infinity, Debug1);
+	    loop(Parent, Name, NState, Mod, infinity, Debug1,
+                 Limits, Queue, QueueLen);
 	{noreply, NState, Time1} ->
 	    Debug1 = sys:handle_debug(Debug, fun print_event/3, Name,
 				      {noreply, NState}),
-	    loop(Parent, Name, NState, Mod, Time1, Debug1);
+	    loop(Parent, Name, NState, Mod, Time1, Debug1,
+                 Limits, Queue, QueueLen);
 	{stop, Reason, Reply, NState} ->
 	    {'EXIT', R} = 
-		(catch terminate(Reason, Name, Msg, Mod, NState, Debug)),
+		(catch terminate(Reason, Name, Msg, Mod, NState, Debug, Queue)),
 	    reply(Name, From, Reply, NState, Debug),
 	    exit(R);
 	Other ->
-	    handle_common_reply(Other, Parent, Name, Msg, Mod, State, Debug)
+	    handle_common_reply(Other, Parent, Name, Msg, Mod, State, Debug,
+                                Limits, Queue, QueueLen)
     end;
-handle_msg(Msg, Parent, Name, State, Mod, Debug) ->
+handle_msg(Msg, Parent, Name, State, Mod, Debug,
+	   Limits, Queue, QueueLen) ->
     Reply = (catch dispatch(Msg, Mod, State)),
-    handle_common_reply(Reply, Parent, Name, Msg, Mod, State, Debug).
+    handle_common_reply(Reply, Parent, Name, Msg, Mod, State, Debug,
+                        Limits, Queue, QueueLen).
 
-handle_common_reply(Reply, Parent, Name, Msg, Mod, State) ->
+handle_common_reply(Reply, Parent, Name, Msg, Mod, State,
+                    Limits, Queue, QueueLen) ->
     case Reply of
 	{noreply, NState} ->
-	    loop(Parent, Name, NState, Mod, infinity, []);
+	    loop(Parent, Name, NState, Mod, infinity, [],
+                 Limits, Queue, QueueLen);
 	{noreply, NState, Time1} ->
-	    loop(Parent, Name, NState, Mod, Time1, []);
+	    loop(Parent, Name, NState, Mod, Time1, [],
+                 Limits, Queue, QueueLen);
 	{stop, Reason, NState} ->
-	    terminate(Reason, Name, Msg, Mod, NState, []);
+	    terminate(Reason, Name, Msg, Mod, NState, [], Queue);
 	{'EXIT', What} ->
-	    terminate(What, Name, Msg, Mod, State, []);
+	    terminate(What, Name, Msg, Mod, State, [], Queue);
 	_ ->
-	    terminate({bad_return_value, Reply}, Name, Msg, Mod, State, [])
+	    terminate({bad_return_value, Reply}, Name, Msg, Mod, State, [],
+                      Queue)
     end.
 
-handle_common_reply(Reply, Parent, Name, Msg, Mod, State, Debug) ->
+handle_common_reply(Reply, Parent, Name, Msg, Mod, State, Debug,
+                    Limits, Queue, QueueLen) ->
     case Reply of
 	{noreply, NState} ->
 	    Debug1 = sys:handle_debug(Debug, fun print_event/3, Name,
 				      {noreply, NState}),
-	    loop(Parent, Name, NState, Mod, infinity, Debug1);
+	    loop(Parent, Name, NState, Mod, infinity, Debug1,
+                 Limits, Queue, QueueLen);
 	{noreply, NState, Time1} ->
 	    Debug1 = sys:handle_debug(Debug, fun print_event/3, Name,
 				      {noreply, NState}),
-	    loop(Parent, Name, NState, Mod, Time1, Debug1);
+	    loop(Parent, Name, NState, Mod, Time1, Debug1,
+                 Limits, Queue, QueueLen);
 	{stop, Reason, NState} ->
-	    terminate(Reason, Name, Msg, Mod, NState, Debug);
+	    terminate(Reason, Name, Msg, Mod, NState, Debug, Queue);
 	{'EXIT', What} ->
-	    terminate(What, Name, Msg, Mod, State, Debug);
+	    terminate(What, Name, Msg, Mod, State, Debug, Queue);
 	_ ->
-	    terminate({bad_return_value, Reply}, Name, Msg, Mod, State, Debug)
+	    terminate({bad_return_value, Reply}, Name, Msg, Mod, State, Debug,
+                      Queue)
     end.
 
 reply(Name, {To, Tag}, Reply, State, Debug) ->
@@ -673,17 +788,22 @@ reply(Name, {To, Tag}, Reply, State, Debug) ->
 %%-----------------------------------------------------------------
 %% Callback functions for system messages handling.
 %%-----------------------------------------------------------------
-system_continue(Parent, Debug, [Name, State, Mod, Time]) ->
-    loop(Parent, Name, State, Mod, Time, Debug).
+system_continue(Parent, Debug, [Name, State, Mod, Time,
+                                Limits, Queue, QueueLen]) ->
+    loop(Parent, Name, State, Mod, Time, Debug,
+         Limits, Queue, QueueLen).
 
 -spec system_terminate(_, _, _, [_]) -> no_return().
 
-system_terminate(Reason, _Parent, Debug, [Name, State, Mod, _Time]) ->
-    terminate(Reason, Name, [], Mod, State, Debug).
+system_terminate(Reason, _Parent, Debug, [Name, State, Mod, _Time,
+                                          _Limits, Queue, _QueueLen]) ->
+    terminate(Reason, Name, [], Mod, State, Debug, Queue).
 
-system_code_change([Name, State, Mod, Time], _Module, OldVsn, Extra) ->
+system_code_change([Name, State, Mod, Time,
+		    Limits, Queue, QueueLen], _Module, OldVsn, Extra) ->
     case catch Mod:code_change(OldVsn, State, Extra) of
-	{ok, NewState} -> {ok, [Name, NewState, Mod, Time]};
+	{ok, NewState} -> {ok, [Name, NewState, Mod, Time,
+                                Limits, Queue, QueueLen]};
 	Else -> Else
     end.
 
@@ -715,10 +835,13 @@ print_event(Dev, Event, Name) ->
 %%% Terminate the server.
 %%% ---------------------------------------------------
 
-terminate(Reason, Name, Msg, Mod, State, Debug) ->
+terminate(Reason, Name, Msg, Mod, State, Debug, Queue) ->
+    lists:foreach(
+      fun(Message) -> self() ! Message end,
+      queue:to_list(Queue)),
     case catch Mod:terminate(Reason, State) of
 	{'EXIT', R} ->
-	    error_info(R, Name, Msg, State, Debug),
+	    error_info(Mod, R, Name, Msg, State, Debug),
 	    exit(R);
 	_ ->
 	    case Reason of
@@ -728,6 +851,12 @@ terminate(Reason, Name, Msg, Mod, State, Debug) ->
 		    exit(shutdown);
 		{shutdown,_}=Shutdown ->
 		    exit(Shutdown);
+		priority_shutdown ->
+		    %% Priority shutdown should be considered as
+		    %% shutdown by SASL
+		    exit(shutdown);
+		{process_limit, _Limit} ->
+		    exit(Reason);
 		_ ->
 		    FmtState =
 			case erlang:function_exported(Mod, format_status, 2) of
@@ -740,17 +869,17 @@ terminate(Reason, Name, Msg, Mod, State, Debug) ->
 			    _ ->
 				State
 			end,
-		    error_info(Reason, Name, Msg, FmtState, Debug),
+		    error_info(Mod, Reason, Name, Msg, FmtState, Debug),
 		    exit(Reason)
 	    end
     end.
 
-error_info(_Reason, application_controller, _Msg, _State, _Debug) ->
+error_info(_Mod, _Reason, application_controller, _Msg, _State, _Debug) ->
     %% OTP-5811 Don't send an error report if it's the system process
     %% application_controller which is terminating - let init take care
     %% of it instead
     ok;
-error_info(Reason, Name, Msg, State, Debug) ->
+error_info(Mod, Reason, Name, Msg, State, Debug) ->
     Reason1 = 
 	case Reason of
 	    {undef,[{M,F,A,L}|MFAs]} ->
@@ -768,11 +897,15 @@ error_info(Reason, Name, Msg, State, Debug) ->
 	    _ ->
 		Reason
 	end,    
+    StateToPrint = case erlang:function_exported(Mod, print_state, 1) of
+      true -> (catch Mod:print_state(State));
+      false -> State
+    end,
     format("** Generic server ~p terminating \n"
            "** Last message in was ~p~n"
            "** When Server state == ~p~n"
            "** Reason for termination == ~n** ~p~n",
-	   [Name, Msg, State, Reason1]),
+	   [Name, Msg, StateToPrint, Reason1]),
     sys:print_log(Debug),
     ok.
 
@@ -872,7 +1005,8 @@ name_to_pid(Name) ->
 %% Status information
 %%-----------------------------------------------------------------
 format_status(Opt, StatusData) ->
-    [PDict, SysState, Parent, Debug, [Name, State, Mod, _Time]] = StatusData,
+    [PDict, SysState, Parent, Debug, [Name, State, Mod, _Time,
+                                      _Limits, _Queue, _QueueLen]] = StatusData,
     Header = gen:format_status_header("Status for generic server",
                                       Name),
     Log = sys:get_debug(log, Debug, []),
@@ -893,3 +1027,32 @@ format_status(Opt, StatusData) ->
 	     {"Parent", Parent},
 	     {"Logged events", Log}]} |
      Specfic].
+
+%%-----------------------------------------------------------------
+%% Resources limit management
+%%-----------------------------------------------------------------
+%% Extract know limit options
+limit_options(Options) ->
+    limit_options(Options, #limits{}).
+limit_options([], Limits) ->
+    Limits;
+%% Maximum number of messages allowed in the process message queue
+limit_options([{max_queue,N}|Options], Limits)
+  when is_integer(N) ->
+    NewLimits = Limits#limits{max_queue=N},
+    limit_options(Options, NewLimits);
+limit_options([_|Options], Limits) ->
+    limit_options(Options, Limits).
+
+%% Throw max_queue if we have reach the max queue size
+%% Returns ok otherwise
+message_queue_len(#limits{max_queue = undefined}, _QueueLen) ->
+    ok;
+message_queue_len(#limits{max_queue = MaxQueue}, QueueLen) ->
+    Pid = self(),
+    case process_info(Pid, message_queue_len) of
+        {message_queue_len, N} when N + QueueLen > MaxQueue ->
+	    throw({process_limit, {max_queue, N + QueueLen}});
+	_ ->
+	    ok
+    end.
