@@ -4270,6 +4270,22 @@ Options:
   This option is disabled by default.
   Important: if you use \modsharedroster{}, \modsharedrosterodbc{} or \modsharedrosterldap{},
   you must disable this option.
+  \titem{use\_cache: false|true} \ind{options!userostercache}
+  Enables caching of users rosters in RAM. The option is only available when
+  \term{db\_type} is set to \term{odbc}.
+  This option is disabled by default. Use this option with extreme care in
+  clustered environment: if the same user is connected to several nodes
+  then roster modifications won't be propagated to other nodes' caches.
+  You can use small \term{cache\_life\_time} values to minimize probability of
+  such situation though.
+  \titem{cache\_life\_time: Seconds} Sets cache life time in seconds.
+  Implies that caching is enabled. The default is 5 seconds. Such small default
+  value reflects the common usage: repeatable roster reads on user login.
+  \titem{cache\_size: Integer|unlimited}
+  This option limits the maximum number of users rosters kept in the cache.
+  Big cache size leads to RAM consumption.
+  Small cache size leads to disc/network consumption.
+  The option implies that caching is enabled. The default is 1000.
 \end{description}
 
 This example configuration enables Roster Versioning with storage of current id:
