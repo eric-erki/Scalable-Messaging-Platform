@@ -165,6 +165,6 @@ CREATE PROCEDURE set_deliver_status(IN user_jid_in TEXT, IN msgID_in TEXT, IN st
             UPDATE messages SET deliver_status = statusNumber, modified = dd_in  
                 WHERE id = msgID_in and user = userID and modified > (NOW() - INTERVAL 24 HOUR) and deliver_status < statusNumber;
         ELSE
-            UPDATE messages SET statusNumber=statusNumber, modified = dd_in WHERE user = userID and id = msgID_in and deliver_status < statusNumber;
+            UPDATE messages SET deliver_status = statusNumber, modified = dd_in WHERE user = userID and id = msgID_in and deliver_status < statusNumber;
         END IF;
 	END$$
