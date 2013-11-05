@@ -64,7 +64,6 @@ start(normal, _Args) ->
     maybe_add_nameservers(),
     start_modules(),
     ejabberd_node_groups:start(),
-    wait_for_p1db_sync(),
     ejabberd_listener:start_listeners(),
     ?INFO_MSG("ejabberd ~s is started in the node ~p", [?VERSION, node()]),
     Sup;
@@ -214,14 +213,10 @@ set_loglevel_from_config() ->
 p1db_start() ->
     ejabberd:start_app(p1db).
 
-wait_for_p1db_sync() ->
-    p1db:wait_for_tables().
 -else.
 p1db_start() ->
     ok.
 
-wait_for_p1db_sync() ->
-    ok.
 -endif.
 
 start_apps() ->
