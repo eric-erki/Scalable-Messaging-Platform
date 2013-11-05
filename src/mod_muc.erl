@@ -285,7 +285,7 @@ can_use_nick(_LServer, Host, JID, Nick, mnesia) ->
       [] -> true;
       [#muc_registered{us_host = {U, _Host}}] -> U == LUS
     end;
-can_use_nick(LServer, Host, JID, Nick, p1db) ->
+can_use_nick(_LServer, Host, JID, Nick, p1db) ->
     {LUser, LServer, _} = jlib:jid_tolower(JID),
     NHKey = nh2key(Nick, Host),
     case p1db:get(muc_nick, NHKey) of
