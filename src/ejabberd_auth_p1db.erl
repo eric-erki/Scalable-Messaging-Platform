@@ -67,9 +67,7 @@ plain_password_required() -> false.
 
 store_type() -> plain.
 
-us2key(User, Server) ->
-    LUser = jlib:nodeprep(User),
-    LServer = jlib:nameprep(Server),
+us2key(LUser, LServer) ->
     <<LServer/binary, 0, LUser/binary>>.
 
 key2us(Key) ->
@@ -83,26 +81,38 @@ server_prefix(Server) ->
 check_password(_User, _Server, <<>>) ->
     false;
 check_password(User, Server, Password) ->
-    US = us2key(User, Server),
-    case p1db:get(passwd, US) of
-        {ok, Passwd, _VClock} ->
-            Passwd == Password;
-        {error, _} ->
+    LUser = jlib:nodeprep(User),
+    LServer = jlib:nameprep(Server),
+    if LUser /= error, LServer /= error ->
+            US = us2key(LUser, LServer),
+            case p1db:get(passwd, US) of
+                {ok, Passwd, _VClock} ->
+                    Passwd == Password;
+                {error, _} ->
+                    false
+            end;
+       true ->
             false
     end.
 
 check_password(User, Server, Password, Digest, DigestGen) ->
-    US = us2key(User, Server),
-    case p1db:get(passwd, US) of
-        {ok, Passwd, _VClock} ->
-            DigRes = if Digest /= <<"">> ->
-                             Digest == DigestGen(Passwd);
-                        true -> false
-                     end,
-            if DigRes -> true;
-               true -> (Passwd == Password) and (Password /= <<"">>)
+    LUser = jlib:nodeprep(User),
+    LServer = jlib:nameprep(Server),
+    if LUser /= error, LServer /= error ->
+            US = us2key(LUser, LServer),
+            case p1db:get(passwd, US) of
+                {ok, Passwd, _VClock} ->
+                    DigRes = if Digest /= <<"">> ->
+                                     Digest == DigestGen(Passwd);
+                                true -> false
+                             end,
+                    if DigRes -> true;
+                       true -> (Passwd == Password) and (Password /= <<"">>)
+                    end;
+                {error, _} -> false
             end;
-        {error, _} -> false
+       true ->
+            false
     end.
 
 -spec set_password(binary(), binary(), binary()) ->
@@ -113,7 +123,7 @@ set_password(User, Server, Password) ->
     if (LUser == error) or (LServer == error) ->
             {error, invalid_jid};
        true ->
-            US = us2key(User, Server),
+            US = us2key(LUser, LServer),
             p1db:insert(passwd, US, Password)
     end.
 
@@ -125,7 +135,7 @@ try_register(User, Server, PasswordList) ->
     if (LUser == error) or (LServer == error) ->
             {error, invalid_jid};
        true ->
-            US = us2key(User, Server),
+            US = us2key(LUser, LServer),
             case p1db:get(passwd, US) of
                 {ok, _, _} ->
                     {atomic, exists};
@@ -172,49 +182,79 @@ get_vh_registered_users_number(Server, _) ->
     get_vh_registered_users_number(Server).
 
 get_password(User, Server) ->
-    US = us2key(User, Server),
-    case p1db:get(passwd, US) of
-        {ok, Passwd, _VClock} -> Passwd;
-        {error, _} -> false
+    LUser = jlib:nodeprep(User),
+    LServer = jlib:nameprep(Server),
+    if LUser /= error, LServer /= error ->
+            US = us2key(LUser, LServer),
+            case p1db:get(passwd, US) of
+                {ok, Passwd, _VClock} -> Passwd;
+                {error, _} -> false
+            end;
+       true ->
+            false
     end.
 
 get_password_s(User, Server) ->
-    US = us2key(User, Server),
-    case p1db:get(passwd, US) of
-        {ok, Passwd, _VClock} -> Passwd;
-        {error, _} -> <<"">>
+    LUser = jlib:nodeprep(User),
+    LServer = jlib:nameprep(Server),
+    if LUser /= error, LServer /= error ->
+            US = us2key(LUser, LServer),
+            case p1db:get(passwd, US) of
+                {ok, Passwd, _VClock} -> Passwd;
+                {error, _} -> <<"">>
+            end;
+       true ->
+            <<"">>
     end.
 
 %% @spec (User, Server) -> true | false | {error, Error}
 is_user_exists(User, Server) ->
-    US = us2key(User, Server),
-    case p1db:get(passwd, US) of
-        {ok, _Passwd, _VClock} -> true;
-        {error, notfound} -> false;
-        {error, _} = Err -> Err
+    LUser = jlib:nodeprep(User),
+    LServer = jlib:nameprep(Server),
+    if LUser /= error, LServer /= error ->
+            US = us2key(LUser, LServer),
+            case p1db:get(passwd, US) of
+                {ok, _Passwd, _VClock} -> true;
+                {error, notfound} -> false;
+                {error, _} = Err -> Err
+            end;
+       true ->
+            {error, invalid_jid}
     end.
 
 %% @spec (User, Server) -> ok
 %% @doc Remove user.
 %% Note: it returns ok even if there was some problem removing the user.
 remove_user(User, Server) ->
-    US = us2key(User, Server),
-    p1db:delete(passwd, US),
-    ok.
+    LUser = jlib:nodeprep(User),
+    LServer = jlib:nameprep(Server),
+    if LUser /= error, LServer /= error ->
+            US = us2key(LUser, LServer),
+            p1db:delete(passwd, US),
+            ok;
+       true ->
+            ok
+    end.
 
 %% @spec (User, Server, Password) -> ok | not_exists | not_allowed | bad_request
 %% @doc Remove user if the provided password is correct.
 remove_user(User, Server, Password) ->
-    US = us2key(User, Server),
-    case p1db:get(passwd, US) of
-        {ok, Password, _VClock} ->
-            p1db:delete(passwd, US),
-            ok;
-        {ok, _DifferentPassword, _VClock} ->
-            not_allowed;
-        {error, notfound} ->
-            not_exists;
-        {error, _} ->
+    LUser = jlib:nodeprep(User),
+    LServer = jlib:nameprep(Server),
+    if LUser /= error, LServer /= error ->
+            US = us2key(LUser, LServer),
+            case p1db:get(passwd, US) of
+                {ok, Password, _VClock} ->
+                    p1db:delete(passwd, US),
+                    ok;
+                {ok, _DifferentPassword, _VClock} ->
+                    not_allowed;
+                {error, notfound} ->
+                    not_exists;
+                {error, _} ->
+                    bad_request
+            end;
+       true ->
             bad_request
     end.
 
