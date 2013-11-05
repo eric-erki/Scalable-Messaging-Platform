@@ -81,14 +81,11 @@ export(Server, Output, Module) ->
     close_output(Output, IO).
 
 import(Server, Dir, ToType) ->
-    Procs = lists:map(
-              fun(Mod) ->
-                      spawn(fun() -> import(Mod, Server, Dir, ToType) end)
-              end, modules()),
     lists:foreach(
-      fun(Proc) ->
-              catch gen_server:call(Proc, foo, infinity)
-      end, Procs).
+      fun(Mod) ->
+              ?INFO_MSG("importing ~p...", [Mod]),
+              import(Mod, Server, Dir, ToType)
+      end, modules()).
 
 import(Mod, Server, Dir, ToType) ->
     LServer = jlib:nameprep(iolist_to_binary(Server)),
@@ -197,12 +194,13 @@ import_rows(LServer, FromType, ToType, Tab, Mod, Dump, FieldsNumber) ->
         {ok, Fields} ->
             case catch Mod:import(LServer, FromType, ToType, Tab, Fields) of
                 ok ->
-                    import_rows(LServer, FromType, ToType,
-                                Tab, Mod, Dump, FieldsNumber);
+                    ok;
                 Err ->
                     ?ERROR_MSG("Failed to import fields ~p for tab ~p: ~p",
                                [Fields, Tab, Err])
-            end;
+            end,
+            import_rows(LServer, FromType, ToType,
+                        Tab, Mod, Dump, FieldsNumber);
         eof ->
             ok;
         Err ->
