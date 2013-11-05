@@ -417,7 +417,7 @@ check_auth({User, Server, Password}) ->
 
 get_md5(AccountPass) ->
     list_to_binary([io_lib:format("~.16B", [X])
-                    || X <- binary_to_list(crypto:md5(AccountPass))]).
+                    || X <- binary_to_list(erlang:md5(AccountPass))]).
 
 check_access(all, _) ->
     true;

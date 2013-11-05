@@ -406,7 +406,7 @@ del_node(Node, Reason, Subscribers) ->
     end.
 
 hash(Term) when is_binary(Term) ->
-    <<Hash:160>> = crypto:sha(Term),
+    <<Hash:160>> = p1_sha:sha1(Term),
     Hash;
 hash(Term) ->
     hash(term_to_binary(Term)).
