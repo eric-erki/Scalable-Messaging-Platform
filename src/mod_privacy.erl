@@ -28,6 +28,8 @@
 
 -author('alexey@process-one.net').
 
+-compile(export_all).
+
 -behaviour(gen_mod).
 
 -export([start/2, stop/1, process_iq/3, export/1, import_info/0,
@@ -1433,10 +1435,12 @@ get_id() ->
 
 numeric_to_binary(<<0, 0, _/binary>>) ->
     <<"0">>;
-numeric_to_binary(<<0, 1, _:6/binary, I:16>>) ->
-    jlib:integer_to_binary(I);
-numeric_to_binary(<<0, 2, _:6/binary, X:16, Y:16>>) ->
-    jlib:integer_to_binary(X*10000 + Y).
+numeric_to_binary(<<0, _, _:6/binary, T/binary>>) ->
+    Res = lists:foldl(
+            fun(X, Sum) ->
+                    Sum*10000 + X
+            end, 0, [X || <<X:16>> <= T]),
+    jlib:integer_to_binary(Res).
 
 bool_to_binary(<<0>>) -> <<"0">>;
 bool_to_binary(<<1>>) -> <<"1">>.
