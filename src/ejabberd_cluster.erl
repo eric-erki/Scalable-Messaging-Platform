@@ -66,7 +66,7 @@ get_nodes(Key) ->
     get_nodes_by_hash(Hash, ReplicasNum).
 
 node_id() ->
-    erlang:integer_to_binary(hash(node())).
+    jlib:integer_to_binary(hash(node())).
 
 -spec get_node_by_id(binary() | atom()) -> node().
 
