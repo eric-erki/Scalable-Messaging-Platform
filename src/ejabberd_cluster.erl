@@ -465,11 +465,15 @@ log2(N) ->
     end.
 
 rpc_timeout() ->
-    timer:seconds(
-      ejabberd_config:get_option(
-        rpc_timeout,
-        fun(T) when is_integer(T), T>0 -> T end,
-        5)).
+    try
+        timer:seconds(
+          ejabberd_config:get_option(
+            rpc_timeout,
+            fun(T) when is_integer(T), T>0 -> T end,
+            5))
+    catch error:badarg ->
+            timer:seconds(5)
+    end.
 
 configured_replicas_number() ->
     ejabberd_config:get_option(
