@@ -134,12 +134,24 @@ init({SockMod, Socket}, Opts) ->
     RequestHandlers = DefinedHandlers ++ Captcha ++ Register ++
         Admin ++ Bind ++ Poll,
     ?DEBUG("S: ~p~n", [RequestHandlers]),
-    WebSocketHandlers = case
-			  lists:keysearch(websocket_handlers, 1, Opts)
-			    of
-			  {value, {websocket_handlers, WH}} -> WH;
-			  false -> []
-			end,
+    WebSocketHandlers = gen_mod:get_opt(
+                          websocket_handlers, Opts,
+                          fun(Hs) ->
+                                  lists:map(
+                                    fun({Path, ModOpts}) ->
+                                            PathList =
+                                                str:tokens(
+                                                  iolist_to_binary(Path),
+                                                  <<"/">>),
+                                            M = proplists:get_value(
+                                                  module, ModOpts,
+                                                  ejabberd_http_ws),
+                                            O = proplists:get_value(
+                                                  options, ModOpts,
+                                                  [{protocol, <<"xmpp">>}]),
+                                            [{PathList, M, O}]
+                                    end, Hs)
+                          end, []),
     ?DEBUG("WS: ~p~n", [WebSocketHandlers]),
     DefaultHost = gen_mod:get_opt(default_host, Opts,
                                   fun iolist_to_binary/1),
@@ -853,6 +865,15 @@ transform_listen_option({request_handlers, Hs}, Opts) ->
                     Opt
             end, Hs),
     [{request_handlers, Hs1} | Opts];
+transform_listen_option({websocket_handlers, Hs}, Opts) ->
+    Hs1 = lists:map(
+            fun({PList, Mod, ModOpts}) when is_list(PList) ->
+                    Path = iolist_to_binary([[$/, P] || P <- PList]),
+                    {Path, [{module, Mod}, {options, ModOpts}]};
+               (Opt) ->
+                    Opt
+            end, Hs),
+    [{websocket_handlers, Hs1} | Opts];
 transform_listen_option(Opt, Opts) ->
     [Opt|Opts].
 
