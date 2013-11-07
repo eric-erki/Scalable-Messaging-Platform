@@ -84,13 +84,26 @@ starttls(FsmRef, TLSOpts) ->
     starttls(FsmRef, TLSOpts, undefined).
 
 starttls(FsmRef, TLSOpts, Data) ->
-    gen_server:call(FsmRef, {starttls, TLSOpts, Data}),
-    FsmRef.
+    case catch gen_server:call(FsmRef, {starttls, TLSOpts, Data}) of
+        {'EXIT', Err} ->
+            {error, Err};
+        ok ->
+            {ok, FsmRef};
+        Err ->
+            Err
+    end.
 
 compress(FsmRef) -> compress(FsmRef, undefined).
 
 compress(FsmRef, Data) ->
-    gen_server:call(FsmRef, {compress, Data}), FsmRef.
+    case catch gen_server:call(FsmRef, {compress, Data}) of
+        {'EXIT', Err} ->
+            {error, Err};
+        ok ->
+            {ok, FsmRef};
+        Err ->
+            Err
+    end.
 
 reset_stream(FsmRef) ->
     gen_server:call(FsmRef, reset_stream).
@@ -134,31 +147,38 @@ init([Module, SockMod, Socket, Opts, Receiver]) ->
 	   {ok, IP1} -> IP1;
 	   _ -> undefined
 	 end,
-    {SockMod2, Socket2} = check_starttls(SockMod, Socket,
-					 Receiver, Opts),
-    {ok, Pid} = ejabberd_cluster:call(Node, Module, start,
-			 [{?MODULE, self()}, [{frontend_ip, IP} | Opts]]),
-    ejabberd_receiver:become_controller(Receiver, Pid),
-    {ok,
-     #socket_state{sockmod = SockMod2, socket = Socket2,
-	    receiver = Receiver}}.
+    case check_starttls(SockMod, Socket, Receiver, Opts) of
+        {ok, SockMod2, Socket2} ->
+            {ok, Pid} = ejabberd_cluster:call(
+                          Node, Module, start,
+                          [{?MODULE, self()}, [{frontend_ip, IP} | Opts]]),
+            ejabberd_receiver:become_controller(Receiver, Pid),
+            {ok,
+             #socket_state{sockmod = SockMod2, socket = Socket2,
+                           receiver = Receiver}};
+        {error, _} ->
+            {stop, normal}
+    end.
 
 handle_call({starttls, TLSOpts, Data}, _From, State) ->
-    {ok, TLSSocket} =
-	ejabberd_receiver:starttls(State#socket_state.receiver,
-				   TLSOpts, Data),
-    Reply = ok,
-    {reply, Reply,
-     State#socket_state{socket = TLSSocket, sockmod = p1_tls},
-     ?HIBERNATE_TIMEOUT};
+    case ejabberd_receiver:starttls(State#socket_state.receiver,
+                                    TLSOpts, Data) of
+        {ok, TLSSocket} ->
+            {reply, ok, State#socket_state{socket = TLSSocket,
+                                           sockmod = p1_tls},
+             ?HIBERNATE_TIMEOUT};
+        {error, _} = Err ->
+            {stop, normal, Err, State}
+    end;
 handle_call({compress, Data}, _From, State) ->
-    {ok, ZlibSocket} =
-	ejabberd_receiver:compress(State#socket_state.receiver, Data),
-    Reply = ok,
-    {reply, Reply,
-     State#socket_state{socket = ZlibSocket,
-		 sockmod = ezlib},
-     ?HIBERNATE_TIMEOUT};
+    case ejabberd_receiver:compress(State#socket_state.receiver, Data) of
+        {ok, ZlibSocket} ->
+            {reply, ok, State#socket_state{socket = ZlibSocket,
+                                           sockmod = ezlib},
+             ?HIBERNATE_TIMEOUT};
+        {error, _} = Err ->
+            {stop, normal, Err, State}
+    end;
 handle_call(reset_stream, _From, State) ->
     ejabberd_receiver:reset_stream(State#socket_state.receiver),
     Reply = ok,
@@ -228,10 +248,13 @@ check_starttls(SockMod, Socket, Receiver, Opts) ->
 			   end,
 			   Opts),
     if TLSEnabled ->
-	   {ok, TLSSocket} = ejabberd_receiver:starttls(Receiver,
-							TLSOpts),
-	   {p1_tls, TLSSocket};
-       true -> {SockMod, Socket}
+           case ejabberd_receiver:starttls(Receiver, TLSOpts) of
+               {ok, TLSSocket} ->
+                   {ok, p1_tls, TLSSocket};
+               {error, _} = Err ->
+                   Err
+           end;
+       true -> {ok, SockMod, Socket}
     end.
 
 peername(SockMod, Socket) ->

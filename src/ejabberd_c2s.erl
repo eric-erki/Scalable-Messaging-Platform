@@ -293,33 +293,43 @@ init([{SockMod, Socket}, Opts, FSMLimitOpts]) ->
 		    [jlib:ip_to_list(IP), IP]),
 	  {stop, normal};
       false ->
-	  Socket1 = if TLSEnabled andalso
-			 SockMod /= ejabberd_frontend_socket ->
-			   SockMod:starttls(Socket, TLSOpts);
-		       true -> Socket
-		    end,
-	  SocketMonitor = SockMod:monitor(Socket1),
-	  StateData = #state{socket = Socket1, sockmod = SockMod,
-			     socket_monitor = SocketMonitor,
-			     xml_socket = XMLSocket, zlib = Zlib, tls = TLS,
-			     tls_required = StartTLSRequired,
-			     tls_enabled = TLSEnabled, tls_options = TLSOpts,
-			     streamid = new_id(), access = Access,
-			     shaper = Shaper, ip = IP, redirect = Redirect,
-                             flash_hack = FlashHack,
-			     fsm_limit_opts = FSMLimitOpts},
-	  erlang:send_after(?C2S_OPEN_TIMEOUT, self(),
-			    open_timeout),
-          update_internal_dict(StateData),
-	  case get_jid_from_opts(Opts) of
-	    {ok,
-	     #jid{user = U, server = Server, resource = R} = JID} ->
-		(?GEN_FSM):send_event(self(), open_session),
-		{ok, wait_for_session,
-		 StateData#state{user = U, server = Server, resource = R,
-				 jid = JID, lang = <<"">>}};
-	    _ -> {ok, wait_for_stream, StateData, ?C2S_OPEN_TIMEOUT}
-	  end
+	  StartTLSRes = if TLSEnabled andalso
+                           SockMod /= ejabberd_frontend_socket ->
+                                SockMod:starttls(Socket, TLSOpts);
+                           true ->
+                                {ok, Socket}
+                        end,
+          case StartTLSRes of
+              {ok, Socket1} ->
+                  SocketMonitor = SockMod:monitor(Socket1),
+                  StateData = #state{socket = Socket1, sockmod = SockMod,
+                                     socket_monitor = SocketMonitor,
+                                     xml_socket = XMLSocket, zlib = Zlib,
+                                     tls = TLS,
+                                     tls_required = StartTLSRequired,
+                                     tls_enabled = TLSEnabled,
+                                     tls_options = TLSOpts,
+                                     streamid = new_id(), access = Access,
+                                     shaper = Shaper, ip = IP,
+                                     redirect = Redirect,
+                                     flash_hack = FlashHack,
+                                     fsm_limit_opts = FSMLimitOpts},
+                  erlang:send_after(?C2S_OPEN_TIMEOUT, self(),
+                                    open_timeout),
+                  update_internal_dict(StateData),
+                  case get_jid_from_opts(Opts) of
+                      {ok,
+                       #jid{user = U, server = Server, resource = R} = JID} ->
+                          (?GEN_FSM):send_event(self(), open_session),
+                          {ok, wait_for_session,
+                           StateData#state{user = U, server = Server,
+                                           resource = R,
+                                           jid = JID, lang = <<"">>}};
+                      _ -> {ok, wait_for_stream, StateData, ?C2S_OPEN_TIMEOUT}
+                  end;
+              {error, _Reason} ->
+                  {stop, normal}
+          end
     end;
 init([StateName, StateData, _FSMLimitOpts]) ->
     MRef =
@@ -904,23 +914,21 @@ wait_for_feature_request({xmlstreamelement, El},
 								  StateData#state.tls_options)]
 		    end,
 	  Socket = StateData#state.socket,
-	  TLSSocket = (StateData#state.sockmod):starttls(Socket,
-							 TLSOpts,
-							 xml:element_to_binary(#xmlel{name
-											  =
-											  <<"proceed">>,
-										      attrs
-											  =
-											  [{<<"xmlns">>,
-											    ?NS_TLS}],
-										      children
-											  =
-											  []})),
-	  fsm_next_state(wait_for_stream,
-                         update_internal_dict(
-                           StateData#state{socket = TLSSocket,
-                                           streamid = new_id(),
-                                           tls_enabled = true}));
+	  case (StateData#state.sockmod):starttls(
+                 Socket, TLSOpts,
+                 xml:element_to_binary(
+                   #xmlel{name = <<"proceed">>,
+                          attrs = [{<<"xmlns">>, ?NS_TLS}],
+                          children = []})) of
+              {ok, TLSSocket} ->
+                  fsm_next_state(wait_for_stream,
+                                 update_internal_dict(
+                                   StateData#state{socket = TLSSocket,
+                                                   streamid = new_id(),
+                                                   tls_enabled = true}));
+              {error, _Why} ->
+                  {stop, normal, StateData}
+          end;
       {?NS_COMPRESS, <<"compress">>}
 	  when Zlib == true,
 	       (SockMod == gen_tcp) or (SockMod == p1_tls) ->
@@ -937,21 +945,21 @@ wait_for_feature_request({xmlstreamelement, El},
 		case xml:get_tag_cdata(Method) of
 		  <<"zlib">> ->
 		      Socket = StateData#state.socket,
-		      ZlibSocket = (StateData#state.sockmod):compress(Socket,
-								      xml:element_to_binary(#xmlel{name
-												       =
-												       <<"compressed">>,
-												   attrs
-												       =
-												       [{<<"xmlns">>,
-													 ?NS_COMPRESS}],
-												   children
-												       =
-												       []})),
-		      fsm_next_state(wait_for_stream,
-                                     update_internal_dict(
-                                       StateData#state{socket = ZlibSocket,
-                                                       streamid = new_id()}));
+		      case (StateData#state.sockmod):compress(
+                             Socket,
+                             xml:element_to_binary(
+                               #xmlel{name = <<"compressed">>,
+                                      attrs = [{<<"xmlns">>, ?NS_COMPRESS}],
+                                      children = []})) of
+                          {ok, ZlibSocket} ->
+                              fsm_next_state(wait_for_stream,
+                                             update_internal_dict(
+                                               StateData#state{
+                                                 socket = ZlibSocket,
+                                                 streamid = new_id()}));
+                          {error, _Reason} ->
+                              {stop, normal, StateData}
+                      end;
 		  _ ->
 		      send_element(StateData,
 				   #xmlel{name = <<"failure">>,
