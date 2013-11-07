@@ -139,20 +139,26 @@ starttls(SocketData, TLSOpts) ->
     starttls(SocketData, TLSOpts, undefined).
 
 starttls(SocketData, TLSOpts, Data) ->
-    {ok, TLSSocket} =
-	ejabberd_receiver:starttls(SocketData#socket_state.receiver,
-				   TLSOpts, Data),
-    SocketData#socket_state{socket = TLSSocket,
-			    sockmod = p1_tls}.
+    case ejabberd_receiver:starttls(SocketData#socket_state.receiver,
+                                    TLSOpts, Data) of
+        {ok, TLSSocket} ->
+            {ok, SocketData#socket_state{socket = TLSSocket,
+                                         sockmod = p1_tls}};
+        {error, _Why} = Err ->
+            Err
+    end.
 
 compress(SocketData) -> compress(SocketData, undefined).
 
 compress(SocketData, Data) ->
-    {ok, ZlibSocket} =
-	ejabberd_receiver:compress(SocketData#socket_state.receiver,
-				   Data),
-    SocketData#socket_state{socket = ZlibSocket,
-			    sockmod = ezlib}.
+    case ejabberd_receiver:compress(SocketData#socket_state.receiver,
+                                    Data) of
+        {ok, ZlibSocket} ->
+            {ok, SocketData#socket_state{socket = ZlibSocket,
+                                         sockmod = ezlib}};
+        {error, _Why} = Err ->
+            Err
+    end.
 
 reset_stream(SocketData)
     when is_pid(SocketData#socket_state.receiver) ->

@@ -330,21 +330,19 @@ wait_for_feature_request({xmlstreamelement, El},
                         true -> lists:delete(compression_none, TLSOpts1);
                         false -> [compression_none | TLSOpts1]
                     end,
-	  TLSSocket = (StateData#state.sockmod):starttls(Socket,
-							 TLSOpts,
-							 xml:element_to_binary(#xmlel{name
-											  =
-											  <<"proceed">>,
-										      attrs
-											  =
-											  [{<<"xmlns">>,
-											    ?NS_TLS}],
-										      children
-											  =
-											  []})),
-	  {next_state, wait_for_stream,
-	   StateData#state{socket = TLSSocket, streamid = new_id(),
-			   tls_enabled = true, tls_options = TLSOpts}};
+          case (StateData#state.sockmod):starttls(
+                 Socket, TLSOpts,
+                 xml:element_to_binary(
+                   #xmlel{name = <<"proceed">>,
+                          attrs = [{<<"xmlns">>, ?NS_TLS}],
+                          children = []})) of
+              {ok, TLSSocket} ->
+                  {next_state, wait_for_stream,
+                   StateData#state{socket = TLSSocket, streamid = new_id(),
+                                   tls_enabled = true, tls_options = TLSOpts}};
+              {error, _} ->
+                  {stop, normal, StateData}
+          end;
       {?NS_SASL, <<"auth">>} when TLSEnabled ->
 	  Mech = xml:get_attr_s(<<"mechanism">>, Attrs),
 	  case Mech of

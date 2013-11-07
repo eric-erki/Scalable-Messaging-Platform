@@ -688,18 +688,26 @@ wait_for_starttls_proceed({xmlstreamelement, El},
 				 | lists:keydelete(certfile, 1,
 						   StateData#state.tls_options)]
 			  end,
-		TLSSocket = ejabberd_socket:starttls(Socket, TLSOpts),
-		NewStateData = StateData#state{socket = TLSSocket,
-					       streamid = new_id(),
-					       tls_enabled = true,
-					       tls_options = TLSOpts},
-		send_text(NewStateData,
-			  io_lib:format(?STREAM_HEADER,
-					[StateData#state.myname,
-					 StateData#state.server,
-					 <<" version='1.0'">>])),
-		{next_state, wait_for_stream, NewStateData,
-		 ?FSMTIMEOUT};
+		case ejabberd_socket:starttls(Socket, TLSOpts) of
+                    {ok, TLSSocket} ->
+                        NewStateData = StateData#state{socket = TLSSocket,
+                                                       streamid = new_id(),
+                                                       tls_enabled = true,
+                                                       tls_options = TLSOpts},
+                        send_text(NewStateData,
+                                  io_lib:format(?STREAM_HEADER,
+                                                [StateData#state.myname,
+                                                 StateData#state.server,
+                                                 <<" version='1.0'">>])),
+                        {next_state, wait_for_stream, NewStateData,
+                         ?FSMTIMEOUT};
+                    {error, _} ->
+                        ?INFO_MSG("Closing s2s connection: ~s -> ~s "
+                                  "(starttls failed)",
+                                  [StateData#state.myname,
+                                   StateData#state.server]),
+                        {stop, normal, StateData}
+                end;
 	    _ ->
 		send_text(StateData,
 			  <<(xml:element_to_binary(?SERR_BAD_FORMAT))/binary,
