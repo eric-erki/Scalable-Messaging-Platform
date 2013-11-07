@@ -82,7 +82,7 @@ CREATE OR REPLACE VIEW messages_view AS
 	ORDER BY m.at ASC$$
 
 
-CREATE PROCEDURE log_msg(IN user_in TEXT, IN sender_in TEXT, IN collection_in TEXT, IN msg_id_in TEXT, IN message_in TEXT, IN at_in DATETIME, IN is_read_in BOOLEAN)
+CREATE PROCEDURE log_msg(IN user_in TEXT CHARACTER SET utf8, IN sender_in TEXT CHARACTER SET utf8, IN collection_in TEXT CHARACTER SET utf8, IN msg_id_in TEXT, IN message_in TEXT CHARACTER SET utf8, IN at_in DATETIME, IN is_read_in BOOLEAN)
 	BEGIN
 		DECLARE userID INT UNSIGNED;
 		DECLARE senderID INT UNSIGNED;
@@ -115,7 +115,7 @@ CREATE PROCEDURE log_msg(IN user_in TEXT, IN sender_in TEXT, IN collection_in TE
 *  First try to do it with a restriction on date (last 24h) so to only hit the latest partition
 *  if that didn't work (message was older), do it without restriction
 */
-CREATE PROCEDURE set_read(IN user_jid_in TEXT, IN msgID_in TEXT, IN dd_in DATETIME)
+CREATE PROCEDURE set_read(IN user_jid_in TEXT CHARACTER SET utf8, IN msgID_in TEXT, IN dd_in DATETIME)
 	BEGIN
 	DECLARE c INT;
         DECLARE userID INT UNSIGNED;
@@ -129,7 +129,7 @@ CREATE PROCEDURE set_read(IN user_jid_in TEXT, IN msgID_in TEXT, IN dd_in DATETI
 	END$$
 
 
-CREATE PROCEDURE remove_conversation_history(IN user_jid_in TEXT, IN conversation_in TEXT)
+CREATE PROCEDURE remove_conversation_history(IN user_jid_in TEXT CHARACTER SET utf8, IN conversation_in TEXT CHARACTER SET utf8)
     BEGIN
     DECLARE userID INT UNSIGNED;
     DECLARE collectionID INT UNSIGNED;
@@ -139,7 +139,7 @@ CREATE PROCEDURE remove_conversation_history(IN user_jid_in TEXT, IN conversatio
     END$$
 
 
-CREATE PROCEDURE remove_user_history(IN user_jid_in TEXT)
+CREATE PROCEDURE remove_user_history(IN user_jid_in TEXT CHARACTER SET utf8)
     BEGIN
     DECLARE userID INT UNSIGNED;
     SELECT id into userID FROM jid_map where jid = user_jid_in;
@@ -152,7 +152,7 @@ CREATE PROCEDURE remove_user_history(IN user_jid_in TEXT)
 *  We will receive many deliver status events (and for each target). 
 *  Only keep 1,  the more "advanced" one for the conversation.
 */
-CREATE PROCEDURE set_deliver_status(IN user_jid_in TEXT, IN msgID_in TEXT, IN status_in TEXT, IN dd_in DATETIME)
+CREATE PROCEDURE set_deliver_status(IN user_jid_in TEXT CHARACTER SET utf8, IN msgID_in TEXT, IN status_in TEXT, IN dd_in DATETIME)
 	BEGIN
 	DECLARE c INT;
         DECLARE userID INT UNSIGNED;
@@ -165,6 +165,6 @@ CREATE PROCEDURE set_deliver_status(IN user_jid_in TEXT, IN msgID_in TEXT, IN st
             UPDATE messages SET deliver_status = statusNumber, modified = dd_in  
                 WHERE id = msgID_in and user = userID and modified > (NOW() - INTERVAL 24 HOUR) and deliver_status < statusNumber;
         ELSE
-            UPDATE messages SET statusNumber=statusNumber, modified = dd_in WHERE user = userID and id = msgID_in and deliver_status < statusNumber;
+            UPDATE messages SET deliver_status = statusNumber, modified = dd_in WHERE user = userID and id = msgID_in and deliver_status < statusNumber;
         END IF;
 	END$$
