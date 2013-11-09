@@ -33,7 +33,7 @@
 %% API
 -export([start_link/0, route/3, do_route1/4, set_session/6,
 	 open_session/5, open_session/6, close_session/4,
-	 close_migrated_session/4, drop_session/1,
+	 close_migrated_session/4, drop_session/2,
 	 check_in_subscription/6, bounce_offline_message/3,
 	 disconnect_removed_user/2, get_user_sessions/2,
 	 get_user_resources/2, set_presence/7, unset_presence/6,
@@ -112,7 +112,7 @@ open_session(SID, User, Server, Resource, Priority,
 -spec close_session(sid(), binary(), binary(), binary()) -> ok.
 
 close_session(SID, User, Server, Resource) ->
-    Info = do_close_session(User, Server, Resource),
+    Info = do_close_session(SID, User, Server, Resource),
     JID = jlib:make_jid(User, Server, Resource),
     ejabberd_hooks:run(sm_remove_connection_hook,
 		       JID#jid.lserver, [SID, JID, Info]).
@@ -120,14 +120,14 @@ close_session(SID, User, Server, Resource) ->
 -spec close_migrated_session(sid(), binary(), binary(), binary()) -> ok.
 
 close_migrated_session(SID, User, Server, Resource) ->
-    Info = do_close_session(User, Server, Resource),
+    Info = do_close_session(SID, User, Server, Resource),
     JID = jlib:make_jid(User, Server, Resource),
     ejabberd_hooks:run(sm_remove_migrated_connection_hook,
 		       JID#jid.lserver, [SID, JID, Info]).
 
--spec do_close_session(binary(), binary(), binary()) -> info().
+-spec do_close_session(sid(), binary(), binary(), binary()) -> info().
 
-do_close_session(User, Server, Resource) ->
+do_close_session(SID, User, Server, Resource) ->
     LUser = jlib:nodeprep(User),
     LServer = jlib:nameprep(Server),
     LResource = jlib:resourceprep(Resource),
@@ -136,16 +136,16 @@ do_close_session(User, Server, Resource) ->
 	     [] -> [];
 	     [#session{info = I}] -> I
 	   end,
-    drop_session(USR),
+    drop_session(SID, USR),
     Info.
 
--spec drop_session(ljid()) -> any().
+-spec drop_session(sid(), ljid()) -> any().
 
-drop_session({U, S, _} = USR) ->
+drop_session(SID, {U, S, _} = USR) ->
     case mnesia:dirty_read(session, USR) of
-        [R] ->
+        [#session{sid = SID} = R] ->
             dht:delete(R, {U, S});
-        [] ->
+        [_|_] ->
             ok
     end.
 

@@ -349,7 +349,7 @@ init([StateName, StateData, _FSMLimitOpts]) ->
            USR = {jlib:nodeprep(StateData#state.user),
                   jlib:nameprep(StateData#state.server),
                   jlib:resourceprep(StateData#state.resource)},
-	   ejabberd_sm:drop_session(USR),
+	   ejabberd_sm:drop_session(SID, USR),
 	   ejabberd_sm:open_session(SID, StateData#state.user,
 				    StateData#state.server,
 				    StateData#state.resource, Priority, Info),
