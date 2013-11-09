@@ -141,11 +141,16 @@ do_close_session(SID, User, Server, Resource) ->
 
 -spec drop_session(sid(), ljid()) -> any().
 
-drop_session(SID, {U, S, _} = USR) ->
+drop_session(SID, {U, S, R} = USR) ->
     case mnesia:dirty_read(session, USR) of
-        [#session{sid = SID} = R] ->
-            dht:delete(R, {U, S});
-        [_|_] ->
+        [#session{sid = SID} = Session] ->
+            dht:delete(Session, {U, S});
+        [MismatchedSession] ->
+            ?WARNING_MSG("wrong session record for jid ~s@~s/~s "
+                         "found during session close: ~p; "
+                         "the SID should be ~p",
+                         [U, S, R, MismatchedSession, SID]);
+        [] ->
             ok
     end.
 
