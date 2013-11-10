@@ -64,6 +64,7 @@ start(normal, _Args) ->
     maybe_add_nameservers(),
     start_modules(),
     ejabberd_node_groups:start(),
+    ejabberd_cluster:boot(),
     ejabberd_listener:start_listeners(),
     ?INFO_MSG("ejabberd ~s is started in the node ~p", [?VERSION, node()]),
     Sup;

@@ -11,12 +11,12 @@
 
 %% API
 -export([start_link/0, get_node/1, node_id/0, get_node_by_id/1,
-	 get_nodes/0, get_nodes/1, join/1, leave/1,
+	 get_nodes/0, get_nodes/1, join/1, leave/1, boot/0,
          subscribe/0, send/2, call/4, multicall/3, multicall/4,
          get_nodes_from_epmd/0, connect/1, get_next_node/0]).
 
 %% gen_fsm callbacks
--export([init/1, booting/2, booting/3, connected/2, connected/3,
+-export([init/1, connected/2, connected/3,
          handle_event/3, handle_sync_event/4, handle_info/3,
          terminate/3, code_change/4]).
 
@@ -131,11 +131,15 @@ multicall(Module, Function, Args) ->
 multicall(Nodes, Module, Function, Args) ->
     rpc:multicall(Nodes, Module, Function, Args, rpc_timeout()).
 
+-spec boot() -> ok.
+
+boot() ->
+    gen_fsm:send_event(?MODULE, boot).
+
 %%%===================================================================
 %%% gen_fsm callbacks
 %%%===================================================================
 init([]) ->
-    gen_fsm:send_event(self(), boot),
     net_kernel:monitor_nodes(true, [{node_type, visible},
                                     nodedown_reason]),
     ets:new(?NODES_TBL, [named_table, public, ordered_set]),
@@ -153,15 +157,12 @@ init([]) ->
     mnesia:clear_table(?HASHTBL),
     add_node(node(), false, []),
     register_node(),
-    {ok, booting, #state{}}.
+    {ok, connected, #state{}}.
 
-booting(boot, State) ->
+connected(boot, State) ->
     VClock = join_nodes(connect(), State#state.vclock),
     self() ! {ping, dict:new()},
     {next_state, connected, State#state{vclock = VClock}};
-booting(_Event, State) ->
-    {next_state, booting, State}.
-
 connected({subscribe, Pid}, State) ->
     Subscribers = [Pid|State#state.subscribers],
     lists:foreach(
@@ -173,9 +174,6 @@ connected({subscribe, Pid}, State) ->
     {next_state, connected, State#state{subscribers = Subscribers}};
 connected(_Event, State) ->
     {next_state, connected, State}.
-
-booting(_Event, _From, State) ->
-    {reply, {error, not_ready}, booting, State}.
 
 connected(get_nodes, _From, State) ->
     Nodes = lists:flatmap(
