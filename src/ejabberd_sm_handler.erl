@@ -27,7 +27,9 @@
 -module(ejabberd_sm_handler).
 -author('alexey@process-one.net').
 
--behaviour(gen_server).
+-define(GEN_SERVER, p1_server).
+
+-behaviour(?GEN_SERVER).
 
 %% API
 -export([start_link/1,
@@ -52,7 +54,7 @@
 %% Description: Starts the server
 %%--------------------------------------------------------------------
 start_link(Name) ->
-    gen_server:start_link({local, Name}, ?MODULE, [], []).
+    ?GEN_SERVER:start_link({local, Name}, ?MODULE, [], []).
 
 start(Name) ->
     Spec = {Name,
@@ -68,7 +70,7 @@ stop(Name) ->
     supervisor:delete_child(ejabberd_sm_sup, Name).
 
 route(Name, From, To, Packet, Hops) ->
-    gen_server:cast(Name, {route, From, To, Packet, Hops}).
+    ?GEN_SERVER:cast(Name, {route, From, To, Packet, Hops}).
 
 %%====================================================================
 %% gen_server callbacks

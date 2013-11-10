@@ -28,7 +28,8 @@ start_link() ->
 %%% Supervisor callbacks
 %%%===================================================================
 init([]) ->
-    {ok, {{one_for_one,10,1}, []}}.
+    PoolSize = ejabberd_sm:get_proc_num(),
+    {ok, {{one_for_one, PoolSize*10, 1}, []}}.
 
 %%%===================================================================
 %%% Internal functions
