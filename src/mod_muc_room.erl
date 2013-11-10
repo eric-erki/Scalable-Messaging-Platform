@@ -58,11 +58,11 @@
 
 -ifdef(DBGFSM).
 
--define(FSMOPTS, [{debug, [trace]}]).
+-define(FSMOPTS, [{debug, [trace]}|fsm_limit_opts([])]).
 
 -else.
 
--define(FSMOPTS, []).
+-define(FSMOPTS, fsm_limit_opts([])).
 
 -endif.
 
@@ -4740,6 +4740,18 @@ tab_count_user(JID) ->
     end.
 
 element_size(El) -> byte_size(xml:element_to_binary(El)).
+
+fsm_limit_opts(Opts) ->
+    case lists:keysearch(max_fsm_queue, 1, Opts) of
+      {value, {_, N}} when is_integer(N) -> [{max_queue, N}];
+      _ ->
+	  case ejabberd_config:get_option(
+                 max_fsm_queue,
+                 fun(I) when is_integer(I), I > 0 -> I end) of
+            undefined -> [];
+	    N -> [{max_queue, N}]
+	  end
+    end.
 
 route_stanza(From, To, El) ->
     case mod_muc:is_broadcasted(From#jid.lserver) of
