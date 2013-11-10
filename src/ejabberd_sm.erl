@@ -143,10 +143,8 @@ do_close_session(SID, User, Server, Resource) ->
 
 drop_session(SID, {U, S, _} = USR) ->
     case mnesia:dirty_read(session, USR) of
-        [#session{sid = SID} = Session] ->
-            dht:delete(Session, {U, S});
-        [_MismatchedSession] ->
-            ok;
+        [Session] ->
+            dht:delete(Session#session{sid = SID}, {U, S});
         [] ->
             ok
     end.

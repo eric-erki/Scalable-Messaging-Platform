@@ -42,7 +42,7 @@ write(Obj) ->
 -spec write(tuple(), any()) -> ok.
 
 write(Obj, HashKey) ->
-    gen_server:call(?MODULE, {write, Obj, HashKey}).
+    gen_server:call(?MODULE, {write, Obj, HashKey, self()}).
 
 -spec write_everywhere(any()) -> ok.
 
@@ -52,7 +52,7 @@ write_everywhere(Obj) ->
 -spec write_everywhere(tuple(), any()) -> ok.
 
 write_everywhere(Obj, HashKey) ->
-    gen_server:call(?MODULE, {write_everywhere, Obj, HashKey}).
+    gen_server:call(?MODULE, {write_everywhere, Obj, HashKey, self()}).
 
 -spec delete(tuple()) -> ok.
 
@@ -62,7 +62,7 @@ delete(Obj) ->
 -spec delete(tuple(), any()) -> ok.
 
 delete(Obj, HashKey) ->
-    gen_server:call(?MODULE, {delete, Obj, HashKey}).
+    gen_server:call(?MODULE, {delete, Obj, HashKey, self()}).
 
 -spec node_up(node()) -> ok.
 
@@ -82,7 +82,7 @@ init([]) ->
     ejabberd_cluster:subscribe(),
     {ok, #state{}}.
 
-handle_call({Tag, Obj, HashKey}, _From, State)
+handle_call({Tag, Obj, HashKey, Owner}, _From, State)
   when Tag == write; Tag == write_everywhere ->
     Key = element(2, Obj),
     Tab = element(1, Obj),
@@ -94,14 +94,14 @@ handle_call({Tag, Obj, HashKey}, _From, State)
             end,
     NewObj = try_write(Obj, State#state.tabs),
     send_write(Nodes, NewObj),
-    ets:insert(?MODULE, {HashKey, Tab, Key, Nodes}),
+    ets:insert(?MODULE, {{HashKey, Owner}, Tab, Key, Nodes}),
     {reply, ok, State};
-handle_call({delete, Obj, HashKey}, _From, State) ->
+handle_call({delete, Obj, HashKey, Owner}, _From, State) ->
     Key = element(2, Obj),
     Tab = element(1, Obj),
-    case ets:lookup(?MODULE, HashKey) of
+    case ets:lookup(?MODULE, {HashKey, Owner}) of
         [{_, Tab, Key, Nodes}] ->
-            ets:delete(?MODULE, HashKey),
+            ets:delete(?MODULE, {HashKey, Owner}),
             case try_delete(Obj, State#state.tabs) of
                 true ->
                     send_delete(Nodes, Obj);
@@ -143,14 +143,14 @@ handle_info({Event, Node}, State)
             ok
     end,
     lists:foreach(
-      fun({_HashKey, Tab, Key, everywhere}) ->
+      fun({{_HashKey, _Owner}, Tab, Key, everywhere}) ->
               case mnesia_read(Tab, Key) of
                   [Obj] when Event == node_up ->
                       send_write([Node], Obj);
                   _ ->
                       ok
               end;
-         ({HashKey, Tab, Key, Nodes}) ->
+         ({{HashKey, Owner}, Tab, Key, Nodes}) ->
               NewNodes = ejabberd_cluster:get_nodes(HashKey),
               AddNodes = NewNodes -- Nodes,
               case AddNodes of
@@ -167,7 +167,7 @@ handle_info({Event, Node}, State)
               DelNodes = if Event == node_down -> [Node];
                             true -> []
                          end,
-              ets:insert(?MODULE, {HashKey, Tab, Key,
+              ets:insert(?MODULE, {{HashKey, Owner}, Tab, Key,
                                    AddNodes ++ Nodes -- DelNodes})
       end, ets:match_object(?MODULE, '_')),
     {noreply, State};
