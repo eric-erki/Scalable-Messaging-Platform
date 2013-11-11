@@ -86,16 +86,16 @@ disconnect(Config) ->
 starttls(Config) ->
     send(Config, #starttls{}),
     #starttls_proceed{} = recv(),
-    TLSSocket = ejabberd_socket:starttls(
-                  ?config(socket, Config),
-                  [{certfile, ?config(certfile, Config)},
-                   connect]),
+    {ok, TLSSocket} = ejabberd_socket:starttls(
+                        ?config(socket, Config),
+                        [{certfile, ?config(certfile, Config)},
+                         connect]),
     init_stream(set_opt(socket, TLSSocket, Config)).
 
 zlib(Config) ->
     send(Config, #compress{methods = [<<"zlib">>]}),
     #compressed{} = recv(),
-    ZlibSocket = ejabberd_socket:compress(?config(socket, Config)),
+    {ok, ZlibSocket} = ejabberd_socket:compress(?config(socket, Config)),
     init_stream(set_opt(socket, ZlibSocket, Config)).
 
 auth(Config) ->
