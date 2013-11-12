@@ -164,7 +164,7 @@ handle_call({starttls, TLSOpts, Data}, _From,
       {ok, TLSData} ->
 	  {reply, {ok, TLSSocket},
 	   process_data(TLSData, NewState), ?HIBERNATE_TIMEOUT};
-      {error, _Reason} -> {stop, normal, ok, NewState}
+      {error, _Reason} = Err -> {stop, normal, Err, NewState}
     end;
 handle_call({compress, Data}, _From,
 	    #state{xml_stream_state = XMLStreamState,
@@ -186,7 +186,7 @@ handle_call({compress, Data}, _From,
       {ok, ZlibData} ->
 	  {reply, {ok, ZlibSocket},
 	   process_data(ZlibData, NewState), ?HIBERNATE_TIMEOUT};
-      {error, _Reason} -> {stop, normal, ok, NewState}
+      {error, _Reason} = Err -> {stop, normal, Err, NewState}
     end;
 handle_call(reset_stream, _From,
 	    #state{xml_stream_state = XMLStreamState,
