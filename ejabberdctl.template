@@ -126,6 +126,18 @@ else
     NAME="-name"
 fi
 
+# define ejabberd environment parameters
+if [ "$EJABBERD_CONFIG_PATH" != "${EJABBERD_CONFIG_PATH/.yml/}" ] ; then
+    rate=$(grep log_rate_limit $EJABBERD_CONFIG_PATH | cut -d':' -f2 | sed 's/ *//')
+    rotate=$(grep log_rotate_size $EJABBERD_CONFIG_PATH | cut -d':' -f2 | sed 's/ *//')
+else
+    rate=$(grep log_rate_limit $EJABBERD_CONFIG_PATH | cut -d',' -f2 | sed 's/ *//;s/}\.//')
+    rotate=$(grep log_rotate_size $EJABBERD_CONFIG_PATH | cut -d',' -f2 | sed 's/ *//;s/}\.//')
+fi
+EJABBERD_OPTS=""
+[ -z $rate ] || EJABBERD_OPTS="-ejabberd log_rate_limit $rate"
+[ -z $rotate ] || EJABBERD_OPTS="${EJABBERD_OPTS} -ejabberd log_rotate_size $rotate"
+
 # create the ejabberd home dir with the proper user if doesn't exist
 # then change to that directory readable by INSTALLUSER to
 # prevent "File operation error: eacces." messages
@@ -158,6 +170,7 @@ start()
       -pa $EJABBERD_EBIN_PATH \
       -mnesia dir \"\\\"$SPOOLDIR\\\"\" \
       $KERNEL_OPTS \
+      $EJABBERD_OPTS \
       -s ejabberd \
       -sasl sasl_error_logger \\{file,\\\"$SASL_LOG_PATH\\\"\\} \
       $ERLANG_OPTS $ARGS \"$@\""
@@ -223,6 +236,7 @@ live()
       -pa $EJABBERD_EBIN_PATH \
       -mnesia dir \"\\\"$SPOOLDIR\\\"\" \
       $KERNEL_OPTS \
+      $EJABBERD_OPTS \
       -s ejabberd \
       $ERLANG_OPTS $ARGS \"$@\""
 }
