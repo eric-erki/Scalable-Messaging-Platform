@@ -486,12 +486,17 @@ analyze_ip_xff({IPLast, Port}, XFF, Host) ->
 				       TrustedProxies)
 		   of
 		 true ->
-		     {ok, IPFirst} = inet_parse:address(
-                                       binary_to_list(ClientIP)),
-		     ?DEBUG("The IP ~w was replaced with ~w due to "
-			    "header X-Forwarded-For: ~s",
-			    [IPLast, IPFirst, XFF]),
-		     IPFirst;
+                       case inet_parse:address(binary_to_list(ClientIP)) of
+                           {ok, IPFirst} ->
+                               ?DEBUG("The IP ~w was replaced with ~w due to "
+                                      "header X-Forwarded-For: ~s",
+                                      [IPLast, IPFirst, XFF]),
+                               IPFirst;
+                           {error, _} ->
+                               ?WARNING_MSG("Failed to parse XFF address '~s'",
+                                            [ClientIP]),
+                               IPLast
+                       end;
 		 false -> IPLast
 	       end,
     {IPClient, Port}.
