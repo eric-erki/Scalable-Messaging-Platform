@@ -554,7 +554,8 @@ get_roster_by_jid_t(LUser, LServer, LJID, p1db) ->
     USJKey = usj2key(LUser, LServer, LJID),
     case p1db:get(roster, USJKey) of
         {ok, Val, _VClock} ->
-            p1db_to_item({LUser, LServer, LJID}, Val);
+            I = p1db_to_item({LUser, LServer, LJID}, Val),
+            I#roster{jid = LJID, name = <<"">>, groups = [], xs = []};
         {error, notfound} ->
             #roster{usj = {LUser, LServer, LJID},
                     us = {LUser, LServer}, jid = LJID};
