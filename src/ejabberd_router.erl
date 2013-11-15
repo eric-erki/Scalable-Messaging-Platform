@@ -140,7 +140,7 @@ unregister_route(Domain) ->
             erlang:error({invalid_domain, Domain});
         LDomain ->
             case mnesia:dirty_read(route, LDomain) of
-                [#route{pid = undefined}] ->
+                [#route{local_hint = LHint}] when LHint /= undefined ->
                     mnesia:dirty_delete(route, LDomain);
                 [#route{pid = Pids, clock = V} = R] ->
                     NewPids = del_pid(self(), Pids, LDomain),
