@@ -17,7 +17,7 @@
 
 -author('badlop@process-one.net').
 
--export([start/2, handler/2, socket_type/0]).
+-export([start/2, handler/2, socket_type/0, transform_listen_option/2]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -176,9 +176,31 @@ start({gen_tcp = _SockMod, Socket}, Opts) ->
     Timeout = gen_mod:get_opt(timeout, Opts,
                               fun(I) when is_integer(I), I>0 -> I end,
                               5000),
-    AccessCommands = gen_mod:get_opt(access_commands, Opts,
-                                     fun(V) -> V end,
-				     []),
+    AccessCommandsOpts = gen_mod:get_opt(access_commands, Opts,
+                                         fun(L) when is_list(L) -> L end,
+                                         []),
+    AccessCommands = lists:flatmap(
+                       fun({Ac, AcOpts}) ->
+                               Commands = gen_mod:get_opt(
+                                            commands, AcOpts,
+                                            fun(A) when is_atom(A) ->
+                                                    A;
+                                               (L) when is_list(L) ->
+                                                    true = lists:all(
+                                                             fun is_atom/1,
+                                                             L),
+                                                    L
+                                            end, all),
+                               CommOpts = gen_mod:get_opt(
+                                            options, AcOpts,
+                                            fun(L) when is_list(L) -> L end,
+                                            []),
+                               [{Ac, Commands, CommOpts}];
+                          (Wrong) ->
+                               ?WARNING_MSG("wrong options format for ~p: ~p",
+                                            [?MODULE, Wrong]),
+                               []
+                       end, AccessCommandsOpts),
     GetAuth = case [ACom
 		    || {Ac, _, _} = ACom <- AccessCommands, Ac /= all]
 		  of
@@ -449,3 +471,14 @@ make_status(true) -> 0;
 make_status(false) -> 1;
 make_status(error) -> 1;
 make_status(_) -> 1.
+
+transform_listen_option({access_commands, ACOpts}, Opts) ->
+    NewACOpts = lists:map(
+                  fun({AName, ACmds, AOpts}) ->
+                          {AName, [{commands, ACmds}, {options, AOpts}]};
+                     (Opt) ->
+                          Opt
+                  end, ACOpts),
+    [{access_commands, NewACOpts}|Opts];
+transform_listen_option(Opt, Opts) ->
+    [Opt|Opts].
