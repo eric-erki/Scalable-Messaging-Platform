@@ -3214,6 +3214,9 @@ send_kickban_presence(JID, Reason, Code, NewAffiliation,
 		  (?DICT):fold(fun (J, _, Js) ->
 				       case J of
 					 {U, S, _} -> [J | Js];
+                                         {_, S, _} when U == <<"">> ->
+                                               %% kick/ban every user from S
+                                               [J | Js];
 					 _ -> Js
 				       end
 			       end,
