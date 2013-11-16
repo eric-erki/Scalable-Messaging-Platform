@@ -1141,7 +1141,7 @@ set_nick(_LServer, Host, From, Nick, mnesia) ->
 		end
 	end,
     mnesia:transaction(F);
-set_nick(LServer, Host, From, <<"">>, p1db) ->
+set_nick(_LServer, Host, From, <<"">>, p1db) ->
     {LUser, LServer, _} = jlib:jid_tolower(From),
     USHKey = ush2key(LUser, LServer, Host),
     case p1db:get(muc_user, USHKey) of
@@ -1162,7 +1162,7 @@ set_nick(LServer, Host, From, <<"">>, p1db) ->
         {error, _} = Err ->
             {aborted, Err}
     end;
-set_nick(LServer, Host, From, Nick, p1db) ->
+set_nick(_LServer, Host, From, Nick, p1db) ->
     {LUser, LServer, _} = jlib:jid_tolower(From),
     NHKey = nh2key(Nick, Host),
     case can_use_nick(LServer, Host, From, Nick, p1db) of
