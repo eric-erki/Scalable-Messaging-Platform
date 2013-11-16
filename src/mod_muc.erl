@@ -841,7 +841,7 @@ unregister_room(Host, Room) ->
     Key = {Room, Host},
     case mnesia:dirty_read(muc_online_room, Key) of
         [R] ->
-            dht:delete(R);
+            dht:delete(R#muc_online_room{pid = self()});
         [] ->
             ok
     end.

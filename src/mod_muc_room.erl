@@ -882,8 +882,8 @@ terminate({migrated, Clone}, _StateName, StateData) ->
     ok;
 terminate(_Reason, _StateName, StateData) ->
     Reason = StateData#state.shutdown_reason,
-    ?INFO_MSG("Stopping MUC room ~s@~s",
-	      [StateData#state.room, StateData#state.host]),
+    ?INFO_MSG("Stopping MUC room ~s@~s with reason: ~p",
+	      [StateData#state.room, StateData#state.host, Reason]),
     ReasonT = case Reason of
 		system_shutdown ->
 		    <<"You are being removed from the room "
