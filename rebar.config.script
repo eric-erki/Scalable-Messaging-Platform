@@ -139,7 +139,10 @@ Config = [{erl_opts, Includes ++ Macros ++ HiPE ++ DebugInfo ++
           {ct_extra_params, "-include "
            ++ filename:join([Cwd, "tools"]) ++ " "
            ++ filename:join([Cwd, "deps", "p1_xml", "include"])},
+          {eunit_compile_opts, [{i, "tools"}]},
           {post_hooks, PostHooks ++ CfgPostHooks},
+          {port_env, [{"CFLAGS", "-g -O2 -Wall"}]},
+          {port_specs, [{"priv/lib/jlib.so", ["c_src/jlib.c"]}]},
           {deps, Deps ++ CfgDeps}],
 %%io:format("ejabberd configuration:~n  ~p~n", [Config]),
 Config.

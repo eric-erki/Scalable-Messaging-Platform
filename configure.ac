@@ -7,6 +7,7 @@ REQUIRE_ERLANG_MIN="5.9.1 (Erlang/OTP R15B01)"
 REQUIRE_ERLANG_MAX="9.0.0 (No Max)"
 
 # Checks for programs.
+AC_PROG_CC
 AC_PROG_MAKE_SET
 AC_PROG_INSTALL
 AC_PROG_SED
@@ -14,6 +15,13 @@ AC_PROG_SED
 if test "x$GCC" = "xyes"; then
     CFLAGS="$CFLAGS -Wall"
 fi
+
+# Checks for typedefs, structures, and compiler characteristics.
+AC_C_CONST
+
+# Checks for library functions.
+AC_FUNC_MALLOC
+AC_HEADER_STDC
 
 # Checks Erlang runtime and compiler
 AC_ARG_WITH(erlang,

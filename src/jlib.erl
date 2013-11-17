@@ -32,6 +32,8 @@
                            binary_to_integer/1,
                            integer_to_binary/1]}).
 
+-on_load(load_nif/0).
+
 -export([make_result_iq_reply/1, make_error_reply/3,
 	 make_error_reply/2, make_error_element/2,
 	 make_correct_from_to_attrs/3, replace_from_to_attrs/3,
@@ -51,7 +53,8 @@
 	 binary_to_integer/1, binary_to_integer/2,
 	 integer_to_binary/1, integer_to_binary/2,
 	 atom_to_binary/1, binary_to_atom/1, tuple_to_binary/1,
-	 l2i/1, i2l/1, i2l/2, expr_to_term/1, term_to_expr/1]).
+	 l2i/1, i2l/1, i2l/2, expr_to_term/1, term_to_expr/1,
+         string_to_usr/1]).
 
 %% TODO: Remove once XEP-0091 is Obsolete
 %% TODO: Remove once XEP-0091 is Obsolete
@@ -211,39 +214,18 @@ make_jid(User, Server, Resource) ->
 make_jid({User, Server, Resource}) ->
     make_jid(User, Server, Resource).
 
+-spec string_to_usr(binary()) -> {binary(), binary(), binary()} | error.
+
+string_to_usr(_S) ->
+    erlang:nif_error(nif_not_loaded).
+
 -spec string_to_jid(binary()) -> jid() | error.
 
 string_to_jid(S) ->
-    string_to_jid1(binary_to_list(S), "").
-
-string_to_jid1([$@ | _J], "") -> error;
-string_to_jid1([$@ | J], N) ->
-    string_to_jid2(J, lists:reverse(N), "");
-string_to_jid1([$/ | _J], "") -> error;
-string_to_jid1([$/ | J], N) ->
-    string_to_jid3(J, "", lists:reverse(N), "");
-string_to_jid1([C | J], N) ->
-    string_to_jid1(J, [C | N]);
-string_to_jid1([], "") -> error;
-string_to_jid1([], N) ->
-    make_jid(<<"">>, list_to_binary(lists:reverse(N)), <<"">>).
-
-%% Only one "@" is admitted per JID
-string_to_jid2([$@ | _J], _N, _S) -> error;
-string_to_jid2([$/ | _J], _N, "") -> error;
-string_to_jid2([$/ | J], N, S) ->
-    string_to_jid3(J, N, lists:reverse(S), "");
-string_to_jid2([C | J], N, S) ->
-    string_to_jid2(J, N, [C | S]);
-string_to_jid2([], _N, "") -> error;
-string_to_jid2([], N, S) ->
-    make_jid(list_to_binary(N), list_to_binary(lists:reverse(S)), <<"">>).
-
-string_to_jid3([C | J], N, S, R) ->
-    string_to_jid3(J, N, S, [C | R]);
-string_to_jid3([], N, S, R) ->
-    make_jid(list_to_binary(N), list_to_binary(S),
-             list_to_binary(lists:reverse(R))).
+    case string_to_usr(S) of
+        error -> error;
+        USR -> make_jid(USR)
+    end.
 
 -spec jid_to_string(jid() | ljid()) -> binary().
 
@@ -902,3 +884,99 @@ i2l(L, N) when is_binary(L) ->
       C when C > N -> L;
       _ -> i2l(<<$0, L/binary>>, N)
     end.
+
+load_nif() ->
+    load_nif(get_so_path()).
+
+load_nif(LibDir) ->
+    SOPath = filename:join(LibDir, "jlib"),
+    case catch erlang:load_nif(SOPath, 0) of
+        ok ->
+            ok;
+        Err ->
+            error_logger:warning_msg("unable to load jlib NIF: ~p~n", [Err]),
+            Err
+    end.
+
+get_so_path() ->
+    case os:getenv("EJABBERD_SO_PATH") of
+        false ->
+            case code:priv_dir(ejabberd) of
+                {error, _} ->
+                    filename:join(["priv", "lib"]);
+                Path ->
+                    filename:join([Path, "lib"])
+            end;
+        Path ->
+            Path
+    end.
+
+%%%===================================================================
+%%% Unit tests
+%%%===================================================================
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+permute(Xs) ->
+    permute(Xs, []).
+
+permute([X|Xs], Ys) ->
+    [[X|T] || T <- permute(Xs ++ Ys, [])] ++ permute(Xs, [X|Ys]);
+permute([], []) ->
+    [[]];
+permute([], _Ys) ->
+    [].
+
+string_to_usr_empty_test() ->
+    ?assertEqual(error, jlib:string_to_usr(<<"">>)).
+
+string_to_usr_server_test() ->
+    ?assertEqual({<<"">>, <<"server">>, <<"">>},
+                 jlib:string_to_usr(<<"server">>)).
+
+string_to_usr_amp_test() ->
+    ?assertEqual(error, jlib:string_to_usr(<<"@">>)),
+    ?assertEqual(error, jlib:string_to_usr(<<"@server">>)),
+    ?assertEqual(error, jlib:string_to_usr(<<"user@">>)),
+    ?assertEqual({<<"user">>, <<"server">>, <<"">>},
+                 jlib:string_to_usr(<<"user@server">>)).
+
+string_to_usr_slash_test() ->
+    ?assertEqual(error, jlib:string_to_usr(<<"/">>)),
+    ?assertEqual(error, jlib:string_to_usr(<<"/resource">>)),
+    ?assertEqual(error, jlib:string_to_usr(<<"server/">>)),
+    ?assertEqual({<<"">>, <<"server">>, <<"resource">>},
+                 jlib:string_to_usr(<<"server/resource">>)).
+
+string_to_usr_amp_slash_test() ->
+    ?assertEqual(error, jlib:string_to_usr(<<"@/">>)),
+    ?assertEqual(error, jlib:string_to_usr(<<"@/resource">>)),
+    ?assertEqual(error, jlib:string_to_usr(<<"@server/">>)),
+    ?assertEqual(error, jlib:string_to_usr(<<"@server/resource">>)),
+    ?assertEqual(error, jlib:string_to_usr(<<"user@/">>)),
+    ?assertEqual(error, jlib:string_to_usr(<<"user@server/">>)),
+    ?assertEqual(error, jlib:string_to_usr(<<"user@/resource">>)),
+    ?assertEqual({<<"user">>, <<"server">>, <<"resource">>},
+                 jlib:string_to_usr(<<"user@server/resource">>)).
+
+string_to_usr_double_amp_test() ->
+    ?assertEqual(error, jlib:string_to_usr(<<"@@">>)),
+    ?assertEqual(error, jlib:string_to_usr(<<"@@resource">>)),
+    ?assertEqual(error, jlib:string_to_usr(<<"@server@">>)),
+    ?assertEqual(error, jlib:string_to_usr(<<"@server@resource">>)),
+    ?assertEqual(error, jlib:string_to_usr(<<"user@@">>)),
+    ?assertEqual(error, jlib:string_to_usr(<<"user@server@">>)),
+    ?assertEqual(error, jlib:string_to_usr(<<"user@@resource">>)),
+    ?assertEqual(error, jlib:string_to_usr(<<"user@server@resource">>)).
+
+string_to_usr_resource_test() ->
+    lists:foreach(
+      fun(R) ->
+              ?assertEqual({<<"">>, <<"server">>, R},
+                           jlib:string_to_usr(<<"server/", R/binary>>)),
+              ?assertEqual({<<"user">>, <<"server">>, R},
+                           jlib:string_to_usr(<<"user@server/", R/binary>>))
+      end,
+      [list_to_binary(X) || X <- permute([$@, $/, $x, $y, $z])]).
+
+-endif.
