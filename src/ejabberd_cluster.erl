@@ -11,7 +11,7 @@
 
 %% API
 -export([start_link/0, get_node/1, node_id/0, get_node_by_id/1,
-	 get_nodes/0, get_nodes/1, join/1, leave/1, boot/0,
+	 get_nodes/0, get_nodes/1, join/1, leave/1, boot/0, hash/1,
          subscribe/0, send/2, call/4, multicall/3, multicall/4,
          get_nodes_from_epmd/0, connect/1, get_next_node/0]).
 
@@ -20,12 +20,15 @@
          handle_event/3, handle_sync_event/4, handle_info/3,
          terminate/3, code_change/4]).
 
+-export([print_distribution/0]).
+
 -include("ejabberd.hrl").
 -include("logger.hrl").
 
 -define(NODES_TBL, cluster_nodes).
 -define(CLUSTER_INFO, cluster_info).
 -define(HASHTBL, nodes_hash).
+-define(VNODES_NUMBER, 256).
 
 -define(MIGRATE_TIMEOUT, timer:minutes(2)).
 
@@ -356,9 +359,8 @@ need_to_ping(Node, State) ->
 add_node(Node, SeenEachOther, Subscribers) ->
     case ets:insert_new(?NODES_TBL, {Node}) of
         true ->
-            Hash = hash(Node),
             mnesia:dirty_write(#cluster_info{node = Node, last = now()}),
-            mnesia:dirty_write({?HASHTBL, Hash, Node}),
+            add_node_to_ring(Node, ?VNODES_NUMBER),
             if Node /= node(), SeenEachOther == false ->
                     ?INFO_MSG("Node ~p has joined", [Node]),
                     lists:foreach(
@@ -389,8 +391,7 @@ del_node(Node, Reason, Subscribers) ->
             false;
         _ ->
             ets:delete(?NODES_TBL, Node),
-            Hash = hash(Node),
-            mnesia:dirty_delete(?HASHTBL, Hash),
+            del_node_from_ring(Node, ?VNODES_NUMBER),
             if Node /= node() ->
                     ?INFO_MSG("Node ~p has left: ~p", [Node, Reason]),
                     lists:foreach(
@@ -402,6 +403,26 @@ del_node(Node, Reason, Subscribers) ->
                     false
             end
     end.
+
+add_node_to_ring(Node, VNodesNumber) ->
+    mnesia:transaction(
+      fun() ->
+              lists:foreach(
+                fun(I) ->
+                        Hash = hash({I, Node}),
+                        mnesia:write({?HASHTBL, Hash, Node})
+                end, lists:seq(1, VNodesNumber))
+      end).
+
+del_node_from_ring(Node, VNodesNumber) ->
+    mnesia:transaction(
+      fun() ->
+              lists:foreach(
+                fun(I) ->
+                        Hash = hash({I, Node}),
+                        mnesia:delete({?HASHTBL, Hash})
+                end, lists:seq(1, VNodesNumber))
+      end).
 
 hash(Term) when is_binary(Term) ->
     <<Hash:160>> = p1_sha:sha1(Term),
@@ -508,3 +529,17 @@ get_nodes_from_epmd(true) ->
       end, Ss);
 get_nodes_from_epmd(false) ->
     [].
+
+print_distribution() ->
+    X = 10000,
+    Distribution =
+        lists:foldl(
+          fun(_, D) ->
+                  User = crypto:rand_bytes(crypto:rand_uniform(1, 10)),
+                  Node = get_node({User, ?MYNAME}),
+                  dict:update_counter(Node, 1, D)
+          end, dict:new(), lists:seq(1, X)),
+    lists:foreach(
+      fun({Node, N}) ->
+              io:format("~s: ~p%~n", [Node, round(100*N/X)])
+      end, dict:to_list(Distribution)).
