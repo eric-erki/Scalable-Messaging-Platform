@@ -71,17 +71,17 @@ get_nodes(Key) ->
 node_id() ->
     jlib:integer_to_binary(hash(node())).
 
--spec get_node_by_id(binary() | atom()) -> node().
+-spec get_node_by_id(binary() | integer()) -> node().
 
 get_node_by_id(NodeID) when is_binary(NodeID) ->
-    case catch list_to_existing_atom(binary_to_list(NodeID)) of
-      {'EXIT', _} -> node();
-      Res -> get_node_by_id(Res)
+    case catch jlib:binary_to_integer(NodeID) of
+        {'EXIT', _} -> node();
+        I -> get_node_by_id(I)
     end;
-get_node_by_id(NodeID) ->
-    case global:whereis_name(NodeID) of
-      Pid when is_pid(Pid) -> node(Pid);
-      _ -> node()
+get_node_by_id(NodeID) when is_integer(NodeID) ->
+    case ets:lookup(?HASHTBL, NodeID) of
+        [{_, _, Node}] -> Node;
+        [] -> node()
     end.
 
 -spec join(node()) -> ok | {error, not_ready}.
@@ -159,7 +159,6 @@ init([]) ->
     mnesia:add_table_copy(cluster_info, node(), disc_copies),
     mnesia:clear_table(?HASHTBL),
     add_node(node(), false, []),
-    register_node(),
     {ok, connected, #state{}}.
 
 connected(boot, State) ->
@@ -407,6 +406,7 @@ del_node(Node, Reason, Subscribers) ->
 add_node_to_ring(Node, VNodesNumber) ->
     mnesia:transaction(
       fun() ->
+              mnesia:write({?HASHTBL, hash(Node), Node}),
               lists:foreach(
                 fun(I) ->
                         Hash = hash({I, Node}),
@@ -417,6 +417,7 @@ add_node_to_ring(Node, VNodesNumber) ->
 del_node_from_ring(Node, VNodesNumber) ->
     mnesia:transaction(
       fun() ->
+              mnesia:delete({?HASHTBL, hash(Node)}),
               lists:foreach(
                 fun(I) ->
                         Hash = hash({I, Node}),
@@ -429,9 +430,6 @@ hash(Term) when is_binary(Term) ->
     Hash;
 hash(Term) ->
     hash(term_to_binary(Term)).
-
-register_node() ->
-    global:register_name(erlang:binary_to_atom(node_id(), utf8), self()).
 
 get_node_by_hash(Tab, Hash) ->
     NodeHash = case ets:next(Tab, Hash) of
