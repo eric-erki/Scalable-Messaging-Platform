@@ -27,8 +27,8 @@
 -module(ejabberd_sm).
 
 -author('alexey@process-one.net').
-
--behaviour(gen_server).
+-define(GEN_SERVER, p1_server).
+-behaviour(?GEN_SERVER).
 
 %% API
 -export([start_link/0, route/3, do_route1/4, set_session/6,
@@ -79,8 +79,7 @@
 -export_type([sid/0]).
 
 start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [],
-			  []).
+    ?GEN_SERVER:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 -spec route(jid(), jid(), xmlel() | broadcast()) -> ok.
 

@@ -27,8 +27,8 @@
 -module(mod_muc).
 
 -author('alexey@process-one.net').
-
--behaviour(gen_server).
+-define(GEN_SERVER, p1_server).
+-behaviour(?GEN_SERVER).
 
 -behaviour(gen_mod).
 
@@ -80,8 +80,8 @@
 
 start_link(Host, Opts) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:start_link({local, Proc}, ?MODULE,
-			  [Host, Opts], []).
+    ?GEN_SERVER:start_link({local, Proc}, ?MODULE,
+                           [Host, Opts], []).
 
 start(Host, Opts) ->
     start_supervisor(Host),
@@ -94,7 +94,7 @@ stop(Host) ->
     Rooms = shutdown_rooms(Host),
     stop_supervisor(Host),
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:call(Proc, stop),
+    ?GEN_SERVER:call(Proc, stop),
     supervisor:delete_child(ejabberd_sup, Proc),
     {wait, Rooms}.
 
@@ -139,8 +139,8 @@ create_room(Host, Name, From, Nick, Opts) ->
     RoomHost = gen_mod:get_module_opt_host(Host, ?MODULE,
 					   <<"conference.@HOST@">>),
     Node = get_node({Name, RoomHost}),
-    gen_server:call({Proc, Node},
-		    {create, Name, From, Nick, Opts}).
+    ?GEN_SERVER:call({Proc, Node},
+                     {create, Name, From, Nick, Opts}).
 
 store_room(ServerHost, Host, Name, Config, Affiliations) ->
     LServer = jlib:nameprep(ServerHost),

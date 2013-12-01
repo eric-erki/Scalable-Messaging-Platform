@@ -27,8 +27,8 @@
 -module(gen_iq_handler).
 
 -author('alexey@process-one.net').
-
--behaviour(gen_server).
+-define(GEN_SERVER, p1_server).
+-behaviour(?GEN_SERVER).
 
 %% API
 -export([start_link/5, add_iq_handler/6,
@@ -59,7 +59,7 @@
 %% Description: Starts the server
 %%--------------------------------------------------------------------
 start_link(Component, Host, NS, Module, Function) ->
-    {ok, Pid} = gen_server:start_link(?MODULE, [Host, Module, Function], []),
+    {ok, Pid} = ?GEN_SERVER:start_link(?MODULE, [Host, Module, Function], []),
     Component:register_iq_handler(Host, NS, Module, Function, Pid),
     {ok, Pid}.
 

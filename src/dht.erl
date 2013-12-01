@@ -7,8 +7,8 @@
 %%% Created : 16 Aug 2013 by Evgeniy Khramtsov <>
 %%%-------------------------------------------------------------------
 -module(dht).
-
--behaviour(gen_server).
+-define(GEN_SERVER, p1_server).
+-behaviour(?GEN_SERVER).
 
 %% API
 -export([start_link/0, new/2, node_up/1, node_down/1,
@@ -27,12 +27,12 @@
 %%% API
 %%%===================================================================
 start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+    ?GEN_SERVER:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 -spec new(atom(), module()) -> ok.
 
 new(Tab, Mod) ->
-    gen_server:cast(?MODULE, {new, Tab, Mod}).
+    ?GEN_SERVER:cast(?MODULE, {new, Tab, Mod}).
 
 -spec write(tuple()) -> ok.
 
@@ -42,7 +42,7 @@ write(Obj) ->
 -spec write(tuple(), any()) -> ok.
 
 write(Obj, HashKey) ->
-    gen_server:call(?MODULE, {write, Obj, HashKey, self()}).
+    ?GEN_SERVER:call(?MODULE, {write, Obj, HashKey, self()}).
 
 -spec write_everywhere(any()) -> ok.
 
@@ -52,7 +52,7 @@ write_everywhere(Obj) ->
 -spec write_everywhere(tuple(), any()) -> ok.
 
 write_everywhere(Obj, HashKey) ->
-    gen_server:call(?MODULE, {write_everywhere, Obj, HashKey, self()}).
+    ?GEN_SERVER:call(?MODULE, {write_everywhere, Obj, HashKey, self()}).
 
 -spec delete(tuple()) -> ok.
 
@@ -62,17 +62,17 @@ delete(Obj) ->
 -spec delete(tuple(), any()) -> ok.
 
 delete(Obj, HashKey) ->
-    gen_server:call(?MODULE, {delete, Obj, HashKey, self()}).
+    ?GEN_SERVER:call(?MODULE, {delete, Obj, HashKey, self()}).
 
 -spec node_up(node()) -> ok.
 
 node_up(Node) ->
-    gen_server:cast(?MODULE, {node_up, Node}).
+    ?GEN_SERVER:cast(?MODULE, {node_up, Node}).
 
 -spec node_down(node()) -> ok.
 
 node_down(Node) ->
-    gen_server:cast(?MODULE, {node_down, Node}).
+    ?GEN_SERVER:cast(?MODULE, {node_down, Node}).
 
 %%%===================================================================
 %%% gen_server callbacks

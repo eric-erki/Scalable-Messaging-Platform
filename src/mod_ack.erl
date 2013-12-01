@@ -25,7 +25,7 @@
 %%%
 %%%-------------------------------------------------------------------
 -module(mod_ack).
-
+-define(GEN_SERVER, p1_server).
 -behaviour(gen_server).
 
 -behaviour(gen_mod).
@@ -76,8 +76,7 @@
 
 start_link(Host, Opts) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:start_link({local, Proc}, ?MODULE,
-			  [Host, Opts], []).
+    ?GEN_SERVER:start_link({local, Proc}, ?MODULE, [Host, Opts], []).
 
 start(Host, Opts) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
@@ -87,7 +86,7 @@ start(Host, Opts) ->
 
 stop(Host) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:call(Proc, stop),
+    ?GEN_SERVER:call(Proc, stop),
     supervisor:terminate_child(ejabberd_sup, Proc),
     supervisor:delete_child(ejabberd_sup, Proc).
 
@@ -163,8 +162,7 @@ feature_inspect_packet(_User, _Server, _Pres, _El) ->
 
 remove_connection({_, C2SPid}, #jid{lserver = Host},
 		  _Info) ->
-    gen_server:cast(gen_mod:get_module_proc(Host,
-					    ?PROCNAME),
+    ?GEN_SERVER:cast(gen_mod:get_module_proc(Host, ?PROCNAME),
 		    {del, C2SPid}).
 
 init([Host, Opts]) ->
@@ -353,15 +351,13 @@ ping(From, To, Server, JID, El) ->
 add_timer(Host, ID, JID, Packet) ->
     {U, S, R} = jlib:jid_tolower(JID),
     C2SPid = ejabberd_sm:get_session_pid(U, S, R),
-    gen_server:cast(gen_mod:get_module_proc(Host,
-					    ?PROCNAME),
+    ?GEN_SERVER:cast(gen_mod:get_module_proc(Host, ?PROCNAME),
 		    {add, ID, C2SPid, Packet}).
 
 del_timer(Host, ID, JID) ->
     {U, S, R} = jlib:jid_tolower(JID),
     C2SPid = ejabberd_sm:get_session_pid(U, S, R),
-    gen_server:cast(gen_mod:get_module_proc(Host,
-					    ?PROCNAME),
+    ?GEN_SERVER:cast(gen_mod:get_module_proc(Host, ?PROCNAME),
 		    {del, ID, C2SPid}).
 
 cancel_timer(TRef) ->

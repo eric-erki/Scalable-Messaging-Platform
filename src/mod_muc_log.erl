@@ -27,8 +27,8 @@
 -module(mod_muc_log).
 
 -author('badlop@process-one.net').
-
--behaviour(gen_server).
+-define(GEN_SERVER, p1_server).
+-behaviour(?GEN_SERVER).
 
 -behaviour(gen_mod).
 
@@ -79,7 +79,7 @@
 
 start_link(Host, Opts) ->
     Proc = get_proc_name(Host),
-    gen_server:start_link(Proc, ?MODULE, [Host, Opts], []).
+    ?GEN_SERVER:start_link(Proc, ?MODULE, [Host, Opts], []).
 
 start(Host, Opts) ->
     Proc = get_proc_name(Host),
@@ -89,7 +89,7 @@ start(Host, Opts) ->
 
 stop(Host) ->
     Proc = get_proc_name(Host),
-    gen_server:call(Proc, stop),
+    ?GEN_SERVER:call(Proc, stop),
     supervisor:delete_child(ejabberd_sup, Proc).
 
 add_to_log(Host, Type, Data, Room, Opts) ->
@@ -103,8 +103,8 @@ add_to_log(Host, Type, Data, Room, Opts) ->
     end.
 
 check_access_log(Host, From) ->
-    case catch gen_server:call(get_proc_name(Host),
-			       {check_access_log, Host, From})
+    case catch ?GEN_SERVER:call(get_proc_name(Host),
+                                {check_access_log, Host, From})
 	of
       {'EXIT', _Error} -> deny;
       Res -> Res
