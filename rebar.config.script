@@ -136,7 +136,8 @@ Config = [{erl_opts, Includes ++ Macros ++ HiPE ++ DebugInfo ++
                [{src_dirs, [asn1, src | SrcDirs]}]},
           {sub_dirs, ["rel"]},
           {keep_build_info, true},
-          {ct_extra_params, "-include "
+          {ct_extra_params, "-ct_hooks cth_surefire "
+           ++ "-include "
            ++ filename:join([Cwd, "tools"]) ++ " "
            ++ filename:join([Cwd, "deps", "p1_xml", "include"])},
           {eunit_compile_opts, [{i, "tools"}]},
