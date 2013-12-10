@@ -48,9 +48,9 @@
 
 -include("bosh.hrl").
 
--record(bosh, {sid = <<"">>      :: binary(),
-               timestamp = now() :: erlang:timestamp(),
-               pid = self()      :: pid()}).
+-record(bosh, {sid = <<"">>      :: binary() | '_',
+               timestamp = now() :: erlang:timestamp() | '_',
+               pid = self()      :: pid() | '$1'}).
 
 %%%----------------------------------------------------------------------
 %%% API

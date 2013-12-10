@@ -54,7 +54,7 @@
 	 integer_to_binary/1, integer_to_binary/2,
 	 atom_to_binary/1, binary_to_atom/1, tuple_to_binary/1,
 	 l2i/1, i2l/1, i2l/2, expr_to_term/1, term_to_expr/1,
-         string_to_usr/1]).
+         string_to_usr/1, load_nif/0]).
 
 %% TODO: Remove once XEP-0091 is Obsolete
 %% TODO: Remove once XEP-0091 is Obsolete

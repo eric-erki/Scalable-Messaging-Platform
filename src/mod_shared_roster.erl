@@ -1705,8 +1705,8 @@ import(LServer, {odbc, _}, mnesia, <<"sr_group">>,
 import(LServer, {odbc, _}, mnesia, <<"sr_user">>,
        [SJID, Group, _TimeStamp]) ->
     #jid{luser = U, lserver = S} = jlib:string_to_jid(SJID),
-    U = #sr_user{us = {U, S}, group_host = {Group, LServer}},
-    mnesia:dirty_write(U);
+    User = #sr_user{us = {U, S}, group_host = {Group, LServer}},
+    mnesia:dirty_write(User);
 import(LServer, {odbc, _}, riak, <<"sr_group">>,
        [Group, SOpts, _TimeStamp]) ->
     G = #sr_group{group_host = {Group, LServer},

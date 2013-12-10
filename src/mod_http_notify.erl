@@ -147,7 +147,7 @@ send_notification(URL, Params) ->
                            iolist_to_binary(V)),
                     <<K1/binary, "=", V1/binary>>
             end, Params),
-    Data = str:join(KVs, "&"),
+    Data = str:join(KVs, <<"&">>),
     httpc:request(
       post,
       {URL, [], "application/x-www-form-urlencoded", Data},

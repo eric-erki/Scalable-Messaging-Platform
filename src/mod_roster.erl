@@ -1923,51 +1923,36 @@ make_roster_range(I, Total) ->
 -spec create_rosters(binary(), binary(), pos_integer(), gen_mod:db_type()) -> any().
 
 create_rosters(UserPattern, Server, Total, DBType) ->
-    lists:foldl(
-      fun(I, Acc) ->
+    lists:foreach(
+      fun(I) ->
               LUser = jlib:nodeprep(
                         iolist_to_binary([UserPattern, integer_to_list(I)])),
               LServer = jlib:nameprep(Server),
               Range = make_roster_range(I, Total),
-              NewAcc =
-                  lists:foldl(
-                    fun(R, Items) ->
-                            Contact = jlib:nodeprep(
-                                        iolist_to_binary(
-                                          [UserPattern, integer_to_list(R)])),
-                            LJID = {Contact, LServer, <<"">>},
-                            RItem = #roster{subscription = both,
-                                            us = {LUser, LServer},
-                                            usj = {LUser, LServer, LJID},
-                                            jid = LJID},
-                            case DBType of
-                                riak ->
-                                    ejabberd_riak:put(
-                                      RItem,
-                                      [{'2i', [{<<"us">>, {LUser, LServer}}]}]),
-                                    Items;
-                                p1db ->
-                                    USJKey = usj2key(LUser, LServer, LJID),
-                                    Val = item_to_p1db(RItem),
-                                    VClock = p1db:new_vclock(node()),
-                                    [{put, USJKey, Val, VClock}|Items];
-                                mnesia ->
-                                    mnesia:dirty_write(RItem),
-                                    Items;
-                                odbc ->
-                                    erlang:error(odbc_not_supported)
-                            end
-                    end, Acc, Range),
-              if ((length(NewAcc) >= 10000) or (I == Total)) and (DBType == p1db) ->
-                      {ok, _} = p1db:batch(roster, NewAcc),
-                      receive_all(length(NewAcc)),
-                      [];
-                 true ->
-                      NewAcc
-              end
-      end, [], lists:seq(1, Total)).
-
-receive_all(N) when N>=0 ->
-    receive _ -> receive_all(N-1) end;
-receive_all(_) ->
-    ok.
+              lists:foreach(
+                fun(R) ->
+                        Contact = jlib:nodeprep(
+                                    iolist_to_binary(
+                                      [UserPattern, integer_to_list(R)])),
+                        LJID = {Contact, LServer, <<"">>},
+                        RItem = #roster{subscription = both,
+                                        us = {LUser, LServer},
+                                        usj = {LUser, LServer, LJID},
+                                        jid = LJID},
+                        case DBType of
+                            riak ->
+                                ejabberd_riak:put(
+                                  RItem,
+                                  [{'2i', [{<<"us">>, {LUser, LServer}}]}]);
+                            p1db ->
+                                USJKey = usj2key(LUser, LServer, LJID),
+                                Val = item_to_p1db(RItem),
+                                VClock = p1db:new_vclock(node()),
+                                p1db:async_insert(roster, USJKey, Val, VClock);
+                            mnesia ->
+                                mnesia:dirty_write(RItem);
+                            odbc ->
+                                erlang:error(odbc_not_supported)
+                        end
+                end, Range)
+      end, lists:seq(1, Total)).

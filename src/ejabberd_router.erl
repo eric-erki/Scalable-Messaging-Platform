@@ -53,10 +53,10 @@
 
 -type local_hint() :: undefined | {apply, atom(), atom()}.
 
--record(route, {domain = <<"">>   :: binary(),
-                pid = []          :: [pid()],
-                local_hint        :: local_hint(),
-                clock             :: vclock:vclock()}).
+-record(route, {domain = <<"">>        :: binary(),
+                pid = []               :: [pid()],
+                local_hint             :: local_hint(),
+                clock = vclock:fresh() :: vclock:vclock()}).
 
 -record(state, {}).
 
@@ -177,7 +177,7 @@ clean(Node) ->
               NewPids = del_pid_by_node(Node, Pids, Domain),
               mnesia:dirty_write(
                 R#route{pid = NewPids, clock = NewV})
-      end, mnesia:dirty_match_object(#route{_ = '_'})).
+      end, ets:tab2list(route)).
 
 -spec unregister_routes([binary()]) -> ok.
 
