@@ -149,7 +149,7 @@ init({SockMod, Socket}, Opts) ->
                                             O = proplists:get_value(
                                                   options, ModOpts,
                                                   [{protocol, <<"xmpp">>}]),
-                                            [{PathList, M, O}]
+                                            {PathList, M, O}
                                     end, Hs)
                           end, []),
     ?DEBUG("WS: ~p~n", [WebSocketHandlers]),
