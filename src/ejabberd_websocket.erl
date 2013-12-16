@@ -294,13 +294,13 @@ recv_data(#ws{buf = Buf, socket = Sock, sockmod = SockMod} = Ws, Length, Timeout
 	    SockMod:setopts(Sock, [{packet, raw}, {active, false}])
     end,
     Data = case SockMod:recv(Sock, Length - size(Buf), Timeout) of
-             {ok, Bin} -> <<Buf/binary, Bin/binary>>;
-	     {error, timeout} ->
-		 ?WARNING_MSG("timeout in reading websocket body", []),
-		 <<>>;
-	     _Other ->
-		 ?ERROR_MSG("tcp error treating data: ~p", [_Other]),
-		 <<>>
+               {ok, Bin} -> <<Buf/binary, Bin/binary>>;
+               {error, timeout} ->
+                   ?WARNING_MSG("timeout in reading websocket body", []),
+                   <<>>;
+               Other ->
+                   ?ERROR_MSG("tcp error when receiving data: ~p", [Other]),
+                   <<>>
 	   end,
     {Ws#ws{buf = <<>>}, Data}.
 
@@ -424,7 +424,7 @@ ws_loop(Vsn, HandlerState, Socket, WsHandleLoopPid,
           case handle_data(DataType, Vsn, HandlerState, Data, Socket, WsHandleLoopPid, SocketMode, WsAutoExit) of
             {error, Error} ->
 			?DEBUG("tls decode error ~p", [Error]),
-                        websocket_close(Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
+                        websocket_close(Vsn, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, 1002); % protocol error
             {NewHandlerState, ToSend} ->
               lists:foreach(fun(Pkt) -> SocketMode:send(Socket, Pkt)
                             end, ToSend),
@@ -432,21 +432,22 @@ ws_loop(Vsn, HandlerState, Socket, WsHandleLoopPid,
           end;
       {tcp_closed, _Socket} ->
           ?DEBUG("tcp connection was closed, exit", []),
-	  websocket_close(Socket, WsHandleLoopPid, SocketMode,
-			  WsAutoExit);
+	  websocket_close(Vsn, Socket, WsHandleLoopPid, SocketMode,
+			  WsAutoExit, 0);
       {'DOWN', Ref, process, WsHandleLoopPid, Reason} ->
-	  case Reason of
-	    normal ->
-		%?DEBUG("linked websocket controlling loop stopped.", []);
-		ok;
-	    _ ->
-		?ERROR_MSG("linked websocket controlling loop crashed "
-			   "with reason: ~p",
-			   [Reason])
-	  end,
+            Code = case Reason of
+                       normal ->
+                                                %?DEBUG("linked websocket controlling loop stopped.", []);
+                           1000; % normal close
+                       _ ->
+                           ?ERROR_MSG("linked websocket controlling loop crashed "
+                                      "with reason: ~p",
+                                      [Reason]),
+                           1011 % internal error
+                   end,
 	  erlang:demonitor(Ref),
-	  websocket_close(Socket, WsHandleLoopPid, SocketMode,
-			  WsAutoExit);
+	  websocket_close(Vsn, Socket, WsHandleLoopPid, SocketMode,
+			  WsAutoExit, Code);
       {send, Data} ->
 	  SocketMode:send(Socket, encode_frame(Vsn, Data)),
 	  ws_loop(Vsn, HandlerState, Socket, WsHandleLoopPid,
@@ -455,8 +456,8 @@ ws_loop(Vsn, HandlerState, Socket, WsHandleLoopPid,
 	  ?DEBUG("shutdown request received, closing websocket "
 		 "with pid ~p",
 		 [self()]),
-	  websocket_close(Socket, WsHandleLoopPid, SocketMode,
-			  WsAutoExit);
+	  websocket_close(Vsn, Socket, WsHandleLoopPid, SocketMode,
+			  WsAutoExit, 1001); % going away
       _Ignored ->
 	  ?WARNING_MSG("received unexpected message, ignoring: ~p",
 		       [_Ignored]),
@@ -661,8 +662,15 @@ handle_data(_Vsn, State, Data, _Socket, WsHandleLoopPid,
 		  Recv),
     {NewState, Send}.
 
-websocket_close(Socket, WsHandleLoopPid, SocketMode,
-		WsAutoExit) ->
+websocket_close({'draft-hybi', _}=Vsn, Socket, WsHandleLoopPid,
+                SocketMode, WsAutoExit, CloseCode) when CloseCode > 0 ->
+    Frame = encode_frame({'draft-hybi', 8},
+                         <<CloseCode:16/integer-big>>, 8),
+    SocketMode:send(Socket, Frame),
+    websocket_close(Vsn, Socket, WsHandleLoopPid, SocketMode,
+                    WsAutoExit, 0);
+websocket_close(_Vsn, Socket, WsHandleLoopPid, SocketMode,
+		WsAutoExit, _CloseCode) ->
     case WsAutoExit of
       true ->
 	  % kill custom handling loop process
