@@ -155,8 +155,7 @@ handle_call({starttls, TLSOpts, Data}, _From,
        true -> ok
     end,
     close_stream(XMLStreamState),
-    NewXMLStreamState = xml_stream:new(C2SPid,
-				       MaxStanzaSize),
+    NewXMLStreamState = new_stream(C2SPid, MaxStanzaSize),
     NewState = State#state{socket = TLSSocket,
 			   sock_mod = p1_tls,
 			   xml_stream_state = NewXMLStreamState},
@@ -177,8 +176,7 @@ handle_call({compress, Data}, _From,
        true -> ok
     end,
     close_stream(XMLStreamState),
-    NewXMLStreamState = xml_stream:new(C2SPid,
-				       MaxStanzaSize),
+    NewXMLStreamState = new_stream(C2SPid, MaxStanzaSize),
     NewState = State#state{socket = ZlibSocket,
 			   sock_mod = ezlib,
 			   xml_stream_state = NewXMLStreamState},
@@ -193,8 +191,7 @@ handle_call(reset_stream, _From,
 		   c2s_pid = C2SPid, max_stanza_size = MaxStanzaSize} =
 		State) ->
     close_stream(XMLStreamState),
-    NewXMLStreamState = xml_stream:new(C2SPid,
-				       MaxStanzaSize),
+    NewXMLStreamState = new_stream(C2SPid, MaxStanzaSize),
     Reply = ok,
     {reply, Reply,
      State#state{xml_stream_state = NewXMLStreamState},
@@ -202,8 +199,7 @@ handle_call(reset_stream, _From,
 handle_call({become_controller, C2SPid}, _From,
 	    State) ->
     erlang:monitor(process, C2SPid),
-    XMLStreamState = xml_stream:new(C2SPid,
-				    State#state.max_stanza_size),
+    XMLStreamState = new_stream(C2SPid, State#state.max_stanza_size),
     NewState = State#state{c2s_pid = C2SPid,
 			   xml_stream_state = XMLStreamState},
     activate_socket(NewState),
@@ -343,8 +339,7 @@ process_data(Data,
 		    shaper_state = ShaperState, c2s_pid = C2SPid} =
 		 State) ->
     ?DEBUG("Received XML on stream = ~p", [(Data)]),
-    XMLStreamState1 = xml_stream:parse(XMLStreamState,
-				       Data),
+    XMLStreamState1 = parse_stream(XMLStreamState, Data),
     {NewShaperState, Pause} = shaper:update(ShaperState,
 					    byte_size(Data)),
     NewTRef = if C2SPid == undefined -> TRef;
@@ -363,6 +358,16 @@ element_wrapper(Element) -> Element.
 close_stream(undefined) -> ok;
 close_stream(XMLStreamState) ->
     xml_stream:close(XMLStreamState).
+
+new_stream(undefined, _) ->
+    undefined;
+new_stream(C2SPid, MaxStanzaSize) ->
+    xml_stream:new(C2SPid, MaxStanzaSize).
+
+parse_stream(undefined, <<>>) ->
+    undefined;
+parse_stream(XMLStreamState, Data) ->
+    xml_stream:parse(XMLStreamState, Data).
 
 do_send(State, Data) ->
     (State#state.sock_mod):send(State#state.socket, Data).
