@@ -132,11 +132,20 @@ CfgPostHooks = lists:flatmap(
 
 {ok, Cwd} = file:get_cwd(),
 
+TestConfigFile = filename:join([Cwd, "test", "config.ctc"]),
+TestConfig = case file:read_file_info(TestConfigFile) of
+                 {ok, _} ->
+                     "-userconfig ct_config_plain " ++ TestConfigFile ++ " ";
+                 _ ->
+                     ""
+             end,
+
 Config = [{erl_opts, Includes ++ Macros ++ HiPE ++ DebugInfo ++
                [{src_dirs, [asn1, src | SrcDirs]}]},
           {sub_dirs, ["rel"]},
           {keep_build_info, true},
           {ct_extra_params, "-ct_hooks cth_surefire "
+           ++ TestConfig
            ++ "-include "
            ++ filename:join([Cwd, "tools"]) ++ " "
            ++ filename:join([Cwd, "deps", "p1_xml", "include"])},
