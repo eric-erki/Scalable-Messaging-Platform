@@ -67,11 +67,13 @@ process_config_tpl(Content, []) ->
 process_config_tpl(Content, [{Name, DefaultValue} | Rest]) ->
     Val = case ct:get_config(Name, DefaultValue) of
               V1 when is_integer(V1) ->
-                  integer_to_binary(V1);
+                  list_to_binary(integer_to_list(V1));
               V2 when is_atom(V2) ->
                   atom_to_binary(V2, latin1);
-              V3 ->
-                  V3
+              V3 when is_list(V3) ->
+                  list_to_binary(V3);
+              V4 ->
+                  V4
           end,
     NewContent = binary:replace(Content, <<"@@",(atom_to_binary(Name, latin1))/binary, "@@">>, Val),
     process_config_tpl(NewContent, Rest).
