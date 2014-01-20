@@ -387,7 +387,12 @@ wait_for_stream({xmlstreamstart, Name, Attrs},
 			   [{<<"xmlns:stream">>, ?NS_STREAM} | Attrs]},
 			  StateData#state{flash_connection = true});
       {?NS_STREAM, _, _, _} ->
-	  Server = jlib:nameprep(xml:get_attr_s(<<"to">>, Attrs)),
+            Server =
+                case StateData#state.server of
+                    undefined ->
+                        jlib:nameprep(xml:get_attr_s(<<"to">>, Attrs));
+                    S -> S
+                end,
 	  case lists:member(Server, ?MYHOSTS) of
 	    true ->
 		Lang = case xml:get_attr_s(<<"xml:lang">>, Attrs) of
