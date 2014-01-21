@@ -387,7 +387,7 @@ wait_for_stream({xmlstreamstart, Name, Attrs},
       {?NS_STREAM, _, _, _} ->
             Server =
                 case StateData#state.server of
-                    undefined ->
+                    <<"">> ->
                         jlib:nameprep(xml:get_attr_s(<<"to">>, Attrs));
                     S -> S
                 end,
