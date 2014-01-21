@@ -47,7 +47,7 @@
          authenticated = false :: boolean() | replaced | rebinded,
          jid = #jid{} :: jid(),
 	 user = <<"">> :: binary(),
-         server = ?MYNAME :: binary(),
+         server = <<"">> :: binary(),
          resource = <<"">> :: binary(),
          sid = {now(), self()} :: ejabberd_sm:sid(),
 	 pres_t = (?SETS):new() :: ?SETS:ej_set() | {pres_t, non_neg_integer()},
