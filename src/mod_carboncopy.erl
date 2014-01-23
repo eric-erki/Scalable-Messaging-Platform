@@ -153,7 +153,7 @@ check_and_forward(JID, #xmlel{name = <<"message">>, attrs = Attrs} = Packet, Dir
       <<"chat">> ->
 	case xml:get_subtag(Packet, <<"private">>) of
 	    false ->
-		case xml:get_subtag(Packet,<<"forwarded">>) of
+		case xml:get_subtag(Packet,<<"received">>) of
 		    false ->
                         case xml:get_path_s(Packet, [{elem, <<"received">>},
                                                      {elem, <<"forwarded">>}]) of
