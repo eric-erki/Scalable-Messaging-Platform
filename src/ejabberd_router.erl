@@ -154,18 +154,14 @@ unregister_route(Domain) ->
 
 merge_write(#route{pid = Pids1, clock = V1, domain = Domain} = R1,
             #route{pid = Pids2, clock = V2} = R2) ->
-    case vclock:descends(V1, V2) of
-        true ->
-            R1#route{pid = Pids1, clock = V1};
-        false ->
-            case vclock:descends(V2, V1) of
-                true ->
-                    R2#route{pid = Pids2, clock = V2};
-                false ->
-                    V = vclock:merge([V1, V2]),
-                    Pids = merge_pids(Pids1, Pids2, Domain),
-                    R1#route{pid = Pids, clock = V}
-            end
+    case vclock:merge([V1, V2]) of
+	V1 ->
+	    R1;
+	V2 ->
+	    R2;
+        V ->
+	    Pids = merge_pids(Pids1, Pids2, Domain),
+	    R1#route{pid = Pids, clock = V}
     end.
 
 clean(Node) ->
