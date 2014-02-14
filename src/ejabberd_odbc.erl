@@ -437,6 +437,7 @@ execute_bloc(F) ->
 
 sql_query_internal(Query) ->
     State = get(?STATE_KEY),
+    ?DEBUG("SQL: ~s~n", [str:join(Query, <<>>)]),
     Res = case State#state.db_type of
 	    odbc ->
 		to_odbc(odbc:sql_query(State#state.db_ref, Query,
@@ -444,7 +445,6 @@ sql_query_internal(Query) ->
 	    pgsql ->
 		pgsql_to_odbc(pgsql:squery(State#state.db_ref, Query));
 	    mysql ->
-		?DEBUG("MySQL, Send query~n~p~n", [Query]),  
 		%%squery to be able to specify result_type = binary
 		%%[Query] because p1_mysql_conn expect query to be a list (elements can be binaries, or iolist)
 		%%        but doesn't accept just a binary 
