@@ -2396,6 +2396,14 @@ send_nick_changing(JID, OldNick, StateData,
 					     [{<<"affiliation">>, SAffiliation},
 					      {<<"role">>, SRole}]
 				       end,
+			  Status110 = case JID == Info#user.jid of
+					true ->
+					    [#xmlel{name = <<"status">>,
+						    attrs = [{<<"code">>, <<"110">>}]
+								       }];
+					false ->
+					    []
+				    end,
 			  Packet1 = #xmlel{name = <<"presence">>,
 					   attrs =
 					       [{<<"type">>,
@@ -2418,7 +2426,7 @@ send_nick_changing(JID, OldNick, StateData,
 								       [{<<"code">>,
 									 <<"303">>}],
 								   children =
-								       []}]}]},
+								       []}|Status110]}]},
 			  Packet2 = xml:append_subtags(Presence,
 						       [#xmlel{name = <<"x">>,
 							       attrs =
@@ -2433,7 +2441,7 @@ send_nick_changing(JID, OldNick, StateData,
 									       ItemAttrs2,
 									   children
 									       =
-									       []}]}]),
+									       []}|Status110]}]),
 			  if SendOldUnavailable ->
 				 route_stanza(jlib:jid_replace_resource(StateData#state.jid,
 									OldNick),
