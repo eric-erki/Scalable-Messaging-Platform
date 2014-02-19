@@ -437,7 +437,7 @@ execute_bloc(F) ->
 
 sql_query_internal(Query) ->
     State = get(?STATE_KEY),
-    ?DEBUG("SQL: ~p", [str:join(Query, <<>>)]),
+    ?DEBUG("SQL: ~p", [Query]),
     Res = case State#state.db_type of
 	    odbc ->
 		to_odbc(odbc:sql_query(State#state.db_ref, Query,
