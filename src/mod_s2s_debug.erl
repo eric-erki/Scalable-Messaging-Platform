@@ -41,6 +41,7 @@
 -export([reopen_log/0, s2s_connect/2]).
 
 -include("ejabberd.hrl").
+-include("logger.hrl").
 
 -define(PROCNAME, ?MODULE).
 
