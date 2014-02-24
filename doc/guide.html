@@ -6,7 +6,7 @@
  
  
 
- ejabberd 3.0.3-11 
+ ejabberd 3.1.x 
  
  Installation and Operation Guide
  
@@ -78,7 +78,7 @@ BLOCKQUOTE.figure DIV.center DIV.center HR{display:none;}
 <HR SIZE=2><BR>
 <BR>
 
-<TABLE CELLSPACING=6 CELLPADDING=0><TR><TD ALIGN=right NOWRAP> <FONT SIZE=6><B>ejabberd 3.0.3-11 </B></FONT></TD></TR>
+<TABLE CELLSPACING=6 CELLPADDING=0><TR><TD ALIGN=right NOWRAP> <FONT SIZE=6><B>ejabberd 3.1.x </B></FONT></TD></TR>
 <TR><TD ALIGN=right NOWRAP>&nbsp;</TD></TR>
 <TR><TD ALIGN=right NOWRAP> <FONT SIZE=6>Installation and Operation Guide</FONT></TD></TR>
 <TR><TD ALIGN=right NOWRAP>&nbsp;</TD></TR>
@@ -198,30 +198,31 @@ BLOCKQUOTE.figure DIV.center DIV.center HR{display:none;}
 <UL CLASS="toc"><LI CLASS="li-toc">
 <A HREF="#htoc84">5.1&#XA0;&#XA0;Firewall Settings</A>
 </LI><LI CLASS="li-toc"><A HREF="#htoc85">5.2&#XA0;&#XA0;epmd</A>
-</LI><LI CLASS="li-toc"><A HREF="#htoc86">5.3&#XA0;&#XA0;Erlang Cookie</A>
-</LI><LI CLASS="li-toc"><A HREF="#htoc87">5.4&#XA0;&#XA0;Erlang Node Name</A>
-</LI><LI CLASS="li-toc"><A HREF="#htoc88">5.5&#XA0;&#XA0;Securing Sensitive Files</A>
+</LI><LI CLASS="li-toc"><A HREF="#htoc86">5.3&#XA0;&#XA0;Secure internode connections</A>
+</LI><LI CLASS="li-toc"><A HREF="#htoc87">5.4&#XA0;&#XA0;Erlang Cookie</A>
+</LI><LI CLASS="li-toc"><A HREF="#htoc88">5.5&#XA0;&#XA0;Erlang Node Name</A>
+</LI><LI CLASS="li-toc"><A HREF="#htoc89">5.6&#XA0;&#XA0;Securing Sensitive Files</A>
 </LI></UL>
-</LI><LI CLASS="li-toc"><A HREF="#htoc89">Chapter&#XA0;6&#XA0;&#XA0;Clustering</A>
+</LI><LI CLASS="li-toc"><A HREF="#htoc90">Chapter&#XA0;6&#XA0;&#XA0;Clustering</A>
 <UL CLASS="toc"><LI CLASS="li-toc">
-<A HREF="#htoc90">6.1&#XA0;&#XA0;How it Works</A>
-</LI><LI CLASS="li-toc"><A HREF="#htoc91">6.2&#XA0;&#XA0;Clustering Setup</A>
-</LI><LI CLASS="li-toc"><A HREF="#htoc92">6.3&#XA0;&#XA0;Service Load-Balancing</A>
+<A HREF="#htoc91">6.1&#XA0;&#XA0;How it Works</A>
+</LI><LI CLASS="li-toc"><A HREF="#htoc92">6.2&#XA0;&#XA0;Clustering Setup</A>
+</LI><LI CLASS="li-toc"><A HREF="#htoc93">6.3&#XA0;&#XA0;Service Load-Balancing</A>
 <UL CLASS="toc"><LI CLASS="li-toc">
-<A HREF="#htoc93">6.3.1&#XA0;&#XA0;Domain Load-Balancing Algorithm</A>
-</LI><LI CLASS="li-toc"><A HREF="#htoc94">6.3.2&#XA0;&#XA0;Load-Balancing Buckets</A>
+<A HREF="#htoc94">6.3.1&#XA0;&#XA0;Domain Load-Balancing Algorithm</A>
+</LI><LI CLASS="li-toc"><A HREF="#htoc95">6.3.2&#XA0;&#XA0;Load-Balancing Buckets</A>
 </LI></UL>
 </LI></UL>
-</LI><LI CLASS="li-toc"><A HREF="#htoc95">Chapter&#XA0;7&#XA0;&#XA0;Debugging</A>
+</LI><LI CLASS="li-toc"><A HREF="#htoc96">Chapter&#XA0;7&#XA0;&#XA0;Debugging</A>
 <UL CLASS="toc"><LI CLASS="li-toc">
-<A HREF="#htoc96">7.1&#XA0;&#XA0;Log Files</A>
-</LI><LI CLASS="li-toc"><A HREF="#htoc97">7.2&#XA0;&#XA0;Debug Console</A>
-</LI><LI CLASS="li-toc"><A HREF="#htoc98">7.3&#XA0;&#XA0;Watchdog Alerts</A>
+<A HREF="#htoc97">7.1&#XA0;&#XA0;Log Files</A>
+</LI><LI CLASS="li-toc"><A HREF="#htoc98">7.2&#XA0;&#XA0;Debug Console</A>
+</LI><LI CLASS="li-toc"><A HREF="#htoc99">7.3&#XA0;&#XA0;Watchdog Alerts</A>
 </LI></UL>
-</LI><LI CLASS="li-toc"><A HREF="#htoc99">Appendix&#XA0;A&#XA0;&#XA0;Internationalization and Localization</A>
-</LI><LI CLASS="li-toc"><A HREF="#htoc100">Appendix&#XA0;B&#XA0;&#XA0;Release Notes</A>
-</LI><LI CLASS="li-toc"><A HREF="#htoc101">Appendix&#XA0;C&#XA0;&#XA0;Acknowledgements</A>
-</LI><LI CLASS="li-toc"><A HREF="#htoc102">Appendix&#XA0;D&#XA0;&#XA0;Copyright Information</A>
+</LI><LI CLASS="li-toc"><A HREF="#htoc100">Appendix&#XA0;A&#XA0;&#XA0;Internationalization and Localization</A>
+</LI><LI CLASS="li-toc"><A HREF="#htoc101">Appendix&#XA0;B&#XA0;&#XA0;Release Notes</A>
+</LI><LI CLASS="li-toc"><A HREF="#htoc102">Appendix&#XA0;C&#XA0;&#XA0;Acknowledgements</A>
+</LI><LI CLASS="li-toc"><A HREF="#htoc103">Appendix&#XA0;D&#XA0;&#XA0;Copyright Information</A>
 </LI></UL><!--TOC chapter Introduction-->
 <H1 CLASS="chapter"><!--SEC ANCHOR --><A NAME="htoc1">Chapter&#XA0;1</A>&#XA0;&#XA0;Introduction</H1><!--SEC END --><P>
 <A NAME="intro"></A></P><P><TT>ejabberd</TT> is a free and open source instant messaging server written in <A HREF="http://www.erlang.org/">Erlang/OTP</A>.</P><P><TT>ejabberd</TT> is cross-platform, distributed, fault-tolerant, and based on open standards to achieve real-time communication.</P><P><TT>ejabberd</TT> is designed to be a rock-solid and feature rich XMPP server.</P><P><TT>ejabberd</TT> is suitable for small deployments, whether they need to be scalable or not, as well as extremely big deployments.</P><!--TOC section Key Features-->
@@ -309,7 +310,10 @@ copy <TT>ejabberd.init</TT> from the &#X2019;bin&#X2019; directory to something 
 Create a system user called <TT>ejabberd</TT>,
 give it write access to the directories <TT>database/</TT> and <TT>logs/</TT>, and set that as home;
 the script will start the server with that user.
-Then you can call <TT>/etc/inid.d/ejabberd start</TT> as root to start the server.</P><P>If <TT>ejabberd</TT> doesn&#X2019;t start correctly in Windows,
+Then you can call <TT>/etc/inid.d/ejabberd start</TT> as root to start the server.</P><P>When ejabberd is started, the processes that are started in the system
+are <TT>beam</TT> or <TT>beam.smp</TT>, and also <TT>epmd</TT>.
+In Microsoft Windows, the processes are <TT>erl.exe</TT> and <TT>epmd.exe</TT>.
+For more information regarding <TT>epmd</TT> consult the section <A HREF="#epmd">5.2</A>.</P><P>If <TT>ejabberd</TT> doesn&#X2019;t start correctly in Windows,
 try to start it using the shortcut in desktop or start menu.
 If the window shows error 14001, the solution is to install:
 "Microsoft Visual C++ 2005 SP1 Redistributable Package".
@@ -434,7 +438,7 @@ to install <TT>ejabberd</TT>.</P><P>The files and directories created are, by de
 	</DD><DT CLASS="dt-description"><B><TT>/share/doc/ejabberd/</TT></B></DT><DD CLASS="dd-description"> Documentation of ejabberd
 	</DD><DT CLASS="dt-description"><B><TT>/var/lib/ejabberd/</TT></B></DT><DD CLASS="dd-description"> Spool directory:
 		<DL CLASS="description"><DT CLASS="dt-description">
-			<B><TT>.erlang.cookie</TT></B></DT><DD CLASS="dd-description"> Erlang cookie file (see section <A HREF="#cookie">5.3</A>)
+			<B><TT>.erlang.cookie</TT></B></DT><DD CLASS="dd-description"> Erlang cookie file (see section <A HREF="#cookie">5.4</A>)
 			</DD><DT CLASS="dt-description"><B><TT>acl.DCD, ...</TT></B></DT><DD CLASS="dd-description"> Mnesia database spool files (*.DCD, *.DCL, *.DAT)
 		</DD></DL>
 	</DD><DT CLASS="dt-description"><B><TT>/var/log/ejabberd/</TT></B></DT><DD CLASS="dd-description"> Log directory (see section&#XA0;<A HREF="#logfiles">7.1</A>):
@@ -594,7 +598,7 @@ param2:
 In previous <TT>ejabberd</TT> version the configuration file should be written
 in Erlang terms. The format is still supported, but it is highly recommended
 to convert it to the new YAML format using <TT>convert_to_yaml</TT> command
-from <TT>ejabberdctl</TT> (see&#XA0;<A HREF="#ejabberdctl">4.1</A> for details).</P><P> <A NAME="hostnames"></A> </P><!--TOC subsection Host Names-->
+from <TT>ejabberdctl</TT> (see&#XA0;<A HREF="#ejabberdctl">4.1</A> and <A HREF="#list-eja-commands">4.2.1</A> for details).</P><P> <A NAME="hostnames"></A> </P><!--TOC subsection Host Names-->
 <H3 CLASS="subsection"><!--SEC ANCHOR --><A NAME="htoc22">3.1.2</A>&#XA0;&#XA0;<A HREF="#hostnames">Host Names</A></H3><!--SEC END --><P> <A NAME="hostnames"></A> 
 </P><P>The option <TT>hosts</TT> defines a list containing one or more domains that
 <TT>ejabberd</TT> will serve.</P><P>The syntax is:
@@ -726,7 +730,8 @@ The available modules, their purpose and the options allowed by each one are:
 </P><DL CLASS="description"><DT CLASS="dt-description">
 <B><TT>ejabberd_c2s</TT></B></DT><DD CLASS="dd-description">
 Handles c2s connections.<BR>
- Options: <TT>access</TT>, <TT>certfile</TT>, <TT>max_fsm_queue</TT>,
+ Options: <TT>access</TT>, <TT>certfile</TT>, <TT>ciphers</TT>,
+<TT>max_fsm_queue</TT>,
 <TT>max_stanza_size</TT>, <TT>shaper</TT>,
 <TT>starttls</TT>, <TT>starttls_required</TT>, <TT>tls</TT>,
 <TT>zlib</TT>, <TT>tls_compression</TT>
@@ -748,7 +753,10 @@ Handles incoming HTTP connections.<BR>
 <TT>request_handlers</TT>, <TT>tls</TT>, <TT>tls_compression</TT>, <TT>trusted_proxies</TT>, <TT>web_admin</TT><BR>
  </DD><DT CLASS="dt-description"><B><TT>ejabberd_xmlrpc</TT></B></DT><DD CLASS="dd-description">
 Handles incoming XML-RPC requests to execute ejabberd commands (see <A HREF="#eja-commands">4.2</A>).<BR>
- Options: <TT>access_commands</TT>, <TT>timeout</TT><BR>
+ Options: <TT>access_commands</TT>, <TT>maxsessions</TT>, <TT>timeout</TT>.<BR>
+ You can find option explanations, example configuration in old and new format,
+and example calls in several languages in the old
+<A HREF="https://raw.github.com/processone/ejabberd-contrib/master/ejabberd_xmlrpc/README.txt">ejabberd_xmlrpc README.txt</A>
 </DD></DL><P> <A NAME="listened-options"></A> </P><!--TOC subsubsection Options-->
 <H4 CLASS="subsubsection"><!--SEC ANCHOR --><A HREF="#listened-options">Options</A></H4><!--SEC END --><P> <A NAME="listened-options"></A> </P><P>This is a detailed description of each option allowed by the listening modules:
 </P><DL CLASS="description"><DT CLASS="dt-description">
@@ -777,6 +785,8 @@ immediately). Default value is 5.
 Simple web page that allows a user to fill a CAPTCHA challenge (see section <A HREF="#captcha">3.1.9</A>).
 </DD><DT CLASS="dt-description"><B><TT>certfile: Path</TT></B></DT><DD CLASS="dd-description"> Full path to a file containing the default SSL certificate.
 To define a certificate file specific for a given domain, use the global option <TT>domain_certfile</TT>.
+</DD><DT CLASS="dt-description"><B><TT>ciphers: Ciphers</TT></B></DT><DD CLASS="dd-description"> OpenSSL ciphers list in the same format accepted by
+&#X2018;<CODE>openssl ciphers</CODE>&#X2019; command.
 </DD><DT CLASS="dt-description"><B><TT>default_host: undefined|HostName}</TT></B></DT><DD CLASS="dd-description">
 If the HTTP request received by ejabberd contains the HTTP header <TT>Host</TT>
 with an ambiguous virtual host that doesn&#X2019;t match any one defined in ejabberd (see <A HREF="#hostnames">3.1.2</A>),
@@ -908,6 +918,8 @@ The default value is to not use STARTTLS: <TT>false</TT>.
 file containing a SSL certificate.
 </DD><DT CLASS="dt-description"><B><TT>domain_certfile: Path</TT></B></DT><DD CLASS="dd-description"> 
 Full path to the file containing the SSL certificate for a specific domain.
+</DD><DT CLASS="dt-description"><B><TT>s2s_ciphers: Ciphers</TT></B></DT><DD CLASS="dd-description">  OpenSSL ciphers list
+in the same format accepted by &#X2018;<CODE>openssl ciphers</CODE>&#X2019; command.
 </DD><DT CLASS="dt-description"><B><TT>outgoing_s2s_families: [Family, ...]</TT></B></DT><DD CLASS="dd-description"> 
 Specify which address families to try, in what order.
 By default it first tries connecting with IPv4, if that fails it tries using IPv6.
@@ -1515,8 +1527,10 @@ can be either a number, or <TT>infinity</TT>. The default value is
 <H4 CLASS="subsubsection"><!--SEC ANCHOR --><A HREF="#configmaxs2sconns">Several connections to a remote XMPP server with ACL</A></H4><!--SEC END --><P> <A NAME="configmaxs2sconns"></A> 
 </P><P>The special access <TT>max_s2s_connections</TT> specifies how many
 simultaneous S2S connections can be established to a specific remote XMPP server.
-The default value is <TT>1</TT>.
-There&#X2019;s also available the access <TT>max_s2s_connections_per_node</TT>.</P><P>The syntax is:
+The default value is <TT>1</TT>. Note that this option doesn&#X2019;t take into consideration
+the number of all connections with a specific remote server on all nodes in
+a cluster. That is, for example, if there is no S2S connection with the server on local node,
+the one will be created even if such S2S connections already exist on another nodes.</P><P>The syntax is:
 </P><DL CLASS="description"><DT CLASS="dt-description"><B><TT>{ max_s2s_connections: { ACLName: MaxNumber } }</TT></B></DT></DL><P>Examples:
 </P><UL CLASS="itemize"><LI CLASS="li-itemize">
 Allow up to 3 connections with each remote server:
@@ -3511,12 +3525,50 @@ This option is only useful if Roster Versioning is enabled.
 This option is disabled by default.
 Important: if you use <TT>mod_shared_roster</TT>, <TT>mod_shared_roster_odbc</TT> or <TT>mod_shared_roster_ldap</TT>,
 you must disable this option.
+</DD><DT CLASS="dt-description"><B><TT>use_cache: false|true</TT></B></DT><DD CLASS="dd-description"> 
+Enables caching of users rosters in RAM. The option is only available when
+<TT>db_type</TT> is set to <TT>odbc</TT>.
+This option is disabled by default. Use this option with extreme care in
+clustered environment: if the same user is connected to several nodes
+then roster modifications won&#X2019;t be propagated to other nodes&#X2019; caches.
+You can use small <TT>cache_life_time</TT> values to minimize probability of
+such situation though.
+</DD><DT CLASS="dt-description"><B><TT>cache_life_time: Seconds</TT></B></DT><DD CLASS="dd-description"> Sets cache life time in seconds.
+Implies that caching is enabled. The default is 5 seconds. Such small default
+value reflects the common usage: repeatable roster reads on user login.
+</DD><DT CLASS="dt-description"><B><TT>cache_size: Integer|unlimited</TT></B></DT><DD CLASS="dd-description">
+This option limits the maximum number of users rosters kept in the cache.
+Big cache size leads to RAM consumption.
+Small cache size leads to disc/network consumption.
+The option implies that caching is enabled. The default is 1000.
+</DD><DT CLASS="dt-description"><B><TT>access</TT></B></DT><DD CLASS="dd-description"> 
+This option can be configured to specify rules to restrict roster management.
+If a rule returns &#X2018;deny&#X2019; on the requested user name,
+that user cannot modify his personal roster:
+not add/remove/modify contacts,
+or subscribe/unsubscribe presence.
+By default there aren&#X2019;t restrictions.
 </DD></DL><P>This example configuration enables Roster Versioning with storage of current id:
 </P><PRE CLASS="verbatim">modules:
   ...
   mod_roster:
     versioning: true
     store_current_id: true
+  ...
+</PRE><P>With this example configuration, only admins can manage their rosters;
+everybody else cannot modify the roster:
+</P><PRE CLASS="verbatim">acl:
+  admin:
+    user:
+      - "sarah": "example.org"
+access:
+  roster:
+    admin: allow
+
+modules:
+  ...
+  mod_roster:
+    access: roster
   ...
 </PRE><P> <A NAME="modservicelog"></A> </P><!--TOC subsection <TT>mod_service_log</TT>-->
 <H3 CLASS="subsection"><!--SEC ANCHOR --><A NAME="htoc63">3.3.27</A>&#XA0;&#XA0;<A HREF="#modservicelog"><TT>mod_service_log</TT></A></H3><!--SEC END --><P> <A NAME="modservicelog"></A> 
@@ -4286,9 +4338,9 @@ You can find other options in the Erlang manual page (<TT>erl -man erl</TT>).</P
 <H2 CLASS="section"><!--SEC ANCHOR --><A NAME="htoc77">4.2</A>&#XA0;&#XA0;<A HREF="#eja-commands"><TT>ejabberd</TT> Commands</A></H2><!--SEC END --><P> <A NAME="eja-commands"></A> </P><P>An <TT>ejabberd command</TT> is an abstract function identified by a name,
 with a defined number and type of calling arguments and type of result
 that is registered in the <TT>ejabberd_commands</TT> service.
-Those commands can be defined in any Erlang module and executed using any valid frontend.</P><P><TT>ejabberd</TT> includes a frontend to execute <TT>ejabberd commands</TT>: the script <TT>ejabberdctl</TT>.
+Those commands can be defined in any Erlang module and executed using any valid frontend.</P><P><TT>ejabberd</TT> includes two frontends to execute <TT>ejabberd commands</TT>: the script <TT>ejabberdctl</TT> (<A HREF="#ejabberdctl">4.1</A>)
+and the <TT>ejabberd_xmlrpc</TT> listener (<A HREF="#listened-module">3.1.4</A>).
 Other known frontends that can be installed to execute ejabberd commands in different ways are:
-<TT>ejabberd_xmlrpc</TT> (XML-RPC service),
 <TT>mod_rest</TT> (HTTP POST service),
 <TT>mod_shcommands</TT> (ejabberd WebAdmin page).</P><P> <A NAME="list-eja-commands"></A> </P><!--TOC subsection List of ejabberd Commands-->
 <H3 CLASS="subsection"><!--SEC ANCHOR --><A NAME="htoc78">4.2.1</A>&#XA0;&#XA0;<A HREF="#list-eja-commands">List of ejabberd Commands</A></H3><!--SEC END --><P> <A NAME="list-eja-commands"></A> </P><P><TT>ejabberd</TT> includes a few ejabberd Commands by default.
@@ -4307,6 +4359,8 @@ Available commands in this ejabberd node:
 <B><TT>reopen_log</TT></B></DT><DD CLASS="dd-description"> Reopen the log files after they were renamed.
 If the old files were not renamed before calling this command,
 they are automatically renamed to <TT>"*-old.log"</TT>. See section <A HREF="#logfiles">7.1</A>.
+</DD><DT CLASS="dt-description"><B><TT>convert_to_yaml /etc/ejabberd/ejabberd.cfg /etc/ejabberd/ejabberd-converted.yml</TT></B></DT><DD CLASS="dd-description">
+Convert an old ejabberd.cfg file to the YAML syntax in a new file.
 </DD><DT CLASS="dt-description"><B><TT>backup ejabberd.backup</TT></B></DT><DD CLASS="dd-description">
 Store internal Mnesia database to a binary backup file.
 </DD><DT CLASS="dt-description"><B><TT>restore ejabberd.backup</TT></B></DT><DD CLASS="dd-description">
@@ -4493,7 +4547,7 @@ and you must login in the XMPP server with
 an account with proper privileges.</P><P> <A NAME="changeerlangnodename"></A> </P><!--TOC section Change Computer Hostname-->
 <H2 CLASS="section"><!--SEC ANCHOR --><A NAME="htoc82">4.5</A>&#XA0;&#XA0;<A HREF="#changeerlangnodename">Change Computer Hostname</A></H2><!--SEC END --><P> <A NAME="changeerlangnodename"></A> </P><P><TT>ejabberd</TT> uses the distributed Mnesia database.
 Being distributed, Mnesia enforces consistency of its file,
-so it stores the name of the Erlang node in it (see section <A HREF="#nodename">5.4</A>).
+so it stores the name of the Erlang node in it (see section <A HREF="#nodename">5.5</A>).
 The name of an Erlang node includes the hostname of the computer.
 So, the name of the Erlang node changes
 if you change the name of the machine in which <TT>ejabberd</TT> runs,
@@ -4579,8 +4633,21 @@ The Erlang command-line parameter used internally is, for example:
 the network interface where the Erlang node will listen and accept connections.
 The Erlang command-line parameter used internally is, for example:
 </P><PRE CLASS="verbatim">erl ... -kernel inet_dist_use_interface "{127,0,0,1}"
+</PRE><P> <A NAME="ssldist"></A> </P><!--TOC section Secure internode connections-->
+<H2 CLASS="section"><!--SEC ANCHOR --><A NAME="htoc86">5.3</A>&#XA0;&#XA0;<A HREF="#ssldist">Secure internode connections</A></H2><!--SEC END --><P> <A NAME="ssldist"></A> 
+It is possible to protect internode connections using SSL.
+You need to create a &#X201C;boot&#X201D; file for doing that. The script <TT>tools/start_ssl.sh</TT>
+can do that for you:
+</P><PRE CLASS="verbatim">$ tools/start_ssl.sh
+</PRE><P>The script will create <TT>start_ssl.boot</TT> file in the current directory. Now
+you should use this file and your SSL certificate to run the emulator:
+</P><PRE CLASS="verbatim">$ erl -boot start_ssl \
+      -proto_dist inet_tls \
+      -ssl_dist_opt server_certfile /path/to/certfile.pem \
+      -ssl_dist_opt server_secure_renegotiate true \
+      -ssl_dist_opt client_secure_renegotiate true
 </PRE><P> <A NAME="cookie"></A> </P><!--TOC section Erlang Cookie-->
-<H2 CLASS="section"><!--SEC ANCHOR --><A NAME="htoc86">5.3</A>&#XA0;&#XA0;<A HREF="#cookie">Erlang Cookie</A></H2><!--SEC END --><P> <A NAME="cookie"></A> </P><P>The Erlang cookie is a string with numbers and letters.
+<H2 CLASS="section"><!--SEC ANCHOR --><A NAME="htoc87">5.4</A>&#XA0;&#XA0;<A HREF="#cookie">Erlang Cookie</A></H2><!--SEC END --><P> <A NAME="cookie"></A> </P><P>The Erlang cookie is a string with numbers and letters.
 An Erlang node reads the cookie at startup from the command-line parameter <TT>-setcookie</TT>.
 If not indicated, the cookie is read from the cookie file <TT>$HOME/.erlang.cookie</TT>.
 If this file does not exist, it is created immediately with a random cookie.
@@ -4594,7 +4661,7 @@ to prevent unauthorized access or intrusion to an Erlang node.
 The communication between Erlang nodes are not encrypted,
 so the cookie could be read sniffing the traffic on the network.
 The recommended way to secure the Erlang node is to block the port 4369.</P><P> <A NAME="nodename"></A> </P><!--TOC section Erlang Node Name-->
-<H2 CLASS="section"><!--SEC ANCHOR --><A NAME="htoc87">5.4</A>&#XA0;&#XA0;<A HREF="#nodename">Erlang Node Name</A></H2><!--SEC END --><P> <A NAME="nodename"></A> </P><P>An Erlang node may have a node name.
+<H2 CLASS="section"><!--SEC ANCHOR --><A NAME="htoc88">5.5</A>&#XA0;&#XA0;<A HREF="#nodename">Erlang Node Name</A></H2><!--SEC END --><P> <A NAME="nodename"></A> </P><P>An Erlang node may have a node name.
 The name can be short (if indicated with the command-line parameter <TT>-sname</TT>)
 or long (if indicated with the parameter <TT>-name</TT>).
 Starting an Erlang node with -sname limits the communication between Erlang nodes to the LAN.</P><P>Using the option <TT>-sname</TT> instead of <TT>-name</TT> is a simple method
@@ -4603,7 +4670,7 @@ However, it is not ultimately effective to prevent access to the Erlang node,
 because it may be possible to fake the fact that you are on another network
 using a modified version of Erlang <TT>epmd</TT>.
 The recommended way to secure the Erlang node is to block the port 4369.</P><P> <A NAME="secure-files"></A> </P><!--TOC section Securing Sensitive Files-->
-<H2 CLASS="section"><!--SEC ANCHOR --><A NAME="htoc88">5.5</A>&#XA0;&#XA0;<A HREF="#secure-files">Securing Sensitive Files</A></H2><!--SEC END --><P> <A NAME="secure-files"></A> </P><P><TT>ejabberd</TT> stores sensitive data in the file system either in plain text or binary files.
+<H2 CLASS="section"><!--SEC ANCHOR --><A NAME="htoc89">5.6</A>&#XA0;&#XA0;<A HREF="#secure-files">Securing Sensitive Files</A></H2><!--SEC END --><P> <A NAME="secure-files"></A> </P><P><TT>ejabberd</TT> stores sensitive data in the file system either in plain text or binary files.
 The file system permissions should be set to only allow the proper user to read,
 write and execute those files and directories.</P><DL CLASS="description"><DT CLASS="dt-description">
 <B><TT>ejabberd configuration file: /etc/ejabberd/ejabberd.yml</TT></B></DT><DD CLASS="dd-description">
@@ -4621,11 +4688,11 @@ The files store binary data, but some parts are still readable.
 The files are generated by Mnesia and their permissions cannot be set directly,
 so it is preferable to secure the whole <TT>/var/lib/ejabberd/</TT> directory.
 </DD><DT CLASS="dt-description"><B><TT>Erlang cookie file: /var/lib/ejabberd/.erlang.cookie</TT></B></DT><DD CLASS="dd-description">
-See section <A HREF="#cookie">5.3</A>.
+See section <A HREF="#cookie">5.4</A>.
 </DD></DL><P> <A NAME="clustering"></A> </P><!--TOC chapter Clustering-->
-<H1 CLASS="chapter"><!--SEC ANCHOR --><A NAME="htoc89">Chapter&#XA0;6</A>&#XA0;&#XA0;<A HREF="#clustering">Clustering</A></H1><!--SEC END --><P> <A NAME="clustering"></A> 
+<H1 CLASS="chapter"><!--SEC ANCHOR --><A NAME="htoc90">Chapter&#XA0;6</A>&#XA0;&#XA0;<A HREF="#clustering">Clustering</A></H1><!--SEC END --><P> <A NAME="clustering"></A> 
 </P><P> <A NAME="howitworks"></A> </P><!--TOC section How it Works-->
-<H2 CLASS="section"><!--SEC ANCHOR --><A NAME="htoc90">6.1</A>&#XA0;&#XA0;<A HREF="#howitworks">How it Works</A></H2><!--SEC END --><P> <A NAME="howitworks"></A> 
+<H2 CLASS="section"><!--SEC ANCHOR --><A NAME="htoc91">6.1</A>&#XA0;&#XA0;<A HREF="#howitworks">How it Works</A></H2><!--SEC END --><P> <A NAME="howitworks"></A> 
 </P><P>A XMPP domain is served by one or more <TT>ejabberd</TT> nodes. These nodes can
 be run on different machines that are connected via a network. They all
 must have the ability to connect to port 4369 of all another nodes, and must
@@ -4659,7 +4726,7 @@ timeout forces the processes to migrate faster. So, it is not recommended
 to set it to very small values in order to avoid an avalanche effect.
 </LI></UL>
 </LI></UL><P>Note however that some of these techniques can be changed in the future releases.</P><P> <A NAME="cluster"></A> </P><!--TOC section Clustering Setup-->
-<H2 CLASS="section"><!--SEC ANCHOR --><A NAME="htoc91">6.2</A>&#XA0;&#XA0;<A HREF="#cluster">Clustering Setup</A></H2><!--SEC END --><P> <A NAME="cluster"></A> 
+<H2 CLASS="section"><!--SEC ANCHOR --><A NAME="htoc92">6.2</A>&#XA0;&#XA0;<A HREF="#cluster">Clustering Setup</A></H2><!--SEC END --><P> <A NAME="cluster"></A> 
 </P><P>Suppose you already configured <TT>ejabberd</TT> on one machine named (<TT>first</TT>),
 and you need to setup another one to make an <TT>ejabberd</TT> cluster. Then do
 following steps:</P><OL CLASS="enumerate" type=1><LI CLASS="li-enumerate">
@@ -4697,9 +4764,9 @@ and &#X2018;<CODE>access</CODE>&#X2019; options because they will be taken from
 enabled only on one machine in the cluster.
 </LI></OL><P>You can repeat these steps for other machines supposed to serve this
 domain.</P><P> <A NAME="servicelb"></A> </P><!--TOC section Service Load-Balancing-->
-<H2 CLASS="section"><!--SEC ANCHOR --><A NAME="htoc92">6.3</A>&#XA0;&#XA0;<A HREF="#servicelb">Service Load-Balancing</A></H2><!--SEC END --><P> <A NAME="servicelb"></A> 
+<H2 CLASS="section"><!--SEC ANCHOR --><A NAME="htoc93">6.3</A>&#XA0;&#XA0;<A HREF="#servicelb">Service Load-Balancing</A></H2><!--SEC END --><P> <A NAME="servicelb"></A> 
 </P><P> <A NAME="domainlb"></A> </P><!--TOC subsection Domain Load-Balancing Algorithm-->
-<H3 CLASS="subsection"><!--SEC ANCHOR --><A NAME="htoc93">6.3.1</A>&#XA0;&#XA0;<A HREF="#domainlb">Domain Load-Balancing Algorithm</A></H3><!--SEC END --><P> <A NAME="domainlb"></A> 
+<H3 CLASS="subsection"><!--SEC ANCHOR --><A NAME="htoc94">6.3.1</A>&#XA0;&#XA0;<A HREF="#domainlb">Domain Load-Balancing Algorithm</A></H3><!--SEC END --><P> <A NAME="domainlb"></A> 
 </P><P><TT>ejabberd</TT> includes an algorithm to load balance the components that are plugged on an <TT>ejabberd</TT> cluster. It means that you can plug one or several instances of the same component on each <TT>ejabberd</TT> cluster and that the traffic will be automatically distributed.</P><P>The default distribution algorithm try to deliver to a local instance of a component. If several local instances are available, one instance is chosen randomly. If no instance is available locally, one instance is chosen randomly among the remote component instances.</P><P>If you need a different behaviour, you can change the load balancing behaviour with the option <TT>domain_balancing</TT>. The syntax of the option is the following:
 </P><DL CLASS="description"><DT CLASS="dt-description"><B><TT>domain_balancing: BalancingCriteria</TT></B></DT></DL><P>Several balancing criteria are available:
 </P><UL CLASS="itemize"><LI CLASS="li-itemize">
@@ -4709,15 +4776,16 @@ domain.</P><P> <A NAME="servicelb"></A> </P><!--TOC section Service Load-Balanci
 </LI><LI CLASS="li-itemize"><TT>bare_destination</TT>: the bare JID (without resource) of the packet <TT>to</TT> attribute is used.
 </LI><LI CLASS="li-itemize"><TT>bare_source</TT>: the bare JID (without resource) of the packet <TT>from</TT> attribute is used.
 </LI></UL><P>If the value corresponding to the criteria is the same, the same component instance in the cluster will be used.</P><P> <A NAME="lbbuckets"></A> </P><!--TOC subsection Load-Balancing Buckets-->
-<H3 CLASS="subsection"><!--SEC ANCHOR --><A NAME="htoc94">6.3.2</A>&#XA0;&#XA0;<A HREF="#lbbuckets">Load-Balancing Buckets</A></H3><!--SEC END --><P> <A NAME="lbbuckets"></A> 
+<H3 CLASS="subsection"><!--SEC ANCHOR --><A NAME="htoc95">6.3.2</A>&#XA0;&#XA0;<A HREF="#lbbuckets">Load-Balancing Buckets</A></H3><!--SEC END --><P> <A NAME="lbbuckets"></A> 
 </P><P>When there is a risk of failure for a given component, domain balancing can cause service trouble. If one component is failing the service will not work correctly unless the sessions are rebalanced.</P><P>In this case, it is best to limit the problem to the sessions handled by the failing component. This is what the <TT>domain_balancing_component_number</TT> option does, making the load balancing algorithm not dynamic, but sticky on a fix number of component instances.</P><P>The syntax is:
 </P><DL CLASS="description"><DT CLASS="dt-description"><B><TT>domain_balancing_component_number: Number</TT></B></DT></DL><P> <A NAME="debugging"></A> </P><!--TOC chapter Debugging-->
-<H1 CLASS="chapter"><!--SEC ANCHOR --><A NAME="htoc95">Chapter&#XA0;7</A>&#XA0;&#XA0;<A HREF="#debugging">Debugging</A></H1><!--SEC END --><P> <A NAME="debugging"></A> 
+<H1 CLASS="chapter"><!--SEC ANCHOR --><A NAME="htoc96">Chapter&#XA0;7</A>&#XA0;&#XA0;<A HREF="#debugging">Debugging</A></H1><!--SEC END --><P> <A NAME="debugging"></A> 
 </P><P> <A NAME="logfiles"></A> </P><!--TOC section Log Files-->
-<H2 CLASS="section"><!--SEC ANCHOR --><A NAME="htoc96">7.1</A>&#XA0;&#XA0;<A HREF="#logfiles">Log Files</A></H2><!--SEC END --><P> <A NAME="logfiles"></A> </P><P>An <TT>ejabberd</TT> node writes two log files:
+<H2 CLASS="section"><!--SEC ANCHOR --><A NAME="htoc97">7.1</A>&#XA0;&#XA0;<A HREF="#logfiles">Log Files</A></H2><!--SEC END --><P> <A NAME="logfiles"></A> </P><P>An <TT>ejabberd</TT> node writes three log files:
 </P><DL CLASS="description"><DT CLASS="dt-description">
 	<B><TT>ejabberd.log</TT></B></DT><DD CLASS="dd-description"> is the ejabberd service log, with the messages reported by <TT>ejabberd</TT> code
-	</DD><DT CLASS="dt-description"><B><TT>erlang.log</TT></B></DT><DD CLASS="dd-description"> is the Erlang/OTP system log, with the messages reported by Erlang/OTP using SASL (System Architecture Support Libraries)
+</DD><DT CLASS="dt-description"><B><TT>error.log</TT></B></DT><DD CLASS="dd-description"> is the file accumulating error messages from <TT>ejabberd.log</TT>
+	</DD><DT CLASS="dt-description"><B><TT>crash.log</TT></B></DT><DD CLASS="dd-description"> is the Erlang/OTP log, with the crash messages reported by Erlang/OTP using SASL (System Architecture Support Libraries)
 </DD></DL><P>The option <TT>loglevel</TT> modifies the verbosity of the file ejabberd.log. The syntax:
 </P><DL CLASS="description"><DT CLASS="dt-description">
 <B><TT>loglevel: Level</TT></B></DT><DD CLASS="dd-description"> The standard form to set a global log level.
@@ -4732,18 +4800,41 @@ domain.</P><P> <A NAME="servicelb"></A> </P><!--TOC section Service Load-Balanci
 </DD></DL><P>
 For example, the default configuration is:
 </P><PRE CLASS="verbatim">loglevel: 4
-</PRE><P>The log files grow continually, so it is recommended to rotate them periodically.
-To rotate the log files, rename the files and then reopen them.
+</PRE><P>Option <TT>log_rate_limit</TT> is useful if you want to protect the logging
+mechanism from being overloaded by excessive amount of log messages.
+The syntax is:
+</P><DL CLASS="description"><DT CLASS="dt-description">
+<B><TT>log_rate_limit: N</TT></B></DT><DD CLASS="dd-description"> Where N is a maximum number of log messages per second.
+The default value is 100.
+</DD></DL><P>
+When the limit is reached the similar warning message is logged:
+</P><PRE CLASS="verbatim">lager_error_logger_h dropped 800 messages in the last second that exceeded the limit of 100 messages/sec
+</PRE><P>By default <TT>ejabberd</TT> rotates the log files when they get grown above a certain size.
+The exact value is controlled by <TT>log_rotate_size</TT> option.
+The syntax is:
+</P><DL CLASS="description"><DT CLASS="dt-description">
+<B><TT>log_rotate_size: N</TT></B></DT><DD CLASS="dd-description"> Where N is the maximum size of a log file in bytes.
+The default value is 104857600 (10Mb).
+</DD></DL><P>However, you can rotate the log files manually.
+For doing this, set <TT>log_rotate_size</TT> option to some absurdly high value, then,
+when you need to rotate the files, rename and then reopen them.
 The ejabberdctl command <TT>reopen-log</TT> 
 (please refer to section <A HREF="#ectl-commands">4.1.1</A>)
 reopens the log files,
-and also renames the old ones if you didn&#X2019;t rename them.</P><P> <A NAME="debugconsole"></A> </P><!--TOC section Debug Console-->
-<H2 CLASS="section"><!--SEC ANCHOR --><A NAME="htoc97">7.2</A>&#XA0;&#XA0;<A HREF="#debugconsole">Debug Console</A></H2><!--SEC END --><P> <A NAME="debugconsole"></A> </P><P>The Debug Console is an Erlang shell attached to an already running <TT>ejabberd</TT> server.
+and also renames the old ones if you didn&#X2019;t rename them.</P><P>The option <TT>log_rotate_count</TT> defines the number of rotated files to keep
+by <TT>reopen-log</TT> command.
+Every such file has a numeric suffix. The exact format is:
+</P><DL CLASS="description"><DT CLASS="dt-description">
+<B><TT>log_rotate_count: N</TT></B></DT><DD CLASS="dd-description"> The default value is 1,
+which means only <TT>ejabberd.log.0</TT>, <TT>error.log.0</TT>
+and <TT>crash.log.0</TT> will be kept.
+</DD></DL><P> <A NAME="debugconsole"></A> </P><!--TOC section Debug Console-->
+<H2 CLASS="section"><!--SEC ANCHOR --><A NAME="htoc98">7.2</A>&#XA0;&#XA0;<A HREF="#debugconsole">Debug Console</A></H2><!--SEC END --><P> <A NAME="debugconsole"></A> </P><P>The Debug Console is an Erlang shell attached to an already running <TT>ejabberd</TT> server.
 With this Erlang shell, an experienced administrator can perform complex tasks.</P><P>This shell gives complete control over the <TT>ejabberd</TT> server,
 so it is important to use it with extremely care.
 There are some simple and safe examples in the article
 <A HREF="http://www.ejabberd.im/interconnect-erl-nodes">Interconnecting Erlang Nodes</A></P><P>To exit the shell, close the window or press the keys: control+c control+c.</P><P> <A NAME="watchdog"></A> </P><!--TOC section Watchdog Alerts-->
-<H2 CLASS="section"><!--SEC ANCHOR --><A NAME="htoc98">7.3</A>&#XA0;&#XA0;<A HREF="#watchdog">Watchdog Alerts</A></H2><!--SEC END --><P> <A NAME="watchdog"></A> 
+<H2 CLASS="section"><!--SEC ANCHOR --><A NAME="htoc99">7.3</A>&#XA0;&#XA0;<A HREF="#watchdog">Watchdog Alerts</A></H2><!--SEC END --><P> <A NAME="watchdog"></A> 
 </P><P><TT>ejabberd</TT> includes a watchdog mechanism that may be useful to developers
 when troubleshooting a problem related to memory usage.
 If a process in the <TT>ejabberd</TT> server consumes more memory than the configured threshold,
@@ -4765,7 +4856,7 @@ watchdog_large_heap: 30000000
 To remove all watchdog admins, set the option with an empty list:
 </P><PRE CLASS="verbatim">watchdog_admins: []
 </PRE><P> <A NAME="i18ni10n"></A> </P><!--TOC chapter Internationalization and Localization-->
-<H1 CLASS="chapter"><!--SEC ANCHOR --><A NAME="htoc99">Appendix&#XA0;A</A>&#XA0;&#XA0;<A HREF="#i18ni10n">Internationalization and Localization</A></H1><!--SEC END --><P> <A NAME="i18ni10n"></A> 
+<H1 CLASS="chapter"><!--SEC ANCHOR --><A NAME="htoc100">Appendix&#XA0;A</A>&#XA0;&#XA0;<A HREF="#i18ni10n">Internationalization and Localization</A></H1><!--SEC END --><P> <A NAME="i18ni10n"></A> 
 </P><P>The source code of <TT>ejabberd</TT> supports localization.
 The translators can edit the
 <A HREF="http://www.gnu.org/software/gettext/">gettext</A> .po files
@@ -4800,9 +4891,9 @@ HTTP header &#X2018;Accept-Language: ru&#X2019;</TD></TR>
 </TABLE></DIV>
 <A NAME="fig:webadmmainru"></A>
 <DIV CLASS="center"><HR WIDTH="80%" SIZE=2></DIV></DIV></BLOCKQUOTE><P> <A NAME="releasenotes"></A> </P><!--TOC chapter Release Notes-->
-<H1 CLASS="chapter"><!--SEC ANCHOR --><A NAME="htoc100">Appendix&#XA0;B</A>&#XA0;&#XA0;<A HREF="#releasenotes">Release Notes</A></H1><!--SEC END --><P> <A NAME="releasenotes"></A> 
+<H1 CLASS="chapter"><!--SEC ANCHOR --><A NAME="htoc101">Appendix&#XA0;B</A>&#XA0;&#XA0;<A HREF="#releasenotes">Release Notes</A></H1><!--SEC END --><P> <A NAME="releasenotes"></A> 
 </P><P>Release notes are available from <A HREF="http://www.process-one.net/en/ejabberd/release_notes/">ejabberd Home Page</A></P><P> <A NAME="acknowledgements"></A> </P><!--TOC chapter Acknowledgements-->
-<H1 CLASS="chapter"><!--SEC ANCHOR --><A NAME="htoc101">Appendix&#XA0;C</A>&#XA0;&#XA0;<A HREF="#acknowledgements">Acknowledgements</A></H1><!--SEC END --><P> <A NAME="acknowledgements"></A> </P><P>Thanks to all people who contributed to this guide:
+<H1 CLASS="chapter"><!--SEC ANCHOR --><A NAME="htoc102">Appendix&#XA0;C</A>&#XA0;&#XA0;<A HREF="#acknowledgements">Acknowledgements</A></H1><!--SEC END --><P> <A NAME="acknowledgements"></A> </P><P>Thanks to all people who contributed to this guide:
 </P><UL CLASS="itemize"><LI CLASS="li-itemize">
 Alexey Shchepin (<A HREF="xmpp:aleksey@jabber.ru"><TT>xmpp:aleksey@jabber.ru</TT></A>)
 </LI><LI CLASS="li-itemize">Badlop (<A HREF="xmpp:badlop@jabberes.org"><TT>xmpp:badlop@jabberes.org</TT></A>)
@@ -4816,7 +4907,7 @@ Alexey Shchepin (<A HREF="xmpp:aleksey@jabber.ru"><TT>xmpp:aleksey@jabber.ru</TT
 </LI><LI CLASS="li-itemize">Sergei Golovan (<A HREF="xmpp:sgolovan@nes.ru"><TT>xmpp:sgolovan@nes.ru</TT></A>)
 </LI><LI CLASS="li-itemize">Vsevolod Pelipas (<A HREF="xmpp:vsevoload@jabber.ru"><TT>xmpp:vsevoload@jabber.ru</TT></A>)
 </LI></UL><P> <A NAME="copyright"></A> </P><!--TOC chapter Copyright Information-->
-<H1 CLASS="chapter"><!--SEC ANCHOR --><A NAME="htoc102">Appendix&#XA0;D</A>&#XA0;&#XA0;<A HREF="#copyright">Copyright Information</A></H1><!--SEC END --><P> <A NAME="copyright"></A> </P><P>Ejabberd Installation and Operation Guide.<BR>
+<H1 CLASS="chapter"><!--SEC ANCHOR --><A NAME="htoc103">Appendix&#XA0;D</A>&#XA0;&#XA0;<A HREF="#copyright">Copyright Information</A></H1><!--SEC END --><P> <A NAME="copyright"></A> </P><P>Ejabberd Installation and Operation Guide.<BR>
 Copyright &#XA9; 2003 &#X2014; 2013 ProcessOne</P><P>This document is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
 as published by the Free Software Foundation; either version 2

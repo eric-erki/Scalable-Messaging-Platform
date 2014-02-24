@@ -5778,6 +5778,22 @@ The Erlang command-line parameter used internally is, for example:
 erl ... -kernel inet_dist_use_interface "{127,0,0,1}"
 \end{verbatim}
 
+\makesection{ssldist}{Secure internode connections}
+It is possible to protect internode connections using SSL.
+You need to create a ``boot'' file for doing that. The script \term{tools/start\_ssl.sh}
+can do that for you:
+\begin{verbatim}
+$ tools/start_ssl.sh
+\end{verbatim}
+The script will create \term{start\_ssl.boot} file in the current directory. Now
+you should use this file and your SSL certificate to run the emulator:
+\begin{verbatim}
+$ erl -boot start_ssl \
+      -proto_dist inet_tls \
+      -ssl_dist_opt server_certfile /path/to/certfile.pem \
+      -ssl_dist_opt server_secure_renegotiate true \
+      -ssl_dist_opt client_secure_renegotiate true
+\end{verbatim}
 
 \makesection{cookie}{Erlang Cookie}
 
