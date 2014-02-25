@@ -33,6 +33,10 @@
          stop_migrate/1, migrate/1,
 	 stop_kindly/2, send_service_message_all_mucs/2,
 	 registered_vhosts/0,
+	 %% Cluster
+	 join_cluster/1, leave_cluster/1, list_cluster/0,
+	 %% P1DB
+	 join_p1db/1, leave_p1db/1, list_p1db/0,
 	 %% Erlang
 	 update_list/0, update/1,
 	 %% Accounts
@@ -148,6 +152,38 @@ commands() ->
 			module = ?MODULE, function = registered_vhosts,
 			args = [],
 			result = {vhosts, {list, {vhost, string}}}},
+
+     #ejabberd_commands{name = join_cluster, tags = [cluster],
+			desc = "Join this node into the cluster handled by Node",
+			module = ?MODULE, function = join_cluster,
+			args = [{node, binary}],
+			result = {res, rescode}},
+     #ejabberd_commands{name = leave_cluster, tags = [cluster],
+			desc = "Leave this node from the cluster handled by Node",
+			module = ?MODULE, function = leave_cluster,
+			args = [{node, binary}],
+			result = {res, rescode}},
+     #ejabberd_commands{name = list_cluster, tags = [cluster],
+			desc = "List nodes that are part of the cluster handled by Node",
+			module = ?MODULE, function = list_cluster,
+			args = [],
+			result = {nodes, {list, {node, atom}}}},
+
+     #ejabberd_commands{name = join_p1db, tags = [p1db],
+			desc = "Join this node into the P1DB handled by Node",
+			module = ?MODULE, function = join_p1db,
+			args = [{node, binary}],
+			result = {res, rescode}},
+     #ejabberd_commands{name = leave_p1db, tags = [p1db],
+			desc = "Leave this node from the P1DB handled by Node",
+			module = ?MODULE, function = leave_p1db,
+			args = [{node, binary}],
+			result = {res, rescode}},
+     #ejabberd_commands{name = list_p1db, tags = [p1db],
+			desc = "List nodes that are part of the P1DB handled by Node",
+			module = ?MODULE, function = list_p1db,
+			args = [],
+			result = {nodes, {list, {node, atom}}}},
 
      #ejabberd_commands{name = import_file, tags = [mnesia],
 			desc = "Import user data from jabberd14 spool file",
@@ -452,6 +488,32 @@ registered_users(Host) ->
 
 registered_vhosts() ->
 	?MYHOSTS.
+
+%%%
+%%% Cluster management
+%%%
+
+join_cluster(NodeBin) ->
+    ejabberd_cluster:join(list_to_atom(binary_to_list(NodeBin))).
+
+leave_cluster(NodeBin) ->
+    ejabberd_cluster:leave(list_to_atom(binary_to_list(NodeBin))).
+
+list_cluster() ->
+    ejabberd_cluster:get_nodes().
+
+%%%
+%%% P1DB management
+%%%
+
+join_p1db(NodeBin) ->
+    p1db_dist:join(list_to_atom(binary_to_list(NodeBin))).
+
+leave_p1db(NodeBin) ->
+    p1db_dist:leave(list_to_atom(binary_to_list(NodeBin))).
+
+list_p1db() ->
+    p1db_dist:get_nodes().
 
 %%%
 %%% Migration management
