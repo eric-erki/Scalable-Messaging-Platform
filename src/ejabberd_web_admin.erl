@@ -1612,9 +1612,7 @@ user_info(User, Server, Query, Lang) ->
                         end,
                         lists:sort(Resources))))]
         end,
-    Password = ejabberd_auth:get_password_s(User, Server),
-    FPassword = [?INPUT(<<"password">>, <<"password">>,
-			Password),
+    FPassword = [?INPUT(<<"text">>, <<"password">>, <<"">>),
 		 ?C(<<" ">>),
 		 ?INPUTT(<<"submit">>, <<"chpassword">>,
 			 <<"Change Password">>)],
