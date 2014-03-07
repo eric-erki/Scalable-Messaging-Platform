@@ -50,30 +50,30 @@
 start(Host, Opts) ->
     IQDisc = gen_mod:get_opt(iqdisc, Opts, fun gen_iq_handler:check_type/1,
                              one_queue),
-    init_db(gen_mod:db_type(Opts)),
+    init_db(gen_mod:db_type(Opts), Host),
     ejabberd_hooks:add(remove_user, Host, ?MODULE,
 		       remove_user, 50),
     gen_iq_handler:add_iq_handler(ejabberd_sm, Host,
 				  ?NS_PRIVATE, ?MODULE, process_sm_iq, IQDisc).
 
-init_db(mnesia) ->
+init_db(mnesia, _Host) ->
     mnesia:create_table(private_storage,
                         [{disc_only_copies, [node()]},
                          {attributes,
                           record_info(fields, private_storage)}]),
     update_table();
-init_db(p1db) ->
-    MapSize = ejabberd_config:get_option(
-                p1db_mapsize,
-                fun(I) when is_integer(I), I>0 -> I end,
-                1024*1024*10),
+init_db(p1db, Host) ->
+    Group = gen_mod:get_module_opt(
+	      Host, ?MODULE, p1db_group, fun(G) when is_atom(G) -> G end,
+	      ejabberd_config:get_option(
+		{p1db_group, Host}, fun(G) when is_atom(G) -> G end)),
     p1db:open_table(private_storage,
-                    [{mapsize, MapSize},
+		    [{group, Group},
                      {schema, [{keys, [server, user, xmlns]},
                                {vals, [xml]},
                                {enc_key, fun enc_key/1},
                                {dec_key, fun dec_key/1}]}]);
-init_db(_) ->
+init_db(_, _) ->
     ok.
 
 stop(Host) ->
@@ -379,8 +379,8 @@ export(_Server) ->
 import_info() ->
     [{<<"private_storage">>, 4}].
 
-import_start(_LServer, DBType) ->
-    init_db(DBType).
+import_start(LServer, DBType) ->
+    init_db(DBType, LServer).
 
 import(LServer, {odbc, _}, mnesia, <<"private_storage">>,
        [LUser, XMLNS, XML, _TimeStamp]) ->

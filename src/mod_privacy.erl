@@ -58,7 +58,7 @@
 start(Host, Opts) ->
     IQDisc = gen_mod:get_opt(iqdisc, Opts, fun gen_iq_handler:check_type/1,
                              one_queue),
-    init_db(gen_mod:db_type(Opts)),
+    init_db(gen_mod:db_type(Opts), Host),
     mod_disco:register_feature(Host, ?NS_PRIVACY),
     ejabberd_hooks:add(privacy_iq_get, Host, ?MODULE,
 		       process_iq_get, 50),
@@ -75,25 +75,25 @@ start(Host, Opts) ->
     gen_iq_handler:add_iq_handler(ejabberd_sm, Host,
 				  ?NS_PRIVACY, ?MODULE, process_iq, IQDisc).
 
-init_db(mnesia) ->
+init_db(mnesia, _Host) ->
     mnesia:create_table(privacy,
                         [{disc_copies, [node()]},
                          {attributes, record_info(fields, privacy)}]),
     update_table();
-init_db(p1db) ->
-    MapSize = ejabberd_config:get_option(
-                p1db_mapsize,
-                fun(I) when is_integer(I), I>0 -> I end,
-                1024*1024*10),
+init_db(p1db, Host) ->
+    Group = gen_mod:get_module_opt(
+	      Host, ?MODULE, p1db_group, fun(G) when is_atom(G) -> G end,
+	      ejabberd_config:get_option(
+		{p1db_group, Host}, fun(G) when is_atom(G) -> G end)),
     p1db:open_table(privacy,
-                    [{mapsize, MapSize},
+		    [{group, Group},
                      {schema, [{keys, [server, user, name]},
                                {vals, [list]},
                                {enc_key, fun enc_key/1},
                                {dec_key, fun dec_key/1},
                                {enc_val, fun enc_val/2},
                                {dec_val, fun dec_val/2}]}]);
-init_db(_) ->
+init_db(_, _) ->
     ok.
 
 stop(Host) ->
@@ -1473,12 +1473,12 @@ import_info() ->
 
 import_start(_LServer, odbc) ->
     ok;
-import_start(_LServer, DBType) ->
+import_start(LServer, DBType) ->
     ets:new(privacy_default_list_tmp, [private, named_table]),
     ets:new(privacy_list_data_tmp, [private, named_table, bag]),
     ets:new(privacy_list_tmp, [private, named_table, bag,
                                {keypos, #privacy.us}]),
-    init_db(DBType),
+    init_db(DBType, LServer),
     ok.
 
 import(LServer, {odbc, _}, DBType, <<"privacy_default_list">>, [LUser, Name])

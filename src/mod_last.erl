@@ -49,7 +49,7 @@
 start(Host, Opts) ->
     IQDisc = gen_mod:get_opt(iqdisc, Opts, fun gen_iq_handler:check_type/1,
                              one_queue),
-    init_db(gen_mod:db_type(Opts)),
+    init_db(gen_mod:db_type(Opts), Host),
     gen_iq_handler:add_iq_handler(ejabberd_local, Host,
 				  ?NS_LAST, ?MODULE, process_local_iq, IQDisc),
     gen_iq_handler:add_iq_handler(ejabberd_sm, Host,
@@ -59,26 +59,26 @@ start(Host, Opts) ->
     ejabberd_hooks:add(unset_presence_hook, Host, ?MODULE,
 		       on_presence_update, 50).
 
-init_db(mnesia) ->
+init_db(mnesia, _Host) ->
     mnesia:create_table(last_activity,
                         [{disc_copies, [node()]},
                          {attributes,
                           record_info(fields, last_activity)}]),
     update_table();
-init_db(p1db) ->
-    MapSize = ejabberd_config:get_option(
-                p1db_mapsize,
-                fun(I) when is_integer(I), I>0 -> I end,
-                1024*1024*10),
+init_db(p1db, Host) ->
+    Group = gen_mod:get_module_opt(
+	      Host, ?MODULE, p1db_group, fun(G) when is_atom(G) -> G end,
+	      ejabberd_config:get_option(
+		{p1db_group, Host}, fun(G) when is_atom(G) -> G end)),
     p1db:open_table(last_activity,
-                    [{mapsize, MapSize},
+		    [{group, Group},
                      {schema, [{keys, [server, user]},
                                {vals, [timestamp, status]},
                                {enc_key, fun enc_key/1},
                                {dec_key, fun dec_key/1},
                                {enc_val, fun enc_val/2},
                                {dec_val, fun dec_val/2}]}]);
-init_db(_) ->
+init_db(_, _) ->
     ok.
 
 stop(Host) ->
@@ -378,8 +378,8 @@ export(_Server) ->
 import_info() ->
     [{<<"last">>, 3}].
 
-import_start(_LServer, DBType) ->
-    init_db(DBType).
+import_start(LServer, DBType) ->
+    init_db(DBType, LServer).
 
 import(LServer, {odbc, _}, DBType, <<"last">>, [LUser, TimeStamp, State]) ->
     TS = case TimeStamp of

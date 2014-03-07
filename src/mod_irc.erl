@@ -117,7 +117,7 @@ init([Host, Opts]) ->
     ejabberd:start_app(p1_iconv),
     MyHost = gen_mod:get_opt_host(Host, Opts,
 				  <<"irc.@HOST@">>),
-    init_db(gen_mod:db_type(Opts)),
+    init_db(gen_mod:db_type(Opts), Host),
     Access = gen_mod:get_opt(access, Opts,
                              fun(A) when is_atom(A) -> A end,
                              all),
@@ -187,25 +187,25 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-init_db(mnesia) ->
+init_db(mnesia, _Host) ->
     mnesia:create_table(irc_custom,
                         [{disc_copies, [node()]},
                          {attributes, record_info(fields, irc_custom)}]),
     update_table();
-init_db(p1db) ->
-    MapSize = ejabberd_config:get_option(
-                p1db_mapsize,
-                fun(I) when is_integer(I), I>0 -> I end,
-                1024*1024*10),
+init_db(p1db, Host) ->
+    Group = gen_mod:get_module_opt(
+	      Host, ?MODULE, p1db_group, fun(G) when is_atom(G) -> G end,
+	      ejabberd_config:get_option(
+		{p1db_group, Host}, fun(G) when is_atom(G) -> G end)),
     p1db:open_table(irc_custom,
-                    [{mapsize, MapSize},
+		    [{group, Group},
                      {schema, [{keys, [service, server, user]},
                                {vals, [data]},
                                {enc_key, fun enc_key/1},
                                {dec_key, fun dec_key/1},
                                {enc_val, fun enc_val/2},
                                {dec_val, fun dec_val/2}]}]);
-init_db(_) ->
+init_db(_, _) ->
     ok.
 
 start_supervisor(Host) ->
@@ -1370,8 +1370,8 @@ export(_Server) ->
 import_info() ->
     [{<<"irc_custom">>, 4}].
 
-import_start(_LServer, DBType) ->
-    init_db(DBType),
+import_start(LServer, DBType) ->
+    init_db(DBType, LServer),
     ok.
 
 import(_LServer, {odbc, _}, mnesia, <<"irc_custom">>,

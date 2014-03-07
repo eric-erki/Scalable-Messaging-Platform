@@ -41,7 +41,7 @@
 start(Host, Opts) ->
     IQDisc = gen_mod:get_opt(iqdisc, Opts, fun gen_iq_handler:check_type/1,
                              one_queue),
-    init_db(gen_mod:db_type(Opts)),
+    init_db(gen_mod:db_type(Opts), Host),
     cache_tab:new(archive_prefs, []),
     gen_iq_handler:add_iq_handler(ejabberd_local, Host,
         			  ?NS_MAM, ?MODULE, process_iq, IQDisc),
@@ -57,7 +57,7 @@ start(Host, Opts) ->
 		       remove_user, 50),
     ok.
 
-init_db(mnesia) ->
+init_db(mnesia, _Host) ->
     mnesia:create_table(archive_msg,
                         [{disc_only_copies, [node()]},
                          {type, bag},
@@ -65,13 +65,13 @@ init_db(mnesia) ->
     mnesia:create_table(archive_prefs,
                         [{disc_only_copies, [node()]},
                          {attributes, record_info(fields, archive_prefs)}]);
-init_db(p1db) ->
-    MapSize = ejabberd_config:get_option(
-                p1db_mapsize,
-                fun(I) when is_integer(I), I>0 -> I end,
-                1024*1024*10),
+init_db(p1db, Host) ->
+    Group = gen_mod:get_module_opt(
+	      Host, ?MODULE, p1db_group, fun(G) when is_atom(G) -> G end,
+	      ejabberd_config:get_option(
+		{p1db_group, Host}, fun(G) when is_atom(G) -> G end)),
     p1db:open_table(archive_msg,
-                    [{mapsize, MapSize},
+		    [{group, Group},
                      {schema, [{keys, [server, user, timestamp]},
                                {vals, [peer, packet]},
                                {enc_key, fun enc_key/1},
@@ -79,14 +79,14 @@ init_db(p1db) ->
                                {enc_val, fun enc_val/2},
                                {dec_val, fun dec_val/2}]}]),
     p1db:open_table(archive_prefs,
-                    [{mapsize, MapSize},
+		    [{group, Group},
                      {schema, [{keys, [server, user]},
                                {vals, [default, always, never]},
                                {enc_key, fun enc_key/1},
                                {dec_key, fun dec_key/1},
                                {enc_val, fun enc_prefs/2},
                                {dec_val, fun dec_prefs/2}]}]);
-init_db(_) ->
+init_db(_, _) ->
     ok.
 
 stop(Host) ->

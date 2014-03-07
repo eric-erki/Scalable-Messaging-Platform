@@ -65,7 +65,7 @@
                   group_host = {<<"">>, <<"">>} :: {binary(), binary()}}).
 
 start(Host, Opts) ->
-    init_db(gen_mod:db_type(Opts)),
+    init_db(gen_mod:db_type(Opts), Host),
     ejabberd_hooks:add(webadmin_menu_host, Host, ?MODULE,
 		       webadmin_menu, 70),
     ejabberd_hooks:add(webadmin_page_host, Host, ?MODULE,
@@ -94,7 +94,7 @@ start(Host, Opts) ->
 		       remove_user, 50),
     ejabberd_commands:register_commands(commands()).
 
-init_db(mnesia) ->
+init_db(mnesia, _Host) ->
     mnesia:create_table(sr_group,
                         [{disc_copies, [node()]},
                          {attributes, record_info(fields, sr_group)}]),
@@ -103,19 +103,19 @@ init_db(mnesia) ->
                          {attributes, record_info(fields, sr_user)}]),
     update_tables(),
     mnesia:add_table_index(sr_user, group_host);
-init_db(p1db) ->
+init_db(p1db, Host) ->
     OptsFields = [Field || {Field, _} <- default_group_opts()],
-    MapSize = ejabberd_config:get_option(
-                p1db_mapsize,
-                fun(I) when is_integer(I), I>0 -> I end,
-                1024*1024*10),
+    Group = gen_mod:get_module_opt(
+	      Host, ?MODULE, p1db_group, fun(G) when is_atom(G) -> G end,
+	      ejabberd_config:get_option(
+		{p1db_group, Host}, fun(G) when is_atom(G) -> G end)),
     p1db:open_table(sr_group,
-                    [{mapsize, MapSize},
+		    [{group, Group},
                      {schema, [{keys, [host, group, server, user]},
                                {enc_key, fun enc_key/1},
                                {dec_key, fun dec_key/1}]}]),
     p1db:open_table(sr_opts,
-                    [{mapsize, MapSize},
+		    [{group, Group},
                      {schema, [{keys, [host, group]},
                                {vals, OptsFields},
                                {enc_key, fun enc_key/1},
@@ -123,11 +123,11 @@ init_db(p1db) ->
                                {enc_val, fun enc_val/2},
                                {dec_val, fun dec_val/2}]}]),
     p1db:open_table(sr_user,
-                    [{mapsize, MapSize},
+		    [{group, Group},
                      {schema, [{keys, [host, server, user, group]},
                                {enc_key, fun enc_key/1},
                                {dec_key, fun dec_key/1}]}]);
-init_db(_) ->
+init_db(_, _) ->
     ok.
 
 stop(Host) ->
@@ -1694,8 +1694,8 @@ export(_Server) ->
 import_info() ->
     [{<<"sr_group">>, 3}, {<<"sr_user">>, 3}].
 
-import_start(_LServer, DBType) ->
-    init_db(DBType).
+import_start(LServer, DBType) ->
+    init_db(DBType, LServer).
 
 import(LServer, {odbc, _}, mnesia, <<"sr_group">>,
        [Group, SOpts, _TimeStamp]) ->

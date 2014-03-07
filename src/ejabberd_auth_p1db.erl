@@ -34,7 +34,7 @@
 -export([start/1, set_password/3, check_password/3,
 	 check_password/5, try_register/3,
 	 dirty_get_registered_users/0, get_vh_registered_users/1,
-	 get_vh_registered_users/2, init_db/0,
+	 get_vh_registered_users/2, init_db/1,
 	 get_vh_registered_users_number/1,
 	 get_vh_registered_users_number/2, get_password/2,
 	 get_password_s/2, is_user_exists/2, remove_user/2,
@@ -47,17 +47,15 @@
 %%%----------------------------------------------------------------------
 %%% API
 %%%----------------------------------------------------------------------
-start(_Host) ->
-    init_db(),
+start(Host) ->
+    init_db(Host),
     ok.
 
-init_db() ->
-    MapSize = ejabberd_config:get_option(
-                p1db_mapsize,
-                fun(I) when is_integer(I), I>0 -> I end,
-                1024*1024*10),
+init_db(Host) ->
+    Group = ejabberd_config:get_option(
+	      {p1db_group, Host}, fun(G) when is_atom(G) -> G end),
     p1db:open_table(passwd,
-                    [{mapsize, MapSize},
+                    [{group, Group},
                      {schema, [{keys, [server, user]},
                                {vals, [password]},
                                {enc_key, fun enc_key/1},

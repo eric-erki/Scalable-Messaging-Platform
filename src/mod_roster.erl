@@ -105,13 +105,13 @@ init_db(mnesia, _Host) ->
     update_tables(),
     mnesia:add_table_index(roster, us),
     mnesia:add_table_index(roster_version, us);
-init_db(p1db, _Host) ->
-    MapSize = ejabberd_config:get_option(
-                p1db_mapsize,
-                fun(I) when is_integer(I), I>0 -> I end,
-                1024*1024*10),
+init_db(p1db, Host) ->
+    Group = gen_mod:get_module_opt(
+	      Host, ?MODULE, p1db_group, fun(G) when is_atom(G) -> G end,
+	      ejabberd_config:get_option(
+		{p1db_group, Host}, fun(G) when is_atom(G) -> G end)),
     p1db:open_table(roster,
-                    [{mapsize, MapSize},
+		    [{group, Group},
                      {schema, [{keys, [server, user, jid]},
                                {vals, [name, subscription,
                                        ask, groups, askmessage,
@@ -121,7 +121,7 @@ init_db(p1db, _Host) ->
                                {enc_val, fun enc_val/2},
                                {dec_val, fun dec_val/2}]}]),
     p1db:open_table(roster_version,
-                    [{mapsize, MapSize},
+		    [{group, Group},
                      {schema, [{keys, [server, user]},
                                {vals, [version]},
                                {dec_key, fun dec_roster_version_key/1},

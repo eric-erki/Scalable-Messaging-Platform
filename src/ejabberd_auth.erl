@@ -463,8 +463,8 @@ import_info() ->
 
 import_start(_LServer, mnesia) ->
     ejabberd_auth_internal:init_db();
-import_start(_LServer, p1db) ->
-    ejabberd_auth_p1db:init_db();
+import_start(LServer, p1db) ->
+    ejabberd_auth_p1db:init_db(LServer);
 import_start(_LServer, _) ->
     ok.
 

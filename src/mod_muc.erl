@@ -334,7 +334,7 @@ can_use_nick(LServer, Host, JID, Nick, odbc) ->
 init([Host, Opts]) ->
     MyHost = gen_mod:get_opt_host(Host, Opts,
 				  <<"conference.@HOST@">>),
-    init_db(gen_mod:db_type(Opts)),
+    init_db(gen_mod:db_type(Opts), Host),
     update_muc_online_table(),
     mnesia:create_table(muc_online_room,
 			[{ram_copies, [node()]}, {local_content, true},
@@ -446,7 +446,7 @@ terminate(_Reason, State) ->
 
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
-init_db(mnesia) ->
+init_db(mnesia, _Host) ->
     mnesia:create_table(muc_room,
                         [{disc_copies, [node()]},
                          {attributes, record_info(fields, muc_room)}]),
@@ -456,13 +456,13 @@ init_db(mnesia) ->
                           record_info(fields, muc_registered)}]),
     update_tables(),
     mnesia:add_table_index(muc_registered, nick);
-init_db(p1db) ->
-    MapSize = ejabberd_config:get_option(
-                p1db_mapsize,
-                fun(I) when is_integer(I), I>0 -> I end,
-                1024*1024*10),
+init_db(p1db, Host) ->
+    Group = gen_mod:get_module_opt(
+	      Host, ?MODULE, p1db_group, fun(G) when is_atom(G) -> G end,
+	      ejabberd_config:get_option(
+		{p1db_group, Host}, fun(G) when is_atom(G) -> G end)),
     p1db:open_table(muc_config,
-                    [{mapsize, MapSize},
+		    [{group, Group},
                      {schema, [{keys, [service, room]},
                                {vals, mod_muc_room:config_fields()},
                                {enc_key, fun enc_key/1},
@@ -470,7 +470,7 @@ init_db(p1db) ->
                                {enc_val, fun mod_muc_room:encode_opts/2},
                                {dec_val, fun mod_muc_room:decode_opts/2}]}]),
     p1db:open_table(muc_affiliations,
-                    [{mapsize, MapSize},
+		    [{group, Group},
                      {schema, [{keys, [service, room, server, user]},
                                {vals, [affiliation, reason]},
                                {enc_key, fun enc_key/1},
@@ -478,18 +478,18 @@ init_db(p1db) ->
                                {enc_val, fun enc_aff/2},
                                {dec_val, fun dec_aff/2}]}]),
     p1db:open_table(muc_nick,
-                    [{mapsize, MapSize},
+		    [{group, Group},
                      {schema, [{keys, [service, nick]},
                                {vals, [jid]},
                                {enc_key, fun enc_key/1},
                                {dec_key, fun dec_key/1}]}]),
     p1db:open_table(muc_user,
-                    [{mapsize, MapSize},
+		    [{group, Group},
                      {schema, [{keys, [service, server, user]},
                                {vals, [nick]},
                                {enc_key, fun enc_key/1},
                                {dec_key, fun dec_key/1}]}]);
-init_db(_) ->
+init_db(_, _) ->
     ok.
 
 start_supervisor(Host) ->
@@ -1595,8 +1595,8 @@ export(_Server) ->
 import_info() ->
     [{<<"muc_room">>, 4}, {<<"muc_registered">>, 4}].
 
-import_start(_LServer, DBType) ->
-    init_db(DBType).
+import_start(LServer, DBType) ->
+    init_db(DBType, LServer).
 
 import(_LServer, {odbc, _}, mnesia, <<"muc_room">>,
        [Name, RoomHost, SOpts, _TimeStamp]) ->

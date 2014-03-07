@@ -29,31 +29,31 @@
 %%====================================================================
 
 start(Host, Opts) ->
-    init_db(gen_mod:db_type(Opts)),
+    init_db(gen_mod:db_type(Opts), Host),
     ejabberd_hooks:add(c2s_update_presence, Host, ?MODULE,
 		       update_presence, 100),
     ejabberd_hooks:add(vcard_set, Host, ?MODULE, vcard_set,
 		       100),
     ok.
 
-init_db(mnesia) ->
+init_db(mnesia, _Host) ->
     mnesia:create_table(vcard_xupdate,
                         [{disc_copies, [node()]},
                          {attributes,
                           record_info(fields, vcard_xupdate)}]),
     update_table();
-init_db(p1db) ->
-    MapSize = ejabberd_config:get_option(
-                p1db_mapsize,
-                fun(I) when is_integer(I), I>0 -> I end,
-                1024*1024*10),
+init_db(p1db, Host) ->
+    Group = gen_mod:get_module_opt(
+	      Host, ?MODULE, p1db_group, fun(G) when is_atom(G) -> G end,
+	      ejabberd_config:get_option(
+		{p1db_group, Host}, fun(G) when is_atom(G) -> G end)),
     p1db:open_table(vcard_xupdate,
-                    [{mapsize, MapSize},
+		    [{group, Group},
                      {schema, [{keys, [server, user]},
                                {vals, [hash]},
                                {enc_key, fun enc_key/1},
                                {dec_key, fun dec_key/1}]}]);
-init_db(_) ->
+init_db(_, _) ->
     ok.
 
 stop(Host) ->
@@ -256,8 +256,8 @@ export(_Server) ->
 import_info() ->
     [{<<"vcard_xupdate">>, 3}].
 
-import_start(_LServer, DBType) ->
-    init_db(DBType).
+import_start(LServer, DBType) ->
+    init_db(DBType, LServer).
 
 import(LServer, {odbc, _}, mnesia, <<"vcard_xupdate">>,
        [LUser, Hash, _TimeStamp]) ->

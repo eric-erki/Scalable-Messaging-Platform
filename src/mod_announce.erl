@@ -66,7 +66,7 @@
 tokenize(Node) -> str:tokens(Node, <<"/#">>).
 
 start(Host, Opts) ->
-    init_db(gen_mod:db_type(Opts)),
+    init_db(gen_mod:db_type(Opts), Host),
     ejabberd_hooks:add(local_send_to_resource_hook, Host,
 		       ?MODULE, announce, 50),
     ejabberd_hooks:add(disco_local_identity, Host, ?MODULE, disco_identity, 50),
@@ -79,7 +79,7 @@ start(Host, Opts) ->
     register(gen_mod:get_module_proc(Host, ?PROCNAME),
 	     proc_lib:spawn(?MODULE, init, [])).
 
-init_db(mnesia) ->
+init_db(mnesia, _Host) ->
     mnesia:create_table(motd,
                         [{disc_copies, [node()]},
                          {attributes,
@@ -89,18 +89,18 @@ init_db(mnesia) ->
                          {attributes,
                           record_info(fields, motd_users)}]),
     update_tables();
-init_db(p1db) ->
-    MapSize = ejabberd_config:get_option(
-                p1db_mapsize,
-                fun(I) when is_integer(I), I>0 -> I end,
-                1024*1024*10),
+init_db(p1db, Host) ->
+    Group = gen_mod:get_module_opt(
+	      Host, ?MODULE, p1db_group, fun(G) when is_atom(G) -> G end,
+	      ejabberd_config:get_option(
+		{p1db_group, Host}, fun(G) when is_atom(G) -> G end)),
     p1db:open_table(motd,
-                    [{mapsize, MapSize},
+                    [{group, Group},
                      {schema, [{keys, [server, user]},
                                {vals, [motd]},
                                {enc_key, fun enc_key/1},
                                {dec_key, fun dec_key/1}]}]);
-init_db(_) ->
+init_db(_, _) ->
     ok.
 
 init() ->
@@ -1225,8 +1225,8 @@ export(_Server) ->
 import_info() ->
     [{<<"motd">>, 3}].
 
-import_start(_LServer, DBType) ->
-    init_db(DBType).
+import_start(LServer, DBType) ->
+    init_db(DBType, LServer).
 
 import(LServer, {odbc, _}, mnesia, <<"motd">>, [<<>>, XML, _TimeStamp]) ->
     El = xml_stream:parse_element(XML),

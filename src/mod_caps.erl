@@ -286,7 +286,7 @@ c2s_broadcast_recipients(InAcc, Host, C2SState,
     end;
 c2s_broadcast_recipients(Acc, _, _, _, _, _) -> Acc.
 
-init_db(mnesia) ->
+init_db(mnesia, _Host) ->
     case catch mnesia:table_info(caps_features, storage_type) of
         {'EXIT', _} ->
             ok;
@@ -303,24 +303,24 @@ init_db(mnesia) ->
     update_table(),
     mnesia:add_table_copy(caps_features, node(),
                           disc_only_copies);
-init_db(p1db) ->
-    MapSize = ejabberd_config:get_option(
-                p1db_mapsize,
-                fun(I) when is_integer(I), I>0 -> I end,
-                1024*1024*10),
+init_db(p1db, Host) ->
+    Group = gen_mod:get_module_opt(
+	      Host, ?MODULE, p1db_group, fun(G) when is_atom(G) -> G end,
+	      ejabberd_config:get_option(
+		{p1db_group, Host}, fun(G) when is_atom(G) -> G end)),
     p1db:open_table(caps_features,
-                    [{mapsize, MapSize},
+                    [{group, Group},
                      {schema, [{keys, [node, ver, feature]},
                                {vals, [timestamp]},
                                {enc_key, fun enc_key/1},
                                {dec_key, fun dec_key/1},
                                {enc_val, fun enc_val/2},
                                {dec_val, fun dec_val/2}]}]);
-init_db(_) ->
+init_db(_, _) ->
     ok.
 
 init([Host, Opts]) ->
-    init_db(gen_mod:db_type(Opts)),
+    init_db(gen_mod:db_type(Opts), Host),
     MaxSize = gen_mod:get_opt(cache_size, Opts,
                               fun(I) when is_integer(I), I>0 -> I end,
                               1000),
@@ -780,9 +780,9 @@ export(_Server) ->
 import_info() ->
     [{<<"caps_features">>, 4}].
 
-import_start(_LServer, DBType) ->
+import_start(LServer, DBType) ->
     ets:new(caps_features_tmp, [private, named_table, bag]),
-    init_db(DBType),
+    init_db(DBType, LServer),
     ok.
 
 import(_LServer, {odbc, _}, _DBType, <<"caps_features">>,

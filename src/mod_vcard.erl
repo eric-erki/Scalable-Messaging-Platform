@@ -53,7 +53,7 @@
 -define(PROCNAME, ejabberd_mod_vcard).
 
 start(Host, Opts) ->
-    init_db(gen_mod:db_type(Opts)),
+    init_db(gen_mod:db_type(Opts), Host),
     ejabberd_hooks:add(remove_user, Host, ?MODULE,
 		       remove_user, 50),
     IQDisc = gen_mod:get_opt(iqdisc, Opts, fun gen_iq_handler:check_type/1,
@@ -72,7 +72,7 @@ start(Host, Opts) ->
     register(gen_mod:get_module_proc(Host, ?PROCNAME),
 	     spawn(?MODULE, init, [MyHost, Host, Search])).
 
-init_db(mnesia) ->
+init_db(mnesia, _Host) ->
     mnesia:create_table(vcard,
                         [{disc_only_copies, [node()]},
                          {attributes, record_info(fields, vcard)}]),
@@ -93,18 +93,18 @@ init_db(mnesia) ->
     mnesia:add_table_index(vcard_search, lemail),
     mnesia:add_table_index(vcard_search, lorgname),
     mnesia:add_table_index(vcard_search, lorgunit);
-init_db(p1db) ->
-    MapSize = ejabberd_config:get_option(
-                p1db_mapsize,
-                fun(I) when is_integer(I), I>0 -> I end,
-                1024*1024*10),
+init_db(p1db, Host) ->
+    Group = gen_mod:get_module_opt(
+	      Host, ?MODULE, p1db_group, fun(G) when is_atom(G) -> G end,
+	      ejabberd_config:get_option(
+		{p1db_group, Host}, fun(G) when is_atom(G) -> G end)),
     p1db:open_table(vcard,
-                    [{mapsize, MapSize},
+		    [{group, Group},
                      {schema, [{keys, [server, user]},
                                {vals, [vcard]},
                                {enc_key, fun enc_key/1},
                                {dec_key, fun dec_key/1}]}]);
-init_db(_) ->
+init_db(_, _) ->
     ok.
 
 init(Host, ServerHost, Search) ->
@@ -1107,8 +1107,8 @@ export(_Server) ->
 import_info() ->
     [{<<"vcard">>, 3}, {<<"vcard_search">>, 24}].
 
-import_start(_LServer, DBType) ->
-    init_db(DBType).
+import_start(LServer, DBType) ->
+    init_db(DBType, LServer).
 
 import(LServer, {odbc, _}, mnesia, <<"vcard">>, [LUser, XML, _TimeStamp]) ->
     #xmlel{} = El = xml_stream:parse_element(XML),
