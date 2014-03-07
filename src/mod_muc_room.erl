@@ -1939,9 +1939,9 @@ is_nick_change(JID, Nick, StateData) ->
 
 nick_collision(User, Nick, StateData) ->
     UserOfNick = find_jid_by_nick(Nick, StateData),
-    UserOfNick /= false andalso
+    (UserOfNick /= false andalso
       jlib:jid_remove_resource(jlib:jid_tolower(UserOfNick))
-	/= jlib:jid_remove_resource(jlib:jid_tolower(User)).
+	/= jlib:jid_remove_resource(jlib:jid_tolower(User))).
 
 add_new_user(From, Nick,
 	     #xmlel{attrs = Attrs, children = Els} = Packet,
