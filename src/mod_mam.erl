@@ -41,20 +41,7 @@
 start(Host, Opts) ->
     IQDisc = gen_mod:get_opt(iqdisc, Opts, fun gen_iq_handler:check_type/1,
                              one_queue),
-    case gen_mod:db_type(Opts) of
-        mnesia ->
-            mnesia:create_table(
-              archive_msg,
-              [{disc_only_copies, [node()]},
-               {type, bag},
-               {attributes, record_info(fields, archive_msg)}]),
-            mnesia:create_table(
-              archive_prefs,
-              [{disc_only_copies, [node()]},
-               {attributes, record_info(fields, archive_prefs)}]);
-        _ ->
-            ok
-    end,
+    init_db(gen_mod:db_type(Opts), Host),
     cache_tab:new(archive_prefs, []),
     gen_iq_handler:add_iq_handler(ejabberd_local, Host,
         			  ?NS_MAM, ?MODULE, process_iq, IQDisc),
@@ -68,6 +55,22 @@ start(Host, Opts) ->
 		       remove_user, 50),
     ejabberd_hooks:add(anonymous_purge_hook, Host, ?MODULE,
 		       remove_user, 50),
+    ok.
+
+init_db(odbc, Host) ->
+    Muchost = gen_mod:get_module_opt_host(Host, mod_muc,
+                                         <<"conference.@HOST@">>),
+    ets:insert(ejabberd_modules, {ejabberd_module, {mod_mam, Muchost}, [{db_type,odbc}]}),
+    mnesia:dirty_write({local_config, {modules,Muchost}, [{mod_mam, [{db_type,odbc}]}]});
+init_db(mnesia, _Host) ->
+    mnesia:create_table(archive_msg,
+                        [{disc_only_copies, [node()]},
+                         {type, bag},
+                         {attributes, record_info(fields, archive_msg)}]),
+    mnesia:create_table(archive_prefs,
+                        [{disc_only_copies, [node()]},
+                         {attributes, record_info(fields, archive_prefs)}]);
+init_db(_, _) ->
     ok.
 
 stop(Host) ->
@@ -112,16 +115,22 @@ user_receive_packet(Pkt, C2SState, JID, Peer, _To) ->
         true ->
             NewPkt = strip_my_archived_tag(Pkt, LServer),
             case store(C2SState, NewPkt, LUser, LServer, Peer) of
-                {ok, ID} ->
+                {ok, ID, TS} ->
                     Archived = #xmlel{name = <<"archived">>,
                                       attrs = [{<<"by">>, LServer},
                                                {<<"xmlns">>, ?NS_MAM},
                                                {<<"id">>, ID}]},
-                    NewEls = [Archived|NewPkt#xmlel.children],
+                    Delay = TS,
+                    DelayEl = #xmlel{name = <<"delay">>,
+                                   attrs = [{<<"xmlns">>, ?NS_DELAY},
+                                            {<<"stamp">>, Delay}]},
+                    NewEls = [Archived, DelayEl|NewPkt#xmlel.children],
                     NewPkt#xmlel{children = NewEls};
                 _ ->
                     NewPkt
             end;
+        muc ->
+            Pkt;
         false ->
             Pkt
     end.
@@ -130,11 +139,29 @@ user_send_packet(Pkt, C2SState, JID, Peer) ->
     LUser = JID#jid.luser,
     LServer = JID#jid.lserver,
     case should_archive(Pkt) of
-        true ->
+        S when (S==true) ->
             NewPkt = strip_my_archived_tag(Pkt, LServer),
-            store(C2SState, jlib:replace_from_to(JID, Peer, NewPkt),
-                  LUser, LServer, Peer),
+            store0(C2SState, jlib:replace_from_to(JID, Peer, NewPkt),
+                  LUser, LServer, Peer, S),
             NewPkt;
+        S when (S==muc) ->
+            NewPkt = strip_my_archived_tag(Pkt, LServer),
+            case store0(C2SState, jlib:replace_from_to(JID, Peer, NewPkt),
+                  LUser, LServer, Peer, S) of
+                {ok, ID, TS} ->
+		    By = jlib:jid_to_string(Peer),
+		    Archived = #xmlel{name = <<"archived">>,
+			    attrs = [{<<"by">>, By}, {<<"xmlns">>, ?NS_MAM},
+			    {<<"id">>, ID}]},
+		    Delay = TS,
+		    DelayEl = #xmlel{name = <<"delay">>,
+                                   attrs = [{<<"xmlns">>, ?NS_DELAY},
+                                            {<<"stamp">>, Delay}]},
+		    NewEls = [Archived, DelayEl|NewPkt#xmlel.children],
+		    NewPkt#xmlel{children = NewEls};
+                _ ->
+                    NewPkt
+            end;
         false ->
             Pkt
     end.
@@ -158,6 +185,15 @@ process_iq(#jid{lserver = LServer} = From,
                          {Start, End,
                           jlib:jid_tolower(
                             jlib:string_to_jid(xml:get_tag_cdata(El))),
+                          RSM};
+                    (#xmlel{name = <<"withroom">>} = El, {Start, End, _, RSM}) ->
+                         {Start, End,
+                          {room, jlib:jid_tolower(
+                            jlib:string_to_jid(xml:get_tag_cdata(El)))},
+                          RSM};
+                    (#xmlel{name = <<"withtext">>} = El, {Start, End, _, RSM}) ->
+                         {Start, End,
+                          {text, xml:get_tag_cdata(El)},
                           RSM};
                     (#xmlel{name = <<"set">>}, {Start, End, With, _}) ->
                          {Start, End, With, jlib:rsm_decode(SubEl)};
@@ -189,7 +225,7 @@ process_iq(#jid{luser = LUser, lserver = LServer},
                    {A, N}
            end, {[], []}, SubEl#xmlel.children)} of
         {Default, {Always, Never}} ->
-            case write_prefs(LUser, LServer, Default,
+            case write_prefs(LUser, LServer, LServer, Default,
                              lists:usort(Always), lists:usort(Never)) of
                 ok ->
                     IQ#iq{type = result, sub_el = []};
@@ -212,8 +248,11 @@ should_archive(#xmlel{name = <<"message">>} = Pkt) ->
         {<<"error">>, _} ->
             false;
         {<<"groupchat">>, _} ->
-            %% FIXME: should we archive MUC?
-            false;
+	    To = xml:get_attr_s(<<"to">>, Pkt#xmlel.attrs),
+	    case (jlib:string_to_jid(To))#jid.resource of
+		<<"">> -> muc;
+		_ -> false
+	    end;
         {_, <<>>} ->
             %% Empty body
             false;
@@ -269,6 +308,13 @@ should_archive_peer(C2SState,
             end
     end.
 
+store0(C2SState, Pkt, LUser, LServer, Peer, Type) ->
+    case Type of
+	muc -> store(C2SState, Pkt, Peer#jid.luser, LServer,
+		    jlib:jid_replace_resource(Peer, LUser));
+        true -> store(C2SState, Pkt, LUser, LServer, Peer)
+    end.
+
 store(C2SState, Pkt, LUser, LServer, Peer) ->
     Prefs = get_prefs(LUser, LServer),
     case should_archive_peer(C2SState, Prefs, Peer) of
@@ -291,35 +337,43 @@ do_store(Pkt, LUser, LServer, Peer, mnesia) ->
                         bare_peer = {PUser, PServer, <<>>},
                         packet = Pkt}) of
         ok ->
-            {ok, ID};
+	    TS2 = jlib:now_to_utc_string(TS),
+            {ok, ID, TS2};
         Err ->
             Err
     end;
 do_store(Pkt, LUser, LServer, Peer, odbc) ->
-    ID = TS = now_to_usec(now()),
+    TSinteger = now_to_usec(now()),
+    ID = TS = jlib:integer_to_binary(TSinteger),
     BarePeer = jlib:jid_to_string(
                  jlib:jid_tolower(
                    jlib:jid_remove_resource(Peer))),
     LPeer = jlib:jid_to_string(
               jlib:jid_tolower(Peer)),
     XML = xml:element_to_binary(Pkt),
+    Body = xml:get_subtag_cdata(Pkt, <<"body">>),
     case ejabberd_odbc:sql_query(
            LServer,
            [<<"insert into archive (username, timestamp, "
-              "peer, bare_peer, xml) values (">>,
+              "peer, bare_peer, xml, txt) values (">>,
             <<"'">>, ejabberd_odbc:escape(LUser), <<"', ">>,
             <<"'">>, TS, <<"', ">>,
             <<"'">>, ejabberd_odbc:escape(LPeer), <<"', ">>,
             <<"'">>, ejabberd_odbc:escape(BarePeer), <<"', ">>,
-            <<"'">>, ejabberd_odbc:escape(XML), <<"');">>]) of
+            <<"'">>, ejabberd_odbc:escape(XML), <<"', ">>,
+            <<"'">>, ejabberd_odbc:escape(Body), <<"');">>]) of
         {updated, _} ->
-            {ok, ID};
+            TSDelay = jlib:now_to_utc_string(usec_to_now(TSinteger)),
+            {ok, ID, TSDelay};
         Err ->
             Err
     end.
 
-write_prefs(LUser, LServer, Default, Always, Never) ->
-    DBType = gen_mod:db_type(LServer, ?MODULE),
+write_prefs(LUser, LServer, Host, Default, Always, Never) ->
+    DBType = case gen_mod:db_type(Host, ?MODULE) of
+		 odbc -> {odbc, Host};
+		 DB -> DB
+	     end,
     Prefs = #archive_prefs{us = {LUser, LServer},
                            default = Default,
                            always = Always,
@@ -333,12 +387,12 @@ write_prefs(_LUser, _LServer, Prefs, mnesia) ->
 write_prefs(LUser, LServer, #archive_prefs{default = Default,
                                            never = Never,
                                            always = Always},
-            odbc) ->
+            {odbc, Host}) ->
     SUser = ejabberd_odbc:escape(LUser),
     SDefault = erlang:atom_to_binary(Default, utf8),
     SAlways = ejabberd_odbc:encode_term(Always),
     SNever = ejabberd_odbc:encode_term(Never),
-    case update(LServer, <<"archive_prefs">>,
+    case update(Host, <<"archive_prefs">>,
                 [<<"username">>, <<"def">>, <<"always">>, <<"never">>],
                 [SUser, SDefault, SAlways, SNever],
                 [<<"username='">>, SUser, <<"'">>]) of
@@ -390,15 +444,31 @@ get_prefs(LUser, LServer, odbc) ->
 
 select_and_send(#jid{lserver = LServer} = From,
                 To, Start, End, With, RSM, QID) ->
+    DBType = case gen_mod:db_type(LServer, ?MODULE) of
+		 odbc -> {odbc, LServer};
+		 DB -> DB
+	     end,
     select_and_send(From, To, Start, End, With, RSM, QID,
-                    gen_mod:db_type(LServer, ?MODULE)).
+                    DBType).
 
 select_and_send(From, To, Start, End, With, RSM, QID, DBType) ->
-    {Msgs, Count} = select(From, Start, End, With, RSM, DBType),
-    SortedMsgs = lists:keysort(2, Msgs),
+    {Msgs, Count} = select_and_start(From, To, Start, End, With, RSM, DBType),
+    SortedMsgs = lists:reverse(lists:keysort(2, Msgs)),
     send(From, To, SortedMsgs, RSM, Count, QID).
 
-select(#jid{luser = LUser, lserver = LServer},
+select_and_start(#jid{luser = LUser, lserver = LServer} = From,
+	         _To, StartUser, End, With, RSM, DB) ->
+    {JidRequestor, Start, With2} = case With of
+	{room, {LUserRoom, LServerRoom, <<>>} = WithJid} ->
+	    JR = jlib:make_jid(LUserRoom,LServerRoom,<<>>),
+	    St = StartUser,
+	    {JR, St, WithJid};
+	_ ->
+	    {From, StartUser, With}
+    end,
+    select(JidRequestor, Start, End, With2, RSM, DB).
+
+select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
        Start, End, With, RSM, mnesia) ->
     MS = make_matchspec(LUser, LServer, Start, End, With),
     Msgs = mnesia:dirty_select(archive_msg, MS),
@@ -408,27 +478,30 @@ select(#jid{luser = LUser, lserver = LServer},
        fun(Msg) ->
                {Msg#archive_msg.id,
                 jlib:binary_to_integer(Msg#archive_msg.id),
-                msg_to_el(Msg)}
+                msg_to_el(Msg, JidRequestor)}
        end, FilteredMsgs), Count};
-select(#jid{luser = LUser, lserver = LServer},
-       Start, End, With, RSM, odbc) ->
+select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
+       Start, End, With, RSM, {odbc, Host}) ->
+    %?ERROR_MSG("XXX ~p", [JidRequestor]),
     {Query, CountQuery} = make_sql_query(LUser, LServer, Start, End, With, RSM),
-    case {ejabberd_odbc:sql_query(LServer, Query),
-          ejabberd_odbc:sql_query(LServer, CountQuery)} of
+    case {ejabberd_odbc:sql_query(Host, Query),
+          ejabberd_odbc:sql_query(Host, CountQuery)} of
         {{selected, _, Res}, {selected, _, [[Count]]}} ->
             {lists:map(
-               fun([TS, XML]) ->
+               fun([TS, XML, PeerBin]) ->
                        #xmlel{} = El = xml_stream:parse_element(XML),
-                       Now = usec_to_now(TS),
+                       Now = usec_to_now(jlib:binary_to_integer(TS)),
+                       PeerJid = jlib:string_to_jid(PeerBin),
                        {TS, jlib:binary_to_integer(TS),
-                        msg_to_el(#archive_msg{timestamp = Now, packet = El})}
+                        msg_to_el(#archive_msg{timestamp = Now, packet = El, peer = PeerJid}, JidRequestor)}
                end, Res), jlib:binary_to_integer(Count)};
         _ ->
             {[], 0}
     end.
 
-msg_to_el(#archive_msg{timestamp = TS, packet = Pkt}) ->
+msg_to_el(#archive_msg{timestamp = TS, packet = Pkt1, peer = Peer}, JidRequestor) ->
     Delay = jlib:now_to_utc_string(TS),
+    Pkt = maybe_update_from_to(Pkt1, JidRequestor, Peer),
     #xmlel{name = <<"forwarded">>,
            attrs = [{<<"xmlns">>, ?NS_FORWARD}],
            children = [#xmlel{name = <<"delay">>,
@@ -436,6 +509,14 @@ msg_to_el(#archive_msg{timestamp = TS, packet = Pkt}) ->
                                        {<<"stamp">>, Delay}]},
                        xml:replace_tag_attr(
                          <<"xmlns">>, <<"jabber:client">>, Pkt)]}.
+
+maybe_update_from_to(Pkt, JidRequestor, Peer) ->
+    case xml:get_attr_s(<<"type">>, Pkt#xmlel.attrs) of
+	<<"groupchat">> ->
+	    Pkt2 = xml:replace_tag_attr(<<"to">>, jlib:jid_to_string(JidRequestor), Pkt),
+	    xml:replace_tag_attr(<<"from">>, jlib:jid_to_string(Peer), Pkt2);
+	_ -> Pkt
+    end.
 
 send(From, To, Msgs, RSM, Count, QID) ->
     QIDAttr = if QID /= <<>> ->
@@ -486,7 +567,7 @@ filter_by_rsm(Msgs, #rsm_in{max = Max, direction = Direction, id = ID}) ->
                                 [Msg|Acc];
                            (_, Acc) ->
                                 Acc
-                        end, [], Msgs);
+                        end, [], lists:reverse(Msgs));
                   _ ->
                       Msgs
               end,
@@ -494,8 +575,26 @@ filter_by_rsm(Msgs, #rsm_in{max = Max, direction = Direction, id = ID}) ->
 
 filter_by_max(Msgs, undefined) ->
     Msgs;
-filter_by_max(Msgs, Len) ->
-    lists:sublist(Msgs, Len).
+filter_by_max(Msgs, Len) when is_integer(Len), Len >= 0 ->
+    lists:sublist(lists:reverse(Msgs), Len);
+filter_by_max(_Msgs, _Junk) ->
+    [].
+
+match_interval(Now, Start, End) ->
+    (Now >= Start) and (Now =< End).
+
+match_with({U, S, _}, {U, S, <<"">>}) -> true;
+match_with(_, none) -> true;
+match_with(Peer, With) -> Peer == With.
+
+match_rsm(Now, #rsm_in{id = ID, direction = aft}) ->
+    Now1 = (catch usec_to_now(jlib:binary_to_integer(ID))),
+    Now > Now1;
+match_rsm(Now, #rsm_in{id = ID, direction = before}) ->
+    Now1 = (catch usec_to_now(jlib:binary_to_integer(ID))),
+    Now < Now1;
+match_rsm(_Now, _) ->
+    true.
 
 make_matchspec(LUser, LServer, Start, End, {_, _, <<>>} = With) ->
     ets:fun2ms(
@@ -542,6 +641,11 @@ make_sql_query(LUser, _LServer, Start, End, With, RSM) ->
                           []
                   end,
     WithClause = case With of
+                     {text, <<>>} ->
+                         [];
+                     {text, Txt} ->
+                         [<<" and match (txt) against ('">>,
+                          ejabberd_odbc:escape(Txt), <<"')">>];
                      {_, _, <<>>} ->
                          [<<" and bare_peer='">>,
                           ejabberd_odbc:escape(jlib:jid_to_string(With)),
@@ -566,22 +670,30 @@ make_sql_query(LUser, _LServer, Start, End, With, RSM) ->
                                       []
                               end;
                           _ ->
-                              []
+                              [<<" order by timestamp desc">>]
                       end,
     StartClause = case Start of
                       {_, _, _} ->
-                          [<<" and timestamp >= ">>, now_to_usec(Start)];
+                          [<<" and timestamp >= ">>,
+                           jlib:integer_to_binary(now_to_usec(Start))];
                       _ ->
                           []
                   end,
     EndClause = case End of
                     {_, _, _} ->
-                        [<<" and timestamp <= ">>, now_to_usec(Start)];
+                        [<<" and timestamp <= ">>,
+                         jlib:integer_to_binary(now_to_usec(End))];
                     _ ->
                         []
                 end,
-    SUser = ejabberd_odbc:escape(LUser),
-    {[<<"select timestamp, xml from archive where username='">>,
+    LUser2 = case With of
+                     {room, {Roomname, _, <<>>}} ->
+                          Roomname;
+                     _ ->
+                          LUser
+                 end,
+    SUser = ejabberd_odbc:escape(LUser2),
+    {[<<"select timestamp, xml, peer from archive where username='">>,
       SUser, <<"'">>] ++ WithClause ++ StartClause ++ EndClause ++
          DirectionClause ++ LimitClause ++ [<<";">>],
      [<<"select count(*) from archive where username='">>,

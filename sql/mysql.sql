@@ -87,10 +87,12 @@ CREATE TABLE archive (
     peer varchar(250) NOT NULL,
     bare_peer varchar(250) NOT NULL,
     xml text NOT NULL,
+    txt text,
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT UNIQUE,
     created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) CHARACTER SET utf8;
 
+CREATE FULLTEXT INDEX i_text ON archive(txt);
 CREATE INDEX i_username USING BTREE ON archive(username);
 CREATE INDEX i_timestamp USING BTREE ON archive(timestamp);
 CREATE INDEX i_peer USING BTREE ON archive(peer);
