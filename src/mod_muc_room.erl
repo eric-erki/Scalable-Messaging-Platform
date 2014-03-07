@@ -3173,6 +3173,9 @@ can_change_ra(FAffiliation, _FRole, _TAffiliation,
 can_change_ra(_FAffiliation, moderator, _TAffiliation,
 	      participant, role, none, _ServiceAf) ->
     true;
+can_change_ra(owner, none, _TAffiliation,
+	      participant, role, none, _ServiceAf) ->
+    true; %% This happens when running mod_muc_light command 'muc_kick_user'
 can_change_ra(_FAffiliation, moderator, _TAffiliation,
 	      participant, role, visitor, _ServiceAf) ->
     true;
