@@ -12,8 +12,6 @@
 
 -behaviour(gen_mod).
 
--compile(export_all).
-
 -export([start/2,
 	 stop/1,
 	 push_notification/8,
