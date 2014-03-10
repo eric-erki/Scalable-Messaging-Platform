@@ -12,6 +12,8 @@
 
 -behaviour(gen_mod).
 
+-compile(export_all).
+
 -export([start/2,
 	 stop/1,
 	 push_notification/8,
@@ -51,7 +53,7 @@
 start(Host, Opts) ->
     case init_host(Host) of
 	true ->
-            init_db(gen_mod:db_type(Opts)),
+            init_db(gen_mod:db_type(Opts), Host),
 	    ejabberd_hooks:add(p1_push_notification, Host,
 			       ?MODULE, push_notification, 50),
 	    ejabberd_hooks:add(p1_push_notification_custom, Host,
@@ -76,14 +78,29 @@ start(Host, Opts) ->
 	    ok
     end.
 
-init_db(mnesia) ->
+init_db(mnesia, _Host) ->
     mnesia:create_table(
       applepush_cache,
       [{disc_copies, [node()]},
        {attributes, record_info(fields, applepush_cache)}, {type, bag}]),
     mnesia:add_table_index(applepush_cache, device_id),
     mnesia:add_table_copy(applepush_cache, node(), ram_copies);
-init_db(_) ->
+init_db(p1db, Host) ->
+    Group = gen_mod:get_module_opt(
+	      Host, ?MODULE, p1db_group, fun(G) when is_atom(G) -> G end,
+	      ejabberd_config:get_option(
+		{p1db_group, Host}, fun(G) when is_atom(G) -> G end)),
+    p1db:open_table(applepush_cache,
+		    [{group, Group},
+		     {schema, [{keys, [server, user, device_id]},
+			       {vals, [app_id, send_body,
+				       send_from, local_badge,
+				       timestamp]},
+			       {enc_key, fun enc_key/1},
+			       {dec_key, fun dec_key/1},
+			       {enc_val, fun enc_val/2},
+			       {dec_val, fun dec_val/2}]}]);
+init_db(_, _) ->
     ok.
 
 stop(Host) ->
@@ -107,6 +124,8 @@ set_local_badge(JID, DeviceID, Count) ->
     case gen_mod:db_type(JID#jid.lserver, ?MODULE) of
         mnesia ->
             set_local_badge_mnesia(JID, DeviceID, Count);
+	p1db ->
+	    set_local_badge_p1db(JID, DeviceID, Count);
         odbc ->
             set_local_badge_sql(JID, DeviceID, Count)
     end.
@@ -125,6 +144,20 @@ set_local_badge_mnesia(JID, DeviceID, Count) ->
             mnesia:dirty_write(Record#applepush_cache{options = lists:keystore(local_badge, 1, Opts, {local_badge, Count})})
     end.
 
+set_local_badge_p1db(JID, DeviceID, Count) ->
+    #jid{luser = LUser, lserver = LServer} = JID,
+    Key = usd2key(LUser, LServer, DeviceID),
+    case p1db:get(applepush_cache, Key) of
+	{ok, Val, _VClock} ->
+	    Opts = p1db_to_opts(Val),
+	    NewOpts = lists:keystore(local_badge, 1, Opts, {local_badge, Count}),
+	    NewVal = opts_to_p1db(NewOpts),
+	    p1db:insert(applepush_cache, Key, NewVal);
+	{error, notfound} ->
+	    {error, device_not_found};
+	{error, _} = Err ->
+	    Err
+    end.
 
 set_local_badge_sql(#jid{luser =LUser, lserver=LServer}, DeviceID, Count) ->
     Username = ejabberd_odbc:escape(LUser),
@@ -470,6 +503,8 @@ lookup_cache(JID) ->
     case gen_mod:db_type(JID#jid.lserver, ?MODULE) of
         mnesia ->
             lookup_cache_mnesia(JID);
+	p1db ->
+	    lookup_cache_p1db(JID);
         odbc ->
             lookup_cache_sql(JID)
     end.
@@ -478,6 +513,21 @@ lookup_cache_mnesia(JID) ->
     #jid{luser = LUser, lserver = LServer} = JID,
     LUS = {LUser, LServer},
     do_lookup_cache_mnesia(#applepush_cache{us = LUS, _ = '_'}).
+
+lookup_cache_p1db(JID) ->
+    #jid{luser = LUser, lserver = LServer} = JID,
+    USPrefix = us_prefix(LUser, LServer),
+    case p1db:get_by_prefix(applepush_cache, USPrefix) of
+	{ok, L} ->
+	    lists:map(
+	      fun({Key, Val, _VClock}) ->
+		      DeviceID = key2did(USPrefix, Key),
+		      Opts = p1db_to_opts(Val),
+		      format_options(DeviceID, Opts)
+	      end, L);
+	{error, _} = Err ->
+	    Err
+    end.
 
 lookup_cache_sql(JID) ->
     #jid{luser = LUser, lserver = LServer} = JID,
@@ -491,6 +541,8 @@ lookup_cache(JID, DeviceID) ->
     case gen_mod:db_type(JID#jid.lserver, ?MODULE) of
         mnesia ->
             lookup_cache_mnesia(JID, DeviceID);
+	p1db ->
+	    lookup_cache_p1db(JID, DeviceID);
         odbc ->
             lookup_cache_sql(JID, DeviceID)
     end.
@@ -499,6 +551,17 @@ lookup_cache_mnesia(JID, DeviceID) ->
     #jid{luser = LUser, lserver = LServer} = JID,
     LUS = {LUser, LServer},
     do_lookup_cache_mnesia(#applepush_cache{device_id = DeviceID, us = LUS, _ = '_'}).
+
+lookup_cache_p1db(JID, DeviceID) ->
+    #jid{luser = LUser, lserver = LServer} = JID,
+    Key = usd2key(LUser, LServer, DeviceID),
+    case p1db:get(applepush_cache, Key) of
+	{ok, Val, _VClock} ->
+	    Opts = p1db_to_opts(Val),
+	    [format_options(DeviceID, Opts)];
+	{error, _} ->
+	    false
+    end.
 
 lookup_cache_sql(JID, DeviceID) ->
     #jid{luser = LUser, lserver = LServer} = JID,
@@ -514,15 +577,18 @@ do_lookup_cache_mnesia(MatchSpec) ->
     case mnesia:dirty_match_object(MatchSpec) of
 	EntryList when is_list(EntryList) ->
             lists:map(fun(#applepush_cache{device_id = DeviceID, options = Options}) ->
-        	    AppID = proplists:get_value(appid, Options, <<"applepush.localhost">>),
-	            SendBody = proplists:get_value(send_body, Options, none),
-        	    SendFrom = proplists:get_value(send_from, Options, true),
-        	    LocalBadge = proplists:get_value(local_badge, Options, 0),
-	            {DeviceID, AppID, SendBody, SendFrom, LocalBadge}
+			      format_options(DeviceID, Options)
             end, EntryList);
 	_ ->
 	    false
     end.
+
+format_options(DeviceID, Options) ->
+    AppID = proplists:get_value(appid, Options, <<"applepush.localhost">>),
+    SendBody = proplists:get_value(send_body, Options, none),
+    SendFrom = proplists:get_value(send_from, Options, true),
+    LocalBadge = proplists:get_value(local_badge, Options, 0),
+    {DeviceID, AppID, SendBody, SendFrom, LocalBadge}.
 
 do_lookup_cache_sql(LServer, Query) ->
     case ejabberd_odbc:sql_query(LServer, Query) of
@@ -561,15 +627,21 @@ do_lookup_cache_sql(LServer, Query) ->
 
 store_cache(JID, DeviceID, AppID, SendBody, SendFrom, TimeStamp) ->
     case gen_mod:db_type(JID#jid.lserver, ?MODULE) of
-        mnesia ->
-            Options =
-                [{appid, AppID},
-                 {send_body, SendBody},
-                 {send_from, SendFrom},
-                 {timestamp, TimeStamp}],
-            store_cache_mnesia(JID, DeviceID, Options);
         odbc ->
-            store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom)
+	    store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom);
+	DBType ->
+	    Options = [{appid, AppID},
+		       {send_body, SendBody},
+		       {send_from, SendFrom},
+		       {timestamp, TimeStamp}],
+	    case DBType of
+		mnesia ->
+		    store_cache_mnesia(JID, DeviceID, Options);
+		p1db ->
+		    store_cache_p1db(JID, DeviceID, Options);
+		_ ->
+		    erlang:error({unsupported_db_type, DBType})
+	    end
     end.
 
 
@@ -606,7 +678,34 @@ store_cache_mnesia(JID, DeviceID, Options) ->
        %% it is an error.
     end.
 
-
+store_cache_p1db(JID, DeviceID, Options) ->
+    #jid{luser = LUser, lserver = LServer} = JID,
+    Key = usd2key(LUser, LServer, DeviceID),
+    Val = opts_to_p1db(Options),
+    case p1db:get(applepush_cache, Key) of
+	{ok, Val, _VClock} ->
+	    %%previous entry exists but is equal, don't do anything
+            ok;
+	{error, notfound} ->
+	    %%no previous entry, just write the new record
+	    p1db:insert(applepush_cache, Key, Val);
+	{ok, OldVal, _VClock} ->
+	    OldOptions = p1db_to_opts(OldVal),
+	    case lists:keyfind(local_badge, 1, OldOptions) of
+                false ->
+		    %% There was no local_badge set in previous record.
+                    %% As the record don't match anyway, write the new one
+		    p1db:insert(applepush_cache, Key, Val);
+		{local_badge, Count} ->
+		    %% Use the new record, but copy the previous local_badge value
+                    %% We keep that as local_badge isn't provide in the enable notification
+                    %% call.
+		    NewVal = opts_to_p1db([{local_badge, Count} | Options]),
+		    p1db:insert(applepush_cache, Key, NewVal)
+	    end;
+	{error, _} = Err ->
+	    Err
+    end.
 
 store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom) ->
     #jid{luser = LUser, lserver = LServer} = JID,
@@ -658,6 +757,8 @@ delete_cache(JID, DeviceID) ->
     case gen_mod:db_type(JID#jid.lserver, ?MODULE) of
         mnesia ->
             delete_cache_mnesia(JID, DeviceID);
+	p1db ->
+	    delete_cache_p1db(JID, DeviceID);
         odbc ->
             delete_cache_sql(JID, DeviceID)
     end.
@@ -666,6 +767,11 @@ delete_cache_mnesia(JID, DeviceID) ->
     #jid{luser = LUser, lserver = LServer} = JID,
     LUS = {LUser, LServer},
     [ mnesia:dirty_delete_object(Obj) || Obj <-  mnesia:dirty_match_object(#applepush_cache{device_id = DeviceID, us = LUS, _ = '_'})].
+
+delete_cache_p1db(JID, DeviceID) ->
+    #jid{luser = LUser, lserver = LServer} = JID,
+    Key = usd2key(LUser, LServer, DeviceID),
+    [p1db:delete(applepush_cache, Key)].
 
 delete_cache_sql(JID, DeviceID) ->
     #jid{luser = LUser, lserver = LServer} = JID,
@@ -681,6 +787,8 @@ delete_cache(JID) ->
     case gen_mod:db_type(JID#jid.lserver, ?MODULE) of
         mnesia ->
             delete_cache_mnesia(JID);
+	p1db ->
+	    delete_cache_p1db(JID);
         odbc ->
             delete_cache_sql(JID)
     end.
@@ -689,6 +797,19 @@ delete_cache_mnesia(JID) ->
     #jid{luser = LUser, lserver = LServer} = JID,
     LUS = {LUser, LServer},
     catch mnesia:dirty_delete(applepush_cache, LUS).
+
+delete_cache_p1db(JID) ->
+    #jid{luser = LUser, lserver = LServer} = JID,
+    USPrefix = us_prefix(LUser, LServer),
+    case p1db:get_by_prefix(applepush_cache, USPrefix) of
+	{ok, L} ->
+	    lists:foreach(
+	      fun({Key, _Val, _VClock}) ->
+		      p1db:delete(applepush_cache, Key)
+	      end, L);
+	{error, _} = Err ->
+	    Err
+    end.
 
 delete_cache_sql(JID) ->
     #jid{luser = LUser, lserver = LServer} = JID,
@@ -831,6 +952,55 @@ get_push_service(Host, JID, AppID) ->
 	end,
     PushService.
 
+usd2key(LUser, LServer, DeviceID) ->
+    SDeviceID = jlib:integer_to_binary(DeviceID, 16),
+    <<LServer/binary, 0, LUser/binary, 0, SDeviceID/binary>>.
+
+key2did(USPrefix, Key) ->
+    Size = size(USPrefix),
+    <<_:Size/binary, SDeviceID/binary>> = Key,
+    jlib:binary_to_integer(SDeviceID, 16).
+
+us_prefix(LUser, LServer) ->
+    <<LServer/binary, 0, LUser/binary, 0>>.
+
+p1db_to_opts(Val) ->
+    binary_to_term(Val).
+
+opts_to_p1db(Opts) ->
+    term_to_binary(Opts).
+
+%% P1DB/SQL schema
+enc_key([Server]) ->
+    <<Server/binary>>;
+enc_key([Server, User]) ->
+    <<Server/binary, 0, User/binary>>;
+enc_key([Server, User, SDeviceID]) ->
+    <<Server/binary, 0, User/binary, 0, SDeviceID/binary>>.
+
+dec_key(Key) ->
+    SLen = str:chr(Key, 0) - 1,
+    <<Server:SLen/binary, 0, UKey/binary>> = Key,
+    ULen = str:chr(UKey, 0) - 1,
+    <<User:ULen/binary, 0, SDeviceID/binary>> = UKey,
+    [Server, User, SDeviceID].
+
+enc_val(_, [AppID, SendBody, SendFrom, LocalBadge, TimeStamp]) ->
+    Options = [{appid, AppID},
+	       {send_body, jlib:binary_to_atom(SendBody)},
+	       {send_from, jlib:binary_to_atom(SendFrom)},
+	       {local_badge, jlib:binary_to_integer(LocalBadge)},
+	       {timestamp, jlib:binary_to_integer(TimeStamp)}],
+    opts_to_p1db(Options).
+
+dec_val(_, Bin) ->
+    Options = p1db_to_opts(Bin),
+    [proplists:get_value(appid, Options, <<"applepush.localhost">>),
+     jlib:atom_to_binary(proplists:get_value(send_body, Options, none)),
+     jlib:atom_to_binary(proplists:get_value(send_from, Options, true)),
+     jlib:integer_to_binary(proplists:get_value(local_badge, Options, 0)),
+     jlib:integer_to_binary(proplists:get_value(timestamp, Options, 0))].
+
 export(_Server) ->
     [{applepush_cache,
       fun(Host, #applepush_cache{us = {LUser, LServer},
@@ -919,6 +1089,10 @@ transform_module_options(Opts) ->
               ?WARNING_MSG("Option 'backend' is obsoleted, "
                            "use 'db_type' instead", []),
               {db_type, internal};
+	 ({backend, p1db}) ->
+	      ?WARNING_MSG("Option 'backend' is obsoleted, "
+			   "use 'db_type' instead", []),
+	      {db_type, p1db};
          (Opt) ->
               Opt
       end, Opts).
