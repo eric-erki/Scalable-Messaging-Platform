@@ -125,49 +125,39 @@ commands() ->
 %% muc-create-room
 %%
 muc_create_room(RoomString, RoomHost, UserString) ->
-    SenderJid = get_senderjid(RoomHost),
-    RoomJid = jlib:string_to_jid(RoomString),
-    RoomStringNick = jlib:jid_to_string(jlib:jid_replace_resource(RoomJid, SenderJid#jid.luser)),
-    XmlEl = build_room_stanza(UserString, RoomStringNick),
-    ejabberd_router:route(SenderJid, RoomJid, XmlEl),
-    timer:sleep(1000),
-    case check_room_exists(RoomJid#jid.luser, RoomJid#jid.lserver) of
-	true ->
-	    muc_create_room_opts(RoomString, RoomHost, UserString),
-	    muc_add_member(RoomString, RoomHost, UserString),
-	    {ok, ""};
-	false ->
-	    ?INFO_MSG("Problem creating the room ~p", [RoomString]),
-	    {104, io_lib:format("Some problem was found when creating the room ~p.", [binary_to_list(RoomString)])}
+    #jid{luser = U, lserver = S} = From = jlib:string_to_jid(UserString),
+    Nodes = lists:flatmap(
+	      fun(R) ->
+		      case ejabberd_sm:get_session_pid(U, S, R) of
+			  none -> [];
+			  Pid -> [node(Pid)]
+		      end
+	      end, ejabberd_sm:get_user_resources(U, S)),
+    case Nodes of
+	[Node|_] ->
+	    #jid{luser = Name} = jlib:string_to_jid(RoomString),
+	    Host = iolist_to_binary(RoomHost),
+	    Nick = From#jid.luser,
+	    case catch ejabberd_cluster:call(Node, mod_muc, create_room,
+					     [Host, Name, From, Nick, default]) of
+		ok ->
+		    {ok, ""};
+		Err ->
+		    ErrTxt = lists:flatten(
+			       io_lib:format(
+				 "failed to create room ~s for ~s: ~p",
+				 [RoomString, UserString, Err])),
+		    {104, ErrTxt}
+	    end;
+	[] ->
+	    ErrTxt = lists:flatten(
+		       io_lib:format(
+			 "failed to create room ~s for ~s: user session not found",
+			 [RoomString, UserString])),
+	    ?ERROR_MSG(ErrTxt, []),
+	    {104, ErrTxt}
     end.
 
-build_room_stanza(UserString, RoomStringNick) ->
-    XAttrs = [{<<"xmlns">>, ?NS_MUC}],
-    El = {xmlel, <<"x">>, XAttrs, []},
-    Attrs = [{<<"to">>,RoomStringNick}],
-    {xmlel, <<"presence">>, Attrs, [El]}.
-
-check_room_exists(Name, Host) ->
-    case mnesia:dirty_read(muc_online_room, {Name, Host}) of
-        [] -> false;
-	_ -> true
-    end.
-
-muc_create_room_opts(RoomString, RoomHost, UserString) ->
-    SenderJid = get_senderjid(RoomHost),
-    RoomJid = jlib:string_to_jid(RoomString),
-    XmlEl = build_roomopts_stanza(UserString, RoomString),
-    ejabberd_router:route(SenderJid, RoomJid, XmlEl).
-
-build_roomopts_stanza(UserString, RoomString) ->
-    XXAttrs = [{<<"type">>, <<"submit">>},
-	{<<"xmlns">>, ?NS_XDATA}],
-    XEl = {xmlel, <<"x">>, XXAttrs, []},
-    XAttrs = [{<<"xmlns">>, ?NS_MUC_OWNER}],
-    El = {xmlel, <<"query">>, XAttrs, [XEl]},
-    Attrs = [{<<"type">>,<<"set">>},
-        {<<"to">>,RoomString}],
-    {xmlel, <<"iq">>, Attrs, [El]}.
 
 %%
 %% muc-add-member
