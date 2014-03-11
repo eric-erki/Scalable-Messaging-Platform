@@ -541,7 +541,7 @@ select_and_send(#jid{lserver = LServer} = From,
 
 select_and_send(From, To, Start, End, With, RSM, QID, DBType) ->
     {Msgs, Count} = select_and_start(From, To, Start, End, With, RSM, DBType),
-    SortedMsgs = lists:reverse(lists:keysort(2, Msgs)),
+    SortedMsgs = lists:keysort(2, Msgs),
     send(From, To, SortedMsgs, RSM, Count, QID).
 
 select_and_start(#jid{luser = LUser, lserver = LServer} = From,
@@ -692,7 +692,7 @@ filter_by_rsm(Msgs, #rsm_in{max = Max, direction = Direction, id = ID}) ->
                                 [Msg|Acc];
                            (_, Acc) ->
                                 Acc
-                        end, [], lists:reverse(Msgs));
+                        end, [], Msgs);
                   _ ->
                       Msgs
               end,
@@ -701,7 +701,7 @@ filter_by_rsm(Msgs, #rsm_in{max = Max, direction = Direction, id = ID}) ->
 filter_by_max(Msgs, undefined) ->
     Msgs;
 filter_by_max(Msgs, Len) when is_integer(Len), Len >= 0 ->
-    lists:sublist(lists:reverse(Msgs), Len);
+    lists:sublist(Msgs, Len);
 filter_by_max(_Msgs, _Junk) ->
     [].
 
@@ -795,7 +795,7 @@ make_sql_query(LUser, _LServer, Start, End, With, RSM) ->
                                       []
                               end;
                           _ ->
-                              [<<" order by timestamp desc">>]
+                              []
                       end,
     StartClause = case Start of
                       {_, _, _} ->
