@@ -986,10 +986,13 @@ get_definitive_start(LUser, LServer, StartUser, LUserRoom, LServerRoom) ->
     end.
 
 get_room_state(Name, Service) ->
-    case mnesia:dirty_read(muc_online_room, {Name, Service}) of
-        [] ->
+    Key = {Name, Service},
+    Node = ejabberd_cluster:get_node(Key),
+    Rooms = ejabberd_cluster:call(Node, mod_muc, get_vh_rooms, [Service]),
+    case lists:keyfind(Key, 2, Rooms) of
+        false ->
             throw({room_not_found, {Name, Service}});
-        [Room] ->
+        Room ->
 	    {ok, R} = gen_fsm:sync_send_all_state_event(Room#muc_online_room.pid, get_state),
 	    R
     end.
