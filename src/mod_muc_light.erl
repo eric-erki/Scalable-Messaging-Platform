@@ -30,10 +30,7 @@
 
 -module(mod_muc_light).
 
--behaviour(gen_server).
 -behaviour(gen_mod).
-
--export([start_link/2]).
 
 -export([
 	 start/2, stop/1, % gen_mod API
@@ -47,95 +44,22 @@
 	 kick_user/1
 	]).
 
-%% gen_server callbacks
--export([init/1, terminate/2, handle_call/3,
-	 handle_cast/2, handle_info/2, code_change/3]).
-
 %-include("ejabberd.hrl").
 -include("logger.hrl").
 -include("jlib.hrl").
 -include("mod_muc_room.hrl").
 -include("ejabberd_commands.hrl").
 
--define(RPC_TIMEOUT, 30000).
+%%----------------------------
+%% gen_mod
+%%----------------------------
 
-%%====================================================================
-%% API
-%%====================================================================
-start_link(Host, Opts) ->
-    Proc = ?MODULE,
-    gen_server:start_link({local, Proc}, ?MODULE, [Host, Opts], []).
+start(Host, _Opts) ->
+    ejabberd_commands:register_commands(commands()).
 
-%%====================================================================
-%% gen_mod callbacks
-%%====================================================================
-start(Host, Opts) ->
-    Proc = ?MODULE,
-    PingSpec = {Proc, {?MODULE, start_link, [Host, Opts]},
-		transient, 2000, worker, [?MODULE]},
-    supervisor:start_child(ejabberd_sup, PingSpec).
+stop(Host) ->
+    ejabberd_commands:unregister_commands(commands()).
 
-stop(_Host) ->
-    Proc = ?MODULE,
-    gen_server:call(Proc, stop),
-    supervisor:delete_child(ejabberd_sup, Proc).
-
-%%====================================================================
-%% gen_server callbacks
-%%====================================================================
-init([_Host, _Opts]) ->
-    ejabberd_commands:register_commands(commands()),
-    {ok, undefined}.
-
-handle_call(_Request, _From, State) ->
-    Reply = ok,
-    {reply, Reply, State}.
-
-handle_cast(_Msg, State) ->
-    {noreply, State}.
-
-handle_info({route, Ref, Hops, muc_create_room, [Name, Host, From]}, State) ->
-    %% NOTE: the jid MUST be full, or routing will fail!
-    {U, S, R} = USR = jlib:jid_tolower(From),
-    case ejabberd_sm:get_user_node(USR) of
-	Node when Node == node() ->
-	    case ejabberd_sm:get_session_pid(U, S, R) of
-		Pid when is_pid(Pid) ->
-		    case do_create_room(Name, Host, From) of
-			ok ->
-			    send_reply(Ref, ok);
-			{error, _} = Err ->
-			    send_reply(Ref, Err)
-		    end;
-		none ->
-		    send_reply(Ref, {error, user_session_not_found})
-	    end;
-	Node ->
-	    case lists:member(Node, Hops) of
-		true ->
-		    %% Loop detected. End up
-		    send_reply(Ref, {error, loop_detected});
-		false ->
-		    ejabberd_cluster:send({?MODULE, Node},
-					  {route, Ref, [node()|Hops],
-					   muc_create_room,
-					   [Name, Host, From]})
-	    end
-    end,
-    {noreply, State};
-handle_info(_Info, State) ->
-    {noreply, State}.
-
-terminate(_Reason, _State) ->
-    ejabberd_commands:unregister_commands(commands()),
-    ok.
-
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
-
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
 %%%
 %%% Register commands
 %%%
@@ -201,39 +125,37 @@ commands() ->
 %% muc-create-room
 %%
 muc_create_room(RoomString, RoomHost, UserString) ->
-    From = jlib:string_to_jid(UserString),
-    case From#jid.lresource of
-	<<"">> ->
-	    {104, "JID must possesses a resource"};
-	_ ->
+    #jid{luser = U, lserver = S} = From = jlib:string_to_jid(UserString),
+    Nodes = lists:flatmap(
+	      fun(R) ->
+		      case ejabberd_sm:get_session_pid(U, S, R) of
+			  none -> [];
+			  Pid -> [node(Pid)]
+		      end
+	      end, ejabberd_sm:get_user_resources(U, S)),
+    case Nodes of
+	[Node|_] ->
 	    #jid{luser = Name} = jlib:string_to_jid(RoomString),
 	    Host = iolist_to_binary(RoomHost),
-	    Ref = {make_ref(), self()},
-	    ?MODULE ! {route, Ref, [], muc_create_room, [Name, Host, From]},
-	    receive
-		{Ref, ok} ->
+	    Nick = From#jid.luser,
+	    case catch ejabberd_cluster:call(Node, mod_muc, create_room,
+					     [Host, Name, From, Nick, default]) of
+		ok ->
 		    {ok, ""};
-		{Ref, {error, Why}} ->
+		Err ->
 		    ErrTxt = lists:flatten(
 			       io_lib:format(
-				 "failed to create room: ~p", [Why])),
-		    ?ERROR_MSG(ErrTxt, []),
+				 "failed to create room ~s for ~s: ~p",
+				 [RoomString, UserString, Err])),
 		    {104, ErrTxt}
-	    after ?RPC_TIMEOUT ->
-		    ErrTxt = "failed to create room: timed out",
-		    ?ERROR_MSG(ErrTxt, []),
-		    {104, ErrTxt}
-	    end
-    end.
-
-do_create_room(Name, Host, From) ->
-    do_create_room(Name, Host, From, default).
-
-do_create_room(Name, Host, From, Opts) ->
-    #jid{luser = Nick} = From,
-    case catch mod_muc:create_room(Host, Name, From, Nick, Opts, node()) of
-	ok -> ok;
-	Err -> {error, Err}
+	    end;
+	[] ->
+	    ErrTxt = lists:flatten(
+		       io_lib:format(
+			 "failed to create room ~s for ~s: user session not found",
+			 [RoomString, UserString])),
+	    ?ERROR_MSG(ErrTxt, []),
+	    {104, ErrTxt}
     end.
 
 %%
@@ -429,6 +351,3 @@ kick_user(JID) ->
 		  end,
 		  Resources),
     {ok, ""}.
-
-send_reply({Ref, Pid}, Reply) ->
-    ejabberd_cluster:send(Pid, {{Ref, Pid}, Reply}).

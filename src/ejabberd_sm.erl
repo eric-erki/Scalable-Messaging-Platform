@@ -45,7 +45,7 @@
 	 force_update_presence/1, connected_users/0,
 	 connected_users_number/0, user_resources/2,
 	 get_session_pid/3, get_user_info/3, get_user_ip/3,
-	 get_user_node/1, get_user_node/2, get_proc_num/0]).
+	 get_user_node/2, get_proc_num/0]).
 
 %% DHT callbacks
 -export([merge_write/2, merge_delete/2, clean/1]).
