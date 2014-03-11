@@ -41,14 +41,9 @@
 start(Host, Opts) ->
     IQDisc = gen_mod:get_opt(iqdisc, Opts, fun gen_iq_handler:check_type/1,
                              one_queue),
-    init_db(gen_mod:db_type(Opts), Host),
-    MaxSize = gen_mod:get_opt(cache_size, Opts,
-                              fun(I) when is_integer(I), I>0 -> I end,
-                              1000),
-    LifeTime = gen_mod:get_opt(cache_life_time, Opts,
-                               fun(I) when is_integer(I), I>0 -> I end,
-			       timer:hours(1) div 1000),
-    cache_tab:new(archive_prefs, [{max_size, MaxSize}, {life_time, LifeTime}]),
+    DBType = gen_mod:db_type(Opts),
+    init_db(DBType, Host),
+    init_cache(DBType, Opts),
     gen_iq_handler:add_iq_handler(ejabberd_local, Host,
         			  ?NS_MAM, ?MODULE, process_iq, IQDisc),
     gen_iq_handler:add_iq_handler(ejabberd_sm, Host,
@@ -99,6 +94,17 @@ init_db(p1db, Host) ->
                                {dec_val, fun dec_prefs/2}]}]);
 init_db(_, _) ->
     ok.
+
+init_cache(p1db, _Opts) ->
+    ok;
+init_cache(_DBType, Opts) ->
+    MaxSize = gen_mod:get_opt(cache_size, Opts,
+                              fun(I) when is_integer(I), I>0 -> I end,
+                              1000),
+    LifeTime = gen_mod:get_opt(cache_life_time, Opts,
+                               fun(I) when is_integer(I), I>0 -> I end,
+			       timer:hours(1) div 1000),
+    cache_tab:new(archive_prefs, [{max_size, MaxSize}, {life_time, LifeTime}]).
 
 stop(Host) ->
     ejabberd_hooks:delete(user_send_packet, Host, ?MODULE,
