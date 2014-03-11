@@ -35,7 +35,7 @@
 %% API
 -export([start_link/2, start/2, stop/1, export/1, import_info/0,
 	 unregister_room/2, store_room/5, restore_room/3,
-	 forget_room/3, create_room/5, process_iq_disco_items/4,
+	 forget_room/3, create_room/5, create_room/6, process_iq_disco_items/4,
 	 broadcast_service_message/2, register_room/3,
 	 get_vh_rooms/1, shutdown_rooms/1,
 	 is_broadcasted/1, moderate_room_history/2, import/5,
@@ -135,10 +135,13 @@ moderate_room_history(RoomStr, Nick) ->
     end.
 
 create_room(Host, Name, From, Nick, Opts) ->
-    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     RoomHost = gen_mod:get_module_opt_host(Host, ?MODULE,
 					   <<"conference.@HOST@">>),
     Node = get_node({Name, RoomHost}),
+    create_room(Host, Name, From, Nick, Opts, Node).
+
+create_room(Host, Name, From, Nick, Opts, Node) ->
+    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     ?GEN_SERVER:call({Proc, Node},
                      {create, Name, From, Nick, Opts}).
 
