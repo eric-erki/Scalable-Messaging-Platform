@@ -397,6 +397,12 @@ commands() ->
 			    [{user, binary}, {server, binary},
 			     {nick, binary}],
 			result = {res, integer}},
+     #ejabberd_commands{name = get_offline_count,
+			tags = [offline],
+			desc = "Get the number of unread offline messages",
+			module = mod_offline, function = get_queue_length,
+			args = [{user, binary}, {server, binary}],
+			result = {count, integer}},
      #ejabberd_commands{name = get_presence,
 			tags = [session],
 			desc =
