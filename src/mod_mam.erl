@@ -165,7 +165,7 @@ user_receive_packet(Pkt, C2SState, JID, Peer, _To) ->
     case should_archive(Pkt) of
         true ->
             NewPkt = strip_my_archived_tag(Pkt, LServer),
-            case store(C2SState, NewPkt, LUser, LServer, Peer) of
+            case store(C2SState, NewPkt, LUser, LServer, Peer, true) of
                 {ok, ID, TS} ->
                     Archived = #xmlel{name = <<"archived">>,
                                       attrs = [{<<"by">>, LServer},
@@ -362,21 +362,21 @@ should_archive_peer(C2SState,
 store0(C2SState, Pkt, LUser, LServer, Peer, Type) ->
     case Type of
 	muc -> store(C2SState, Pkt, Peer#jid.luser, LServer,
-		    jlib:jid_replace_resource(Peer, LUser));
-        true -> store(C2SState, Pkt, LUser, LServer, Peer)
+		    jlib:jid_replace_resource(Peer, LUser), Type);
+        true -> store(C2SState, Pkt, LUser, LServer, Peer, Type)
     end.
 
-store(C2SState, Pkt, LUser, LServer, Peer) ->
+store(C2SState, Pkt, LUser, LServer, Peer, Type) ->
     Prefs = get_prefs(LUser, LServer),
     case should_archive_peer(C2SState, Prefs, Peer) of
         true ->
-            do_store(Pkt, LUser, LServer, Peer,
+            do_store(Pkt, LUser, LServer, Peer, Type,
                      gen_mod:db_type(LServer, ?MODULE));
         false ->
             pass
     end.
 
-do_store(Pkt, LUser, LServer, Peer, mnesia) ->
+do_store(Pkt, LUser, LServer, Peer, Type, mnesia) ->
     LPeer = {PUser, PServer, _} = jlib:jid_tolower(Peer),
     TS = now(),
     ID = jlib:integer_to_binary(now_to_usec(TS)),
@@ -393,9 +393,10 @@ do_store(Pkt, LUser, LServer, Peer, mnesia) ->
         Err ->
             Err
     end;
-do_store(Pkt, LUser, LServer, Peer, p1db) ->
+do_store(Pkt, LUser, LServer, Peer, Type, p1db) ->
     Now = now(),
-    USNKey = usn2key(LUser, LServer, Now),
+    LServer2 = case Type of muc -> Peer#jid.lserver; _ -> LServer end,
+    USNKey = usn2key(LUser, LServer2, Now),
     XML = xml:element_to_binary(Pkt),
     Val = term_to_binary([{peer, Peer},
                           {packet, XML}]),
@@ -405,7 +406,7 @@ do_store(Pkt, LUser, LServer, Peer, p1db) ->
         {error, _} = Err ->
             Err
     end;
-do_store(Pkt, LUser, LServer, Peer, odbc) ->
+do_store(Pkt, LUser, LServer, Peer, Type, odbc) ->
     TSinteger = now_to_usec(now()),
     ID = TS = jlib:integer_to_binary(TSinteger),
     BarePeer = jlib:jid_to_string(
@@ -708,6 +709,7 @@ filter_by_max(_Msgs, _Junk) ->
 match_interval(Now, Start, End) ->
     (Now >= Start) and (Now =< End).
 
+match_with({jid, U, S, _, _, _, _}, {U, S, _}) -> true;
 match_with({U, S, _}, {U, S, <<"">>}) -> true;
 match_with(_, none) -> true;
 match_with(Peer, With) -> Peer == With.
