@@ -405,7 +405,9 @@ do_store(Pkt, LUser, LServer, Peer, Type, p1db) ->
                           {packet, XML}]),
     case p1db:insert(archive_msg, USNKey, Val) of
         ok ->
-            {ok, jlib:integer_to_binary(now_to_usec(Now))};
+            ID = jlib:integer_to_binary(now_to_usec(Now)),
+            TSDelay = jlib:now_to_utc_string(Now),
+            {ok, ID, TSDelay};
         {error, _} = Err ->
             Err
     end;
