@@ -46,6 +46,8 @@
 	 import_file/1, import_dir/1,
 	 %% Purge DB
 	 delete_expired_messages/0, delete_old_messages/1,
+	 %% P1DB
+	 backup_p1db/1,
 	 %% Mnesia
 	 set_master/1,
 	 backup_mnesia/1, restore_mnesia/1,
@@ -232,6 +234,11 @@ commands() ->
 			desc = "Update PubSub table from old ejabberd trunk SVN to 2.1.0",
 			module = mod_pubsub, function = rename_default_nodeplugin,
 			args = [], result = {res, rescode}},
+
+     #ejabberd_commands{name = backup_p1db, tags = [p1db],
+			desc = "Backup the P1DB database",
+			module = ?MODULE, function = backup_p1db,
+			args = [{dir, string}], result = {res, restuple}},
 
      #ejabberd_commands{name = set_master, tags = [mnesia],
 			desc = "Set master node of the clustered Mnesia tables",
@@ -555,6 +562,35 @@ delete_old_messages(Days) ->
       fun(Host) ->
               {atomic, _} = mod_offline:remove_old_messages(Days, Host)
       end, ?MYHOSTS).
+
+%%%
+%%% P1DB management
+%%%
+
+backup_p1db(Dir) ->
+    Tabs = p1db:opened_tables(),
+    Res = lists:foldl(
+	    fun(_Tab, {{error, _}, _} = Err) ->
+		    Err;
+	       (Tab, ok) ->
+		    Filename = filename:join(Dir, Tab),
+		    case p1db:backup(Tab, Filename) of
+			ok ->
+			    ok;
+			{error, _} = Err ->
+			    {Err, Tab}
+		    end
+	    end, ok, Tabs),
+    case Res of
+	ok ->
+	    {ok, ""};
+	{{error, Reason}, Tab} ->
+	    Filename = filename:absname(filename:join(Dir, Tab)),
+	    String = io_lib:format(
+		       "Can't backup table '~s' in ~s at node ~s: ~s",
+		       [Tab, Filename, node(), p1db:format_error(Reason)]),
+	    {cannot_backup, String}
+    end.
 
 %%%
 %%% Mnesia management
