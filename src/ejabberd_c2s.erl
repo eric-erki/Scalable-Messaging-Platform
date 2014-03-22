@@ -720,7 +720,7 @@ wait_for_stream(stop_or_detach, _From, StateData) ->
 
 wait_for_auth({xmlstreamelement, #xmlel{name = Name} = El}, StateData)
     when ?IS_STREAM_MGMT_TAG(Name) ->
-    fsm_next_state(wait_for_auth, (StateData#state.manage_stream)(El, StateData));
+    fsm_next_state(wait_for_auth, dispatch_stream_mgmt(El, StateData));
 wait_for_auth({xmlstreamelement, El}, StateData) ->
     case is_auth_packet(El) of
       {auth, _ID, get, {U, _, _, _}} ->
@@ -910,7 +910,7 @@ wait_for_auth(stop_or_detach,_From, StateData) ->
 
 wait_for_feature_request({xmlstreamelement, #xmlel{name = Name} = El}, StateData)
     when ?IS_STREAM_MGMT_TAG(Name) ->
-    fsm_next_state(wait_for_feature_request, (StateData#state.manage_stream)(El, StateData));
+    fsm_next_state(wait_for_feature_request, dispatch_stream_mgmt(El, StateData));
 wait_for_feature_request({xmlstreamelement, El},
 			 StateData) ->
     #xmlel{name = Name, attrs = Attrs, children = Els} = El,
@@ -1105,7 +1105,7 @@ wait_for_feature_request(stop_or_detach, _From, StateData) ->
 
 wait_for_sasl_response({xmlstreamelement, #xmlel{name = Name} = El}, StateData)
     when ?IS_STREAM_MGMT_TAG(Name) ->
-    fsm_next_state(wait_for_sasl_response, (StateData#state.manage_stream)(El, StateData));
+    fsm_next_state(wait_for_sasl_response, dispatch_stream_mgmt(El, StateData));
 wait_for_sasl_response({xmlstreamelement, El},
 		       StateData) ->
     #xmlel{name = Name, attrs = Attrs, children = Els} = El,
@@ -1234,7 +1234,7 @@ wait_for_bind({xmlstreamelement, #xmlel{name = Name, attrs = Attrs} = El},
 		fsm_next_state(wait_for_bind, StateData)
 	  end;
       _ ->
-	  fsm_next_state(wait_for_bind, (StateData#state.manage_stream)(El, StateData))
+	  fsm_next_state(wait_for_bind, dispatch_stream_mgmt(El, StateData))
     end;
 wait_for_bind({xmlstreamelement, El}, StateData) ->
     case jlib:iq_query_info(El) of
@@ -1286,7 +1286,7 @@ wait_for_bind(stop_or_detach, _From, StateData) ->
 
 wait_for_session({xmlstreamelement, #xmlel{name = Name} = El}, StateData)
     when ?IS_STREAM_MGMT_TAG(Name) ->
-    fsm_next_state(wait_for_session, (StateData#state.manage_stream)(El, StateData));
+    fsm_next_state(wait_for_session, dispatch_stream_mgmt(El, StateData));
 wait_for_session({xmlstreamelement, El}, StateData) ->
     NewStateData = update_num_stanzas_in(StateData, El),
     case jlib:iq_query_info(El) of
@@ -1361,7 +1361,7 @@ wait_for_session(stop_or_detach, _From, StateData) ->
 
 session_established({xmlstreamelement, #xmlel{name = Name} = El}, StateData)
     when ?IS_STREAM_MGMT_TAG(Name) ->
-    fsm_next_state(session_established, (StateData#state.manage_stream)(El, StateData));
+    fsm_next_state(session_established, dispatch_stream_mgmt(El, StateData));
 session_established({xmlstreamelement, El},
 		    StateData) ->
     FromJID = StateData#state.jid,
@@ -3622,6 +3622,11 @@ stream_mgmt_enabled(#state{sm_state = disabled}) ->
 stream_mgmt_enabled(_StateData) ->
     true.
 
+dispatch_stream_mgmt(El, #state{sm_state = active} = StateData) ->
+    perform_stream_mgmt(El, StateData);
+dispatch_stream_mgmt(El, StateData) ->
+    negotiate_stream_mgmt(El, StateData).
+
 negotiate_stream_mgmt(_El, #state{resource = <<"">>} = StateData) ->
     %% XEP-0198 says: "For client-to-server connections, the client MUST NOT
     %% attempt to enable stream management until after it has completed Resource
@@ -3714,7 +3719,6 @@ handle_enable(#state{resume_timeout = ConfigTimeout} = StateData, Attrs) ->
     send_element(StateData, Res),
     StateData#state{sm_state = active,
 		    ack_queue = queue:new(),
-		    manage_stream = fun perform_stream_mgmt/2,
 		    resume_timeout = Timeout * 1000}.
 
 handle_r(StateData) ->
@@ -3910,7 +3914,6 @@ inherit_session_state(#state{user = U, server = S} = StateData, ResumeID) ->
 					   aux_fields = OldStateData#state.aux_fields,
 					   sm_xmlns = OldStateData#state.sm_xmlns,
 					   ack_queue = OldStateData#state.ack_queue,
-					   manage_stream = fun perform_stream_mgmt/2,
 					   resume_timeout = OldStateData#state.resume_timeout,
 					   n_stanzas_in = OldStateData#state.n_stanzas_in,
 					   n_stanzas_out = OldStateData#state.n_stanzas_out,
