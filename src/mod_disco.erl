@@ -465,9 +465,17 @@ get_info(_A, Host, Mod, Node, _Lang) when Node == <<>> ->
 get_info(Acc, _, _, _Node, _) -> Acc.
 
 get_fields_xml(Host, Module) ->
-    Fields = gen_mod:get_module_opt(Host, ?MODULE, server_info,
-                                    fun(L) when is_list(L) -> L end,
-                                    []),
+    Fields = gen_mod:get_module_opt(
+               Host, ?MODULE, server_info,
+               fun(L) ->
+                       lists:map(
+                         fun(Opts) ->
+                                 Mods = proplists:get_value(modules, Opts, all),
+                                 Name = proplists:get_value(name, Opts, <<>>),
+                                 URLs = proplists:get_value(urls, Opts, []),
+                                 {Mods, Name, URLs}
+                         end, L)
+               end, []),
     Fields_good = lists:filter(fun ({Modules, _, _}) ->
 				       case Modules of
 					 all -> true;
