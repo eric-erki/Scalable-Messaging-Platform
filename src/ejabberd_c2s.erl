@@ -337,6 +337,7 @@ init([{SockMod, Socket}, Opts, FSMLimitOpts]) ->
 		      Timeout when is_integer(Timeout), Timeout >= 0 -> Timeout;
 		      _ -> 300
 		    end,
+    ResendOnTimeout = proplists:get_bool(resend_on_timeout, Opts),
     IP = case lists:keysearch(frontend_ip, 1, Opts) of
 	   {value, {_, IP1}} -> IP1;
 	   _ -> peerip(SockMod, Socket)
@@ -374,6 +375,7 @@ init([{SockMod, Socket}, Opts, FSMLimitOpts]) ->
                                      sm_state = StreamMgmtState,
                                      max_ack_queue = MaxAckQueue,
                                      resume_timeout = ResumeTimeout,
+                                     resend_on_timeout = ResendOnTimeout,
                                      redirect = Redirect,
                                      flash_hack = FlashHack,
                                      fsm_limit_opts = FSMLimitOpts},
@@ -2168,7 +2170,7 @@ terminate(_Reason, StateName, StateData) ->
 			      end,
 			      queue:to_list(StateData#state.queue))
 	  end,
-	  resend_unacked_stanzas(StateData),
+	  handle_unacked_stanzas(StateData),
 	  bounce_messages();
       true -> ok
     end,
@@ -3783,7 +3785,7 @@ handle_resume(StateData, Attrs) ->
 				       {<<"previd">>, AttrId}],
 			      children = []}),
 	  SendFun = fun(_F, _T, El) -> send_element(NewState, El) end,
-	  resend_unacked_stanzas(NewState, SendFun),
+	  handle_unacked_stanzas(NewState, SendFun),
 	  send_element(NewState,
 		       #xmlel{name = <<"r">>,
 			      attrs = [{<<"xmlns">>, AttrXmlns}],
@@ -3851,33 +3853,40 @@ limit_queue_length(#state{jid = JID,
 	  StateData
     end.
 
-resend_unacked_stanzas(StateData, F) when StateData#state.sm_state == active;
+handle_unacked_stanzas(StateData, F) when StateData#state.sm_state == active;
 					  StateData#state.sm_state == pending ->
     Queue = StateData#state.ack_queue,
     case queue:len(Queue) of
       0 ->
 	  ok;
       N ->
-	  ?INFO_MSG("Resending ~B unacknowledged stanzas to ~s",
+	  ?INFO_MSG("~B stanzas were not acknowledged by ~s",
 		    [N, jlib:jid_to_string(StateData#state.jid)]),
 	  lists:foreach(
-	    fun({Num, #xmlel{attrs = Attrs} = El}) ->
+	    fun({_, #xmlel{attrs = Attrs} = El}) ->
 		    From_s = xml:get_attr_s(<<"from">>, Attrs),
 		    From = jlib:string_to_jid(From_s),
 		    To_s = xml:get_attr_s(<<"to">>, Attrs),
 		    To = jlib:string_to_jid(To_s),
-		    ?DEBUG("Resending unacknowledged stanza #~B from ~s to ~s",
-			   [Num, From_s, To_s]),
 		    F(From, To, El)
 	    end, queue:to_list(Queue))
     end;
-resend_unacked_stanzas(_StateData, _F) ->
+handle_unacked_stanzas(_StateData, _F) ->
     ok.
 
-resend_unacked_stanzas(StateData) when StateData#state.sm_state == active;
+handle_unacked_stanzas(StateData) when StateData#state.sm_state == active;
 				       StateData#state.sm_state == pending ->
-    resend_unacked_stanzas(StateData, fun ejabberd_router:route/3);
-resend_unacked_stanzas(_StateData) ->
+    F = case StateData#state.resend_on_timeout of
+	  true ->
+	      fun ejabberd_router:route/3;
+	  false ->
+	      fun(From, To, El) ->
+		      Err = jlib:make_error_reply(El, ?ERR_SERVICE_UNAVAILABLE),
+		      ejabberd_router:route(To, From, Err)
+	      end
+	end,
+    handle_unacked_stanzas(StateData, F);
+handle_unacked_stanzas(_StateData) ->
     ok.
 
 inherit_session_state(#state{user = U, server = S} = StateData, ResumeID) ->
