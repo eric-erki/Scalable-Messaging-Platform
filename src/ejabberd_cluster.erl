@@ -13,7 +13,7 @@
 -export([start_link/0, get_node/1, node_id/0, get_node_by_id/1,
 	 get_nodes/0, get_nodes/1, join/1, leave/1, boot/0, hash/1,
          subscribe/0, send/2, call/4, multicall/3, multicall/4,
-         get_nodes_from_epmd/0, connect/1, get_next_node/0]).
+         get_nodes_from_epmd/0, connect/1, get_next_node/0, get_nodes/2]).
 
 %% gen_fsm callbacks
 -export([init/1, connected/2, connected/3,
@@ -60,13 +60,15 @@ get_nodes() ->
 -spec get_nodes(any()) -> [node()].
 
 get_nodes(Key) ->
-    Hash = hash(Key),
     NodesNum = ets:info(?NODES_TBL, size),
     ReplicasNum = case configured_replicas_number() of
                       auto -> log2(NodesNum);
                       N -> lists:min([N, NodesNum])
                   end,
-    get_nodes_by_hash(Hash, ReplicasNum).
+    get_nodes(Key, ReplicasNum).
+
+get_nodes(Key, ReplicasNum) ->
+    get_nodes_by_hash(hash(Key), ReplicasNum).
 
 node_id() ->
     jlib:integer_to_binary(hash(node())).
@@ -431,22 +433,6 @@ hash(Term) when is_binary(Term) ->
 hash(Term) ->
     hash(term_to_binary(Term)).
 
-get_node_by_hash(Tab, Hash) ->
-    NodeHash = case ets:next(Tab, Hash) of
-		 '$end_of_table' -> ets:first(Tab);
-		 NH -> NH
-	       end,
-    if NodeHash == '$end_of_table' ->
-            node();
-       true ->
-	    case ets:lookup(Tab, NodeHash) of
-		[] ->
-		    get_node_by_hash(Tab, Hash);
-		[{_, _, Node}] ->
-		    Node
-	    end
-    end.
-
 get_node_by_hash(Hash) ->
     {_, _, Node} = get_next_node_by_hash(Hash),
     Node.
@@ -463,17 +449,30 @@ get_next_node_by_hash(Hash) ->
        true ->
 	    case ets:lookup(?HASHTBL, NodeHash) of
 		[] ->
-		    get_node_by_hash(?HASHTBL, Hash);
+		    get_next_node_by_hash(Hash);
 		[{_, _Hash, _Node} = Res] ->
 		    Res
 	    end
     end.
 
-get_nodes_by_hash(_Hash, 0) ->
-    [];
 get_nodes_by_hash(Hash, K) ->
+    get_nodes_by_hash(Hash, K, []).
+
+get_nodes_by_hash(_Hash, 0, Nodes) ->
+    Nodes;
+get_nodes_by_hash(Hash, K, Nodes) ->
     {_, NHash, Node} = get_next_node_by_hash(Hash),
-    [Node | get_nodes_by_hash(NHash+1, K - 1)].
+    case lists:member(Node, Nodes) of
+	true ->
+	    N = ets:info(?NODES_TBL, size),
+	    if length(Nodes) < N ->
+		    get_nodes_by_hash(NHash+1, K, Nodes);
+	       true ->
+		    Nodes
+	    end;
+	false ->
+	    get_nodes_by_hash(NHash+1, K-1, [Node|Nodes])
+    end.
 
 log2(N) ->
     case round(math:log(N) / math:log(2)) of
