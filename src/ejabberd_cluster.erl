@@ -25,9 +25,10 @@
 -include("ejabberd.hrl").
 -include("logger.hrl").
 
--define(NODES_TBL, cluster_nodes).
+-define(CLUSTER_NODES, cluster_nodes).
 -define(CLUSTER_INFO, cluster_info).
 -define(HASHTBL, nodes_hash).
+-define(NODES_RING, nodes_ring).
 -define(VNODES_NUMBER, 256).
 
 -define(MIGRATE_TIMEOUT, timer:minutes(2)).
@@ -36,6 +37,7 @@
                 subscribers = []        :: [pid()]}).
 
 -record(?HASHTBL, {hash, node}).
+-record(?NODES_RING, {hash, node}).
 -record(cluster_info, {node, last}).
 
 start_link() -> gen_fsm:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -44,23 +46,23 @@ start_link() -> gen_fsm:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 get_node(Key) ->
     Hash = hash(Key),
-    get_node_by_hash(Hash).
+    get_node_by_hash(?HASHTBL, Hash).
 
 -spec get_next_node() -> node().
 
 get_next_node() ->
     Hash = hash(node()),
-    get_node_by_hash(Hash).
+    get_node_by_hash(?NODES_RING, Hash).
 
 -spec get_nodes() -> [node()].
 
 get_nodes() ->
-    ets:select(?NODES_TBL, [{{'$1'}, [], ['$1']}]).
+    ets:select(?CLUSTER_NODES, [{{'$1'}, [], ['$1']}]).
 
 -spec get_nodes(any()) -> [node()].
 
 get_nodes(Key) ->
-    NodesNum = ets:info(?NODES_TBL, size),
+    NodesNum = ets:info(?CLUSTER_NODES, size),
     ReplicasNum = case configured_replicas_number() of
                       auto -> log2(NodesNum);
                       N -> lists:min([N, NodesNum])
@@ -81,7 +83,7 @@ get_node_by_id(NodeID) when is_binary(NodeID) ->
         I -> get_node_by_id(I)
     end;
 get_node_by_id(NodeID) when is_integer(NodeID) ->
-    case ets:lookup(?HASHTBL, NodeID) of
+    case ets:lookup(?NODES_RING, NodeID) of
         [{_, _, Node}] -> Node;
         [] -> node()
     end.
@@ -147,17 +149,23 @@ boot() ->
 init([]) ->
     net_kernel:monitor_nodes(true, [{node_type, visible},
                                     nodedown_reason]),
-    ets:new(?NODES_TBL, [named_table, public, ordered_set]),
+    ets:new(?CLUSTER_NODES, [named_table, public, ordered_set]),
     mnesia:create_table(?HASHTBL,
                         [{ram_copies, [node()]},
                          {type, ordered_set},
 			 {local_content, true},
 			 {attributes, record_info(fields, ?HASHTBL)}]),
+    mnesia:create_table(?NODES_RING,
+                        [{ram_copies, [node()]},
+                         {type, ordered_set},
+			 {local_content, true},
+			 {attributes, record_info(fields, ?NODES_RING)}]),
     mnesia:create_table(cluster_info,
                         [{disc_copies, [node()]},
                          {local_content, true},
                          {attributes, record_info(fields, cluster_info)}]),
     mnesia:add_table_copy(?HASHTBL, node(), ram_copies),
+    mnesia:add_table_copy(?NODES_RING, node(), ram_copies),
     mnesia:add_table_copy(cluster_info, node(), disc_copies),
     mnesia:clear_table(?HASHTBL),
     add_node(node(), false, []),
@@ -317,7 +325,7 @@ ping(State, Parent) ->
 ping_nodes('$end_of_table', State) ->
     State;
 ping_nodes(Node, State) ->
-    NewState = case ets:lookup(?NODES_TBL, Node) of
+    NewState = case ets:lookup(?CLUSTER_NODES, Node) of
                    [_|_] ->
                        dict:erase(Node, State);
                    [] ->
@@ -358,7 +366,7 @@ need_to_ping(Node, State) ->
 -spec add_node(node(), boolean(), [pid()]) -> boolean().
 
 add_node(Node, SeenEachOther, Subscribers) ->
-    case ets:insert_new(?NODES_TBL, {Node}) of
+    case ets:insert_new(?CLUSTER_NODES, {Node}) of
         true ->
             mnesia:dirty_write(#cluster_info{node = Node, last = now()}),
             add_node_to_ring(Node, ?VNODES_NUMBER),
@@ -387,11 +395,11 @@ add_node(Node, SeenEachOther, Subscribers) ->
 -spec del_node(node(), atom(), [pid()]) -> boolean().
 
 del_node(Node, Reason, Subscribers) ->
-    case ets:lookup(?NODES_TBL, Node) of
+    case ets:lookup(?CLUSTER_NODES, Node) of
         [] ->
             false;
         _ ->
-            ets:delete(?NODES_TBL, Node),
+            ets:delete(?CLUSTER_NODES, Node),
             del_node_from_ring(Node, ?VNODES_NUMBER),
             if Node /= node() ->
                     ?INFO_MSG("Node ~p has left: ~p", [Node, Reason]),
@@ -408,7 +416,7 @@ del_node(Node, Reason, Subscribers) ->
 add_node_to_ring(Node, VNodesNumber) ->
     mnesia:transaction(
       fun() ->
-              mnesia:write({?HASHTBL, hash(Node), Node}),
+              mnesia:write({?NODES_RING, hash(Node), Node}),
               lists:foreach(
                 fun(I) ->
                         Hash = hash({I, Node}),
@@ -419,7 +427,7 @@ add_node_to_ring(Node, VNodesNumber) ->
 del_node_from_ring(Node, VNodesNumber) ->
     mnesia:transaction(
       fun() ->
-              mnesia:delete({?HASHTBL, hash(Node)}),
+              mnesia:delete({?NODES_RING, hash(Node)}),
               lists:foreach(
                 fun(I) ->
                         Hash = hash({I, Node}),
@@ -433,23 +441,23 @@ hash(Term) when is_binary(Term) ->
 hash(Term) ->
     hash(term_to_binary(Term)).
 
-get_node_by_hash(Hash) ->
-    {_, _, Node} = get_next_node_by_hash(Hash),
+get_node_by_hash(Tab, Hash) ->
+    {_, _, Node} = get_next_node_by_hash(Tab, Hash),
     Node.
 
-get_next_node_by_hash(Hash) ->
-    NodeHash = case ets:next(?HASHTBL, Hash) of
+get_next_node_by_hash(Tab, Hash) ->
+    NodeHash = case ets:next(Tab, Hash) of
 		   '$end_of_table' ->
-		       ets:first(?HASHTBL);
+		       ets:first(Tab);
 		   NH ->
 		       NH
 	       end,
     if NodeHash == '$end_of_table' ->
 	    erlang:error(no_running_nodes);
        true ->
-	    case ets:lookup(?HASHTBL, NodeHash) of
+	    case ets:lookup(Tab, NodeHash) of
 		[] ->
-		    get_next_node_by_hash(Hash);
+		    get_next_node_by_hash(Tab, Hash);
 		[{_, _Hash, _Node} = Res] ->
 		    Res
 	    end
@@ -459,12 +467,12 @@ get_nodes_by_hash(Hash, K) ->
     get_nodes_by_hash(Hash, K, []).
 
 get_nodes_by_hash(_Hash, 0, Nodes) ->
-    Nodes;
+    lists:reverse(Nodes);
 get_nodes_by_hash(Hash, K, Nodes) ->
-    {_, NHash, Node} = get_next_node_by_hash(Hash),
+    {_, NHash, Node} = get_next_node_by_hash(?HASHTBL, Hash),
     case lists:member(Node, Nodes) of
 	true ->
-	    N = ets:info(?NODES_TBL, size),
+	    N = ets:info(?CLUSTER_NODES, size),
 	    if length(Nodes) < N ->
 		    get_nodes_by_hash(NHash+1, K, Nodes);
 	       true ->
