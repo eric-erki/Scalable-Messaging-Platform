@@ -590,6 +590,7 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
                                      [{jlib:integer_to_binary(TS), TS,
                                        msg_to_el(#archive_msg{
                                                     timestamp = Now,
+                                                    peer = Peer,
                                                     packet = Pkt}, JidRequestor)}];
                                  false ->
                                      []
