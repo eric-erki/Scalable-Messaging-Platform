@@ -35,7 +35,7 @@
 	 register_route/2, register_routes/1, unregister_route/1,
 	 unregister_routes/1, dirty_get_all_routes/0,
 	 dirty_get_all_domains/0, make_id/0, get_domain_balancing/1,
-         check_consistency/0, merge_pids/3]).
+         check_consistency/0, merge_pids/3, find_route_cluster_node/1]).
 
 -export([start_link/0]).
 
@@ -300,6 +300,25 @@ route_check_id(From, To,
     end;
 route_check_id(From, To, Packet) ->
     do_route(From, To, Packet).
+
+find_route_cluster_node(To) ->
+    LDstDomain = To#jid.lserver,
+    case mnesia:dirty_read(route, LDstDomain) of
+        [#route{pid = [], local_hint = LocalHint}] ->
+            case LocalHint of
+                {apply, ejabberd_local, route} ->
+                    case ejabberd_sm:get_user_node({To#jid.luser, To#jid.lserver, To#jid.lresource}) of
+                        Node when Node /= node() ->
+                            Node;
+                        _ ->
+                            none
+                    end;
+                _ ->
+                    none
+            end;
+        _ ->
+            none
+    end.
 
 do_route(OrigFrom, OrigTo, OrigPacket) ->
     ?DEBUG("route~n\tfrom ~p~n\tto ~p~n\tpacket ~p~n",
