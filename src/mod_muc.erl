@@ -1159,6 +1159,8 @@ set_nick(_LServer, Host, From, <<"">>, p1db) ->
                 {error, _} = Err ->
                     {aborted, Err}
             end;
+	{error, notfound} ->
+	    {atomic, ok};
         {error, _} = Err ->
             {aborted, Err}
     end;
