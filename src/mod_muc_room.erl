@@ -1503,6 +1503,15 @@ get_affiliation(JID, #state{config = #config{persistent = true}} = StateData,
         {ok, Val, _VClock} ->
             PropList = binary_to_term(Val),
             proplists:get_value(affiliation, PropList, none);
+	{error, notfound} ->
+	    ServAffKey = mod_muc:rhus2key(Room, Host, <<>>, LServer),
+	    case p1db:get(muc_affiliations, ServAffKey) of
+		{ok, Val, _VClock} ->
+		    PropList = binary_to_term(Val),
+		    proplists:get_value(affiliation, PropList, none);
+		{error, _} ->
+		    none
+	    end;
         {error, _} ->
             none
     end;
