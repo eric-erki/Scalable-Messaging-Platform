@@ -399,6 +399,7 @@ del_node(Node, Reason, Subscribers) ->
         [] ->
             false;
         _ ->
+	    mnesia:dirty_write(#cluster_info{node = Node, last = now()}),
             ets:delete(?CLUSTER_NODES, Node),
             del_node_from_ring(Node, ?VNODES_NUMBER),
             if Node /= node() ->
