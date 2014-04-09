@@ -138,12 +138,12 @@ AC_ARG_ENABLE(tools,
 esac],[if test "x$tools" = "x"; then tools=false; fi])
 
 AC_ARG_ENABLE(nif,
-[AC_HELP_STRING([--enable-nif], [replace some functions with C equivalents. Requires Erlang R13B04 or higher (default: no)])],
+[AC_HELP_STRING([--enable-nif], [replace some functions with C equivalents. Requires Erlang R13B04 or higher (default: yes)])],
 [case "${enableval}" in
   yes) nif=true ;;
   no)  nif=false ;;
   *) AC_MSG_ERROR(bad value ${enableval} for --enable-nif) ;;
-esac],[if test "x$nif" = "x"; then nif=false; fi])
+esac],[if test "x$nif" = "x"; then nif=true; fi])
 
 AC_ARG_ENABLE(odbc,
 [AC_HELP_STRING([--enable-odbc], [enable pure ODBC support (default: no)])],
