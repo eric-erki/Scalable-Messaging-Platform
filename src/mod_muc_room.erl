@@ -2716,12 +2716,15 @@ process_admin_items_set(UJID, Items, Lang, StateData) ->
 									     <<"301">>,
 									     outcast,
 									     SD),
-						     set_affiliation(JID,
-								     outcast,
-								     set_role(JID,
-									      none,
-									      SD),
-								     Reason);
+						       SD1 = set_affiliation(
+							       JID,
+							       outcast,
+							       set_role(JID,
+									none,
+									SD),
+							       Reason),
+						      kick_users_from_banned_server(
+							JID, Reason, SD1);
 						 {JID, affiliation, A, Reason}
 						     when (A == admin) or
 							    (A == owner) ->
@@ -3078,18 +3081,6 @@ send_kickban_presence(JID, Reason, Code, NewAffiliation,
 		  (?DICT):fold(fun (J, _, Js) ->
 				       case J of
 					 {U, S, _} -> [J | Js];
-                                         {_, S, _} when U == <<"">> ->
-                                               %% kick/ban every user from S
-                                               Aff = get_affiliation(
-                                                       jlib:make_jid(J),
-                                                       StateData),
-                                               if Aff == owner;
-                                                  Aff == admin;
-                                                  Aff == member ->
-                                                       Js;
-                                                  true ->
-                                                       [J | Js]
-                                               end;
 					 _ -> Js
 				       end
 			       end,
@@ -3108,7 +3099,8 @@ send_kickban_presence(JID, Reason, Code, NewAffiliation,
 			  send_kickban_presence1(J, Reason, Code,
 						 NewAffiliation, StateData)
 		  end,
-		  LJIDs).
+		  LJIDs),
+    LJIDs.
 
 send_kickban_presence1(UJID, Reason, Code, Affiliation,
 		       StateData) ->
@@ -3852,6 +3844,24 @@ remove_nonmembers(StateData) ->
 			end
 		end,
 		StateData, (?DICT):to_list(StateData#state.users)).
+
+kick_users_from_banned_server(#jid{luser = <<"">>, lserver = BannedServer},
+			      Reason, StateData) ->
+    lists:foldl(
+      fun({_LJID, #user{jid = JID}}, SD) when JID#jid.lserver == BannedServer ->
+	      Aff = get_affiliation(JID, SD),
+	      if Aff /= owner, Aff /= admin, Aff /= member ->
+		      catch send_kickban_presence(JID, Reason,
+						  <<"301">>, outcast, SD),
+		      set_role(JID, none, SD);
+		 true ->
+		      SD
+	      end;
+	 (_, SD) ->
+	      SD
+      end, StateData, ?DICT:to_list(StateData#state.users));
+kick_users_from_banned_server(_JID, _Reason, StateData) ->
+    StateData.
 
 set_opts([], StateData) -> StateData;
 set_opts([{Opt, Val} | Opts], StateData) ->
