@@ -1,9 +1,9 @@
 %%% ====================================================================
-%%% This software is copyright 2006-2010, ProcessOne.
+%%% This software is copyright 2006-2014, ProcessOne.
 %%%
 %%% mod_mon
 %%%
-%%% @copyright 2006-2010 ProcessOne
+%%% @copyright 2006-2014 ProcessOne
 %%% @author Christophe Romain <christophe.romain@process-one.net>
 %%%   [http://www.process-one.net/]
 %%% @version {@vsn}, {@date} {@time}
@@ -28,31 +28,21 @@
 -else.
 -define(ANNONYMOUS_CONNECTIONS, false). %% set to true if monitored domains will accept annonymous connections
 -endif.
+-define(ACTIVE_TIMEOUT_ENABLED, true).
 
 %% dictionaries computed to generate reports
 -define(UNIQUE_ACTIVE_USERS, unique_active_users).
-
--define(ORANGE, true).
--ifdef(ORANGE).
--define(ACTIVE_TIMEOUT_ENABLED, true).
-%% [ {DictionaryName, FlushTimeout} ]
--define(COMPUTING_DICTS, [ {?UNIQUE_ACTIVE_USERS, ?HOUR} ]). %% flush every 1 hour
--else.
--define(ACTIVE_TIMEOUT_ENABLED, false).
--define(COMPUTING_DICTS, []).
--endif.
-
-
+-define(COMPUTING_DICTS, [ {?UNIQUE_ACTIVE_USERS, ?HOUR} ]).
+-define(PROCESSINFO, process_info).
 % TODO use dict:update_counter instead of keysearch/keyreplace ?
 
 %% module functions
--export([start/2, stop/1, is_loaded/0, init/2, start_monitor_worker/2]).
+-export([start/2, stop/1, is_loaded/0, init/1, start_monitor_worker/1]).
 -export([values/2, value/3, add_monitor/4, del_monitor/3]).
 -export([start_sampling/0, stop_sampling/0, sampling_loop/3]).
 -export([run_sample/0, run_sample/1]).
 -export([get_sampling_counters/0]).
 -export([add_sampling_condition/1, restart_sampling/0]).
--export([compute/2]).
 %% DB wrapper, waiting a better solution
 -export([db_table_size/1, db_table_size/2]).
 
@@ -179,11 +169,9 @@
 -include("ejabberd.hrl").
 -include("logger.hrl").
 -include("jlib.hrl").
--include("licence.hrl").
 
 -define(PROCNAME, ?MODULE).
 -define(MONITORS, monitors).
--define(TLPROCESSINFO, tlprocessinfo).
 
 -record(mon, {key, value}).
 
@@ -192,62 +180,60 @@
 -compile({no_auto_import, [get/0]}).
 
 %%Opts should have a proplists compatible format:
-%%[{monitors,MonitorList},{tlregprocess,TLRegProcess},{tlnode,TLNode},...]
+%%[{monitors,MonitorList},...]
 start(Host, Opts) ->
-    case ?IS_VALID of
-        true ->
-            %% Note: we use priority of 20 cause some modules
-            %% can block execution of hooks
-            %% example mod_offline stops execution if it stores packets
-            %% so if we set an higher value, we just loose the hook
-            %% that's why we put 20 here.
-            Components = list_components(Host),
-            lists:foreach(fun(Component) ->
-                                  lists:foreach(fun(Hook) ->
-                                          ?DEBUG("ejabberd_hooks:add(~p, ~p, ~p, ~p, 20)",[Hook, Component, ?MODULE, Hook]),
-                                          ejabberd_hooks:add(Hook, Component, ?MODULE, Hook, 20)
-                                  end, ?SUPPORTED_HOOKS)
-                          end, Components),
-            lists:foreach(fun(Hook) ->
-                                  ejabberd_hooks:add(Hook, global, ?MODULE, Hook, 20)
-                          end, ?GLOBAL_HOOKS),
-            ProcName = gen_mod:get_module_proc(Host, ?PROCNAME),
-            Monitors = proplists:get_value(?MONITORS,Opts),
-            TlMonitor = proplists:get_value(?TLPROCESSINFO,Opts),
-            %TlMonitor has the form: {ProcessName,Node}
-            case whereis(ProcName) of
-            undefined ->
-                ?INFO_MSG("Starting monitor process ~p", [ProcName]),
-                catch supervisor:delete_child(ejabberd_sup, ProcName),
-                ModMonProcSpec = {ProcName,
-                                  {?MODULE, start_monitor_worker, [Host, TlMonitor]},
-                                  transient,
-                                  100,
-                                  worker,
-                                  [?MODULE]},
-                WorkerStarted =
-                    case supervisor:start_child(ejabberd_sup, ModMonProcSpec) of
-                        {ok,_,_} -> ok;
-                        {ok, _} -> ok;
-                        {error, E} ->
-                            ?ERROR_MSG("Error attaching mod mon worker process to supervisor: ~p", [E]),
-                            error
-                    end,
-                case WorkerStarted of
-                    ok ->
-                        %%register(ProcName, spawn(?MODULE, init, [Host, TlMonitor])),
-                        lists:foreach(fun({Class, Monitor, Module}) ->
-                                        ProcName ! {add, Class, Monitor, Module}
-                                      end, Monitors),
-                        start;
-                    error ->
-                        not_started
-                end;
-            _Pid ->
-                started
+    %% Note: we use priority of 20 cause some modules
+    %% can block execution of hooks
+    %% example mod_offline stops execution if it stores packets
+    %% so if we set an higher value, we just loose the hook
+    %% that's why we put 20 here.
+    Components = list_components(Host),
+
+    lists:foreach(
+        fun(Component) ->
+            lists:foreach(
+	        fun(Hook) ->
+                    ?DEBUG("ejabberd_hooks:add(~p, ~p, ~p, ~p, 20)",[Hook, Component, ?MODULE, Hook]),
+                    ejabberd_hooks:add(Hook, Component, ?MODULE, Hook, 20)
+                end, ?SUPPORTED_HOOKS)
+        end, Components),
+
+    lists:foreach(
+        fun(Hook) ->
+            ejabberd_hooks:add(Hook, global, ?MODULE, Hook, 20)
+        end, ?GLOBAL_HOOKS),
+
+    ProcName = gen_mod:get_module_proc(Host, ?PROCNAME),
+    Monitors = proplists:get_value(?MONITORS,Opts),
+    case whereis(ProcName) of
+        undefined ->
+            ?INFO_MSG("Starting monitor process ~p", [ProcName]),
+            catch supervisor:delete_child(ejabberd_sup, ProcName),
+            ModMonProcSpec = {ProcName,
+                              {?MODULE, start_monitor_worker, [Host]},
+                               transient,
+                               100,
+                               worker,
+                               [?MODULE]},
+            WorkerStarted =
+                case supervisor:start_child(ejabberd_sup, ModMonProcSpec) of
+                    {ok,_,_} -> ok;
+                    {ok, _} -> ok;
+                    {error, E} ->
+                        ?ERROR_MSG("Error attaching mod mon worker process to supervisor: ~p", [E]),
+                        error
+                end,
+            case WorkerStarted of
+                ok ->
+                    lists:foreach(fun({Class, Monitor, Module}) ->
+                                      ProcName ! {add, Class, Monitor, Module}
+                                  end, Monitors),
+                    start;
+                error ->
+                    not_started
             end;
-        false ->
-            not_started
+        _Pid ->
+            started
     end.
 
 stop(Host) ->
@@ -258,16 +244,14 @@ stop(Host) ->
     lists:foreach(fun(Hook) ->
                           ejabberd_hooks:delete(Hook, global, ?MODULE, Hook, 20)
                   end, ?GLOBAL_HOOKS),
-    TableName = gen_mod:get_module_proc(Host, ?TLPROCESSINFO),
-    ets:delete(TableName),
     ProcName = gen_mod:get_module_proc(Host, ?PROCNAME),
     exit(whereis(ProcName), normal),
     catch supervisor:delete_child(ejabberd_sup, ProcName),
     {wait, ProcName}.
 
-start_monitor_worker(Host, TlMonitor) ->
+start_monitor_worker(Host) ->
     ?INFO_MSG("Starting mod_mon worker on host ~s...",[Host]),
-    case proc_lib:start_link(?MODULE, init, [Host, TlMonitor], 1000) of
+    case proc_lib:start_link(?MODULE, init, [Host], 1000) of
         {ok, Pid} ->
             ?INFO_MSG("mod_mon worker process started with PID: ~p", [Pid]),
             {ok, Pid};
@@ -279,20 +263,20 @@ start_monitor_worker(Host, TlMonitor) ->
             {error, unknown}
     end.
 
-init(Host, TlMonitor) ->
+init(Host) ->
 try
+    TableName = gen_mod:get_module_proc(Host, ?PROCESSINFO),
+    case ets:info(TableName) of
+        undefined -> ets:new(TableName, [public,named_table]);
+        _ -> ets:delete_all_objects(TableName)
+    end,
+    ets:insert(TableName,{vhost,Host}),
+
     mnesia:create_table(mon,
                         [{ram_copies, [node()]},
                          {local_content, true},
                          {attributes, record_info(fields, mon)}]),
     mnesia:add_table_copy(mon, node(), ram_copies),
-    TableName = gen_mod:get_module_proc(Host, ?TLPROCESSINFO),
-    case ets:info(TableName) of
-        undefined -> ets:new(TableName, [public,named_table]);
-        _ -> ets:delete_all_objects(TableName)
-    end,
-    ets:insert(TableName,{?TLPROCESSINFO,TlMonitor}),
-    ets:insert(TableName,{vhost,Host}),
     lists:foreach(fun(Hook) -> put(Hook, 0) end, ?SUPPORTED_HOOKS++?GLOBAL_HOOKS++?GENERATED_HOOKS),
     lists:foreach(fun(Hook) -> put(Hook, []) end, ?DYNAMIC_HOOKS),
     try put(muc_rooms, db_table_size(muc_online_room))
@@ -314,10 +298,6 @@ try
                                     Acc
                             end
                         end, [], ?COMPUTING_DICTS),
-
-    %% monitor Team Leader node in case of shutdown
-    %{_, TlNode} = TlMonitor,
-    %erlang:monitor_node(TlNode, true),
 
     ProcName = gen_mod:get_module_proc(Host, ?PROCNAME),
     register(ProcName, self()),
@@ -356,22 +336,8 @@ wait(Result) ->
     after 4000 -> timeout
     end.
 
-get_tl_process_info(Host) ->
-   Table = gen_mod:get_module_proc(Host, ?TLPROCESSINFO),
-   %First, try the vhost passed as a parameter.
-   TableName = case ets:info(Table) of
-                 undefined -> find_table(Host);
-                 _ -> Table
-               end,
-   case TableName of
-     [] -> undefined;
-     _ -> Query = ets:lookup(TableName,?TLPROCESSINFO),
-          [{_,Info}] = Query,
-          Info
-   end.
-
 get_vhost_name(Host) ->
-   Table = gen_mod:get_module_proc(Host, ?TLPROCESSINFO),
+   Table = gen_mod:get_module_proc(Host, ?PROCESSINFO),
    %First, try the vhost passed as a parameter.
    TableName = case ets:info(Table) of
                  undefined -> find_table(Host);
@@ -379,14 +345,14 @@ get_vhost_name(Host) ->
                end,
    case TableName of
      [] -> Host;
-     _ -> Query = ets:lookup(TableName,vhost),
-          [{_,Info}] = Query,
-          Info
+     _ ->
+         [{_, Info}] = ets:lookup(TableName,vhost),
+         Info
    end.
 
 find_table(Host) ->
     SupDomain = str:substr(Host, str:str(Host,<<".">>)+1),
-    Table = gen_mod:get_module_proc(SupDomain, ?TLPROCESSINFO),
+    Table = gen_mod:get_module_proc(SupDomain, ?PROCESSINFO),
     case ets:info(Table) of
         undefined ->
             case str:str(SupDomain, <<".">>) of
@@ -396,21 +362,9 @@ find_table(Host) ->
         _ -> Table
     end.
 
-%% Sends a message to TeamLeader process.
-%% Type = compute | sample | action
-send_message_to_tl(Host, Type,Msg) ->
-    case get_tl_process_info(Host) of
-        undefined ->  ?INFO_MSG("TL process not found for VHost ~p", [Host]),
-                      error;
-        TLProcInfo -> R = erlang:send(TLProcInfo,{Type,Msg},[noconnect]),
-                      {_RegName, _Node} = TLProcInfo,
-                      ?DEBUG("Sent message of type ~p to remote TL process with name ~p. Return value is: ~p", [Type, TLProcInfo, R]),
-                      ok
-    end.
-
-compute(Host, Msg) ->
+compute(_Host, Msg) ->
     ?DEBUG("compute ~p",[Msg]),
-    %send_message_to_tl(Host, compute,Msg).
+    %%send_message_to_sampling_process(Host, compute,Msg).
     ok.
 
 sample(Msg) ->
@@ -478,10 +432,6 @@ loop(Host, Monitors, Dicts) ->
                 undefined ->
                     loop(Host, Monitors, Dicts);
                 {_Dict, T} ->
-                    %% drop dict to Team Leader computing loop
-                    %% ?INFO_MSG("Drop unique user dict to TL...", []),
-                    %mod_mon:compute(Host, {compute_dict, Host, now(), {D, Dict}}),
-                    %% reset dict
                     NewDict = ehyperloglog:new(16),
                     loop(Host, Monitors, [{D, {NewDict, T}} | proplists:delete(D, Dicts)] )
             end;
@@ -597,11 +547,6 @@ loop(Host, Monitors, Dicts) ->
                 end,
             put(proxy65_size, OldValue + Current),
             loop(Host, Monitors, Dicts);
-        {nodedown, _} ->
-            %% Team Leader is down, shutdown this module
-            %% (there is no sense to monitor if nobody is
-            %% expecting results)
-            mod_mon:stop(Host);
         stop ->
             lists:foreach(  fun({_, {_, TRef}}) ->
                                 catch timer:cancel(TRef)
@@ -695,7 +640,7 @@ sampling_loop(Hooks, Packets, Conditions) ->
 
 %% private function used by sample_loop to check if a packet matches with
 %% current conditions
-sample_packet(Host, Type, From, To, Packet, UF, SF, UT, ST, Conditions) ->
+sample_packet(_Host, _Type, _From, _To, _Packet, UF, SF, UT, ST, Conditions) ->
     lists:foldl(
         fun({Action, A, B}=Condition, CondAcc) ->
             Filter = case Action of
@@ -704,8 +649,8 @@ sample_packet(Host, Type, From, To, Packet, UF, SF, UT, ST, Conditions) ->
                 fromto -> {UA, SA} = A, {UB, SB} = B, (UF == UA) and (SF == SA) and (UT == UB) and (ST == SB)
             end,
             if Filter ->
-                %Forward message to TL's sampling loop
-                send_message_to_tl(Host, sample,{packet, Host, Type, From, To, Packet, Condition}),
+                %Forward message to sampling loop
+                %%send_message_to_sampling_process(Host, sample,{packet, Host, Type, From, To, Packet, Condition}),
                 CondAcc;
             true ->
                 [Condition|CondAcc]
@@ -810,20 +755,8 @@ db_table_size(Table) ->
     Module = jlib:binary_to_atom(<<"mod_",ModName/binary>>),
     SqlTableSize = lists:foldl(fun(Host, Acc) ->
                                        case gen_mod:is_loaded(Host, Module) of
-                                           true -> %% internal storage module, count nothing
-                                               Acc;
-                                           false -> %% external storage module
-                                               Loaded = lists:map(fun(A) ->
-                                                                          [_,M|T] = str:tokens(jlib:atom_to_binary(A), <<"_">>),
-                                                                          case catch lists:last(T) of
-                                                                              <<"ldap">> -> <<"">>;
-                                                                              _ -> M
-                                                                          end
-                                                                  end, gen_mod:loaded_modules(Host)),
-                                               case lists:member(ModName, Loaded) of
-                                                   true -> Acc + db_table_size(Table, Host); % count ODBC
-                                                   false -> Acc % ignore (not internal and not odbc)
-                                               end
+                                           true -> Acc + db_table_size(Table, Host);
+                                           false -> Acc
                                        end
                                end, 0, ejabberd_config:get_global_option(hosts, fun(V) when is_list(V) -> V end)),
     Info = mnesia:table_info(Table, all),
@@ -837,7 +770,7 @@ db_table_size(session, _Host) ->
 db_table_size(s2s, _Host) ->
     0;
 db_table_size(Table, Host) ->
-    Query = case mnesia%TODO%?SGBD
+    Query = case undefined %TODO%?SGBD
  of
                 mysql -> [<<"select table_rows from information_schema.tables where table_name='">>, (db_mnesia_to_sql(Table))/binary, <<"'">>];
                 _ -> [<<"select count(*) from ">>, (db_mnesia_to_sql(Table))/binary]
