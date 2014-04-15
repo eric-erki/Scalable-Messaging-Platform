@@ -89,9 +89,9 @@ which erl  || error "can't find erl"  11
 which erlc || error "can't find erlc" 12
 echo ""
 
-[ -d $EJABBERD_DB ] && rm -Rf $EJABBERD_DB
-mkdir $EJABBERD_DB || error "$EJABBERD_DB cannot be created" 20
-[ -w $EJABBERD_DB ] || error "$EJABBERD_DB directory is not writable" 21
+[ -d $SPOOL_DIR ] && rm -Rf $SPOOL_DIR
+mkdir $SPOOL_DIR || error "$SPOOL_DIR cannot be created" 20
+[ -w $SPOOL_DIR ] || error "$SPOOL_DIR directory is not writable" 21
 
 cd $ROOTDIR
 mkdir -p $PA
@@ -140,7 +140,7 @@ start() ->
     halt(R).
 EOF
 erlc -o $PA $CLUSTERSETUP_ERL
-erl $NAME $ERLANG_NODE -pa $PA $KERNEL_OPTS -mnesia extra_db_nodes "['$REMOTE']" dir "\"$EJABBERD_DB\"" -s mnesia -s $CLUSTERSETUP start
+sh -c "erl $NAME $ERLANG_NODE -pa $PA $KERNEL_OPTS -mnesia extra_db_nodes \"['$REMOTE']\" dir \"\\\"$SPOOL_DIR\\\"\" -s mnesia -s $CLUSTERSETUP start"
 rm -Rf $PA
 
 echo "End."
