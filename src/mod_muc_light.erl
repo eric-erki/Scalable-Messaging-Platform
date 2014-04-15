@@ -54,10 +54,10 @@
 %% gen_mod
 %%----------------------------
 
-start(Host, _Opts) ->
+start(_Host, _Opts) ->
     ejabberd_commands:register_commands(commands()).
 
-stop(Host) ->
+stop(_Host) ->
     ejabberd_commands:unregister_commands(commands()).
 
 %%%
@@ -215,7 +215,7 @@ muc_kick_user(RoomString, RoomHost, UserString) ->
 
 get_occupant_nick(RoomJid, UserString) ->
     Occupants = get_room_occupants(RoomJid#jid.luser, RoomJid#jid.lserver),
-    List = lists:dropwhile(fun({Fulljid, Nick, Role}) ->
+    List = lists:dropwhile(fun({Fulljid, _Nick, _Role}) ->
 	    A = binary:longest_common_prefix([Fulljid, UserString]),
 	    B = size(UserString),
 	    A /= B

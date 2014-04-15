@@ -390,7 +390,7 @@ write_prefs(LUser, LServer, Host, Default, Always, Never) ->
 
 write_prefs(_LUser, _LServer, Prefs, mnesia) ->
     mnesia:dirty_write(Prefs);
-write_prefs(LUser, LServer, #archive_prefs{default = Default,
+write_prefs(LUser, _LServer, #archive_prefs{default = Default,
                                            never = Never,
                                            always = Always},
             {odbc, Host}) ->
@@ -462,8 +462,7 @@ select_and_send(From, To, Start, End, With, RSM, QID, DBType) ->
     SortedMsgs = lists:keysort(2, Msgs),
     send(From, To, SortedMsgs, RSM, Count, QID).
 
-select_and_start(#jid{luser = LUser, lserver = LServer} = From,
-	         _To, StartUser, End, With, RSM, DB) ->
+select_and_start(From, _To, StartUser, End, With, RSM, DB) ->
     {JidRequestor, Start, With2} = case With of
 	{room, {LUserRoom, LServerRoom, <<>>} = WithJid} ->
 	    JR = jlib:make_jid(LUserRoom,LServerRoom,<<>>),
@@ -585,22 +584,6 @@ filter_by_max(Msgs, Len) when is_integer(Len), Len >= 0 ->
     lists:sublist(Msgs, Len);
 filter_by_max(_Msgs, _Junk) ->
     [].
-
-match_interval(Now, Start, End) ->
-    (Now >= Start) and (Now =< End).
-
-match_with({U, S, _}, {U, S, <<"">>}) -> true;
-match_with(_, none) -> true;
-match_with(Peer, With) -> Peer == With.
-
-match_rsm(Now, #rsm_in{id = ID, direction = aft}) ->
-    Now1 = (catch usec_to_now(jlib:binary_to_integer(ID))),
-    Now > Now1;
-match_rsm(Now, #rsm_in{id = ID, direction = before}) ->
-    Now1 = (catch usec_to_now(jlib:binary_to_integer(ID))),
-    Now < Now1;
-match_rsm(_Now, _) ->
-    true.
 
 make_matchspec(LUser, LServer, Start, End, {_, _, <<>>} = With) ->
     ets:fun2ms(
