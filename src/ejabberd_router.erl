@@ -39,9 +39,6 @@
 
 -export([start_link/0]).
 
-%% DHT callbacks
--export([merge_write/2, clean/1]).
-
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
 	 handle_info/2, terminate/2, code_change/3]).
@@ -112,14 +109,26 @@ register_route(Domain, LocalHint) ->
                 [#route{pid = Pids, clock = V1} = R] ->
                     V2 = vclock:increment(node(), V1),
                     NewPids = add_pid(self(), Pids, LDomain),
-                    dht:write_everywhere(
-                      R#route{clock = V2, pid = NewPids});
+		    NewR = R#route{clock = V2, pid = NewPids},
+		    lists:foreach(
+		      fun(Node) when Node == node() ->
+			      gen_server:call(?MODULE, {write, NewR});
+			 (Node) ->
+			      ejabberd_cluster:send(
+				{?MODULE, Node}, {write, NewR})
+		      end, ejabberd_cluster:get_nodes());
                 [] ->
-                    dht:write_everywhere(
-                      #route{clock = vclock:increment(
-                                       node(), vclock:fresh()),
-                             pid = add_pid(self(), [], LDomain),
-                             domain = LDomain});
+		    NewR = #route{clock = vclock:increment(
+					    node(), vclock:fresh()),
+				  pid = add_pid(self(), [], LDomain),
+				  domain = LDomain},
+		    lists:foreach(
+		      fun(Node) when Node == node() ->
+			      gen_server:call(?MODULE, {write, NewR});
+			 (Node) ->
+			      ejabberd_cluster:send(
+				{?MODULE, Node}, {write, NewR})
+		      end, ejabberd_cluster:get_nodes());
                 _ ->
                     ok
             end
@@ -144,36 +153,35 @@ unregister_route(Domain) ->
                     mnesia:dirty_delete(route, LDomain);
                 [#route{pid = Pids, clock = V} = R] ->
                     NewPids = del_pid(self(), Pids, LDomain),
-                    dht:write_everywhere(
-                      R#route{clock = vclock:increment(node(), V),
-                              pid = NewPids});
+		    NewR = R#route{clock = vclock:increment(node(), V),
+				   pid = NewPids},
+		    lists:foreach(
+		      fun(Node) when Node == node() ->
+			      gen_server:call(?MODULE, {write, NewR});
+			 (Node) ->
+			      ejabberd_cluster:send({?MODULE, Node},
+						    {write, NewR})
+		      end, ejabberd_cluster:get_nodes());
                 [] ->
                     ok
             end
     end.
 
-merge_write(#route{pid = Pids1, clock = V1, domain = Domain} = R1,
-            #route{pid = Pids2, clock = V2} = R2) ->
-    case vclock:merge([V1, V2]) of
-	V1 ->
-	    R1;
-	V2 ->
-	    R2;
-        V ->
-	    Pids = merge_pids(Pids1, Pids2, Domain),
-	    R1#route{pid = Pids, clock = V}
+write_route(#route{pid = Pids1, clock = V1, domain = Domain} = R1) ->
+    case mnesia:dirty_read(route, Domain) of
+	[#route{pid = Pids2, clock = V2} = R2] ->
+	    case vclock:merge([V1, V2]) of
+		V1 ->
+		    mnesia:dirty_write(R1);
+		V2 ->
+		    mnesia:dirty_write(R2);
+		V ->
+		    Pids = merge_pids(Pids1, Pids2, Domain),
+		    mnesia:dirty_write(R1#route{pid = Pids, clock = V})
+	    end;
+	[] ->
+	    mnesia:dirty_write(R1)
     end.
-
-clean(Node) ->
-    lists:foreach(
-      fun(#route{pid = []}) ->
-              ok;
-         (#route{pid = Pids, clock = V, domain = Domain} = R) ->
-              NewV = vclock:increment(node(), V),
-              NewPids = del_pid_by_node(Node, Pids, Domain),
-              mnesia:dirty_write(
-                R#route{pid = NewPids, clock = NewV})
-      end, ets:tab2list(route)).
 
 -spec unregister_routes([binary()]) -> ok.
 
@@ -216,7 +224,7 @@ init([]) ->
                          {local_content, true},
 			 {attributes, record_info(fields, route)}]),
     mnesia:add_table_copy(route, node(), ram_copies),
-    dht:new(route, ?MODULE),
+    ejabberd_cluster:subscribe(),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------
@@ -228,6 +236,9 @@ init([]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
+handle_call({write, Route}, _From, State) ->
+    Res = write_route(Route),
+    {reply, Res, State};
 handle_call(_Request, _From, State) ->
     Reply = ok, {reply, Reply, State}.
 
@@ -253,7 +264,36 @@ handle_info({route, From, To, Packet}, State) ->
       _ -> ok
     end,
     {noreply, State};
+handle_info({write, Route}, State) ->
+    write_route(Route),
+    {noreply, State};
+handle_info({node_up, Node}, State) ->
+    lists:foreach(
+      fun(#route{pid = Pids} = R) ->
+	      case lists:any(
+		     fun(Pid) ->
+			     node(Pid) == node()
+		     end, Pids) of
+		  true ->
+		      ejabberd_cluster:send({?MODULE, Node}, {write, R});
+		  false ->
+		      ok
+	      end
+      end, ets:tab2list(route)),
+    {noreply, State};
+handle_info({node_down, Node}, State) ->
+    lists:foreach(
+      fun(#route{pid = []}) ->
+              ok;
+         (#route{pid = Pids, clock = V, domain = Domain} = R) ->
+              NewV = vclock:increment(node(), V),
+              NewPids = del_pid_by_node(Node, Pids, Domain),
+              mnesia:dirty_write(
+                R#route{pid = NewPids, clock = NewV})
+      end, ets:tab2list(route)),
+    {noreply, State};
 handle_info(_Info, State) ->
+    ?ERROR_MSG("got unexpected info: ~p", [_Info]),
     {noreply, State}.
 
 %%--------------------------------------------------------------------

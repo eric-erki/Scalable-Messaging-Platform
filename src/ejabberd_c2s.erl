@@ -3456,18 +3456,6 @@ flash_policy_string() ->
       ToPortsString/binary,
       "\"/>\n</cross-domain-policy>\n\000">>.
 
-need_redirect(#state{redirect = true, user = User,
-		     server = Server}) ->
-    case ejabberd_sm:get_user_node(User, Server) of
-      Node when node() == Node -> false;
-      Node ->
-            case ejabberd_cluster:call(
-                   Node, ejabberd_config, get_local_option,
-                   [hostname]) of
-                Host when is_binary(Host) -> {true, Host};
-                _ -> false
-            end
-    end;
 need_redirect(_) -> false.
 
 get_jid_from_opts(Opts) ->

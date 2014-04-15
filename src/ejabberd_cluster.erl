@@ -10,67 +10,45 @@
 -behaviour(gen_fsm).
 
 %% API
--export([start_link/0, get_node/1, node_id/0, get_node_by_id/1,
-	 get_nodes/0, get_nodes/1, join/1, leave/1, boot/0, hash/1,
+-export([start_link/0, node_id/0, get_node_by_id/1,
+	 get_nodes/0, join/1, leave/1, boot/0, hash/1,
          subscribe/0, send/2, call/4, multicall/3, multicall/4,
-         get_nodes_from_epmd/0, connect/1, get_next_node/0, get_nodes/2]).
+         get_nodes_from_epmd/0, connect/1]).
+
+%% Backward compatibility
+-export([get_node/1]).
 
 %% gen_fsm callbacks
 -export([init/1, connected/2, connected/3,
          handle_event/3, handle_sync_event/4, handle_info/3,
          terminate/3, code_change/4]).
 
--export([print_distribution/0]).
-
 -include("ejabberd.hrl").
 -include("logger.hrl").
 
 -define(CLUSTER_NODES, cluster_nodes).
 -define(CLUSTER_INFO, cluster_info).
--define(HASHTBL, nodes_hash).
 -define(NODES_RING, nodes_ring).
--define(VNODES_NUMBER, 256).
 
 -define(MIGRATE_TIMEOUT, timer:minutes(2)).
 
 -record(state, {vclock = vclock:fresh() :: vclock:vclock(),
                 subscribers = []        :: [pid()]}).
 
--record(?HASHTBL, {hash, node}).
 -record(?NODES_RING, {hash, node}).
 -record(cluster_info, {node, last}).
 
 start_link() -> gen_fsm:start_link({local, ?MODULE}, ?MODULE, [], []).
 
--spec get_node(any()) -> node().
+-spec get_node(term()) -> node().
 
-get_node(Key) ->
-    Hash = hash(Key),
-    get_node_by_hash(?HASHTBL, Hash).
-
--spec get_next_node() -> node().
-
-get_next_node() ->
-    Hash = hash(node()),
-    get_node_by_hash(?NODES_RING, Hash).
+get_node(_) ->
+    node().
 
 -spec get_nodes() -> [node()].
 
 get_nodes() ->
     ets:select(?CLUSTER_NODES, [{{'$1'}, [], ['$1']}]).
-
--spec get_nodes(any()) -> [node()].
-
-get_nodes(Key) ->
-    NodesNum = ets:info(?CLUSTER_NODES, size),
-    ReplicasNum = case configured_replicas_number() of
-                      auto -> log2(NodesNum);
-                      N -> lists:min([N, NodesNum])
-                  end,
-    get_nodes(Key, ReplicasNum).
-
-get_nodes(Key, ReplicasNum) ->
-    get_nodes_by_hash(hash(Key), ReplicasNum).
 
 node_id() ->
     jlib:integer_to_binary(hash(node())).
@@ -150,11 +128,6 @@ init([]) ->
     net_kernel:monitor_nodes(true, [{node_type, visible},
                                     nodedown_reason]),
     ets:new(?CLUSTER_NODES, [named_table, public, ordered_set]),
-    mnesia:create_table(?HASHTBL,
-                        [{ram_copies, [node()]},
-                         {type, ordered_set},
-			 {local_content, true},
-			 {attributes, record_info(fields, ?HASHTBL)}]),
     mnesia:create_table(?NODES_RING,
                         [{ram_copies, [node()]},
                          {type, ordered_set},
@@ -164,10 +137,8 @@ init([]) ->
                         [{disc_copies, [node()]},
                          {local_content, true},
                          {attributes, record_info(fields, cluster_info)}]),
-    mnesia:add_table_copy(?HASHTBL, node(), ram_copies),
     mnesia:add_table_copy(?NODES_RING, node(), ram_copies),
     mnesia:add_table_copy(cluster_info, node(), disc_copies),
-    mnesia:clear_table(?HASHTBL),
     add_node(node(), false, []),
     {ok, connected, #state{}}.
 
@@ -369,7 +340,7 @@ add_node(Node, SeenEachOther, Subscribers) ->
     case ets:insert_new(?CLUSTER_NODES, {Node}) of
         true ->
             mnesia:dirty_write(#cluster_info{node = Node, last = now()}),
-            add_node_to_ring(Node, ?VNODES_NUMBER),
+            add_node_to_ring(Node),
             if Node /= node(), SeenEachOther == false ->
                     ?INFO_MSG("Node ~p has joined", [Node]),
                     lists:foreach(
@@ -401,7 +372,7 @@ del_node(Node, Reason, Subscribers) ->
         _ ->
 	    mnesia:dirty_write(#cluster_info{node = Node, last = now()}),
             ets:delete(?CLUSTER_NODES, Node),
-            del_node_from_ring(Node, ?VNODES_NUMBER),
+            del_node_from_ring(Node),
             if Node /= node() ->
                     ?INFO_MSG("Node ~p has left: ~p", [Node, Reason]),
                     lists:foreach(
@@ -414,26 +385,16 @@ del_node(Node, Reason, Subscribers) ->
             end
     end.
 
-add_node_to_ring(Node, VNodesNumber) ->
+add_node_to_ring(Node) ->
     mnesia:transaction(
       fun() ->
-              mnesia:write({?NODES_RING, hash(Node), Node}),
-              lists:foreach(
-                fun(I) ->
-                        Hash = hash({I, Node}),
-                        mnesia:write({?HASHTBL, Hash, Node})
-                end, lists:seq(1, VNodesNumber))
+              mnesia:write({?NODES_RING, hash(Node), Node})
       end).
 
-del_node_from_ring(Node, VNodesNumber) ->
+del_node_from_ring(Node) ->
     mnesia:transaction(
       fun() ->
-              mnesia:delete({?NODES_RING, hash(Node)}),
-              lists:foreach(
-                fun(I) ->
-                        Hash = hash({I, Node}),
-                        mnesia:delete({?HASHTBL, Hash})
-                end, lists:seq(1, VNodesNumber))
+              mnesia:delete({?NODES_RING, hash(Node)})
       end).
 
 hash(Term) when is_binary(Term) ->
@@ -441,53 +402,6 @@ hash(Term) when is_binary(Term) ->
     Hash;
 hash(Term) ->
     hash(term_to_binary(Term)).
-
-get_node_by_hash(Tab, Hash) ->
-    {_, _, Node} = get_next_node_by_hash(Tab, Hash),
-    Node.
-
-get_next_node_by_hash(Tab, Hash) ->
-    NodeHash = case ets:next(Tab, Hash) of
-		   '$end_of_table' ->
-		       ets:first(Tab);
-		   NH ->
-		       NH
-	       end,
-    if NodeHash == '$end_of_table' ->
-	    erlang:error(no_running_nodes);
-       true ->
-	    case ets:lookup(Tab, NodeHash) of
-		[] ->
-		    get_next_node_by_hash(Tab, Hash);
-		[{_, _Hash, _Node} = Res] ->
-		    Res
-	    end
-    end.
-
-get_nodes_by_hash(Hash, K) ->
-    get_nodes_by_hash(Hash, K, []).
-
-get_nodes_by_hash(_Hash, 0, Nodes) ->
-    lists:reverse(Nodes);
-get_nodes_by_hash(Hash, K, Nodes) ->
-    {_, NHash, Node} = get_next_node_by_hash(?HASHTBL, Hash),
-    case lists:member(Node, Nodes) of
-	true ->
-	    N = ets:info(?CLUSTER_NODES, size),
-	    if length(Nodes) < N ->
-		    get_nodes_by_hash(NHash+1, K, Nodes);
-	       true ->
-		    Nodes
-	    end;
-	false ->
-	    get_nodes_by_hash(NHash+1, K-1, [Node|Nodes])
-    end.
-
-log2(N) ->
-    case round(math:log(N) / math:log(2)) of
-        0 -> 1;
-        Log -> Log
-    end.
 
 rpc_timeout() ->
     try
@@ -499,15 +413,6 @@ rpc_timeout() ->
     catch error:badarg ->
             timer:seconds(5)
     end.
-
-configured_replicas_number() ->
-    ejabberd_config:get_option(
-      replicas_number,
-      fun(I) when is_integer(I), I>0 ->
-              I;
-         (auto) ->
-              auto
-      end, auto).
 
 get_nodes_from_epmd() ->
     get_nodes_from_epmd(
@@ -535,17 +440,3 @@ get_nodes_from_epmd(true) ->
       end, Ss);
 get_nodes_from_epmd(false) ->
     [].
-
-print_distribution() ->
-    X = 10000,
-    Distribution =
-        lists:foldl(
-          fun(_, D) ->
-                  User = crypto:rand_bytes(crypto:rand_uniform(1, 10)),
-                  Node = get_node({User, ?MYNAME}),
-                  dict:update_counter(Node, 1, D)
-          end, dict:new(), lists:seq(1, X)),
-    lists:foreach(
-      fun({Node, N}) ->
-              io:format("~s: ~p%~n", [Node, round(100*N/X)])
-      end, dict:to_list(Distribution)).

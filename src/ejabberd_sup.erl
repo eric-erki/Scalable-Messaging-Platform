@@ -70,13 +70,6 @@ init([]) ->
 	 brutal_kill,
 	 worker,
 	 [ejabberd_cluster]},
-    DHT =
-        {dht,
-	 {dht, start_link, []},
-	 permanent,
-	 brutal_kill,
-	 worker,
-	 [dht]},
     ACL =
         {acl,
 	 {acl, start_link, []},
@@ -207,7 +200,6 @@ init([]) ->
 	  [Hooks,
 	   SystemMonitor,
            Cluster,
-           DHT,
            ACL,
            Shaper,
 	   Router,

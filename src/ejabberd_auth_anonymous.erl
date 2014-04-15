@@ -127,14 +127,7 @@ anonymous_user_exist(User, Server) ->
     LUser = jlib:nodeprep(User),
     LServer = jlib:nameprep(Server),
     US = {LUser, LServer},
-    Ss = case ejabberd_cluster:get_node(US) of
-	   Node when Node == node() ->
-	       mnesia:dirty_read({anonymous, US});
-	   Node ->
-               ejabberd_cluster:call(Node, mnesia, dirty_read,
-                                     [{anonymous, US}])
-	 end,
-    case Ss of
+    case mnesia:dirty_read({anonymous, US}) of
       [_H | _T] -> true;
       _ -> false
      end.

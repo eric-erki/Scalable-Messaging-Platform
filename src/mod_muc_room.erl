@@ -137,7 +137,7 @@ init([Host, ServerHost, Access, Room, HistorySize,
       PersistHistory, RoomShaper, Creator, _Nick,
       DefRoomOpts]) ->
     process_flag(trap_exit, true),
-    mod_muc:register_room(Host, Room, self()),
+    mod_muc:register_room(ServerHost, Host, Room, self()),
     Shaper = shaper:new(RoomShaper),
     State = #state{host = Host, server_host = ServerHost,
                    access = Access, room = Room,
@@ -161,7 +161,7 @@ init([Host, ServerHost, Access, Room, HistorySize,
 init([Host, ServerHost, Access, Room, HistorySize,
       PersistHistory, RoomShaper, Opts]) ->
     process_flag(trap_exit, true),
-    mod_muc:register_room(Host, Room, self()),
+    mod_muc:register_room(ServerHost, Host, Room, self()),
     Shaper = shaper:new(RoomShaper),
     State = set_opts(Opts,
 		     #state{host = Host, server_host = ServerHost,
@@ -175,9 +175,9 @@ init([Host, ServerHost, Access, Room, HistorySize,
     add_to_log(room_existence, started, State),
     {ok, normal_state, State};
 init([StateName,
-      #state{room = Room, host = Host} = StateData]) ->
+      #state{room = Room, host = Host, server_host = ServerHost} = StateData]) ->
     process_flag(trap_exit, true),
-    mod_muc:register_room(Host, Room, self()),
+    mod_muc:register_room(ServerHost, Host, Room, self()),
     {ok, StateName, StateData}.
 
 normal_state({route, From, <<"">>,
@@ -870,15 +870,20 @@ handle_info(system_shutdown, _StateName, StateData) ->
     {stop, normal, StateData#state{shutdown_reason = system_shutdown}};
 handle_info(replaced, _StateName, StateData) ->
     {stop, normal, StateData#state{shutdown_reason = replaced}};
+handle_info({route, From, ToNick, Packet}, normal_state, StateData) ->
+    normal_state({route, From, ToNick, Packet}, StateData);
 handle_info(_Info, StateName, StateData) ->
+    ?ERROR_MSG("got unexpected info: ~p", [_Info]),
     {next_state, StateName, StateData}.
 
 terminate({migrated, Clone}, _StateName, StateData) ->
     ?INFO_MSG("Migrating room ~s@~s to ~p on node ~p",
 	      [StateData#state.room, StateData#state.host, Clone,
 	       node(Clone)]),
-    mod_muc:unregister_room(StateData#state.host,
-                            StateData#state.room),
+    mod_muc:unregister_room(StateData#state.server_host,
+			    StateData#state.host,
+                            StateData#state.room,
+			    self()),
     ok;
 terminate(_Reason, _StateName, StateData) ->
     Reason = StateData#state.shutdown_reason,
@@ -927,8 +932,10 @@ terminate(_Reason, _StateName, StateData) ->
     if Reason == system_shutdown -> persist_muc_history(StateData);
        true -> ok
     end,
-    mod_muc:unregister_room(StateData#state.host,
-                            StateData#state.room),
+    mod_muc:unregister_room(StateData#state.server_host,
+			    StateData#state.host,
+                            StateData#state.room,
+			    self()),
     ok.
 
 %%%----------------------------------------------------------------------
@@ -984,8 +991,7 @@ persist_muc_history(#state{room = Room,
 persist_muc_history(_) -> {ok, not_persistent}.
 
 route(Pid, From, ToNick, Packet) ->
-    (?GEN_FSM):send_event(Pid,
-			  {route, From, ToNick, Packet}).
+    ejabberd_cluster:send(Pid, {route, From, ToNick, Packet}).
 
 process_groupchat_message(From,
 			  #xmlel{name = <<"message">>, attrs = Attrs} = Packet,
@@ -4792,16 +4798,7 @@ fsm_limit_opts() ->
     end.
 
 route_stanza(From, To, El) ->
-    case mod_muc:is_broadcasted(From#jid.lserver) of
-      true ->
-	  #jid{luser = LUser, lserver = LServer} = To,
-	  case ejabberd_cluster:get_node({LUser, LServer}) of
-	    Node when Node == node() ->
-		ejabberd_router:route(From, To, El);
-	    _ -> ok
-	  end;
-      false -> ejabberd_router:route(From, To, El)
-    end.
+    ejabberd_router:route(From, To, El).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Multicast

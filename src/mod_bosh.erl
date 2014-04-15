@@ -108,16 +108,25 @@ get_human_html_xmlel() ->
 					   "client that supports it.">>}]}]}]}.
 
 open_session(SID, Pid) ->
-    dht:write(#bosh{sid = SID,
-                    timestamp = now(),
-                    pid = Pid}).
+    lists:foreach(
+      fun(Node) ->
+	      ejabberd_cluster:send(
+		{?MODULE, Node},
+		{write, #bosh{sid = SID,
+			      timestamp = now(),
+			      pid = Pid}})
+      end, ejabberd_cluster:get_nodes()).
 
 close_session(SID) ->
     case mnesia:dirty_read(bosh, SID) of
-        [R] ->
-            dht:delete(R);
-        [] ->
-            ok
+	[R] ->
+	    lists:foreach(
+	      fun(Node) ->
+		      ejabberd_cluster:send(
+			{?MODULE, Node}, {delete, SID, R})
+	      end, ejabberd_cluster:get_nodes());
+	[] ->
+	    ok
     end.
 
 merge_delete(#bosh{pid = Pid1}, #bosh{pid = Pid2}) ->
@@ -153,19 +162,8 @@ find_session(SID) ->
         [#bosh{pid = Pid}] ->
             {ok, Pid};
         [] ->
-            find_session(SID, ejabberd_cluster:get_nodes(SID))
+            error
     end.
-
-find_session(SID, [Node|Nodes]) ->
-    case ejabberd_cluster:call(Node, mnesia, dirty_read,
-                               [bosh, SID]) of
-        [#bosh{pid = Pid}] ->
-            {ok, Pid};
-        _ ->
-            find_session(SID, Nodes)
-    end;
-find_session(_SID, []) ->
-    error.
 
 start(Host, Opts) ->
     setup_database(),
@@ -191,8 +189,7 @@ setup_database() ->
     mnesia:create_table(bosh,
 			[{ram_copies, [node()]}, {local_content, true},
 			 {attributes, record_info(fields, bosh)}]),
-    mnesia:add_table_copy(bosh, node(), ram_copies),
-    dht:new(bosh, ?MODULE).
+    mnesia:add_table_copy(bosh, node(), ram_copies).
 
 start_jiffy(Opts) ->
     case gen_mod:get_opt(json, Opts,

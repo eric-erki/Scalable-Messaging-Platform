@@ -45,10 +45,7 @@
 	 force_update_presence/1, connected_users/0,
 	 connected_users_number/0, user_resources/2,
 	 get_session_pid/3, get_user_info/3, get_user_ip/3,
-	 get_user_node/2, get_proc_num/0]).
-
-%% DHT callbacks
--export([merge_write/2, merge_delete/2, clean/1]).
+	 get_proc_num/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
@@ -68,6 +65,7 @@
 -record(state, {}).
 
 -define(MAX_USER_SESSIONS, infinity).
+-define(CALL_TIMEOUT, timer:seconds(60)).
 
 -type sid() :: {erlang:timestamp(), pid()}.
 -type ip() :: {inet:ip_address(), inet:port_number()} | undefined.
@@ -140,13 +138,13 @@ do_close_session(SID, User, Server, Resource) ->
 
 -spec drop_session(sid(), ljid()) -> any().
 
-drop_session(SID, {U, S, _} = USR) ->
-    case mnesia:dirty_read(session, USR) of
-        [Session] ->
-            dht:delete(Session#session{sid = SID}, {U, S});
-        [] ->
-            ok
-    end.
+drop_session(SID, USR) ->
+    lists:foreach(
+      fun(Node) when Node == node() ->
+	      ?GEN_SERVER:call(?MODULE, {delete, SID, USR}, ?CALL_TIMEOUT);
+	 (Node) ->
+	      ejabberd_cluster:send({?MODULE, Node}, {delete, SID, USR})
+      end, ejabberd_cluster:get_nodes()).
 
 -spec check_in_subscription(any(), binary(), binary(),
                             any(), any(), any()) -> any().
@@ -179,9 +177,7 @@ get_user_sessions(User, Server) ->
     LUser = jlib:nodeprep(User),
     LServer = jlib:nameprep(Server),
     US = {LUser, LServer},
-    Node = get_user_node(User, Server),
-    ejabberd_cluster:call(Node, mnesia, dirty_index_read,
-                          [session, US, #session.us]).
+    mnesia:dirty_index_read(session, US, #session.us).
 
 -spec get_user_resources(binary(), binary()) -> [binary()].
 
@@ -189,14 +185,8 @@ get_user_resources(User, Server) ->
     LUser = jlib:nodeprep(User),
     LServer = jlib:nameprep(Server),
     US = {LUser, LServer},
-    Node = get_user_node(User, Server),
-    Ss = ejabberd_cluster:call(Node, mnesia, dirty_index_read,
-                               [session, US, #session.us]),
-    if is_list(Ss) ->
-	   [element(3, S#session.usr)
-	    || S <- clean_session_list(Ss)];
-       true -> []
-    end.
+    Ss = mnesia:dirty_index_read(session, US, #session.us),
+    [element(3, S#session.usr) || S <- clean_session_list(Ss)].
 
 -spec get_user_ip(binary(), binary(), binary()) -> ip().
 
@@ -205,8 +195,7 @@ get_user_ip(User, Server, Resource) ->
     LServer = jlib:nameprep(Server),
     LResource = jlib:resourceprep(Resource),
     USR = {LUser, LServer, LResource},
-    Node = get_user_node(User, Server, Resource),
-    Ss = ejabberd_cluster:call(Node, mnesia, dirty_read, [session, USR]),
+    Ss = mnesia:dirty_read(session, USR),
     if is_list(Ss), Ss /= [] ->
 	   Session = lists:max(Ss),
 	   proplists:get_value(ip, Session#session.info);
@@ -220,8 +209,7 @@ get_user_info(User, Server, Resource) ->
     LServer = jlib:nameprep(Server),
     LResource = jlib:resourceprep(Resource),
     USR = {LUser, LServer, LResource},
-    Node = get_user_node(User, Server, Resource),
-    Ss = ejabberd_cluster:call(Node, mnesia, dirty_read, [session, USR]),
+    Ss = mnesia:dirty_read(session, USR),
     if is_list(Ss), Ss /= [] ->
 	   Session = lists:max(Ss),
 	   N = node(element(2, Session#session.sid)),
@@ -267,58 +255,21 @@ close_session_unset_presence(SID, User, Server,
 
 get_session_pid(User, Server, Resource) ->
     USR = jlib:jid_tolower({User, Server, Resource}),
-    Node = get_user_node(USR),
-    Res = ejabberd_cluster:call(Node, mnesia, dirty_read, [session, USR]),
+    Res = mnesia:dirty_read(session, USR),
     case Res of
       [#session{sid = {_, Pid}}] -> Pid;
       _ -> none
     end.
 
-get_user_node(User, Server) ->
-    get_user_node(User, Server, <<>>).
-
-get_user_node(User, Server, Resource) ->
-    get_user_node(jlib:jid_tolower({User, Server, Resource})).
-
-get_user_node({LUser, LServer, <<>>}) ->
-    ejabberd_cluster:get_node({LUser, LServer});
-get_user_node({LUser, LServer, _} = USR) ->
-    case mnesia:dirty_read(session, USR) of
-        [] ->
-            [Node|_] = Nodes = ejabberd_cluster:get_nodes({LUser, LServer}),
-            case lists:member(node(), Nodes) of
-                true ->
-                    %% The mismatch could be due to replication delays.
-                    %% Returning the next node in the ring.
-                    %% The caller MUST detect loops if it wishes to
-                    %% route the message towards this next node.
-                    %% There is little drawback to the approach:
-                    %% 1) this shouldn't happen often
-                    %% 2) the number of nodes to be be traversed is O(log2(N))
-                    %%    in the worst case, or preconfigured number
-                    %%    (see 'replicas_number' ejabberd option).
-                    %% 3) this is a standard approach for p2p overlays with
-                    %%    hop-by-hop routing (Chord, Kademlia, Pastry, etc)
-                    NextNode = ejabberd_cluster:get_next_node(),
-                    case lists:member(NextNode, Nodes) of
-                        true ->
-                            NextNode;
-                        false ->
-                            Node
-                    end;
-                false ->
-                    Node
-            end;
-        [#session{sid = {_, Pid}}|_] ->
-            node(Pid)
-    end.
-
 -spec dirty_get_sessions_list() -> [ljid()].
 
 dirty_get_sessions_list() ->
-    {Res, _} = ejabberd_cluster:multicall(
-                 ?MODULE, dirty_get_my_sessions_list, []),
-    lists:flatten(Res).
+    mnesia:dirty_select(
+      session,
+      ets:fun2ms(
+        fun(#session{usr = USR}) ->
+                USR
+        end)).
 
 -spec dirty_get_my_sessions_list() -> [ljid()].
 
@@ -346,9 +297,14 @@ get_vh_my_session_list(Server) ->
 -spec get_vh_session_list(binary()) -> [ljid()].
 
 get_vh_session_list(Server) ->
-    {Res, _} = ejabberd_cluster:multicall(
-                 ?MODULE, get_vh_my_session_list, [Server]),
-    lists:flatten(Res).
+    LServer = jlib:nameprep(Server),
+    mnesia:dirty_select(
+      session,
+      ets:fun2ms(
+        fun(#session{usr = {U, S, R}})
+              when S == LServer ->
+                {U, S, R}
+        end)).
 
 -spec get_vh_session_number(binary()) -> non_neg_integer().
 
@@ -369,44 +325,6 @@ register_iq_handler(Host, XMLNS, Module, Fun, Opts) ->
 
 unregister_iq_handler(Host, XMLNS) ->
     ?MODULE ! {unregister_iq_handler, Host, XMLNS}.
-
-merge_delete(#session{sid = {_, Pid1}}, #session{sid = {_, Pid2}}) ->
-    if Pid1 == Pid2 ->
-            delete;
-       true ->
-            keep
-    end.
-
-merge_write(#session{sid = {_, Pid}} = S,
-            #session{sid = {_, Pid}}) ->
-    S;
-merge_write(#session{sid = {T1, _}, us = {_, Server}} = S1,
-            #session{sid = {T2, _}} = S2) ->
-    {Old, New} = if T1 < T2 -> {S1, S2};
-                    true -> {S2, S1}
-                 end,
-    case ejabberd_config:get_option(
-           {resource_conflict, Server},
-           fun(closeold) -> acceptnew;
-              (closenew) -> closenew;
-              (acceptnew) -> acceptnew
-           end, acceptnew) of
-        acceptnew ->
-            ejabberd_cluster:send(element(2, Old#session.sid), replaced),
-            New;
-        closenew ->
-            ejabberd_cluster:send(element(2, New#session.sid), replaced),
-            Old
-    end.
-
-clean(Node) ->
-    ets:select_delete(
-      session,
-      ets:fun2ms(
-        fun(#session{sid = {_, Pid}})
-              when node(Pid) == Node ->
-                true
-        end)).
 
 %%====================================================================
 %% gen_server callbacks
@@ -434,9 +352,14 @@ init([]) ->
     ejabberd_commands:register_commands(commands()),
     ejabberd_cluster:subscribe(),
     start_handlers(),
-    dht:new(session, ?MODULE),
     {ok, #state{}}.
 
+handle_call({write, Session}, _From, State) ->
+    Res = write_session(Session),
+    {reply, Res, State};
+handle_call({delete, SID, USR}, _From, State) ->
+    Res = delete_session(SID, USR),
+    {reply, Res, State};
 handle_call(_Request, _From, State) ->
     Reply = ok, {reply, Reply, State}.
 
@@ -491,15 +414,36 @@ handle_info({'DOWN', _MRef, _Type, Pid, _Info}, State) ->
                       ['$_']}]),
     lists:foreach(fun(R) -> ets:delete_object(sm_iqtable, R) end, Rs),
     {noreply, State};
-handle_info({check_max_sessions, LUser, LServer} = Msg, State) ->
-    case get_user_node(LUser, LServer) of
-        Node when Node == node() ->
-            check_max_sessions(LUser, LServer);
-        Node ->
-            ejabberd_cluster:send({?MODULE, Node}, Msg)
-    end,
+handle_info({write, Session}, State) ->
+    write_session(Session),
+    {noreply, State};
+handle_info({delete, SID, USR}, State) ->
+    delete_session(SID, USR),
+    {noreply, State};
+handle_info({node_up, Node}, State) ->
+    Ss = ets:select(
+	   session,
+	   ets:fun2ms(
+	     fun(#session{sid = {_, Pid}} = S)
+		when node(Pid) == node() ->
+		     S
+	     end)),
+    lists:foreach(
+      fun(S) ->
+	      ejabberd_cluster:send({?MODULE, Node}, {write, S})
+      end, Ss),
+    {noreply, State};
+handle_info({node_down, Node}, State) ->
+    ets:select_delete(
+      session,
+      ets:fun2ms(
+        fun(#session{sid = {_, Pid}})
+              when node(Pid) == Node ->
+                true
+        end)),
     {noreply, State};
 handle_info(_Info, State) ->
+    ?ERROR_MSG("got unexpected info: ~p", [_Info]),
     {noreply, State}.
 
 terminate(_Reason, _State) ->
@@ -524,7 +468,45 @@ set_session(SID, User, Server, Resource, Priority, Info) ->
     USR = {LUser, LServer, LResource},
     Session = #session{sid = SID, usr = USR, us = US,
                        priority = Priority, info = Info},
-    dht:write(Session, US).
+    lists:foreach(
+      fun(Node) when Node == node() ->
+	      ?GEN_SERVER:call(?MODULE, {write, Session}, ?CALL_TIMEOUT);
+	 (Node) ->
+	      ejabberd_cluster:send({?MODULE, Node}, {write, Session})
+      end, ejabberd_cluster:get_nodes()).
+
+write_session(#session{usr = USR, sid = {T1, P1}} = S1) ->
+    case mnesia:dirty_read(session, USR) of
+	[#session{sid = {T2, P2}, us = {_, Server}} = S2] when P1 /= P2 ->
+	    {Old, New} = if T1 < T2 -> {S1, S2};
+			    true -> {S2, S1}
+			 end,
+	    case ejabberd_config:get_option(
+		   {resource_conflict, Server},
+		   fun(closeold) -> acceptnew;
+		      (closenew) -> closenew;
+		      (acceptnew) -> acceptnew
+		   end, acceptnew) of
+		acceptnew ->
+		    ejabberd_cluster:send(
+		      element(2, Old#session.sid), replaced),
+		    mnesia:dirty_write(New);
+		closenew ->
+		    ejabberd_cluster:send(
+		      element(2, New#session.sid), replaced),
+		    mnesia:dirty_write(Old)
+	    end;
+	_ ->
+	    mnesia:dirty_write(S1)
+    end.
+
+delete_session({_, Pid1} = _SID, USR) ->
+    case mnesia:dirty_read(session, USR) of
+	[#session{sid = {_, Pid2}}] when Pid1 == Pid2 ->
+	    mnesia:dirty_delete(session, USR);
+	_ ->
+	    ok
+    end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -532,18 +514,24 @@ do_route(From, To, Packet, Hops) ->
     ?DEBUG("session manager~n\tfrom ~p~n\tto ~p~n\tpacket "
 	   "~P~n",
 	   [From, To, Packet, 8]),
-    case get_user_node(jlib:jid_tolower(To)) of
-	Node when Node /= node() ->
-            case lists:member(Node, Hops) of
-                true ->
-                    %% Loop detected. End up here.
-                    dispatch(From, To, Packet, Hops);
-                false ->
-                    ejabberd_cluster:send(
-                      {?MODULE, Node},
-                      {route, From, To, Packet, [node()|Hops]})
-            end;
-	_ ->
+    USR = jlib:jid_tolower(To),
+    case mnesia:dirty_read(session, USR) of
+	[#session{sid = {_, Pid}}] ->
+	    Node = node(Pid),
+	    if Node == node() ->
+		    dispatch(From, To, Packet, Hops);
+	       true ->
+		    case lists:member(Node, Hops) of
+			true ->
+			    %% Loop detected. End up here.
+			    dispatch(From, To, Packet, Hops);
+			false ->
+			    ejabberd_cluster:send(
+			      {?MODULE, Node},
+			      {route, From, To, Packet, [node()|Hops]})
+		    end
+	    end;
+	[] ->
 	    dispatch(From, To, Packet, Hops)
     end.
 
@@ -766,9 +754,7 @@ get_user_present_resources(LUser, LServer) ->
 check_for_sessions_to_replace(User, Server) ->
     LUser = jlib:nodeprep(User),
     LServer = jlib:nameprep(Server),
-    Node = get_user_node(LUser, LServer),
-    ejabberd_cluster:send(
-      {?MODULE, Node}, {check_max_sessions, LUser, LServer}).
+    check_max_sessions(LUser, LServer).
 
 check_max_sessions(LUser, LServer) ->
     Ss = mnesia:dirty_index_read(session, {LUser, LServer}, #session.us),

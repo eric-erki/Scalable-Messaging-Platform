@@ -990,8 +990,7 @@ get_definitive_start(LUser, LServer, StartUser, LUserRoom, LServerRoom) ->
 
 get_room_state(Name, Service) ->
     Key = {Name, Service},
-    Node = ejabberd_cluster:get_node(Key),
-    Rooms = ejabberd_cluster:call(Node, mod_muc, get_vh_rooms, [Service]),
+    Rooms = mod_muc:get_vh_rooms(Service),
     case lists:keyfind(Key, 2, Rooms) of
         false ->
             throw({room_not_found, {Name, Service}});

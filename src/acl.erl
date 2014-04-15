@@ -38,9 +38,6 @@
          load_from_config/0, match_rule/3, match_acl/3,
          transform_options/1]).
 
-%% DHT callbacks
--export([merge_write/2, merge_delete/2, clean/1]).
-
 -include("ejabberd.hrl").
 -include("logger.hrl").
 -include("jlib.hrl").
@@ -104,8 +101,6 @@ init([]) ->
 			 {attributes, record_info(fields, access)}]),
     mnesia:add_table_copy(acl, node(), ram_copies),
     mnesia:add_table_copy(access, node(), ram_copies),
-    dht:new(acl, ?MODULE),
-    dht:new(access, ?MODULE),
     load_from_config(),
     {ok, #state{}}.
 
@@ -116,7 +111,14 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
+handle_info({write, Obj}, State) ->
+    mnesia:dirty_write(Obj),
+    {noreply, State};
+handle_info({delete, Obj}, State) ->
+    mnesia:dirty_delete_object(Obj),
+    {noreply, State};
 handle_info(_Info, State) ->
+    ?ERROR_MSG("got unexpected info: ~p", [_Info]),
     {noreply, State}.
 
 terminate(_Reason, _State) ->
@@ -134,9 +136,14 @@ to_record(Host, ACLName, ACLSpecs) ->
 -spec add(binary(), aclname(), [aclspec()]) -> ok.
 
 add(Host, ACLName, ACLSpecs) ->
-    dht:write_everywhere(
-      #acl{aclname = {ACLName, Host},
-           aclspec = normalize_specs(ACLSpecs)}).
+    ACL = #acl{aclname = {ACLName, Host},
+	       aclspec = normalize_specs(ACLSpecs)},
+    lists:foreach(
+      fun(Node) when Node == node() ->
+	      mnesia:dirty_write(ACL);
+	 (Node) ->
+	      ejabberd_cluster:send({?MODULE, Node}, {write, ACL})
+      end, ejabberd_cluster:get_nodes()).
 
 -spec add_list(binary(), [acl()], boolean()) -> ok.
 
@@ -151,7 +158,13 @@ add_list(Host, ACLs, Clear) ->
                        end)),
             lists:foreach(
               fun(Obj) ->
-                      dht:delete(Obj)
+		      lists:foreach(
+			fun(Node) when Node == node() ->
+				mnesia:dirty_delete_object(Obj);
+			   (Node) ->
+				ejabberd_cluster:send(
+				  {?MODULE, Node}, {delete, Obj})
+			end, ejabberd_cluster:get_nodes())
               end, Objs);
        true ->
             ok
@@ -159,27 +172,27 @@ add_list(Host, ACLs, Clear) ->
     lists:foreach(
       fun(#acl{aclname = ACLName,
                aclspec = ACLSpecs}) ->
-              dht:write_everywhere(
-                #acl{aclname = {ACLName, Host},
-                     aclspec = normalize_specs(ACLSpecs)})
+	      ACL = #acl{aclname = {ACLName, Host},
+			 aclspec = normalize_specs(ACLSpecs)},
+	      lists:foreach(
+		fun(Node) when Node == node() ->
+			mnesia:dirty_write(ACL);
+		   (Node) ->
+			ejabberd_cluster:send({?MODULE, Node}, {write, ACL})
+		end, ejabberd_cluster:get_nodes())
       end, ACLs).
-
-merge_delete(_, _) ->
-    delete.
-
-merge_write(Obj, _) ->
-    Obj.
-
-clean(_Node) ->
-    ok.
 
 -spec add_access(binary() | global,
                  access_name(), [access_rule()]) ->  ok | {error, any()}.
 
 add_access(Host, Access, Rules) ->
-    dht:write_everywhere(
-      #access{name = {Access, Host},
-              rules = Rules}).
+    Obj = #access{name = {Access, Host}, rules = Rules},
+    lists:foreach(
+      fun(Node) when Node == node() ->
+	      mnesia:dirty_write(Obj);
+	 (Node) ->
+	      ejabberd_cluster:send({?MODULE, Node}, {write, Obj})
+      end, ejabberd_cluster:get_nodes()).
 
 -spec load_from_config() -> ok.
 

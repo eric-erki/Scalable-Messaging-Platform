@@ -123,10 +123,7 @@
 
 start(#body{attrs = Attrs} = Body, IP, SID) ->
     XMPPDomain = get_attr(to, Attrs),
-    Node = ejabberd_cluster:get_node(SID),
-    SupervisorProc = {gen_mod:get_module_proc(XMPPDomain,
-					      ?PROCNAME),
-		      Node},
+    SupervisorProc = gen_mod:get_module_proc(XMPPDomain, ?PROCNAME),
     case catch supervisor:start_child(SupervisorProc,
 				      [Body, IP, SID])
 	of
