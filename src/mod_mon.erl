@@ -17,7 +17,7 @@
 -behaviour(gen_mod).
 
 %% SIZE_COUNTING is consuming but allows to know size of xmpp messages
--define(SIZE_COUNTING, false).
+%-define(SIZE_COUNTING, true).
 
 -define(HOUR, 3600000).
 -define(HALF_DAY, 43200000). %% 12 hours
@@ -935,16 +935,15 @@ send_hook(LUser, LServer, LResource, Name, Attrs, Els) ->
                 _ -> presence_send_packet
             end;
         <<"message">> ->
-            if ?SIZE_COUNTING ->
+-ifdef(SIZE_COUNTING)
                     Size = lists:foldl(fun(
                                          #xmlel{name = <<"body">>, children=[{xmlcdata, Data}]},
                                          Acc) ->
                                                Acc+size(Data);
                                           (_, Acc) -> Acc
                                        end, 0, Els),
-                    action(LServer, {message_send_size, LUser, LResource, Size});
-               true -> ok
-            end,
+                    action(LServer, {message_send_size, LUser, LResource, Size}),
+-endif.
             %% this acts as a sum value
             action(LServer, {set, LUser, LResource, message_send_packet}),
             case xml:get_attr_s(<<"type">>, Attrs) of
@@ -997,14 +996,13 @@ receive_hook(LUser, LServer, LResource, Name, Attrs, Els) ->
                 _ -> presence_receive_packet
             end;
         <<"message">> ->
-            if ?SIZE_COUNTING ->
+-ifdef(SIZE_COUNTING)
                     Size = lists:foldl(fun
                                            (#xmlel{name = <<"body">>, children=[{xmlcdata, Data}]}, Acc) -> Acc+size(Data);
                                            (_, Acc) -> Acc
                                        end, 0, Els),
-                    action(LServer, {message_receive_size, LUser, LResource, Size});
-               true -> ok
-            end,
+                    action(LServer, {message_receive_size, LUser, LResource, Size}),
+-endif.
             %% consider active user
             active_user(LUser, LServer, LResource),
             %% This acts as a sum value:
