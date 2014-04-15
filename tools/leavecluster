@@ -86,7 +86,7 @@ start() ->
     halt(0).
 EOF
 erlc -o $PA $CLUSTERSETUP_ERL
-erl $NAME $ERLANG_NODE -pa $PA $KERNEL_OPTS -mnesia dir "\"$EJABBERD_DB\"" -s mnesia -s $CLUSTERSETUP start
+sh -c "erl $NAME $ERLANG_NODE -pa $PA $KERNEL_OPTS -mnesia dir "\"$SPOOL_DIR\"" -s mnesia -s $CLUSTERSETUP start"
 rm -Rf $PA
 
 echo "End."
