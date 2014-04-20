@@ -31,13 +31,16 @@
 
 %%-define(ejabberd_debug, true).
 
+-behaviour(gen_server).
 -behaviour(gen_mod).
 
+-export([start_link/0]).
 -export([start/2, stop/1, process/2, open_session/2,
 	 close_session/1, find_session/1]).
 
-%% DHT callbacks
--export([merge_write/2, merge_delete/2, clean/1]).
+%% gen_server callbacks
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2,
+	 terminate/2, code_change/3]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -52,9 +55,13 @@
                timestamp = now() :: erlang:timestamp() | '_',
                pid = self()      :: pid() | '$1'}).
 
+-record(state, {}).
+
 %%%----------------------------------------------------------------------
 %%% API
 %%%----------------------------------------------------------------------
+start_link() ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 process([], #request{method = 'POST', data = <<>>}) ->
     ?DEBUG("Bad Request: no data", []),
@@ -108,54 +115,54 @@ get_human_html_xmlel() ->
 					   "client that supports it.">>}]}]}]}.
 
 open_session(SID, Pid) ->
+    Session = #bosh{sid = SID, timestamp = now(), pid = Pid},
     lists:foreach(
-      fun(Node) ->
-	      ejabberd_cluster:send(
-		{?MODULE, Node},
-		{write, #bosh{sid = SID,
-			      timestamp = now(),
-			      pid = Pid}})
+      fun(Node) when Node == node() ->
+	      gen_server:call(?MODULE, {write, Session});
+	 (Node) ->
+	      ejabberd_cluster:send({?MODULE, Node}, {write, Session})
       end, ejabberd_cluster:get_nodes()).
 
 close_session(SID) ->
     case mnesia:dirty_read(bosh, SID) of
-	[R] ->
+	[Session] ->
 	    lists:foreach(
-	      fun(Node) ->
-		      ejabberd_cluster:send(
-			{?MODULE, Node}, {delete, SID, R})
+	      fun(Node) when Node == node() ->
+		      gen_server:call(?MODULE, {delete, Session});
+		 (Node) ->
+		      ejabberd_cluster:send({?MODULE, Node}, {delete, Session})
 	      end, ejabberd_cluster:get_nodes());
 	[] ->
 	    ok
     end.
 
-merge_delete(#bosh{pid = Pid1}, #bosh{pid = Pid2}) ->
-    if Pid1 == Pid2 ->
-            delete;
-       true ->
-            keep
+write_session(#bosh{pid = Pid1, sid = SID, timestamp = T1} = S1) ->
+    case mnesia:dirty_read(bosh, SID) of
+	[#bosh{pid = Pid2, timestamp = T2} = S2] ->
+	    if Pid1 == Pid2 ->
+		    mnesia:dirty_write(S1);
+	       T1 < T2 ->
+		    ejabberd_cluster:send(Pid2, replaced),
+		    mnesia:dirty_write(S1);
+	       true ->
+		    ejabberd_cluster:send(Pid1, replaced),
+		    mnesia:dirty_write(S2)
+	    end;
+	[] ->
+	    mnesia:dirty_write(S1)
     end.
 
-merge_write(#bosh{pid = Pid1, timestamp = T1} = S1,
-            #bosh{pid = Pid2, timestamp = T2} = S2) ->
-    if Pid1 == Pid2 ->
-            S1;
-       T1 < T2 ->
-            ejabberd_cluster:send(Pid2, replaced),
-            S1;
-       true ->
-            ejabberd_cluster:send(Pid1, replaced),
-            S2
+delete_session(#bosh{sid = SID, pid = Pid1}) ->
+    case mnesia:dirty_read(bosh, SID) of
+	[#bosh{pid = Pid2}] ->
+	    if Pid1 == Pid2 ->
+		    mnesia:dirty_delete(bosh, SID);
+	       true ->
+		    ok
+	    end;
+	[] ->
+	    ok
     end.
-
-clean(Node) ->
-    ets:select_delete(
-      bosh,
-      ets:fun2ms(
-        fun(#bosh{pid = Pid})
-              when node(Pid) == Node ->
-                true
-        end)).
 
 find_session(SID) ->
     case mnesia:dirty_read(bosh, SID) of
@@ -168,17 +175,88 @@ find_session(SID) ->
 start(Host, Opts) ->
     setup_database(),
     start_jiffy(Opts),
-    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    ChildSpec = {Proc,
-		 {ejabberd_tmp_sup, start_link, [Proc, ejabberd_bosh]},
-		 permanent, infinity, supervisor, [ejabberd_tmp_sup]},
-    supervisor:start_child(ejabberd_sup, ChildSpec).
+    TmpSup = gen_mod:get_module_proc(Host, ?PROCNAME),
+    TmpSupSpec = {TmpSup,
+		  {ejabberd_tmp_sup, start_link, [TmpSup, ejabberd_bosh]},
+		  permanent, infinity, supervisor, [ejabberd_tmp_sup]},
+    ProcSpec = {?MODULE,
+		{?MODULE, start_link, []},
+		transient, 2000, worker, [?MODULE]},
+    case supervisor:start_child(ejabberd_sup, ProcSpec) of
+	{ok, _} ->
+	    supervisor:start_child(ejabberd_sup, TmpSupSpec);
+	{error, {already_started, _}} ->
+	    supervisor:start_child(ejabberd_sup, TmpSupSpec);
+	Err ->
+	    Err
+    end.
 
 stop(Host) ->
-    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    supervisor:terminate_child(ejabberd_sup, Proc),
-    supervisor:delete_child(ejabberd_sup, Proc).
+    TmpSup = gen_mod:get_module_proc(Host, ?PROCNAME),
+    supervisor:terminate_child(ejabberd_sup, TmpSup),
+    supervisor:delete_child(ejabberd_sup, TmpSup).
 
+%%%===================================================================
+%%% gen_server callbacks
+%%%===================================================================
+init([]) ->
+    ejabberd_cluster:subscribe(),
+    {ok, #state{}}.
+
+handle_call({write, Session}, _From, State) ->
+    Res = write_session(Session),
+    {reply, Res, State};
+handle_call({delete, Session}, _From, State) ->
+    Res = delete_session(Session),
+    {reply, Res, State};
+handle_call(_Request, _From, State) ->
+    Reply = ok,
+    {reply, Reply, State}.
+
+handle_cast(_Msg, State) ->
+    {noreply, State}.
+
+handle_info({write, Session}, State) ->
+    write_session(Session),
+    {noreply, State};
+handle_info({delete, Session}, State) ->
+    delete_session(Session),
+    {noreply, State};
+handle_info({node_up, Node}, State) ->
+    Ss = ets:select(
+	   bosh,
+	   ets:fun2ms(
+	     fun(#bosh{pid = Pid} = S)
+		   when node(Pid) == node() ->
+		     S
+	     end)),
+    lists:foreach(
+      fun(S) ->
+	      ejabberd_cluster:send({?MODULE, Node}, {write, S})
+      end, Ss),
+    {noreply, State};
+handle_info({node_down, Node}, State) ->
+    ets:select_delete(
+      bosh,
+      ets:fun2ms(
+        fun(#bosh{pid = Pid})
+              when node(Pid) == Node ->
+                true
+        end)),
+    {noreply, State};
+handle_info(_Info, State) ->
+    ?ERROR_MSG("got unexpected info: ~p", [_Info]),
+    {noreply, State}.
+
+terminate(_Reason, _State) ->
+    ok.
+
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
 setup_database() ->
     case catch mnesia:table_info(bosh, attributes) of
         [sid, pid] ->
