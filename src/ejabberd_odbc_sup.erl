@@ -29,8 +29,8 @@
 -author('alexey@process-one.net').
 
 %% API
--export([start_link/1, init/1, add_pid/2, remove_pid/2,
-	 get_pids/1, get_random_pid/1, transform_options/1]).
+-export([start_link/1, init/1, get_pids/1,
+	 get_random_pid/1, transform_options/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -45,58 +45,46 @@
 
 -define(CONNECT_TIMEOUT, 500).
 
--record(sql_pool, {host, pid}).
-
 start_link(Host) ->
-    mnesia:create_table(sql_pool,
-			[{ram_copies, [node()]}, {type, bag},
-			 {local_content, true},
-			 {attributes, record_info(fields, sql_pool)}]),
-    mnesia:add_table_copy(sql_pool, node(), ram_copies),
-    F = fun () -> mnesia:delete({sql_pool, Host}) end,
-    mnesia:ets(F),
     supervisor:start_link({local,
 			   gen_mod:get_module_proc(Host, ?MODULE)},
 			  ?MODULE, [Host]).
 
 init([Host]) ->
-    PoolSize = ejabberd_config:get_option(
-                 {odbc_pool_size, Host},
-                 fun(I) when is_integer(I), I>0 -> I end,
-                 ?DEFAULT_POOL_SIZE),
-    StartInterval = ejabberd_config:get_option(
-                      {odbc_start_interval, Host},
-                      fun(I) when is_integer(I), I>0 -> I end,
-                      ?DEFAULT_ODBC_START_INTERVAL),
+    PoolSize = get_pool_size(Host),
+    StartInterval = get_start_interval(Host),
     {ok,
      {{one_for_one, PoolSize * 10, 1},
       lists:map(fun (I) ->
-			{I,
+			{ejabberd_odbc:get_proc(Host, I),
 			 {ejabberd_odbc, start_link,
-			  [Host, StartInterval * 1000]},
+			  [Host, I, StartInterval * 1000]},
 			 transient, 2000, worker, [?MODULE]}
 		end,
 		lists:seq(1, PoolSize))}}.
 
+get_start_interval(Host) ->
+    ejabberd_config:get_option(
+      {odbc_start_interval, Host},
+      fun(I) when is_integer(I), I>0 -> I end,
+      ?DEFAULT_ODBC_START_INTERVAL).
+
+get_pool_size(Host) ->
+    ejabberd_config:get_option(
+      {odbc_pool_size, Host},
+      fun(I) when is_integer(I), I>0 -> I end,
+      ?DEFAULT_POOL_SIZE).
+
 get_pids(Host) ->
-    Rs = mnesia:dirty_read(sql_pool, Host),
-    [R#sql_pool.pid || R <- Rs].
+    Sup = gen_mod:get_module_proc(Host, ?MODULE),
+    [Pid || {Pid, _, _, _} <- supervisor:which_children(Sup)].
 
 get_random_pid(Host) ->
-    Pids = get_pids(Host),
-    lists:nth(erlang:phash(now(), length(Pids)), Pids).
+    get_random_pid(Host, now()).
 
-add_pid(Host, Pid) ->
-    F = fun () ->
-		mnesia:write(#sql_pool{host = Host, pid = Pid})
-	end,
-    mnesia:ets(F).
-
-remove_pid(Host, Pid) ->
-    F = fun () ->
-		mnesia:delete_object(#sql_pool{host = Host, pid = Pid})
-	end,
-    mnesia:ets(F).
+get_random_pid(Host, Term) ->
+    I = erlang:phash2(Term, get_pool_size(Host)) + 1,
+    ejabberd_odbc:get_proc(Host, I).
 
 transform_options(Opts) ->
     lists:foldl(fun transform_options/2, [], Opts).
