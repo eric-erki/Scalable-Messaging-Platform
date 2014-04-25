@@ -76,8 +76,7 @@ get_pool_size(Host) ->
       ?DEFAULT_POOL_SIZE).
 
 get_pids(Host) ->
-    Sup = gen_mod:get_module_proc(Host, ?MODULE),
-    [Pid || {Pid, _, _, _} <- supervisor:which_children(Sup)].
+    [ejabberd_odbc:get_proc(Host, I) || I <- lists:seq(1, get_pool_size(Host))].
 
 get_random_pid(Host) ->
     get_random_pid(Host, now()).
