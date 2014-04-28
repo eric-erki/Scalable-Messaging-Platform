@@ -45,7 +45,7 @@
 	 force_update_presence/1, connected_users/0,
 	 connected_users_number/0, user_resources/2, get_all_pids/0,
 	 get_session_pid/3, get_user_info/3, get_user_ip/3,
-	 get_proc_num/0]).
+	 get_proc_num/0, disconnect_user/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
@@ -865,7 +865,13 @@ commands() ->
 			desc = "List user's connected resources",
 			module = ?MODULE, function = user_resources,
 			args = [{user, binary}, {host, binary}],
-			result = {resources, {list, {resource, string}}}}].
+			result = {resources, {list, {resource, string}}}},
+     #ejabberd_commands{name = disconnect_user,
+			tags = [session],
+			desc = "Disconnect user's active sessions",
+			module = ?MODULE, function = disconnect_user,
+			args = [{user, binary}, {host, binary}],
+			result = {num_resources, integer}}].
 
 -spec connected_users() -> [binary()].
 
@@ -911,6 +917,16 @@ stop_handlers() ->
 dispatch(From, To, Packet, Hops) ->
     #jid{luser = U, lserver = S} = To,
     ejabberd_sm_handler:route(get_proc_by_hash({U, S}), From, To, Packet, Hops).
+
+disconnect_user(User, Server) ->
+    Xmlelement = ?SERRT_POLICY_VIOLATION(<<"en">>, <<"has been kicked">>),
+    Resources = get_user_resources(User, Server),
+    lists:foreach(
+	fun(Resource) ->
+		PID = get_session_pid(User, Server, Resource),
+		PID ! {kick, kicked_by_admin, Xmlelement}
+	end, Resources),
+    length(Resources).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Update Mnesia tables
