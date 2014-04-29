@@ -919,12 +919,11 @@ dispatch(From, To, Packet, Hops) ->
     ejabberd_sm_handler:route(get_proc_by_hash({U, S}), From, To, Packet, Hops).
 
 disconnect_user(User, Server) ->
-    Xmlelement = ?SERRT_POLICY_VIOLATION(<<"en">>, <<"has been kicked">>),
     Resources = get_user_resources(User, Server),
     lists:foreach(
 	fun(Resource) ->
 		PID = get_session_pid(User, Server, Resource),
-		PID ! {kick, kicked_by_admin, Xmlelement}
+		PID ! disconnect
 	end, Resources),
     length(Resources).
 

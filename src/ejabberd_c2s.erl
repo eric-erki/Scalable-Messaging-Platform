@@ -1599,9 +1599,14 @@ handle_info({send_text, Text}, StateName, StateData) ->
     fsm_next_state(StateName, StateData);
 handle_info(replaced, _StateName, StateData) ->
     Lang = StateData#state.lang,
-    send_element(StateData,
-		 ?SERRT_CONFLICT(Lang,
-				 <<"Replaced by new connection">>)),
+    Xmlelement = ?SERRT_CONFLICT(Lang, <<"Replaced by new connection">>),
+    handle_info({kick, replaced, Xmlelement}, StateName, StateData);
+handle_info(disconnect, StateName, StateData) ->
+    Lang = StateData#state.lang,
+    Xmlelement = ?SERRT_POLICY_VIOLATION(Lang, <<"has been kicked">>),
+    handle_info({kick, kicked_by_admin, Xmlelement}, StateName, StateData);
+handle_info({kick, Reason, Xmlelement}, _StateName, StateData) ->
+    send_element(StateData, Xmlelement),
     send_trailer(StateData),
     {stop, normal,
      StateData#state{authenticated = replaced}};
