@@ -31,6 +31,7 @@
 {json, @json@}.
 {http, @http@}.
 {lager, @lager@}.
+{sip, @sip@}.
 {iconv, @iconv@}.
 {airbrake, @airbrake@}.
 {p1db, @p1db@}.
