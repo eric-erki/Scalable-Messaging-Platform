@@ -37,7 +37,7 @@
 	 check_in_subscription/6, bounce_offline_message/3,
 	 disconnect_removed_user/2, get_user_sessions/2,
 	 get_user_resources/2, set_presence/7, unset_presence/6,
-	 close_session_unset_presence/5,
+	 close_session_unset_presence/5, get_max_user_sessions/2,
 	 dirty_get_sessions_list/0, dirty_get_my_sessions_list/0,
 	 get_vh_session_list/1, get_vh_my_session_list/1,
 	 get_vh_session_number/1, register_iq_handler/4,
