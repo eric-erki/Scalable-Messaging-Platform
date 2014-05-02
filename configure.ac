@@ -122,10 +122,10 @@ AC_ARG_ENABLE(mssql,
 esac],[db_type=generic])
 
 AC_ARG_ENABLE(all,
-[AC_HELP_STRING([--enable-all], [same as --enable-nif --enable-odbc --enable-mysql --enable-pgsql --enable-pam --enable-zlib --enable-stun --enable-riak --enable-json --enable-iconv --enable-debug --enable-http --enable-lager --enable-sip --enable-tools --enable-p1db (useful for Dialyzer checks, default: no)])],
+[AC_HELP_STRING([--enable-all], [same as --enable-nif --enable-odbc --enable-mysql --enable-pgsql --enable-pam --enable-zlib --enable-stun --enable-riak --enable-json --enable-iconv --enable-debug --enable-http --enable-lager --enable-tools --enable-p1db (useful for Dialyzer checks, default: no)])],
 [case "${enableval}" in
-  yes) nif=true odbc=true mysql=true pgsql=true pam=true zlib=true stun=true riak=true json=true iconv=true debug=true http=true lager=true sip=true tools=true p1db=true ;;
-  no) nif=false odbc=false mysql=false pgsql=false pam=false zlib=false stun=false riak=false json=false iconv=false debug=false http=false lager=false sip=false tools=false p1db=false ;;
+  yes) nif=true odbc=true mysql=true pgsql=true pam=true zlib=true stun=true riak=true json=true iconv=true debug=true http=true lager=true tools=true p1db=true ;;
+  no) nif=false odbc=false mysql=false pgsql=false pam=false zlib=false stun=false riak=false json=false iconv=false debug=false http=false lager=false tools=false p1db=false ;;
   *) AC_MSG_ERROR(bad value ${enableval} for --enable-all) ;;
 esac],[])
 
@@ -257,14 +257,6 @@ AC_ARG_ENABLE(lager,
   *) AC_MSG_ERROR(bad value ${enableval} for --enable-lager) ;;
 esac],[if test "x$lager" = "x"; then lager=true; fi])
 
-AC_ARG_ENABLE(sip,
-[AC_HELP_STRING([--enable-sip], [enable SIP support (default: no)])],
-[case "${enableval}" in
-  yes) sip=true ;;
-  no)  sip=false ;;
-  *) AC_MSG_ERROR(bad value ${enableval} for --enable-sip) ;;
-esac],[if test "x$sip" = "x"; then sip=false; fi])
-
 AC_ARG_ENABLE(airbrake,
 [AC_HELP_STRING([--enable-airbrake], [enable Airbrake notification (default: no)])],
 [case "${enableval}" in
@@ -312,7 +304,6 @@ AC_SUBST(debug)
 AC_SUBST(pubsub_ng)
 AC_SUBST(http)
 AC_SUBST(lager)
-AC_SUBST(sip)
 AC_SUBST(tools)
 AC_SUBST(airbrake)
 
