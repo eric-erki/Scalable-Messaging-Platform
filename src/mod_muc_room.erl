@@ -452,12 +452,13 @@ normal_state({route, From, <<"">>,
 	     StateData) ->
     case jlib:iq_query_info(Packet) of
       #iq{type = Type, xmlns = XMLNS, lang = Lang,
-	  sub_el = SubEl} =
+	  sub_el = #xmlel{name = SubElName} = SubEl} =
 	  IQ
 	  when (XMLNS == (?NS_MUC_ADMIN)) or
 		 (XMLNS == (?NS_MUC_OWNER))
 		 or (XMLNS == (?NS_DISCO_INFO))
 		 or (XMLNS == (?NS_DISCO_ITEMS))
+	         or (XMLNS == (?NS_VCARD))
 		 or (XMLNS == (?NS_CAPTCHA)) ->
 	  Res1 = case XMLNS of
 		   ?NS_MUC_ADMIN ->
@@ -468,6 +469,8 @@ normal_state({route, From, <<"">>,
 		       process_iq_disco_info(From, Type, Lang, StateData);
 		   ?NS_DISCO_ITEMS ->
 		       process_iq_disco_items(From, Type, Lang, StateData);
+		   ?NS_VCARD ->
+		       process_iq_vcard(From, Type, Lang, SubEl, StateData);
 		   ?NS_CAPTCHA ->
 		       process_iq_captcha(From, Type, Lang, SubEl, StateData)
 		 end,
@@ -475,7 +478,7 @@ normal_state({route, From, <<"">>,
 				    {result, Res, SD} ->
 					{IQ#iq{type = result,
 					       sub_el =
-						   [#xmlel{name = <<"query">>,
+						   [#xmlel{name = SubElName,
 							   attrs =
 							       [{<<"xmlns">>,
 								 XMLNS}],
@@ -4137,6 +4140,10 @@ set_opts([{Opt, Val} | Opts], StateData) ->
 		StateData#state{config =
 				    (StateData#state.config)#config{max_users =
 									MaxUsers}};
+	    vcard ->
+		StateData#state{config =
+				    (StateData#state.config)#config{vcard =
+									Val}};
 	    affiliations ->
 		StateData#state{affiliations = (?DICT):from_list(Val)};
 	    subject -> StateData#state{subject = Val};
@@ -4241,6 +4248,8 @@ encode_opts(_, Vals) ->
                                    none;
                                max_users ->
                                    BinVal;
+			       vcard ->
+				   BinVal;
                                captcha_whitelist ->
                                    jlib:expr_to_term(BinVal);
                                _ ->
@@ -4308,6 +4317,8 @@ process_iq_disco_info(_From, get, Lang, StateData) ->
 		  {<<"type">>, <<"text">>},
 		  {<<"name">>, get_title(StateData)}],
 	     children = []},
+      #xmlel{name = <<"feature">>,
+	     attrs = [{<<"var">>, ?NS_VCARD}], children = []},
       #xmlel{name = <<"feature">>,
 	     attrs = [{<<"var">>, ?NS_MUC}], children = []},
       ?CONFIG_OPT_TO_FEATURE((Config#config.public),
@@ -4379,6 +4390,26 @@ process_iq_captcha(_From, set, _Lang, SubEl,
     case ejabberd_captcha:process_reply(SubEl) of
       ok -> {result, [], StateData};
       _ -> {error, ?ERR_NOT_ACCEPTABLE}
+    end.
+
+process_iq_vcard(_From, get, _Lang, _SubEl, StateData) ->
+    #state{config = #config{vcard = VCardRaw}} = StateData,
+    case xml_stream:parse_element(VCardRaw) of
+	#xmlel{children = VCardEls} ->
+	    {result, VCardEls, StateData};
+	{error, _} ->
+	    {result, [], StateData}
+    end;
+process_iq_vcard(From, set, Lang, SubEl, StateData) ->
+    case get_affiliation(From, StateData) of
+	owner ->
+	    VCardRaw = xml:element_to_binary(SubEl),
+	    Config = StateData#state.config,
+	    NewConfig = Config#config{vcard = VCardRaw},
+	    change_config(NewConfig, StateData);
+	_ ->
+	    ErrText = <<"Owner privileges required">>,
+	    {error, ?ERRT_FORBIDDEN(Lang, ErrText)}
     end.
 
 get_title(StateData) ->
