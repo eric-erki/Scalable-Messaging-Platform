@@ -1401,6 +1401,7 @@ session_established(closed, StateData)
     when StateData#state.resume_timeout > 0,
 	 StateData#state.sm_state == active orelse
 	 StateData#state.sm_state == pending ->
+    log_pending_state(StateData),
     fsm_next_state(wait_for_resume, StateData#state{sm_state = pending});
 session_established(closed, StateData) ->
     if not StateData#state.reception ->
@@ -1986,6 +1987,7 @@ handle_info({'DOWN', Monitor, _Type, _Object, _Info},
             if StateData#state.resume_timeout > 0,
                StateData#state.sm_state == active orelse
                StateData#state.sm_state == pending ->
+                    log_pending_state(StateData),
                     fsm_next_state(wait_for_resume, StateData#state{sm_state = pending});
                true ->
                     {stop, normal, StateData}
@@ -3852,6 +3854,12 @@ limit_queue_length(#state{jid = JID,
       false ->
 	  StateData
     end.
+
+log_pending_state(StateData) when StateData#state.sm_state /= pending ->
+    ?INFO_MSG("Waiting for resumption of stream for ~s",
+	      [jlib:jid_to_string(StateData#state.jid)]);
+log_pending_state(_StateData) ->
+    ok.
 
 handle_unacked_stanzas(StateData, F) when StateData#state.sm_state == active;
 					  StateData#state.sm_state == pending ->
