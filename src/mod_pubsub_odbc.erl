@@ -801,7 +801,7 @@ disco_items(Host, Node, From) ->
 caps_update(#jid{luser = U, lserver = S, lresource = R}, #jid{lserver = Host} = JID, _Features)
 	when Host =/= S ->
     presence(Host, {presence, U, S, [R], JID});
-caps_update(From, To, _Feature) ->
+caps_update(_From, _To, _Feature) ->
     ok.
 
 presence_probe(#jid{luser = U, lserver = S, lresource = R} = JID, JID, Pid) ->
@@ -811,7 +811,7 @@ presence_probe(#jid{luser = U, lserver = S}, #jid{luser = U, lserver = S}, _Pid)
     %% ignore presence_probe from my other ressources
     %% to not get duplicated last items
     ok;
-presence_probe(#jid{luser = U, lserver = S, lresource = R} = From, #jid{lserver = Host} = JID, _Pid) ->
+presence_probe(#jid{luser = U, lserver = S, lresource = R}, #jid{lserver = Host} = JID, _Pid) ->
     presence(Host, {presence, U, S, [R], JID}).
 
 presence(ServerHost, Presence) ->
