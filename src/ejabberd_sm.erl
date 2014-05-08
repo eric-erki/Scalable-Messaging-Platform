@@ -43,7 +43,7 @@
 	 get_vh_session_number/1, register_iq_handler/4,
 	 register_iq_handler/5, unregister_iq_handler/2,
 	 force_update_presence/1, connected_users/0,
-	 connected_users_number/0, user_resources/2,
+	 connected_users_number/0, user_resources/2, get_all_pids/0,
 	 get_session_pid/3, get_user_info/3, get_user_ip/3,
 	 is_existing_resource/3, node_up/1, node_down/1,
 	 migrate/3]).
@@ -342,6 +342,16 @@ get_vh_session_list(Server) ->
 			  end
 		  end,
 		  ejabberd_cluster:get_nodes()).
+
+-spec get_all_pids() -> [pid()].
+
+get_all_pids() ->
+    mnesia:dirty_select(
+      session,
+      ets:fun2ms(
+        fun(#session{sid = {_, Pid}}) ->
+		Pid
+        end)).
 
 -spec get_vh_session_number(binary()) -> non_neg_integer().
 
