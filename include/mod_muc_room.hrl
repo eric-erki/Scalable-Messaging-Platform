@@ -59,7 +59,7 @@
     voice_request_min_interval           = 1800 :: non_neg_integer(),
     max_users                            = ?MAX_USERS_DEFAULT :: non_neg_integer() | none,
     logging                              = false :: boolean(),
-    vcard                                = <<"">> :: boolean(),
+    vcard                                = <<"">> :: binary(),
     captcha_whitelist                    = (?SETS):empty() :: gb_set()
 }).
 
