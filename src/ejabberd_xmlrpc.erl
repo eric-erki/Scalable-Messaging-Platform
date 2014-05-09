@@ -355,7 +355,7 @@ do_command(AccessCommands, Auth, Command, AttrL, ArgsF,
 make_auth_bin(noauth) ->
     noauth;
 make_auth_bin({UserT, ServerT, PasswordT}) ->
-    {list_to_binary(UserT), list_to_binary(ServerT), list_to_binary(PasswordT)}.
+    {iolist_to_binary(UserT), iolist_to_binary(ServerT), iolist_to_binary(PasswordT)}.
 
 %%-----------------------------
 %% Format arguments
