@@ -197,11 +197,16 @@ do_route(From, Domain, Destinations, Packet) ->
 
     {Groups, Rest} = lists:foldr(
                        fun(Dest, {Groups1, Rest1}) ->
-                               case ejabberd_router:find_route_cluster_node(Dest) of
+                               case ejabberd_sm:get_session_pid(Dest#jid.luser, Dest#jid.lserver, Dest#jid.lresource) of
                                    none ->
                                        {Groups1, [Dest|Rest1]};
-                                   Node ->
-                                       {dict:append(Node, Dest, Groups1), Rest1}
+                                   Pid ->
+                                       Node = node(Pid),
+                                       if Node /= node() ->
+                                               {dict:append(Node, Dest, Groups1), Rest1};
+                                          true ->
+                                               {Groups1, [Dest|Rest1]}
+                                       end
                                end
                        end, {dict:new(), []}, Destinations),
 
