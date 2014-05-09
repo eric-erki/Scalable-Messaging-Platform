@@ -530,7 +530,7 @@ do_route(From, To, Packet, Hops) ->
     ?DEBUG("session manager~n\tfrom ~p~n\tto ~p~n\tpacket "
 	   "~P~n",
 	   [From, To, Packet, 8]),
-    USR = jlib:jid_tolower(To),
+    {U, S, _} = USR = jlib:jid_tolower(To),
     case mnesia:dirty_read(session, USR) of
 	[#session{sid = {_, Pid}}] ->
 	    Node = node(Pid),
@@ -543,7 +543,7 @@ do_route(From, To, Packet, Hops) ->
 			    dispatch(From, To, Packet, Hops);
 			false ->
 			    ejabberd_cluster:send(
-			      {?MODULE, Node},
+			      {get_proc_by_hash({U, S}), Node},
 			      {route, From, To, Packet, [node()|Hops]})
 		    end
 	    end;
