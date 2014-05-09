@@ -31,13 +31,14 @@
 -define(MIN_RETRY_WAIT, 5 * 1000).
 -define(MODE_ACCEPT, accept).
 -define(MODE_ENQUEUE, enqueue).
+-define(MODE_ACTIVE, active).
 
 -record(state, {host = <<"">>            :: binary(),
 		gateway = ""             :: string(),
 		queue = {0, queue:new()} :: {non_neg_integer(), queue()},
 		apikey = ""              :: string(),
 		soundfile = <<"">>       :: binary(),
-		mode = ?MODE_ACCEPT      :: accept | enqueue,
+		mode = ?MODE_ACCEPT      :: accept | enqueue | active,
 		prev_attempts = 0        :: non_neg_integer()}).
 
 -define(PROCNAME, ejabberd_mod_gcm_service).
@@ -482,8 +483,8 @@ enqueued(_, State) -> State.
 active(#state{prev_attempts = Attempts} = State)
     when Attempts > 0 ->
     ?INFO_MSG("Setting GCM service to active mode.", []),
-    State#state{mode = active, prev_attempts = 0};
-active(State) -> State#state{mode = active}.
+    State#state{mode = ?MODE_ACTIVE, prev_attempts = 0};
+active(State) -> State#state{mode = ?MODE_ACTIVE}.
 
 resend_messages(#state{queue = {_, Queue}} = State) ->
     ?INFO_MSG("Resending pending messages...", []),
