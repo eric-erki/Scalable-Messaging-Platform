@@ -245,7 +245,7 @@ build_kick_stanza(Nick, RoomString) ->
 
 get_room_occupants(Room, Host) ->
     case get_room_pid(Room, Host) of
-        room_not_found -> throw({error, room_not_found});
+        room_not_found -> [];
         Pid -> get_room_occupants(Pid)
     end.
 
