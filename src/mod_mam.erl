@@ -617,7 +617,7 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
                fun([TS, XML, PeerBin]) ->
                        #xmlel{} = El = xml_stream:parse_element(XML),
                        Now = usec_to_now(jlib:binary_to_integer(TS)),
-                       PeerJid = jlib:string_to_jid(PeerBin),
+                       PeerJid = jlib:jid_tolower(jlib:string_to_jid(PeerBin)),
                        {TS, jlib:binary_to_integer(TS),
                         msg_to_el(#archive_msg{timestamp = Now, packet = El, peer = PeerJid}, JidRequestor)}
                end, Res), jlib:binary_to_integer(Count)};
