@@ -3465,6 +3465,14 @@ flash_policy_string() ->
       ToPortsString/binary,
       "\"/>\n</cross-domain-policy>\n\000">>.
 
+need_redirect(#state{redirect = true}) ->
+    case ejabberd_config:get_option(
+	   redirect_host, fun iolist_to_binary/1) of
+	undefined ->
+	    false;
+	Host ->
+	    {true, Host}
+    end;
 need_redirect(_) -> false.
 
 get_jid_from_opts(Opts) ->
