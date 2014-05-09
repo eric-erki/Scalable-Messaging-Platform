@@ -347,9 +347,16 @@ find_route_cluster_node(To) ->
         [#route{pid = [], local_hint = LocalHint}] ->
             case LocalHint of
                 {apply, ejabberd_local, route} ->
-                    case ejabberd_sm:get_user_node({To#jid.luser, To#jid.lserver, To#jid.lresource}) of
-                        Node when Node /= node() ->
-                            Node;
+                    case ejabberd_sm:get_session_pid(To#jid.luser, To#jid.lserver, To#jid.lresource) of
+                        none ->
+                            none;
+                        Pid ->
+                            Node = node(Pid),
+                            if Node /= node() ->
+                                    Node;
+                               true ->
+                                    none
+                            end;
                         _ ->
                             none
                     end;
