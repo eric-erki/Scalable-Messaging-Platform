@@ -1371,14 +1371,9 @@ get_sessions(User, Server) ->
     LUser = jlib:nodeprep(User),
     LServer = jlib:nameprep(Server),
     US = {LUser, LServer},
-    Node = ejabberd_sm:get_user_node(LUser, LServer),
-    case ejabberd_cluster:call(Node, mnesia, dirty_index_read,
-                               [session, US, #session.us]) of
-      Result when is_list(Result), Result /= [] ->
-	  lists:reverse(lists:keysort(#session.priority,
-				      clean_session_list(Result)));
-      _ -> []
-    end.
+    Result = mnesia:dirty_index_read(session, US, #session.us),
+    lists:reverse(lists:keysort(#session.priority,
+				clean_session_list(Result))).
 
 clean_session_list(Ss) ->
     clean_session_list(lists:keysort(#session.usr, Ss), []).
