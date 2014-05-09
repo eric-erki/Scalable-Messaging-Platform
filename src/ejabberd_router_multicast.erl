@@ -195,18 +195,37 @@ do_route(From, Domain, Destinations, Packet) ->
     ?DEBUG("route_multicast~n\tfrom ~p~n\tdomain ~p~n\tdestinations ~p~n\tpacket ~p~n",
 	   [From, Domain, Destinations, Packet]),
 
+    {Groups, Rest} = lists:foldr(
+                       fun(Dest, {Groups1, Rest1}) ->
+                               case ejabberd_router:find_route_cluster_node(Dest) of
+                                   none ->
+                                       {Groups1, [Dest|Rest1]};
+                                   Node ->
+                                       {dict:append(Node, Dest, Groups1), Rest1}
+                               end
+                       end, {dict:new(), []}, Destinations),
+
+    dict:map(
+      fun(Node, [Single]) ->
+              ejabberd_cluster:send({ejabberd_sm, Node},
+                                    {route, From, Single, Packet});
+         (Node, Dests) ->
+              ejabberd_cluster:send({ejabberd_sm, Node},
+                                    {route_multiple, From, Dests, Packet})
+      end, Groups),
+
     %% Try to find an appropriate multicast service
     case mnesia:dirty_read(route_multicast, Domain) of
 
 	%% If no multicast service is available in this server, send manually
-	[] -> do_route_normal(From, Destinations, Packet);
+	[] -> do_route_normal(From, Rest, Packet);
 
 	%% If available, send the packet using multicast service
 	[R] ->
 	    case R#route_multicast.pid of
 		Pid when is_pid(Pid) ->
-		    Pid ! {route_trusted, From, Destinations, Packet};
-		_ -> do_route_normal(From, Destinations, Packet)
+		    Pid ! {route_trusted, From, Rest, Packet};
+		_ -> do_route_normal(From, Rest, Packet)
 	    end
     end.
 

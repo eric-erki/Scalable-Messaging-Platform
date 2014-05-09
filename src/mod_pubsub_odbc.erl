@@ -464,7 +464,7 @@ send_loop(State) ->
 						      end;
 						  (_) -> ok
 					      end,
-					      Subscriptions)
+					      lists:usort(Subscriptions))
 			end,
 			State#state.plugins),
 	  if not State#state.ignore_pep_from_offline ->
@@ -798,22 +798,21 @@ disco_items(Host, Node, From) ->
 %% presence hooks handling functions
 %%
 
-caps_update(#jid{luser = U, lserver = S, lresource = R} = From, To, _Features) ->
-    Pid = ejabberd_sm:get_session_pid(U, S, R),
-    presence_probe(From, To, Pid).
+caps_update(#jid{luser = U, lserver = S, lresource = R}, #jid{lserver = Host} = JID, _Features)
+	when Host =/= S ->
+    presence(Host, {presence, U, S, [R], JID});
+caps_update(_From, _To, _Feature) ->
+    ok.
 
-presence_probe(#jid{luser = User, lserver = Server, lresource = Resource} = JID,
-  JID, Pid) ->
-    presence(Server, {presence, JID, Pid}),
-    presence(Server, {presence, User, Server, [Resource], JID});
-presence_probe(#jid{luser = User, lserver = Server},
-  #jid{luser = User, lserver = Server}, _Pid) ->
-    %% ignore presence_probe from other ressources for the current user
-    %% this way, we do not send duplicated last items if user already connected with other clients
+presence_probe(#jid{luser = U, lserver = S, lresource = R} = JID, JID, Pid) ->
+    presence(S, {presence, JID, Pid}),
+    presence(S, {presence, U, S, [R], JID});
+presence_probe(#jid{luser = U, lserver = S}, #jid{luser = U, lserver = S}, _Pid) ->
+    %% ignore presence_probe from my other ressources
+    %% to not get duplicated last items
     ok;
-presence_probe(#jid{luser = User, lserver = Server, lresource = Resource},
-  #jid{lserver = Host} = JID, _Pid) ->
-    presence(Host, {presence, User, Server, [Resource], JID}).
+presence_probe(#jid{luser = U, lserver = S, lresource = R}, #jid{lserver = Host} = JID, _Pid) ->
+    presence(Host, {presence, U, S, [R], JID}).
 
 presence(ServerHost, Presence) ->
     SendLoop = case
@@ -2621,10 +2620,7 @@ publish_item(Host, ServerHost, Node, Publisher, ItemId, Payload, Access) ->
 		     PublishModel = get_option(Options, publish_model),
 		     DeliverPayloads = get_option(Options, deliver_payloads),
 		     PersistItems = get_option(Options, persist_items),
-		     MaxItems = case PersistItems of
-				  false -> 0;
-				  true -> max_items(Host, Options)
-				end,
+		     MaxItems = max_items(Host, Options),
 		     PayloadCount = payload_xmlelements(Payload),
 		     PayloadSize = byte_size(term_to_binary(Payload)) - 2,
 		     PayloadMaxSize = get_option(Options, max_payload_size),
@@ -3050,6 +3046,8 @@ send_items(Host, Node, NodeId, Type, {U, S, R} = LJID,
 	       _ -> []
 	     end,
     Stanza = case ToSend of
+	       [] ->
+		   undefined;
 	       [LastItem] ->
 		   {ModifNow, ModifUSR} =
 		       LastItem#pubsub_item.modification,
@@ -3063,11 +3061,13 @@ send_items(Host, Node, NodeId, Type, {U, S, R} = LJID,
 					attrs = nodeAttr(Node),
 					children = itemsEls(ToSend)}])
 	     end,
-    case is_tuple(Host) of
-      false ->
+    case {is_tuple(Host), Stanza} of
+      {_, undefined} ->
+	  ok;
+      {false, _} ->
 	  ejabberd_router:route(service_jid(Host),
 				jlib:make_jid(LJID), Stanza);
-      true ->
+      {true, _} ->
 	  case ejabberd_sm:get_session_pid(U, S, R) of
 	    C2SPid when is_pid(C2SPid) ->
 		ejabberd_c2s:broadcast(C2SPid,

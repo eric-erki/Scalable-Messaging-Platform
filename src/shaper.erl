@@ -30,7 +30,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/0, new/1, new1/1, update/2,
+-export([start_link/0, new/1, new1/1, update/2, get_max_rate/1,
          transform_options/1, load_from_config/0]).
 
 %% gen_server callbacks
@@ -101,6 +101,18 @@ load_from_config() ->
             ok;
         Err ->
             {error, Err}
+    end.
+
+-spec get_max_rate(atom()) -> none | non_neg_integer().
+
+get_max_rate(none) ->
+    none;
+get_max_rate(Name) ->
+    case ets:lookup(shaper, {Name, global}) of
+	[#shaper{maxrate = R}] ->
+	    R;
+	[] ->
+	    none
     end.
 
 -spec new(atom()) -> shaper().

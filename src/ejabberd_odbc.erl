@@ -33,11 +33,11 @@
 -behaviour(?GEN_FSM).
 
 %% External exports
--export([start/1, start_link/2, sql_query/2,
+-export([start/2, start_link/3, sql_query/2,
 	 sql_query_t/1, sql_transaction/2, sql_bloc/2, escape/1,
 	 escape_like/1, to_bool/1, keep_alive/1,
 	 sql_query_on_all_connections/2, encode_term/1,
-	 decode_term/1]).
+	 decode_term/1, get_proc/2]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3, handle_sync_event/4,
@@ -92,12 +92,12 @@
 %%%----------------------------------------------------------------------
 %%% API
 %%%----------------------------------------------------------------------
-start(Host) ->
-    (?GEN_FSM):start(ejabberd_odbc, [Host],
+start(Host, Num) ->
+    (?GEN_FSM):start({local, get_proc(Host, Num)}, ?MODULE, [Host],
 		     fsm_limit_opts() ++ (?FSMOPTS)).
 
-start_link(Host, StartInterval) ->
-    (?GEN_FSM):start_link(ejabberd_odbc,
+start_link(Host, Num, StartInterval) ->
+    (?GEN_FSM):start_link({local, get_proc(Host, Num)}, ?MODULE,
 			  [Host, StartInterval],
 			  fsm_limit_opts() ++ (?FSMOPTS)).
 
@@ -196,6 +196,11 @@ encode_term(Term) ->
 decode_term(Expr) ->
     jlib:expr_to_term(Expr).
 
+get_proc(Host, I) ->
+    jlib:binary_to_atom(
+      iolist_to_binary(
+	[atom_to_list(?MODULE), $_, Host, $_, integer_to_list(I)])).
+
 %%%----------------------------------------------------------------------
 %%% Callback functions from gen_fsm
 %%%----------------------------------------------------------------------
@@ -211,7 +216,6 @@ init([Host, StartInterval]) ->
     end,
     [DBType | _] = db_opts(Host),
     (?GEN_FSM):send_event(self(), connect),
-    ejabberd_odbc_sup:add_pid(Host, self()),
     {ok, connecting,
      #state{db_type = DBType, host = Host,
 	    max_pending_requests_len = max_fsm_queue(),
@@ -322,7 +326,6 @@ handle_info(Info, StateName, State) ->
     {next_state, StateName, State}.
 
 terminate(_Reason, _StateName, State) ->
-    ejabberd_odbc_sup:remove_pid(State#state.host, self()),
     case State#state.db_type of
       mysql -> catch p1_mysql_conn:stop(State#state.db_ref);
       _ -> ok

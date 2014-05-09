@@ -376,7 +376,7 @@ store(C2SState, Pkt, LUser, LServer, Peer, Type) ->
             pass
     end.
 
-do_store(Pkt, LUser, LServer, Peer, Type, mnesia) ->
+do_store(Pkt, LUser, LServer, Peer, _Type, mnesia) ->
     LPeer = {PUser, PServer, _} = jlib:jid_tolower(Peer),
     TS = now(),
     ID = jlib:integer_to_binary(now_to_usec(TS)),
@@ -406,7 +406,7 @@ do_store(Pkt, LUser, LServer, Peer, Type, p1db) ->
         {error, _} = Err ->
             Err
     end;
-do_store(Pkt, LUser, LServer, Peer, Type, odbc) ->
+do_store(Pkt, LUser, LServer, Peer, _Type, odbc) ->
     TSinteger = now_to_usec(now()),
     ID = TS = jlib:integer_to_binary(TSinteger),
     BarePeer = jlib:jid_to_string(
@@ -458,7 +458,7 @@ write_prefs(LUser, LServer, Prefs, p1db) ->
     Val = prefs_to_p1db(Prefs),
     USKey = us2key(LUser, LServer),
     p1db:insert(archive_prefs, USKey, Val);
-write_prefs(LUser, LServer, #archive_prefs{default = Default,
+write_prefs(LUser, _LServer, #archive_prefs{default = Default,
                                            never = Never,
                                            always = Always},
             {odbc, Host}) ->
@@ -545,8 +545,7 @@ select_and_send(From, To, Start, End, With, RSM, QID, DBType) ->
     SortedMsgs = lists:keysort(2, Msgs),
     send(From, To, SortedMsgs, RSM, Count, QID).
 
-select_and_start(#jid{luser = LUser, lserver = LServer} = From,
-	         _To, StartUser, End, With, RSM, DB) ->
+select_and_start(From, _To, StartUser, End, With, RSM, DB) ->
     {JidRequestor, Start, With2} = case With of
 	{room, {LUserRoom, LServerRoom, <<>>} = WithJid} ->
 	    JR = jlib:make_jid(LUserRoom,LServerRoom,<<>>),
@@ -950,58 +949,3 @@ dec_prefs(_, Bin) ->
     [jlib:atom_to_binary(Prefs#archive_prefs.default),
      jlib:term_to_expr(Prefs#archive_prefs.always),
      jlib:term_to_expr(Prefs#archive_prefs.never)].
-
-%%%%%%%%%%%%%
-%%% MUC
-
--include("mod_muc_room.hrl").
--record(muc_online_room, {name_host, timestamp, pid}).
-
-get_definitive_start(LUser, LServer, StartUser, LUserRoom, LServerRoom) ->
-    StateData = get_room_state(LUserRoom, LServerRoom),
-    case (StateData#state.config)#config.members_only of
-	true ->
-	    {FAffiliation, Reason} = case mod_muc_room:get_affiliation_and_reason(
-					    jlib:make_jid(LUser,LServer,<<>>), StateData) of
-		  {A, R} -> {A, R};
-		  {A, _JID, R} -> {A, R};
-		  Res -> {Res, no_reason}
-	    end,
-	    case FAffiliation of
-		member ->
-		    %% in Winamax's mod_muc_room, Reason stores timestamp when he got membership
-		    StartMemberIso = Reason,
-		    StartMemberDTS = iso_to_datetime_string(StartMemberIso),
-		    StartMember = jlib:datetime_string_to_timestamp(StartMemberDTS),
-		    case StartUser =< StartMember of
-			true -> StartMember;
-			false -> StartUser
-		    end;
-		owner ->
-		    StartUser;
-		admin ->
-		    StartUser;
-		_ ->
-		    {99999999, 0, 0} %% time restriction to give no history at all
-	    end;
-	false ->
-	    StartUser
-    end.
-
-get_room_state(Name, Service) ->
-    Key = {Name, Service},
-    Rooms = mod_muc:get_vh_rooms(Service),
-    case lists:keyfind(Key, 2, Rooms) of
-        false ->
-            throw({room_not_found, {Name, Service}});
-        Room ->
-	    {ok, R} = gen_fsm:sync_send_all_state_event(Room#muc_online_room.pid, get_state),
-	    R
-    end.
-
-%% Convert <<"20130725T09:37:42">> into <<"2010-06-07T00:00:00Z">>
-iso_to_datetime_string(Iso) ->
-    List = binary_to_list(Iso),
-    [A,B,C,D,  E,F, G,H, $T, I,J, $:, K,L, $:, M,N] = List,
-    DTS = [A,B,C,D, $-, E,F, $-, G,H, $T, I,J, $:, K,L, $:, M,N, $Z],
-    list_to_binary(DTS).

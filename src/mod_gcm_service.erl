@@ -1,0 +1,554 @@
+%%%----------------------------------------------------------------------
+%%% File    : mod_gcm_service.erl
+%%% Author  : Alexey Shchepin <alexey@process-one.net>
+%%%           Juan Pablo Carlino <jpcarlino@process-one.net>
+%%% Purpose : Central push infrastructure
+%%% Created :  5 Jun 2009 by Alexey Shchepin <alexey@process-one.net>
+%%%
+%%% ejabberd, Copyright (C) 2002-2013   ProcessOne
+%%%----------------------------------------------------------------------
+
+-module(mod_gcm_service).
+
+-author('alexey@process-one.net').
+-author('jpcarlino@process-one.net').
+
+-behaviour(gen_server).
+-behaviour(gen_mod).
+
+%% API
+-export([start_link/2, start/2, stop/1]).
+
+%% gen_server callbacks
+-export([init/1, handle_call/3, handle_cast/2,
+	 handle_info/2, terminate/2, code_change/3]).
+
+-include("ejabberd.hrl").
+-include("jlib.hrl").
+-include("logger.hrl").
+-include_lib("kernel/include/file.hrl").
+
+-define(MIN_RETRY_WAIT, 5 * 1000).
+-define(MODE_ACCEPT, accept).
+-define(MODE_ENQUEUE, enqueue).
+
+-record(state, {host = <<"">>            :: binary(),
+		gateway = ""             :: string(),
+		queue = {0, queue:new()} :: {non_neg_integer(), queue()},
+		apikey = ""              :: string(),
+		soundfile = <<"">>       :: binary(),
+		mode = ?MODE_ACCEPT      :: accept | enqueue,
+		prev_attempts = 0        :: non_neg_integer()}).
+
+-define(PROCNAME, ejabberd_mod_gcm_service).
+-define(RECONNECT_TIMEOUT, 5000).
+-define(HANDSHAKE_TIMEOUT, 60000).
+-define(MAX_QUEUE_SIZE, 1000).
+-define(MAX_PAYLOAD_SIZE, 4096).
+-define(EXPIRY_DATE, 24 * 60 * 60).
+-define(NS_P1_PUSH, <<"p1:push">>).
+-define(HTTP_TIMEOUT, 10 * 1000).
+-define(HTTP_CONNECT_TIMEOUT, 10 * 1000).
+
+start_link(Host, Opts) ->
+    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
+    gen_server:start_link({local, Proc}, ?MODULE, [Host, Opts], []).
+
+start(Host, Opts) ->
+    ejabberd:start_app(ssl),
+    ejabberd:start_app(inets),
+    ejabberd:start_app(jiffy),
+    MyHosts = case catch gen_mod:get_opt(
+                           hosts, Opts,
+                           fun(L) when is_list(L) ->
+                                   [{iolist_to_binary(H), O} || {H, O}<-L]
+                           end, []) of
+                  {'EXIT', _} ->
+                      [{gen_mod:get_opt_host(Host, Opts,
+                                             <<"gcm.@HOST@">>), Opts}];
+                  Hs ->
+                      Hs
+              end,
+    lists:foreach(
+      fun({MyHost, MyOpts}) ->
+	      Proc = gen_mod:get_module_proc(MyHost, ?PROCNAME),
+	      ChildSpec =
+		  {Proc,
+		   {?MODULE, start_link, [MyHost, MyOpts]},
+		   transient,
+		   1000,
+		   worker,
+		   [?MODULE]},
+	      supervisor:start_child(ejabberd_sup, ChildSpec)
+      end, MyHosts).
+
+stop(Host) ->
+    MyHosts = case gen_mod:get_module_opt(
+                     Host, ?MODULE, hosts,
+                     fun(Hs) when is_list(Hs) ->
+                             [iolist_to_binary(H) || {H, _} <- Hs]
+                     end, []) of
+                  [] ->
+                      [gen_mod:get_module_opt_host(
+                         Host, ?MODULE, <<"gcm.@HOST@">>)];
+                  Hs ->
+                      Hs
+              end,
+    lists:foreach(
+      fun(MyHost) ->
+	      Proc = gen_mod:get_module_proc(MyHost, ?PROCNAME),
+	      gen_server:call(Proc, stop),
+	      supervisor:terminate_child(ejabberd_sup, Proc),
+	      supervisor:delete_child(ejabberd_sup, Proc)
+      end, MyHosts).
+
+%%====================================================================
+%% gen_server callbacks
+%%====================================================================
+
+init([MyHost, Opts]) ->
+    SoundFile = gen_mod:get_opt(sound_file, Opts,
+                                fun iolist_to_binary/1,
+                                <<"pushalert.wav">>),
+    Gateway = gen_mod:get_opt(gateway, Opts,
+                              fun iolist_to_string/1,
+			      "https://android.googleapis.com/gcm/send"),
+    ApiKey = gen_mod:get_opt(apikey, Opts, fun iolist_to_string/1, ""),
+    ejabberd_router:register_route(MyHost),
+    {ok,
+     #state{host = MyHost, gateway = Gateway,
+	    queue = {0, queue:new()}, apikey = ApiKey,
+	    soundfile = SoundFile}}.
+
+handle_call(stop, _From, State) ->
+    {stop, normal, ok, State}.
+
+handle_cast(_Msg, State) -> {noreply, State}.
+
+handle_info({route, From, To, Packet}, State) ->
+    case catch do_route(From, To, Packet, State) of
+      {'EXIT', Reason} ->
+	  ?ERROR_MSG("~p", [Reason]), {noreply, State};
+      Res -> Res
+    end;
+handle_info(resend, State) ->
+    {noreply, resend_messages(State)};
+handle_info(_Info, State) -> {noreply, State}.
+
+terminate(_Reason, State) ->
+    ejabberd_router:unregister_route(State#state.host), ok.
+
+code_change(_OldVsn, State, _Extra) -> {ok, State}.
+
+%%%----------------------------------------------------------------------
+%%% Internal functions
+%%%----------------------------------------------------------------------
+
+do_route(From, To, Packet, State) ->
+    #jid{user = User, resource = Resource} = To,
+    if (User /= <<"">>) or (Resource /= <<"">>) ->
+	   Err = jlib:make_error_reply(Packet,
+				       ?ERR_SERVICE_UNAVAILABLE),
+	   ejabberd_router:route(To, From, Err),
+	   {noreply, State};
+       true ->
+	   case Packet of
+	     #xmlel{name = <<"iq">>} ->
+		 IQ = jlib:iq_query_info(Packet),
+		 case IQ of
+		   #iq{type = get, xmlns = (?NS_DISCO_INFO) = XMLNS,
+		       sub_el = _SubEl, lang = Lang} =
+		       IQ ->
+		       Res = IQ#iq{type = result,
+				   sub_el =
+				       [#xmlel{name = <<"query">>,
+					       attrs = [{<<"xmlns">>, XMLNS}],
+					       children = iq_disco(Lang)}]},
+		       ejabberd_router:route(To, From, jlib:iq_to_xml(Res)),
+		       {noreply, State};
+		   #iq{type = get, xmlns = (?NS_DISCO_ITEMS) = XMLNS} =
+		       IQ ->
+		       Res = IQ#iq{type = result,
+				   sub_el =
+				       [#xmlel{name = <<"query">>,
+					       attrs = [{<<"xmlns">>, XMLNS}],
+					       children = []}]},
+		       ejabberd_router:route(To, From, jlib:iq_to_xml(Res)),
+		       {noreply, State};
+		   %%#iq{type = get, xmlns = ?NS_VCARD, lang = Lang} ->
+		   %%    ResIQ =
+		   %%	IQ#iq{type = result,
+		   %%	      sub_el = [{xmlelement,
+		   %%			 "vCard",
+		   %%			 [{"xmlns", ?NS_VCARD}],
+		   %%			 iq_get_vcard(Lang)}]},
+		   %%    ejabberd_router:route(To,
+		   %%			  From,
+		   %%			  jlib:iq_to_xml(ResIQ));
+		   _ ->
+		       Err = jlib:make_error_reply(Packet,
+						   ?ERR_SERVICE_UNAVAILABLE),
+		       ejabberd_router:route(To, From, Err),
+		       {noreply, State}
+		 end;
+	     #xmlel{name = <<"message">>, children = Els} ->
+		 case xml:remove_cdata(Els) of
+		   [#xmlel{name = <<"push">>}] ->
+		       NewState = handle_message(From, To, Packet, State),
+		       {noreply, NewState};
+		   [#xmlel{name = <<"disable">>}] -> {noreply, State};
+		   _ -> {noreply, State}
+		 end;
+	     _ -> {noreply, State}
+	   end
+    end.
+
+get_custom_fields(Packet) ->
+    case xml:get_subtag(xml:get_subtag(Packet, <<"push">>),
+			<<"custom">>)
+	of
+      false -> [];
+      #xmlel{name = <<"custom">>, attrs = [],
+	     children = Children} ->
+	  [{xml:get_tag_attr_s(<<"name">>, C),
+	    xml:get_tag_cdata(C)}
+	   || C <- xml:remove_cdata(Children)]
+    end.
+
+handle_message(From, To, Packet,
+	       #state{mode = ?MODE_ENQUEUE} = State) ->
+    queue_message(From, To, Packet, State);
+handle_message(From, To, Packet, State) ->
+    DeviceID = xml:get_path_s(Packet,
+			      [{elem, <<"push">>}, {elem, <<"id">>}, cdata]),
+    Msg = xml:get_path_s(Packet,
+			 [{elem, <<"push">>}, {elem, <<"msg">>}, cdata]),
+    Badge = xml:get_path_s(Packet,
+			   [{elem, <<"push">>}, {elem, <<"badge">>}, cdata]),
+    Sound = xml:get_path_s(Packet,
+			   [{elem, <<"push">>}, {elem, <<"sound">>}, cdata]),
+    Sender = xml:get_path_s(Packet,
+			    [{elem, <<"push">>}, {elem, <<"from">>}, cdata]),
+    Receiver = xml:get_path_s(Packet,
+			      [{elem, <<"push">>}, {elem, <<"to">>}, cdata]),
+    CustomFields = get_custom_fields(Packet),
+    Payload = make_payload(State, Msg, Badge, Sound, Sender,
+			   CustomFields),
+    case size(DeviceID) of
+      0 -> State;
+      _ ->
+	  Expiry = (?EXPIRY_DATE),
+	  Baseurl = State#state.gateway,
+	  ApiKey = "key=" ++ State#state.apikey,
+	  Notification = jiffy:encode(
+			   {[{<<"registration_ids">>,[DeviceID]},
+			     {<<"data">>, Payload},
+			     {<<"time_to_live">>, Expiry}]}),
+	  ?DEBUG("(~p) sending notification for ~s~n~p~npayload"
+		 ":~n~p~nSender: ~s~nReceiver: ~s~nDevice "
+		 "ID: ~s~n",
+		 [State#state.host, DeviceID, Notification, Payload,
+		  Sender, Receiver, DeviceID]),
+	  try httpc:request(post,
+			    {Baseurl, [{"Authorization", ApiKey}],
+			     "application/json", Notification},
+			    [{timeout, ?HTTP_TIMEOUT},
+			     {connect_timeout, ?HTTP_CONNECT_TIMEOUT}],
+			    [{body_format, binary}])
+	  of
+	    {ok, {{_, 200, _}, Headers, RespBody}} ->
+		JsonResponse = jiffy:decode(RespBody),
+		process_json_response(Notification, JsonResponse,
+				      Headers, From, To, Packet, DeviceID,
+				      State);
+	    {ok, {{_, 400, _}, _, RespBody}} ->
+		?ERROR_MSG("(~p) Invalid JSON request: ~p",
+			   [State#state.host, RespBody]),
+		bounce_message(From, To, Packet),
+		State;
+	    {ok, {{_, 401, _}, _, RespBody}} ->
+		?ERROR_MSG("(~p) There was an error authenticating "
+			   "the sender account. Probably your API key "
+			   "is invalid.: ~p",
+			   [State#state.host, RespBody]),
+		bounce_message(From, To, Packet),
+		State;
+	    {ok,
+	     {{_, StatusCode, ReasonPhrase}, Headers, RespBody}} ->
+		?INFO_MSG("(~p) GCM returned an error: ~p - ~p "
+			  "- ~p",
+			  [State#state.host, StatusCode, ReasonPhrase,
+			   RespBody]),
+		if (StatusCode > 500) and (StatusCode < 600) ->
+		       RetryAfter = case proplists:get_value("Retry-After",
+							     Headers)
+					of
+				      undefined -> ?MIN_RETRY_WAIT;
+				      Str -> http_date_to_msecs(Str)
+				    end,
+		       WaitTime = exp_backoff(RetryAfter, State),
+		       queue_message(From, To, Packet, WaitTime, State);
+		   true -> queue_message(From, To, Packet, State)
+		end;
+	    {error, Reason} ->
+		?ERROR_MSG("(~p) Connection error: ~p, reconnecting",
+			   [State#state.host, Reason]),
+		queue_message(From, To, Packet, State);
+	    BigError ->
+		?ERROR_MSG("(~p) Unknown GCM error: ~p",
+			   [State#state.host, BigError]),
+		queue_message(From, To, Packet, State)
+	  catch
+	    Throw ->
+		?ERROR_MSG(("(~p) Unexpected error communicating "
+			    "with GCM server: ~p"),
+			   [State#state.host, Throw]),
+		queue_message(From, To, Packet, State)
+	  end
+    end.
+
+process_json_response(Request, {Attrs},
+		      ResponseHeaders, From, To, Packet, DeviceID, State) ->
+    Failures = proplists:get_value(<<"failure">>, Attrs, 0),
+    CanonIDs = proplists:get_value(<<"canonical_ids">>,
+				   Attrs, 0),
+    case {Failures, CanonIDs} of
+      {0, 0} -> State;
+      {_Fs, _Cs} ->
+	  MsgResults = proplists:get_value(<<"results">>, Attrs,
+					   []),
+	  NewState = lists:foldl(fun ({R}, S) ->
+					 process_message_result(R, From, To,
+								Packet, Request,
+								ResponseHeaders,
+								DeviceID, S)
+				 end,
+				 State, MsgResults),
+	  NewState
+    end.
+
+process_message_result([{<<"error">>,
+			 <<"NotRegistered">>}],
+		       From, _To, _Packet, Request, _, DeviceID, State) ->
+    ?ERROR_MSG("(~p) Error response received from GCM "
+	       "with code: ~p. Original JSON request was: ~p",
+	       [State#state.host, <<"NotRegistered">>, Request]),
+    disable_push(From, DeviceID, State),
+    active(State);
+process_message_result([{<<"error">>,
+			 <<"InvalidRegistration">>}],
+		       From, _To, _Packet, Request, _, DeviceID, State) ->
+    ?ERROR_MSG("(~p) Error response received from GCM "
+	       "with code: ~p. Original JSON request was: ~p",
+	       [State#state.host, "InvalidRegistration", Request]),
+    disable_push(From, DeviceID, State),
+    active(State);
+process_message_result([{<<"error">>,
+			 <<"Unavailable">>}],
+		       From, To, Packet, Request, ResponseHeaders, _DeviceID,
+		       State) ->
+    ?ERROR_MSG("(~p) Error response received from GCM "
+	       "with code: ~p. We will retry honoring Retry-After header. "
+	       "Original JSON request was: ~p",
+	       [State#state.host, "Unavailable", Request]),
+    RetryAfter = case proplists:get_value("Retry-After",
+					  ResponseHeaders)
+		     of
+		   undefined -> ?MIN_RETRY_WAIT;
+		   Str -> http_date_to_msecs(Str)
+		 end,
+    WaitTime = exp_backoff(RetryAfter, State),
+    queue_message(From, To, Packet, WaitTime, State);
+process_message_result([{<<"error">>, ErrorCode}], From,
+		       To, Packet, Request, _, _DeviceID, State) ->
+    ?ERROR_MSG("(~p) Error response received from GCM "
+	       "with code: ~p. Original JSON request was: ~p",
+	       [State#state.host, ErrorCode, Request]),
+    bounce_message(From, To, Packet),
+    active(State);
+%% everything went fine
+process_message_result(Result, From, _To, _Packet,
+		       _Request, _, DeviceID, State) ->
+    CannonId = proplists:get_value(<<"registration_id">>,
+				   Result),
+    case CannonId of
+      undefined -> ok;
+      NewId ->
+	  updateDeviceId(From, DeviceID, NewId, State)
+    end,
+    active(State).
+
+updateDeviceId(JID, OldDeviceID, CanonicalID, State) ->
+    ?INFO_MSG("(~p) refreshing ID: old: ~s -> new: "
+	      "~s to ~s~n",
+	      [State#state.host, OldDeviceID, CanonicalID,
+	       jlib:jid_to_string(JID)]),
+    From = jlib:make_jid(<<"">>, State#state.host, <<"">>),
+    ejabberd_router:route(From, JID,
+			  #xmlel{name = <<"iq">>,
+				 attrs =
+				     [{<<"id">>, <<"update">>},
+				      {<<"type">>, <<"set">>}],
+				 children =
+				     [#xmlel{name = <<"update">>,
+					     attrs =
+						 [{<<"xmlns">>, ?NS_P1_PUSH},
+						  {<<"oldid">>, OldDeviceID},
+						  {<<"id">>, CanonicalID}],
+					     children = []}]}).
+
+make_payload(State, Msg, Badge, Sound, Sender,
+	     CustomFields) ->
+    SoundPayload = case Sound of
+		     <<"true">> -> State#state.soundfile;
+		     _ -> <<"">>
+		   end,
+    AppsPayloadList = [{alert, iolist_to_binary(Msg)},
+		       {badge, jlib:binary_to_integer(Badge)},
+		       {sound, iolist_to_binary(SoundPayload)}],
+    PayloadList2 = if Sender /= <<"">> ->
+			  CustomFields ++ [{from_jid, iolist_to_binary(Sender)}];
+		      true -> CustomFields
+		   end,
+    FinalPayload = lists:flatten([{aps,
+				   {AppsPayloadList}}]
+				 ++ PayloadList2),
+    FinalPayloadLen = length(FinalPayload),
+    if FinalPayloadLen > (?MAX_PAYLOAD_SIZE) ->
+	   Delta = FinalPayloadLen - (?MAX_PAYLOAD_SIZE),
+	   MsgLen = size(Msg),
+	   if MsgLen /= 0 ->
+		  CutMsg = if MsgLen > Delta ->
+				  binary:part(Msg, {0, MsgLen - Delta});
+			      true -> <<"">>
+			   end,
+		  make_payload(State, CutMsg, Badge, Sound, Sender,
+			       CustomFields);
+	      true -> {[{aps, {AppsPayloadList}}]}
+	   end;
+       true -> {FinalPayload}
+    end.
+
+bounce_message(From, To, Packet) ->
+    bounce_message(From, To, Packet,
+		   <<"Unable to connect to push service">>).
+
+bounce_message(From, To, Packet, Reason) ->
+    #xmlel{attrs = Attrs} = Packet,
+    Type = xml:get_attr_s(<<"type">>, Attrs),
+    if Type /= <<"error">>; Type /= <<"result">> ->
+	   ejabberd_router:route(
+	     To, From,
+	     jlib:make_error_reply(
+	       Packet,
+	       ?ERRT_INTERNAL_SERVER_ERROR(
+		  xml:get_attr_s(<<"xml:lang">>, Attrs), Reason)));
+       true -> ok
+    end.
+
+queue_message(From, To, Packet, State) ->
+    WaitTime = exp_backoff(State),
+    queue_message(From, To, Packet, WaitTime, State).
+
+queue_message(From, To, Packet, WaitTime, State) ->
+    NewState = case State#state.queue of
+		 {?MAX_QUEUE_SIZE, Queue} ->
+		     {{value, {From1, To1, Packet1}}, Queue1} =
+			 queue:out(Queue),
+		     bounce_message(From1, To1, Packet1,
+				    <<"Unable to connect to push service">>),
+		     Queue2 = queue:in({From, To, Packet}, Queue1),
+		     State#state{queue = {?MAX_QUEUE_SIZE, Queue2}};
+		 {Size, Queue} ->
+		     Queue1 = queue:in({From, To, Packet}, Queue),
+		     ?INFO_MSG("GCM: message enqueued. Current queue "
+			       "size: ~p",
+			       [Size + 1]),
+		     State#state{queue = {Size + 1, Queue1}}
+	       end,
+    enqueued(WaitTime, NewState).
+
+enqueued(WaitTime,
+	 #state{mode = ?MODE_ACCEPT, prev_attempts = Attempts} =
+	     State) ->
+    ?INFO_MSG("Setting GCM service to enqueue mode "
+	      "(or programmed retry failed). Next retry in ~p milliseconds.",
+	      [WaitTime]),
+    erlang:send_after(WaitTime, self(), resend),
+    State#state{mode = ?MODE_ENQUEUE,
+		prev_attempts = Attempts + 1};
+enqueued(_, State) -> State.
+
+active(#state{prev_attempts = Attempts} = State)
+    when Attempts > 0 ->
+    ?INFO_MSG("Setting GCM service to active mode.", []),
+    State#state{mode = active, prev_attempts = 0};
+active(State) -> State#state{mode = active}.
+
+resend_messages(#state{queue = {_, Queue}} = State) ->
+    ?INFO_MSG("Resending pending messages...", []),
+    lists:foldl(fun ({From, To, Packet}, AccState) ->
+			case catch handle_message(From, To, Packet, AccState) of
+			  {'EXIT', _} = Err ->
+			      ?ERROR_MSG("error while processing message:~n** "
+					 "From: ~p~n** To: ~p~n** Packet: ~p~n** "
+					 "Reason: ~p",
+					 [From, To, Packet, Err]),
+			      AccState;
+			  NewAccState -> NewAccState
+			end
+		end,
+		State#state{queue = {0, queue:new()},
+			    mode = ?MODE_ACCEPT},
+		queue:to_list(Queue)).
+
+iq_disco(Lang) ->
+    [#xmlel{name = <<"identity">>,
+	    attrs =
+		[{<<"category">>, <<"gateway">>},
+		 {<<"type">>, <<"gcm">>},
+		 {<<"name">>,
+		  translate:translate(Lang,
+				      <<"Google Cloud Messaging Service">>)}],
+	    children = []},
+     #xmlel{name = <<"feature">>,
+	    attrs = [{<<"var">>, ?NS_DISCO_INFO}], children = []}].
+
+disable_push(JID, DeviceID, State) ->
+    ?INFO_MSG("(~p) sending feedback for ~s to ~s~n",
+	      [State#state.host, DeviceID, jlib:jid_to_string(JID)]),
+    From = jlib:make_jid(<<"">>, State#state.host, <<"">>),
+    {Mega, Sec, Micro} = now(),
+    TimeStamp = (Mega * 1000000 * 1000000 + Sec * 1000000 +
+		   Micro)
+		  div 1000,
+    ejabberd_router:route(From, JID,
+			  #xmlel{name = <<"iq">>,
+				 attrs =
+				     [{<<"id">>, <<"disable">>},
+				      {<<"type">>, <<"set">>}],
+				 children =
+				     [#xmlel{name = <<"disable">>,
+					     attrs =
+						 [{<<"xmlns">>, ?NS_P1_PUSH},
+						  {<<"status">>,
+						   <<"feedback">>},
+						  {<<"ts">>,
+						   jlib:integer_to_binary(TimeStamp)},
+						  {<<"id">>, DeviceID}],
+					     children = []}]}).
+
+http_date_to_msecs(_RetryAfter) -> ?MIN_RETRY_WAIT.
+
+exp_backoff(RetryAfter, State) ->
+    erlang:max(RetryAfter, exp_backoff(State)).
+
+exp_backoff(#state{prev_attempts = 0}) ->
+    ?MIN_RETRY_WAIT;
+exp_backoff(#state{prev_attempts = Attempts}) ->
+    random:seed(),
+    K = random:uniform(round(math:pow(2, Attempts) - 1)),
+    K * (?MIN_RETRY_WAIT).
+
+iolist_to_string(S) ->
+    binary_to_list(iolist_to_binary(S)).

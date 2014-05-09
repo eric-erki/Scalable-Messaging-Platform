@@ -37,13 +37,13 @@
 	 check_in_subscription/6, bounce_offline_message/3,
 	 disconnect_removed_user/2, get_user_sessions/2,
 	 get_user_resources/2, set_presence/7, unset_presence/6,
-	 close_session_unset_presence/5,
+	 close_session_unset_presence/5, get_max_user_sessions/2,
 	 dirty_get_sessions_list/0, dirty_get_my_sessions_list/0,
 	 get_vh_session_list/1, get_vh_my_session_list/1,
 	 get_vh_session_number/1, register_iq_handler/4,
 	 register_iq_handler/5, unregister_iq_handler/2,
 	 force_update_presence/1, connected_users/0,
-	 connected_users_number/0, user_resources/2,
+	 connected_users_number/0, user_resources/2, get_all_pids/0,
 	 get_session_pid/3, get_user_info/3, get_user_ip/3,
 	 get_proc_num/0]).
 
@@ -306,6 +306,16 @@ get_vh_session_list(Server) ->
                 {U, S, R}
         end)).
 
+-spec get_all_pids() -> [pid()].
+
+get_all_pids() ->
+    mnesia:dirty_select(
+      session,
+      ets:fun2ms(
+        fun(#session{sid = {_, Pid}}) ->
+		Pid
+        end)).
+
 -spec get_vh_session_number(binary()) -> non_neg_integer().
 
 get_vh_session_number(Server) ->
@@ -381,6 +391,12 @@ handle_info({route, From, To, Packet, Hops}, State) ->
         _ ->
             ok
     end,
+    {noreply, State};
+handle_info({route_multiple, From, Destinations, Packet}, State) ->
+    lists:foreach(
+      fun(To) ->
+              handle_info({route, From, To, Packet, []}, State)
+      end, Destinations),
     {noreply, State};
 handle_info({register_iq_handler, Host, XMLNS, Module,
 	     Function},
