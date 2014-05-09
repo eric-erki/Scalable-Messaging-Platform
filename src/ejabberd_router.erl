@@ -356,9 +356,7 @@ find_route_cluster_node(To) ->
                                     Node;
                                true ->
                                     none
-                            end;
-                        _ ->
-                            none
+                            end
                     end;
                 _ ->
                     none
