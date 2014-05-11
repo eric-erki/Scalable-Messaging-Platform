@@ -276,6 +276,42 @@ get_max_user_messages(AccessRule, {User, Server}, Host) ->
     end.
 
 
+store_packet(From, To, Packet) ->
+    case need_to_store(To#jid.lserver, Packet) of
+	true ->
+	   case has_no_storage_hint(Packet) of
+		false ->
+		    case check_event(From, To, Packet) of
+			true ->
+			    #jid{luser = LUser, lserver = LServer} = To,
+			    TimeStamp = now(),
+			    #xmlel{children = Els} = Packet,
+			    Expire = find_x_expire(TimeStamp, Els),
+			    Worker = mod_offline_sup:get_worker_for(To#jid.lserver, To#jid.luser),
+			    Worker !  #offline_msg{us = {LUser, LServer},
+				timestamp = TimeStamp, expire = Expire,
+				from = From, to = To, packet = Packet},
+			    stop;
+			_ -> ok
+		    end;
+		_ -> ok
+	    end;
+	false -> ok
+    end.
+
+has_no_storage_hint(Packet) ->
+    case xml:get_subtag(Packet, <<"no-store">>) of
+      #xmlel{attrs = Attrs} ->
+	  case xml:get_attr_s(<<"xmlns">>, Attrs) of
+	    ?NS_HINTS ->
+		true;
+	    _ ->
+		false
+	  end;
+      _ ->
+	  false
+    end.
+
 need_to_store(LServer, Packet) ->
     Type = xml:get_tag_attr_s(<<"type">>, Packet),
     if (Type /= <<"error">>) and (Type /= <<"groupchat">>)
@@ -291,26 +327,6 @@ need_to_store(LServer, Packet) ->
 	    end;
        true ->
 	    false
-    end.
-
-store_packet(From, To, Packet) ->
-    case need_to_store(To#jid.lserver, Packet) of
-	true ->
-	   case check_event(From, To, Packet) of
-	     true ->
-		 #jid{luser = LUser, lserver = LServer} = To,
-		 TimeStamp = now(),
-		 #xmlel{children = Els} = Packet,
-		 Expire = find_x_expire(TimeStamp, Els),
-                 Worker = mod_offline_sup:get_worker_for(To#jid.lserver, To#jid.luser),
-		 Worker !
-		   #offline_msg{us = {LUser, LServer},
-				timestamp = TimeStamp, expire = Expire,
-				from = From, to = To, packet = Packet},
-		 stop;
-	     _ -> ok
-	   end;
-       false -> ok
     end.
 
 check_event(From, To, Packet) ->
