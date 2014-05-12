@@ -1491,13 +1491,7 @@ session_established2(El, StateData) ->
 		       _ ->
 			   Err = jlib:make_error_reply(NewEl,
 						       ?ERR_JID_MALFORMED),
-			   case is_stanza(Err) of
-			     true ->
-				 send_stanza(NewStateData, Err);
-			     false ->
-				 send_element(NewStateData, Err),
-				 NewStateData
-			   end
+			   send_packet(NewStateData, Err)
 		     end;
 		 _ ->
 		     case Name of
@@ -2304,6 +2298,19 @@ send_stanza(StateData, Stanza) ->
     send_element(StateData, Stanza),
     StateData.
 
+send_packet(StateData, Packet) when StateData#state.mgmt_state == active;
+				    StateData#state.mgmt_state == pending ->
+    case is_stanza(Packet) of
+      true ->
+	  send_stanza(StateData, Packet);
+      false ->
+	  send_element(StateData, Packet),
+	  StateData
+    end;
+send_packet(StateData, Stanza) ->
+    send_element(StateData, Stanza),
+    StateData.
+
 send_header(StateData, Server, Version, Lang)
     when StateData#state.flash_connection ->
     Header = io_lib:format(?FLASH_STREAM_HEADER,
@@ -2363,7 +2370,7 @@ send_or_enqueue_packet(State, From, To, Packet) ->
 			State#state.server,
 			Packet,
 			[State, State#state.jid, From, To]),
-            State1 = send_stanza(State, Packet1),
+            State1 = send_packet(State, Packet1),
             ack(State1, From, To, Packet1);
        true ->
             NewState = send_out_of_reception_message(State, From, To, Packet),
@@ -2819,7 +2826,7 @@ resend_subscription_requests(#state{user = User,
 	ejabberd_hooks:run_fold(resend_subscription_requests_hook,
 				Server, [], [User, Server]),
     lists:foldl(fun (XMLPacket, AccStateData) ->
-			send_stanza(AccStateData, XMLPacket)
+			send_packet(AccStateData, XMLPacket)
 		end,
 		StateData,
 		PendingSubscriptions).
