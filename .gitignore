@@ -32,3 +32,5 @@
 /src/ejabberd.app.src
 /src/eldap_filter_yecc.erl
 /vars.config
+/priv/lib
+/c_src/*.o
