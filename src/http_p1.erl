@@ -32,7 +32,7 @@
 	 request/3, request/4, request/5]).
 
 % -define(USE_INETS, 1).
-% -define(USE_LHTTPC, 1).
+-define(USE_LHTTPC, 1).
 % -define(USE_IBROWSE, 1).
 % inets used as default if none specified
 
