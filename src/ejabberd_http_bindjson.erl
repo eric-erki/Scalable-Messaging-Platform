@@ -1156,10 +1156,13 @@ set_inactivity_timer(Pause, _MaxInactivity)
 set_inactivity_timer(_Pause, MaxInactivity) ->
     erlang:start_timer(MaxInactivity, self(), []).
 
-elements_to_string([]) -> [];
-elements_to_string([El | Els]) ->
-    [jiffy:encode(xmpp_json:to_json(El))
-     | elements_to_string(Els)].
+elements_to_string([], Acc) ->
+    iolist_to_binary(Acc);
+elements_to_string([El|Els], Acc) ->
+    elements_to_string(Els, [Acc, jiffy:encode(xmpp_json:to_json(El))]).
+
+elements_to_string(Els) ->
+    elements_to_string(Els, []).
 
 get_max_inactivity({Host, _}, Default) ->
     case gen_mod:get_module_opt(Host, mod_http_bind, max_inactivity,
