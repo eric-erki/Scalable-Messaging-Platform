@@ -957,7 +957,7 @@ htmlize2(S1, NoFollow) ->
     S7 = ejabberd_regexp:greplace(S6, <<"\\t">>,
 				  <<"\\&nbsp;\\&nbsp;\\&nbsp;\\&nbsp;">>),
     S8 = ejabberd_regexp:greplace(S7, <<"~">>,
-				  <<"~~~~">>),
+				  <<"~~">>),
     ejabberd_regexp:greplace(S8, <<226, 128, 174>>,
 			     <<"[RLO]">>).
 
