@@ -376,12 +376,13 @@ store(C2SState, Pkt, LUser, LServer, Peer, Type) ->
             pass
     end.
 
-do_store(Pkt, LUser, LServer, Peer, _Type, mnesia) ->
+do_store(Pkt, LUser, LServer, Peer, Type, mnesia) ->
     LPeer = {PUser, PServer, _} = jlib:jid_tolower(Peer),
+    LServer2 = case Type of muc -> Peer#jid.lserver; _ -> LServer end,
     TS = now(),
     ID = jlib:integer_to_binary(now_to_usec(TS)),
     case mnesia:dirty_write(
-           #archive_msg{us = {LUser, LServer},
+           #archive_msg{us = {LUser, LServer2},
                         id = ID,
                         timestamp = TS,
                         peer = LPeer,
