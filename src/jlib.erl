@@ -54,7 +54,8 @@
 	 integer_to_binary/1, integer_to_binary/2,
 	 atom_to_binary/1, binary_to_atom/1, tuple_to_binary/1,
 	 l2i/1, i2l/1, i2l/2, expr_to_term/1, term_to_expr/1,
-         string_to_usr/1, load_nif/0]).
+         string_to_usr/1, load_nif/0,
+         queue_drop_while/2]).
 
 %% TODO: Remove once XEP-0091 is Obsolete
 %% TODO: Remove once XEP-0091 is Obsolete
@@ -977,3 +978,19 @@ string_to_usr_resource_test() ->
       [list_to_binary(X) || X <- permute([$@, $/, $x, $y, $z])]).
 
 -endif.
+
+
+-spec queue_drop_while(fun((term()) -> boolean()), queue()) -> queue().
+
+queue_drop_while(F, Q) ->
+    case queue:peek(Q) of
+      {value, Item} ->
+	  case F(Item) of
+	    true ->
+		queue_drop_while(F, queue:drop(Q));
+	    _ ->
+		Q
+	  end;
+      empty ->
+	  Q
+    end.
