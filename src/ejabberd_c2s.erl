@@ -1435,8 +1435,7 @@ session_established({xmlstreamerror, _}, StateData) ->
     {stop, normal, StateData};
 session_established(closed, StateData)
     when StateData#state.mgmt_timeout > 0,
-	 StateData#state.mgmt_state == active orelse
-	 StateData#state.mgmt_state == pending ->
+	 StateData#state.mgmt_state == active ->
     log_pending_state(StateData),
     fsm_next_state(wait_for_resume, StateData#state{mgmt_state = pending});
 session_established(closed, StateData) ->
