@@ -2262,6 +2262,14 @@ send_text(StateData, Text)
     ?DEBUG("Send Text on stream = ~p", [Text]),
     (StateData#state.sockmod):send_xml(StateData#state.socket,
 				       {xmlstreamraw, Text});
+send_text(StateData, Text) when StateData#state.mgmt_state == active ->
+    ?DEBUG("Send XML on stream = ~p", [Text]),
+    case catch (StateData#state.sockmod):send(StateData#state.socket, Text) of
+      {'EXIT', _} ->
+	  (StateData#state.sockmod):close(StateData#state.socket);
+      _ ->
+	  ok
+    end;
 send_text(StateData, Text) ->
     ?DEBUG("Send XML on stream = ~p", [Text]),
     Text1 = if StateData#state.flash_hack and
