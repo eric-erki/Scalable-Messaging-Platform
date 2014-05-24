@@ -422,6 +422,7 @@ is_supported_args(Args) ->
       fun({_Name, Format}) ->
 	      (Format == integer)
 		  or (Format == string)
+		      or (Format == binary)
       end,
       Args).
 
