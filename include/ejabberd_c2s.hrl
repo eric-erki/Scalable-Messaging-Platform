@@ -62,15 +62,15 @@
          redirect = false :: boolean(),
 	 aux_fields = [] :: [{atom(), any()}],
          fsm_limit_opts = [] :: [{atom(), any()}],
-         mgmt_state,
-         mgmt_xmlns,
-         mgmt_queue,
-         mgmt_max_queue,
-         mgmt_pending_since,
-         mgmt_timeout,
-         mgmt_resend,
-         mgmt_stanzas_in = 0,
-         mgmt_stanzas_out = 0,
+         mgmt_state = disabled :: mgmt_state(),
+         mgmt_xmlns = <<"">> :: binary(),
+         mgmt_queue :: queue(),
+         mgmt_max_queue = 500 :: pos_integer(),
+         mgmt_pending_since :: erlang:timestamp(),
+         mgmt_timeout = 0 :: non_neg_integer(),
+         mgmt_resend = false :: boolean(),
+         mgmt_stanzas_in = 0 :: non_neg_integer(),
+         mgmt_stanzas_out = 0 :: non_neg_integer(),
          lang = ?MYLANG :: binary(),
          debug = false :: boolean(),
          flash_hack = false :: boolean(),
@@ -100,3 +100,5 @@
          ack_timer :: reference()}).
 
 -type c2s_state() :: #state{}.
+
+-type mgmt_state() :: disabled | inactive | active | pending | resumed.
