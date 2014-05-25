@@ -3980,7 +3980,7 @@ inherit_session_state(#state{user = U, server = S} = StateData, ResumeID) ->
 				   Presence ->
 				       get_priority_from_presence(Presence)
 				 end,
-		      Conn = ejabberd_socket:get_conn_type(StateData),
+		      Conn = ejabberd_socket:get_conn_type(StateData#state.socket),
 		      Info = [{ip, StateData#state.ip}, {conn, Conn},
 			      {auth_module, StateData#state.auth_module}],
 		      ejabberd_sm:open_session(NewSID, U, S, R,
