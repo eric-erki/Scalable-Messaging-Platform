@@ -876,7 +876,6 @@ handle_info(replaced, _StateName, StateData) ->
 handle_info({route, From, ToNick, Packet}, normal_state, StateData) ->
     normal_state({route, From, ToNick, Packet}, StateData);
 handle_info(_Info, StateName, StateData) ->
-    ?ERROR_MSG("got unexpected info: ~p", [_Info]),
     {next_state, StateName, StateData}.
 
 terminate({migrated, Clone}, _StateName, StateData) ->
