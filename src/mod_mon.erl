@@ -20,19 +20,24 @@
 -define(SIZE_COUNTING, false).
 
 -define(HOUR, 3600000).
--define(HALF_DAY, 43200000). %% 12 hours
--define(MONTH, 2592000000). %% 30 days
+-define(DAY, 86400000).
+-define(WEEK, 604800000).
+-define(MONTH, 2592000000).
 
 -ifdef(ANNON_CONNECTIONS).
 -define(ANNONYMOUS_CONNECTIONS, true). %% set to true if monitored domains will accept annonymous connections
 -else.
 -define(ANNONYMOUS_CONNECTIONS, false). %% set to true if monitored domains will accept annonymous connections
 -endif.
--define(ACTIVE_TIMEOUT_ENABLED, true).
+-define(ACTIVE_ENABLED, true).
 
 %% dictionaries computed to generate reports
--define(UNIQUE_ACTIVE_USERS, unique_active_users).
--define(COMPUTING_DICTS, [ {?UNIQUE_ACTIVE_USERS, ?HOUR} ]).
+-define(COMPUTING_DICTS, [
+	{hourly_active_users, ?HOUR},
+	{daily_active_users, ?DAY},
+	{weekly_active_users, ?WEEK},
+	{montly_active_users, ?MONTH}
+	]).
 -define(PROCESSINFO, process_info).
 % TODO use dict:update_counter instead of keysearch/keyreplace ?
 
@@ -41,7 +46,7 @@
 -export([values/2, value/3, add_monitor/4, del_monitor/3]).
 -export([start_sampling/0, stop_sampling/0, sampling_loop/3]).
 -export([run_sample/0, run_sample/1]).
--export([get_sampling_counters/0]).
+-export([get_sampling_counters/0, get_active_counters/1]).
 -export([add_sampling_condition/1, restart_sampling/0]).
 %% DB wrapper, waiting a better solution
 -export([db_table_size/1, db_table_size/2]).
@@ -288,16 +293,16 @@ try
     [put(C, 0) || C <- [muc_message_size, message_send_size, message_receive_size]],
 
     %% create the list of dictionaries updated by monitoring loop
-    Dicts = lists:foldl(fun( {DictName, FlushTimeout}, Acc) ->
-                            case timer:send_interval(FlushTimeout, self(), {flush_dict, DictName}) of
-                                {ok, TRef} ->
-                                    [{ DictName, {ehyperloglog:new(16), TRef} } | Acc];
-                                {error, Reason} ->
-                                    ?ERROR_MSG("Error creating refresh timer for dictionary ~p. Reason: ~p",
-                                                [DictName, Reason]),
-                                    Acc
-                            end
-                        end, [], ?COMPUTING_DICTS),
+    Dicts = lists:foldl(fun({DictName, FlushTimeout}, Acc) ->
+                        case timer:send_interval(FlushTimeout, self(), {flush_dict, DictName}) of
+                            {ok, TRef} ->
+                                [{DictName, {ehyperloglog:new(16), TRef} } | Acc];
+                            {error, Reason} ->
+                                ?ERROR_MSG("Error creating refresh timer for dictionary ~p. Reason: ~p",
+                                           [DictName, Reason]),
+                                Acc
+                        end
+                end, [], ?COMPUTING_DICTS),
 
     ProcName = gen_mod:get_module_proc(Host, ?PROCNAME),
     register(ProcName, self()),
@@ -411,30 +416,22 @@ loop(Host, Monitors, Dicts) ->
             sample({hook, {User, Server, Resource}, Hook}),
             loop(Host, Monitors, Dicts);
         {active, Key} ->
-            %% ?INFO_MSG("ACTIVE USER: ~p", [Key]),
-            %% lightweight active user counter
-            D = ?UNIQUE_ACTIVE_USERS,
-            %% get target dictionary to update
-            case proplists:get_value(D, Dicts) of
-                undefined ->
-                    loop(Host, Monitors, Dicts);
-                {Dict, T} ->
-                    {BinLUser, _} = Key,
-                    UpdatedDict = ehyperloglog:update(BinLUser, Dict),
-                    ActiveUsers =
-                        round(ehyperloglog:cardinality(UpdatedDict)),
-                    put(active_users, ActiveUsers),
-                    loop(Host, Monitors,
-                         [{D, {UpdatedDict, T}} | proplists:delete(D, Dicts)])
-            end;
-        {flush_dict, D} ->
-            case proplists:get_value(D, Dicts) of
-                undefined ->
-                    loop(Host, Monitors, Dicts);
-                {_Dict, T} ->
-                    NewDict = ehyperloglog:new(16),
-                    loop(Host, Monitors, [{D, {NewDict, T}} | proplists:delete(D, Dicts)] )
-            end;
+            %% ?DEBUG("ACTIVE USER: ~p", [Key]),
+            NewDicts = lists:map(fun({DictName, {Dict, TRef}}) ->
+                    UpdatedDict = ehyperloglog:update(Key, Dict),
+                    ActiveUsers = round(ehyperloglog:cardinality(UpdatedDict)),
+                    put(DictName, ActiveUsers),
+                    {DictName, {UpdatedDict, TRef}}
+                end, Dicts),
+            loop(Host, Monitors, NewDicts);
+        {flush_dict, DictName} ->
+            NewDicts = lists:map(
+                    fun({Name, {_Dict, TRef}}) when Name==DictName ->
+                            {Name, {ehyperloglog:new(16), TRef}};
+                       (Other) ->
+                            Other
+                    end, Dicts),
+            loop(Host, Monitors, NewDicts);
         {get, From, hooks} ->
             From ! {values, get()},
             loop(Host, Monitors, Dicts);
@@ -860,6 +857,7 @@ sm_register_connection_hook(SID, #jid{luser=LUser,lserver=LServer,lresource=LRes
     AuthModule = xml:get_attr_s(auth_module, Info),
     Annonymous = (AuthModule == ejabberd_auth_anonymous),
     US = <<LUser/binary,"@",LServer/binary>>,
+    active_user(LUser, LServer, LResource),
     compute(LServer, {register_connection, US, element(1, SID), LServer, Annonymous}),
     action(LServer, {set, LUser, LResource, sm_register_connection_hook}).
 sm_remove_connection_hook(SID, JID) ->
@@ -1007,8 +1005,6 @@ receive_hook(LUser, LServer, LResource, Name, Attrs, Els) ->
                 true ->
                     ok
             end,
-            %% consider active user
-            active_user(LUser, LServer, LResource),
             %% This acts as a sum value:
             action(LServer, {set, LUser, LResource, message_receive_packet}),
             case xml:get_attr_s(<<"type">>, Attrs) of
@@ -1145,16 +1141,27 @@ chat_invitation_by_email_hook(#jid{luser=LUser,lserver=LServer,lresource=LResour
 chat_invitation_accepted(_Host, ServerHost, _Room, #jid{luser=LUser,lserver=LServer,lresource=LResource}, _Password) ->
     action(ServerHost, {set, LUser, LServer, LResource, chat_invitation_accepted}).
 
+%% active user feature
 active_user(LUser, LServer, LResource) ->
-    if (not ?ANNONYMOUS_CONNECTIONS) ->
-        if ?ACTIVE_TIMEOUT_ENABLED ->
-            Key ={LUser, LResource},
+    if (not ?ANNONYMOUS_CONNECTIONS)
+        and ?ACTIVE_ENABLED ->
+            Key = <<LUser/binary, LResource/binary>>,
             action(LServer, {active, Key});
         true ->
             ok
-        end;
-    true ->
-        ok
+    end.
+
+get_active_counters(Host) when is_binary(Host) ->
+    if ?ACTIVE_ENABLED ->
+            lists:foldl(fun({DictName, _}, Acc) ->
+                    action(Host, {get, self(), DictName}),
+                    case wait(value) of
+                        timeout -> Acc;
+                        Value -> [{DictName, Value}|Acc]
+                    end
+                end, [], ?COMPUTING_DICTS);
+       true ->
+            []
     end.
 
 %%--------------------------------------------------------------------
