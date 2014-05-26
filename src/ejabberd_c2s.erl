@@ -2197,7 +2197,7 @@ change_shaper(StateData, JID) ->
     (StateData#state.sockmod):change_shaper(StateData#state.socket,
 					    Shaper).
 
--spec send_text(c2s_state(), binary()) -> any().
+-spec send_text(c2s_state(), iodata()) -> any().
 
 send_text(StateData, Text) when StateData#state.mgmt_state == pending ->
     ?DEBUG("Cannot send text while waiting for resumption: ~p", [Text]);
