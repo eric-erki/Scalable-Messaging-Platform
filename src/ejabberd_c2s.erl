@@ -344,7 +344,6 @@ init([{SockMod, Socket}, Opts, FSMLimitOpts]) ->
 	 end,
     FlashHack = ejabberd_config:get_option(
                   flash_hack, fun(B) when is_boolean(B) -> B end, false),
-    IP = peerip(SockMod, Socket),
     %% Check if IP is blacklisted:
     case is_ip_blacklisted(IP) of
       true ->
