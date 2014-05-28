@@ -36,7 +36,7 @@
 	{hourly_active_users, ?HOUR},
 	{daily_active_users, ?DAY},
 	{weekly_active_users, ?WEEK},
-	{montly_active_users, ?MONTH}
+	{monthly_active_users, ?MONTH}
 	]).
 -define(PROCESSINFO, process_info).
 % TODO use dict:update_counter instead of keysearch/keyreplace ?
