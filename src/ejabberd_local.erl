@@ -283,9 +283,11 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 do_route(From, To, Packet) ->
-    ?DEBUG("local route~n\tfrom ~p~n\tto ~p~n\tpacket "
+    ?DEBUG("local route~n\tfrom ~s~n\tto ~s~n\tpacket "
 	   "~P~n",
-	   [From, To, Packet, 8]),
+	   [jlib:jid_to_string(From),
+	    jlib:jid_to_string(To),
+	    Packet, 8]),
     if To#jid.luser /= <<"">> ->
 	   ejabberd_sm:route(From, To, Packet);
        To#jid.lresource == <<"">> ->

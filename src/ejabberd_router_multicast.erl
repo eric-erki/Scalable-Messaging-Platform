@@ -192,7 +192,7 @@ code_change(_OldVsn, State, _Extra) ->
 %% Destinations = [#jid]
 do_route(From, Domain, Destinations, Packet) ->
 
-    ?DEBUG("route_multicast~n\tfrom ~p~n\tdomain ~p~n\tdestinations ~p~n\tpacket ~p~n",
+    ?DEBUG("route_multicast~n\tfrom ~s~n\tdomain ~s~n\tdestinations ~p~n\tpacket ~p~n",
 	   [jlib:jid_to_string(From),
 	    Domain,
 	    [jlib:jid_to_string(To) || To <- Destinations],

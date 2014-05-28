@@ -342,7 +342,7 @@ route_check_id(From, To, Packet) ->
     do_route(From, To, Packet).
 
 do_route(OrigFrom, OrigTo, OrigPacket) ->
-    ?DEBUG("route~n\tfrom ~p~n\tto ~p~n\tpacket ~p~n",
+    ?DEBUG("route~n\tfrom ~s~n\tto ~s~n\tpacket ~p~n",
 	   [jlib:jid_to_string(OrigFrom),
 	    jlib:jid_to_string(OrigTo),
 	    OrigPacket]),

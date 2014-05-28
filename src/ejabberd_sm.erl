@@ -527,9 +527,11 @@ delete_session({_, Pid1} = _SID, USR) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 do_route(From, To, Packet, Hops) ->
-    ?DEBUG("session manager~n\tfrom ~p~n\tto ~p~n\tpacket "
+    ?DEBUG("session manager~n\tfrom ~s~n\tto ~s~n\tpacket "
 	   "~P~n",
-	   [From, To, Packet, 8]),
+	   [jlib:jid_to_string(From),
+	    jlib:jid_to_string(To),
+	    Packet, 8]),
     {U, S, _} = USR = jlib:jid_tolower(To),
     case mnesia:dirty_read(session, USR) of
 	[#session{sid = {_, Pid}}] ->

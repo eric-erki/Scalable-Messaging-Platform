@@ -291,9 +291,11 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
 do_route(From, To, Packet) ->
-    ?DEBUG("s2s manager~n\tfrom ~p~n\tto ~p~n\tpacket "
+    ?DEBUG("s2s manager~n\tfrom ~s~n\tto ~s~n\tpacket "
 	   "~P~n",
-	   [From, To, Packet, 8]),
+	   [jlib:jid_to_string(From),
+	    jlib:jid_to_string(To),
+	    Packet, 8]),
     case find_connection(From, To) of
       {atomic, Pid} when is_pid(Pid) ->
 	  ?DEBUG("sending to process ~p~n", [Pid]),
