@@ -1157,7 +1157,7 @@ active_user(LUser, LServer, LResource) ->
 get_active_counters(Host) when is_binary(Host) ->
     if ?ACTIVE_ENABLED ->
             lists:foldl(fun({DictName, _}, Acc) ->
-                    action(Host, {get, self(), DictName}),
+                    action(Host, {get, self(), hooks, DictName}),
                     case wait(value) of
                         timeout -> Acc;
                         Value -> [{DictName, Value}|Acc]
