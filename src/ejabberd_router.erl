@@ -343,7 +343,9 @@ route_check_id(From, To, Packet) ->
 
 do_route(OrigFrom, OrigTo, OrigPacket) ->
     ?DEBUG("route~n\tfrom ~p~n\tto ~p~n\tpacket ~p~n",
-	   [OrigFrom, OrigTo, OrigPacket]),
+	   [jlib:jid_to_string(OrigFrom),
+	    jlib:jid_to_string(OrigTo),
+	    OrigPacket]),
     case ejabberd_hooks:run_fold(filter_packet,
 				 {OrigFrom, OrigTo, OrigPacket}, []) of
         {From, To, Packet} ->
