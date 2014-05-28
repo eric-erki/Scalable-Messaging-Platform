@@ -210,7 +210,7 @@ start(Host, Opts) ->
         end, ?GLOBAL_HOOKS),
 
     ProcName = gen_mod:get_module_proc(Host, ?PROCNAME),
-    Monitors = proplists:get_value(?MONITORS,Opts),
+    Monitors = proplists:get_value(?MONITORS, Opts, []),
     case whereis(ProcName) of
         undefined ->
             ?INFO_MSG("Starting monitor process ~p", [ProcName]),
