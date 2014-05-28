@@ -180,6 +180,7 @@
 
 -record(mon, {key, value}).
 
+% dictionary commands are overrided for persistency
 -compile({no_auto_import, [put/2]}).
 -compile({no_auto_import, [get/1]}).
 -compile({no_auto_import, [get/0]}).
@@ -197,7 +198,7 @@ start(Host, Opts) ->
     lists:foreach(
         fun(Component) ->
             lists:foreach(
-	        fun(Hook) ->
+                fun(Hook) ->
                     ?DEBUG("ejabberd_hooks:add(~p, ~p, ~p, ~p, 20)",[Hook, Component, ?MODULE, Hook]),
                     ejabberd_hooks:add(Hook, Component, ?MODULE, Hook, 20)
                 end, ?SUPPORTED_HOOKS)
@@ -278,12 +279,16 @@ try
     ets:insert(TableName,{vhost,Host}),
 
     mnesia:create_table(mon,
-                        [{ram_copies, [node()]},
+                        [{disc_copies, [node()]},
                          {local_content, true},
                          {attributes, record_info(fields, mon)}]),
-    mnesia:add_table_copy(mon, node(), ram_copies),
-    lists:foreach(fun(Hook) -> put(Hook, 0) end, ?SUPPORTED_HOOKS++?GLOBAL_HOOKS++?GENERATED_HOOKS),
-    lists:foreach(fun(Hook) -> put(Hook, []) end, ?DYNAMIC_HOOKS),
+    case mnesia:table_info(mon, size) of
+        0 ->
+            lists:foreach(fun(Hook) -> put(Hook, 0) end, ?SUPPORTED_HOOKS++?GLOBAL_HOOKS++?GENERATED_HOOKS),
+            lists:foreach(fun(Hook) -> put(Hook, []) end, ?DYNAMIC_HOOKS);
+        _ ->
+            ok
+    end,
     try put(muc_rooms, db_table_size(muc_online_room))
     catch _:_ -> put(muc_rooms, 0)
     end,
@@ -356,13 +361,13 @@ get_vhost_name(Host) ->
    end.
 
 find_table(Host) ->
-    SupDomain = str:substr(Host, str:str(Host,<<".">>)+1),
-    Table = gen_mod:get_module_proc(SupDomain, ?PROCESSINFO),
+    SubDomain = str:substr(Host, str:str(Host,<<".">>)+1),
+    Table = gen_mod:get_module_proc(SubDomain, ?PROCESSINFO),
     case ets:info(Table) of
         undefined ->
-            case str:str(SupDomain, <<".">>) of
+            case str:str(SubDomain, <<".">>) of
                 0 -> [];
-                _ -> find_table(SupDomain)
+                _ -> find_table(SubDomain)
             end;
         _ -> Table
     end.
