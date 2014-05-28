@@ -1578,10 +1578,6 @@ wait_for_resume(Event, StateData) ->
 %%          {next_state, NextStateName, NextStateData, Timeout} |
 %%          {stop, Reason, NewStateData}
 %%----------------------------------------------------------------------
-handle_event({abort, Xmlelement}, _StateName, StateData) ->
-    send_element(StateData, Xmlelement),
-    send_trailer(StateData),
-    {stop, normal, StateData};
 handle_event({add_rosteritem, IJID, ISubscription},
 	     StateName, StateData) ->
     NewStateData = roster_change(IJID, ISubscription,
@@ -4014,7 +4010,7 @@ check_queue_length(#state{mgmt_queue = Queue,
 		       [jlib:jid_to_string(StateData#state.jid)]),
 	  Lang = StateData#state.lang,
 	  Err = ?SERRT_POLICY_VIOLATION(Lang, <<"Too many unacked stanzas">>),
-	  (?GEN_FSM):send_all_state_event(self(), {abort, Err}),
+	  self() ! {kick, queue_overflow, Err},
 	  StateData#state{mgmt_resend = false}; % Don't resend the flood!
       false ->
 	  StateData
