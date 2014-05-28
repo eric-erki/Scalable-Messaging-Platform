@@ -666,13 +666,11 @@ del_monitor(Host, Class, Monitor) ->
     action(Host, {del, Class, Monitor}).
 
 values(Host, Class) ->
-        VHost = list_to_binary(Host),
-    action(VHost, {get, self(), Class}),
+    action(Host, {get, self(), Class}),
     wait(values).
 
 value(Host, Class, Mon) ->
-        VHost = list_to_binary(Host),
-    action(VHost, {get, self(), Class, Mon}),
+    action(Host, {get, self(), Class, Mon}),
     wait(value).
 
 get_sampling_hook_counters() ->
