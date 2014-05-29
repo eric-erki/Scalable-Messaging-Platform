@@ -32,12 +32,11 @@
 -define(ACTIVE_ENABLED, true).
 
 %% dictionaries computed to generate reports
--define(COMPUTING_DICTS, [
-	{hourly_active_users, ?HOUR},
-	{daily_active_users, ?DAY},
-	{weekly_active_users, ?WEEK},
-	{monthly_active_users, ?MONTH}
-	]).
+-define(COMPUTING_DICTS, [ hourly_active_users,
+                           daily_active_users,
+                           weekly_active_users,
+                           monthly_active_users
+	                 ]).
 -define(PROCESSINFO, process_info).
 % TODO use dict:update_counter instead of keysearch/keyreplace ?
 
@@ -48,6 +47,7 @@
 -export([run_sample/0, run_sample/1]).
 -export([get_sampling_counters/0, get_active_counters/1]).
 -export([add_sampling_condition/1, restart_sampling/0]).
+-export([flush_probe/2]).
 %% DB wrapper, waiting a better solution
 -export([db_table_size/1, db_table_size/2]).
 
@@ -284,7 +284,7 @@ try
                          {attributes, record_info(fields, mon)}]),
     case mnesia:table_info(mon, size) of
         0 ->
-            lists:foreach(fun(Hook) -> put(Hook, 0) end, ?SUPPORTED_HOOKS++?GLOBAL_HOOKS++?GENERATED_HOOKS),
+            lists:foreach(fun(Hook) -> put(Hook, 0) end, ?SUPPORTED_HOOKS++?GLOBAL_HOOKS++?GENERATED_HOOKS++?COMPUTING_DICTS),
             lists:foreach(fun(Hook) -> put(Hook, []) end, ?DYNAMIC_HOOKS);
         _ ->
             ok
@@ -298,16 +298,9 @@ try
     [put(C, 0) || C <- [muc_message_size, message_send_size, message_receive_size]],
 
     %% create the list of dictionaries updated by monitoring loop
-    Dicts = lists:foldl(fun({DictName, FlushTimeout}, Acc) ->
-                        case timer:send_interval(FlushTimeout, self(), {flush_dict, DictName}) of
-                            {ok, TRef} ->
-                                [{DictName, {ehyperloglog:new(16), TRef} } | Acc];
-                            {error, Reason} ->
-                                ?ERROR_MSG("Error creating refresh timer for dictionary ~p. Reason: ~p",
-                                           [DictName, Reason]),
-                                Acc
-                        end
-                end, [], ?COMPUTING_DICTS),
+    Dicts = lists:foldl(fun(DictName, Acc) ->
+			    [{DictName, ehyperloglog:new(16) } | Acc]
+                        end, [], ?COMPUTING_DICTS),
 
     ProcName = gen_mod:get_module_proc(Host, ?PROCNAME),
     register(ProcName, self()),
@@ -422,17 +415,18 @@ loop(Host, Monitors, Dicts) ->
             loop(Host, Monitors, Dicts);
         {active, Key} ->
             %% ?DEBUG("ACTIVE USER: ~p", [Key]),
-            NewDicts = lists:map(fun({DictName, {Dict, TRef}}) ->
+            NewDicts = lists:map(fun({DictName, Dict}) ->
                     UpdatedDict = ehyperloglog:update(Key, Dict),
                     ActiveUsers = round(ehyperloglog:cardinality(UpdatedDict)),
                     put(DictName, ActiveUsers),
-                    {DictName, {UpdatedDict, TRef}}
+                    {DictName, UpdatedDict}
                 end, Dicts),
             loop(Host, Monitors, NewDicts);
         {flush_dict, DictName} ->
             NewDicts = lists:map(
-                    fun({Name, {_Dict, TRef}}) when Name==DictName ->
-                            {Name, {ehyperloglog:new(16), TRef}};
+                    fun({Name, _}) when Name==DictName ->
+			    put(DictName, 0),
+                            {Name, ehyperloglog:new(16)};
                        (Other) ->
                             Other
                     end, Dicts),
@@ -550,9 +544,6 @@ loop(Host, Monitors, Dicts) ->
             put(proxy65_size, OldValue + Current),
             loop(Host, Monitors, Dicts);
         stop ->
-            lists:foreach(  fun({_, {_, TRef}}) ->
-                                catch timer:cancel(TRef)
-                            end, Dicts ),
             ok;
         Unknown ->
             ?INFO_MSG("Unknown message received on mod_mon loop process for host ~p: ~p", [Host, Unknown]),
@@ -1156,7 +1147,7 @@ active_user(LUser, LServer, LResource) ->
 
 get_active_counters(Host) when is_binary(Host) ->
     if ?ACTIVE_ENABLED ->
-            lists:foldl(fun({DictName, _}, Acc) ->
+            lists:foldl(fun(DictName, Acc) ->
                     action(Host, {get, self(), hooks, DictName}),
                     case wait(value) of
                         timeout -> Acc;
@@ -1223,3 +1214,11 @@ get(Key) ->
 get() ->
     mnesia:dirty_select(
       mon, [{#mon{key = '$1', value = '$2', _ = '_'}, [], [{{'$1', '$2'}}]}]).
+
+flush_probe(Host, Probe) ->
+    case get(Probe) of
+	undefined -> 0;
+        N ->
+	    action(Host, {flush_dict, Probe}),
+            round(N)
+    end.

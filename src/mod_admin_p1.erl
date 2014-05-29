@@ -88,7 +88,8 @@
 	 get_roster/2, get_roster_with_presence/2,
 	 add_contacts/3, remove_contacts/3, transport_register/5,
 	 set_rosternick/3,
-	 send_chat/3, send_message/4, send_stanza/3]).
+	 send_chat/3, send_message/4, send_stanza/3,
+	 flush_probe/2]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -464,7 +465,14 @@ commands() ->
 			args =
 			    [{user, binary}, {server, binary},
 			     {stanza, binary}],
-			result = {res, integer}}].
+			result = {res, integer}},
+     #ejabberd_commands{name = flush_probe,
+			tags = [stats],
+			desc = "Returns last value from probe and resets its historical data. Supported probes so far: hourly_active_users, daily_active_users, weekly_active_users, monthly_active_users",
+			module = ?MODULE, function = flush_probe,
+			args = [{server, binary}, {probe_name, binary}],
+			result = {probe_value, integer}}].
+
 
 %%%
 %%% Erlang
@@ -1077,6 +1085,15 @@ send_stanza(FromJID, ToJID, StanzaStr) ->
 						      Attrs, ToJID)),
 	  ejabberd_router:route(From, To, Stanza),
 	  0
+    end.
+
+flush_probe(H, P) ->
+    Probe = jlib:binary_to_atom(P),
+    case mod_mon:flush_probe(H, Probe) of
+        N when is_integer(N) ->
+            N;
+        _ ->
+            0
     end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
