@@ -287,7 +287,7 @@ try
             lists:foreach(fun(Hook) -> put(Hook, 0) end, ?SUPPORTED_HOOKS++?GLOBAL_HOOKS++?GENERATED_HOOKS++?COMPUTING_DICTS),
             lists:foreach(fun(Hook) -> put(Hook, []) end, ?DYNAMIC_HOOKS);
         _ ->
-            ok
+            [put(Key, Val) || {mon, Key, Val} <- ets:tab2list(mon)]
     end,
     try put(muc_rooms, db_table_size(muc_online_room))
     catch _:_ -> put(muc_rooms, 0)
@@ -425,7 +425,7 @@ loop(Host, Monitors, Dicts) ->
         {flush_dict, DictName} ->
             NewDicts = lists:map(
                     fun({Name, _}) when Name==DictName ->
-			    put(DictName, 0),
+                            put(DictName, 0),
                             {Name, ehyperloglog:new(16)};
                        (Other) ->
                             Other
@@ -1201,24 +1201,27 @@ list_components(Host) ->
 %%roster_process_item
 
 put(Key, Value) ->
+    erlang:put(Key, Value),
     mnesia:dirty_write(#mon{key = Key, value = Value}).
 
 get(Key) ->
-    case mnesia:dirty_read(mon, Key) of
-        [R] ->
-            R#mon.value;
-        _ ->
-            undefined
-    end.
+    erlang:get(Key).
+%    case mnesia:dirty_read(mon, Key) of
+%        [R] ->
+%            R#mon.value;
+%        _ ->
+%            undefined
+%    end.
 
 get() ->
-    mnesia:dirty_select(
-      mon, [{#mon{key = '$1', value = '$2', _ = '_'}, [], [{{'$1', '$2'}}]}]).
+    erlang:get().
+%    mnesia:dirty_select(
+%      mon, [{#mon{key = '$1', value = '$2', _ = '_'}, [], [{{'$1', '$2'}}]}]).
 
 flush_probe(Host, Probe) ->
     case get(Probe) of
 	undefined -> 0;
         N ->
 	    action(Host, {flush_dict, Probe}),
-            round(N)
+	    N
     end.
