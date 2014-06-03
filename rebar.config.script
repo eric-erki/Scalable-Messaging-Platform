@@ -48,6 +48,7 @@ HiPE = case lists:keysearch(hipe, 1, Cfg) of
 
 Includes = [{i, "include"},
 	    {i, filename:join(["deps", "esip", "include"])},
+	    {i, filename:join(["deps", "p1_stun", "include"])},
             {i, filename:join(["deps", "p1_xml", "include"])}],
 
 SrcDirs = lists:foldl(
@@ -64,6 +65,7 @@ Deps = [{p1_cache_tab, ".*", {git, "git://github.com/processone/cache_tab"}},
         {p1_stringprep, ".*", {git, "git://github.com/processone/stringprep"}},
         {p1_xml, ".*", {git, "git://github.com/processone/xml"}},
 	{esip, ".*", {git, "git://github.com/processone/p1_sip"}},
+	{p1_stun, ".*", {git, "git://github.com/processone/stun"}},
         {p1_yaml, ".*", {git, "git://github.com/processone/p1_yaml"}},
         {ehyperloglog, ".*", {git, "https://github.com/vaxelfel/eHyperLogLog.git"}},
         {xmlrpc, ".*", {git, "git://github.com/rds13/xmlrpc"}}],
@@ -100,8 +102,6 @@ CfgDeps = lists:flatmap(
                     [{p1_pam, ".*", {git, "git://github.com/processone/epam"}}];
                ({zlib, true}) ->
                     [{p1_zlib, ".*", {git, "git://github.com/processone/zlib"}}];
-               ({stun, true}) ->
-                    [{p1_stun, ".*", {git, "git://github.com/processone/stun"}}];
                ({riak, true}) ->
                     [{riakc, ".*", {git, "git://github.com/basho/riak-erlang-client"}}];
                ({json, true}) ->

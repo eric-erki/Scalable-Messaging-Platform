@@ -122,10 +122,10 @@ AC_ARG_ENABLE(mssql,
 esac],[db_type=generic])
 
 AC_ARG_ENABLE(all,
-[AC_HELP_STRING([--enable-all], [same as --enable-nif --enable-odbc --enable-mysql --enable-pgsql --enable-pam --enable-zlib --enable-stun --enable-riak --enable-json --enable-iconv --enable-debug --enable-http --enable-lager --enable-tools --enable-p1db (useful for Dialyzer checks, default: no)])],
+[AC_HELP_STRING([--enable-all], [same as --enable-nif --enable-odbc --enable-mysql --enable-pgsql --enable-pam --enable-zlib --enable-riak --enable-json --enable-iconv --enable-debug --enable-http --enable-lager --enable-tools --enable-p1db (useful for Dialyzer checks, default: no)])],
 [case "${enableval}" in
-  yes) nif=true odbc=true mysql=true pgsql=true pam=true zlib=true stun=true riak=true json=true iconv=true debug=true http=true lager=true tools=true p1db=true ;;
-  no) nif=false odbc=false mysql=false pgsql=false pam=false zlib=false stun=false riak=false json=false iconv=false debug=false http=false lager=false tools=false p1db=false ;;
+  yes) nif=true odbc=true mysql=true pgsql=true pam=true zlib=true riak=true json=true iconv=true debug=true http=true lager=true tools=true p1db=true ;;
+  no) nif=false odbc=false mysql=false pgsql=false pam=false zlib=false riak=false json=false iconv=false debug=false http=false lager=false tools=false p1db=false ;;
   *) AC_MSG_ERROR(bad value ${enableval} for --enable-all) ;;
 esac],[])
 
@@ -184,14 +184,6 @@ AC_ARG_ENABLE(zlib,
   no)  zlib=false ;;
   *) AC_MSG_ERROR(bad value ${enableval} for --enable-zlib) ;;
 esac],[if test "x$zlib" = "x"; then zlib=true; fi])
-
-AC_ARG_ENABLE(stun,
-[AC_HELP_STRING([--enable-stun], [enable STUN support (default: no)])],
-[case "${enableval}" in
-  yes) stun=true ;;
-  no)  stun=false ;;
-  *) AC_MSG_ERROR(bad value ${enableval} for --enable-stun) ;;
-esac],[if test "x$stun" = "x"; then stun=false; fi])
 
 AC_ARG_ENABLE(riak,
 [AC_HELP_STRING([--enable-riak], [enable Riak support (default: no)])],
@@ -295,7 +287,6 @@ AC_SUBST(mysql)
 AC_SUBST(pgsql)
 AC_SUBST(pam)
 AC_SUBST(zlib)
-AC_SUBST(stun)
 AC_SUBST(riak)
 AC_SUBST(p1db)
 AC_SUBST(json)
