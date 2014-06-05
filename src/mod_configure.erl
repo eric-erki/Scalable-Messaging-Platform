@@ -48,8 +48,7 @@
 
 -define(T(Lang, Text), translate:translate(Lang, Text)).
 
-%% Copied from ejabberd_sm.erl
--record(session, {sid, usr, us, priority, info}).
+-record(session, {usr, us, sid, priority, info}).
 
 start(Host, _Opts) ->
     ejabberd_hooks:add(disco_local_items, Host, ?MODULE,

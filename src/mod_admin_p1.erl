@@ -99,15 +99,7 @@
 
 -include("jlib.hrl").
 
--ifdef(EJABBERD1).
-
--record(session, {sid, usr, us, priority}).
-
--else.
-
--record(session, {sid, usr, us, priority, info}).
-
--endif.
+-record(session, {usr, us, sid, priority, info}).
 
 start(_Host, _Opts) ->
     ejabberd_commands:register_commands(commands()).
