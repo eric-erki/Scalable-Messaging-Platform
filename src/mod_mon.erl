@@ -1158,6 +1158,20 @@ get_active_counters(Host) when is_binary(Host) ->
             []
     end.
 
+flush_probe(Host, Probe) when is_binary(Host), is_atom(Probe) ->
+    Available = lists:member(Probe, ?COMPUTING_DICTS),
+    if ?ACTIVE_ENABLED and Available ->
+            action(Host, {get, self(), hooks, Probe}),
+            Ret = case wait(value) of
+                timeout -> 0;
+                Value -> Value
+            end,
+            action(Host, {flush_dict, Probe}),
+            Ret;
+        true ->
+            0
+    end.
+
 %%--------------------------------------------------------------------
 %% Function: is_subdomain(Domain1, Domain2) -> true | false
 %% Description: Return true if Domain1 (a string representing an
@@ -1217,11 +1231,3 @@ get() ->
     erlang:get().
 %    mnesia:dirty_select(
 %      mon, [{#mon{key = '$1', value = '$2', _ = '_'}, [], [{{'$1', '$2'}}]}]).
-
-flush_probe(Host, Probe) ->
-    case get(Probe) of
-	undefined -> 0;
-        N ->
-	    action(Host, {flush_dict, Probe}),
-	    N
-    end.
