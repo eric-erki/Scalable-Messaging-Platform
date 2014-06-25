@@ -50,10 +50,9 @@
 -include("logger.hrl").
 -include("jlib.hrl").
 -define(PROCNAME, ?MODULE).
--define(TABLE, carboncopy).
 
 -type matchspec_atom() :: '_' | '$1' | '$2' | '$3'.
--record(carboncopy,{us :: {binary(), binary()} | matchspec_atom(), 
+-record(carboncopy,{us :: {binary(), binary()} | matchspec_atom(),
 		    resource :: binary() | matchspec_atom(),
 		    version :: binary() | matchspec_atom()}).
 
@@ -72,17 +71,7 @@ start(Host, Opts) ->
     IQDisc = gen_mod:get_opt(iqdisc, Opts,fun gen_iq_handler:check_type/1, one_queue),
     mod_disco:register_feature(Host, ?NS_CC_1),
     mod_disco:register_feature(Host, ?NS_CC_2),
-    Fields = record_info(fields, ?TABLE),
-    try mnesia:table_info(?TABLE, attributes) of
-	Fields -> ok;
-	_ -> mnesia:delete_table(?TABLE)  %% recreate..
-    catch _:_Error -> ok  %%probably table don't exist
-    end,
-    mnesia:create_table(?TABLE,
-	[{ram_copies, [node()]}, 
-	 {attributes, record_info(fields, ?TABLE)}, 
-	 {type, bag}]),
-    mnesia:add_table_copy(?TABLE, node(), ram_copies),
+    init_db(gen_mod:db_type(Opts), Host),
     ejabberd_hooks:add(unset_presence_hook,Host, ?MODULE, remove_connection, 10),
     %% why priority 89: to define clearly that we must run BEFORE mod_logdb hook (90)
     ejabberd_hooks:add(user_send_packet,Host, ?MODULE, user_send_packet, 89),
@@ -118,7 +107,7 @@ iq_handler(From, _To,  #iq{type=set, sub_el = #xmlel{name = Operation, children 
         _ ->
             {error, bad_request}
     end,
-    case Result of 
+    case Result of
         ok ->
 	    ?INFO_MSG("carbons IQ result: ok", []),
             IQ#iq{type=result, sub_el=[]};
@@ -134,7 +123,7 @@ user_send_packet(Packet, _C2SState, From, _To) ->
     check_and_forward(From, Packet, sent),
     Packet.
 
-%% Only make carbon copies if the original destination was not a bare jid. 
+%% Only make carbon copies if the original destination was not a bare jid.
 %% If the original destination was a bare jid, the message is going to be delivered to all
 %% connected resources anyway. Avoid duplicate delivery. "XEP-0280 : 3.5 Receiving Messages"
 user_receive_packet(Packet, _C2SState, JID, _From, #jid{resource=Resource} = _To) when Resource /= <<>> ->
@@ -144,12 +133,12 @@ user_receive_packet(Packet, _C2SState, _JID, _From, _To) ->
     Packet.
 
 % verifier si le trafic est local
-% Modified from original version: 
+% Modified from original version:
 %    - registered to the user_send_packet hook, to be called only once even for multicast
 %    - do not support "private" message mode, and do not modify the original packet in any way
 %    - we also replicate "read" notifications
 check_and_forward(JID, #xmlel{name = <<"message">>, attrs = Attrs} = Packet, Direction)->
-    case xml:get_attr_s(<<"type">>, Attrs) of 
+    case xml:get_attr_s(<<"type">>, Attrs) of
       <<"chat">> ->
 	case xml:get_subtag(Packet, <<"private">>) of
 	    false ->
@@ -178,13 +167,13 @@ check_and_forward(JID, #xmlel{name = <<"message">>, attrs = Attrs} = Packet, Dir
     _ ->
 	ok
     end;
- 
+
 check_and_forward(_JID, _Packet, _)-> ok.
 
 remove_connection(User, Server, Resource, _Status)->
     disable(Server, User, Resource),
     ok.
-    
+
 
 %%% Internal
 %% Direction = received | sent <received xmlns='urn:xmpp:carbons:1'/>
@@ -208,50 +197,36 @@ send_copies(JID, Packet, Direction)->
     ok.
 
 build_forward_packet(JID, Packet, Sender, Dest, Direction, ?NS_CC_2) ->
-    #xmlel{name = <<"message">>, 
+    #xmlel{name = <<"message">>,
 	   attrs = [{<<"xmlns">>, <<"jabber:client">>},
-		    {<<"type">>, <<"chat">>}, 
+		    {<<"type">>, <<"chat">>},
 		    {<<"from">>, jlib:jid_to_string(Sender)},
 		    {<<"to">>, jlib:jid_to_string(Dest)}],
-	   children = [	
-		#xmlel{name = list_to_binary(atom_to_list(Direction)), 
+	   children = [
+		#xmlel{name = list_to_binary(atom_to_list(Direction)),
 		       attrs = [{<<"xmlns">>, ?NS_CC_2}],
 		       children = [
-			#xmlel{name = <<"forwarded">>, 
+			#xmlel{name = <<"forwarded">>,
 			       attrs = [{<<"xmlns">>, ?NS_FORWARD}],
 			       children = [
 				complete_packet(JID, Packet, Direction)]}
 		]}
 	   ]};
 build_forward_packet(JID, Packet, Sender, Dest, Direction, ?NS_CC_1) ->
-    #xmlel{name = <<"message">>, 
+    #xmlel{name = <<"message">>,
 	   attrs = [{<<"xmlns">>, <<"jabber:client">>},
-		    {<<"type">>, <<"chat">>}, 
+		    {<<"type">>, <<"chat">>},
 		    {<<"from">>, jlib:jid_to_string(Sender)},
 		    {<<"to">>, jlib:jid_to_string(Dest)}],
-	   children = [	
-		#xmlel{name = list_to_binary(atom_to_list(Direction)), 
+	   children = [
+		#xmlel{name = list_to_binary(atom_to_list(Direction)),
 			attrs = [{<<"xmlns">>, ?NS_CC_1}]},
-		#xmlel{name = <<"forwarded">>, 
+		#xmlel{name = <<"forwarded">>,
 		       attrs = [{<<"xmlns">>, ?NS_FORWARD}],
 		       children = [complete_packet(JID, Packet, Direction)]}
 		]}.
 
 
-enable(Host, U, R, CC)->
-    ?DEBUG("enabling for ~p", [U]),
-     try mnesia:dirty_write(#carboncopy{us = {U, Host}, resource=R, version = CC}) of
-	ok -> ok
-     catch _:Error -> {error, Error}
-     end.	
-
-disable(Host, U, R)->
-    ?DEBUG("disabling for ~p", [U]),
-    ToDelete = mnesia:dirty_match_object(?TABLE, #carboncopy{us = {U, Host}, resource = R, version = '_'}),
-    try lists:foreach(fun mnesia:dirty_delete_object/1, ToDelete) of
-	ok -> ok
-    catch _:Error -> {error, Error}
-    end.
 
 complete_packet(From, #xmlel{name = <<"message">>, attrs = OrigAttrs} = Packet, sent) ->
     %% if this is a packet sent by user on this host, then Packet doesn't
@@ -267,7 +242,78 @@ complete_packet(_From, #xmlel{name = <<"message">>, attrs=OrigAttrs} = Packet, r
     Attrs = lists:keystore(<<"xmlns">>, 1, OrigAttrs, {<<"xmlns">>, <<"jabber:client">>}),
     Packet#xmlel{attrs = Attrs}.
 
-%% list {resource, cc_version} with carbons enabled for given user and host
-list(User, Server)->
-	mnesia:dirty_select(?TABLE, [{#carboncopy{us = {User, Server}, resource = '$2', version = '$3'}, [], [{{'$2','$3'}}]}]).
+enable(Host, U, R, CC)->
+    enable(gen_mod:db_type(Host, ?MODULE), Host, U, R, CC).
 
+enable(mnesia, Host, U, R, CC) ->
+    ?DEBUG("enabling for ~p", [U]),
+     try mnesia:dirty_write(#carboncopy{us = {U, Host}, resource=R, version = CC}) of
+	ok -> ok
+     catch _:Error -> {error, Error}
+     end;
+enable(p1db, Host, U, R, CC) ->
+    p1db:insert(carboncopy, enc_key(Host, U, R), CC).
+
+disable(Host, U, R) ->
+    disable(gen_mod:db_type(Host, ?MODULE), Host, U, R).
+
+disable(mnesia, Host, U, R) ->
+    ?DEBUG("disabling for ~p", [U]),
+    ToDelete = mnesia:dirty_match_object(carboncopy, #carboncopy{us = {U, Host}, resource = R, version = '_'}),
+    try lists:foreach(fun mnesia:dirty_delete_object/1, ToDelete) of
+	ok -> ok
+    catch _:Error -> {error, Error}
+    end;
+disable(p1db, Host, U, R) ->
+    p1db:delete(carboncopy, enc_key(Host, U, R)).
+
+%% list {resource, cc_version} with carbons enabled for given user and host
+list(User, Server) ->
+    list(gen_mod:db_type(Server, ?MODULE), User, Server).
+
+list(mnesia, User, Server) ->
+    mnesia:dirty_select(carboncopy, [{#carboncopy{us = {User, Server}, resource = '$2', version = '$3'}, [], [{{'$2','$3'}}]}]);
+list(p1db, User, Server) ->
+    case p1db:get_by_prefix(carboncopy, enc_key(Server, User)) of
+        {ok, L} ->
+            [{dec_key(Key2, 3), Version} || {Key2, Version, _VClock} <- L];
+        {error, _} ->
+            []
+    end.
+
+init_db(mnesia, _Host) ->
+    Fields = record_info(fields, carboncopy),
+    try mnesia:table_info(carboncopy, attributes) of
+	Fields -> ok;
+	_ -> mnesia:delete_table(carboncopy)  %% recreate..
+    catch _:_Error -> ok  %%probably table don't exist
+    end,
+    mnesia:create_table(carboncopy,
+	[{ram_copies, [node()]},
+	 {attributes, record_info(fields, carboncopy)},
+	 {type, bag}]),
+    mnesia:add_table_copy(carboncopy, node(), ram_copies);
+
+init_db(p1db, Host) ->
+    Group = gen_mod:get_module_opt(
+              Host, ?MODULE, p1db_group, fun(G) when is_atom(G) -> G end,
+              ejabberd_config:get_option(
+                {p1db_group, Host}, fun(G) when is_atom(G) -> G end)),
+    p1db:open_table(carboncopy,
+                    [{group, Group},
+                     {schema, [{keys, [server, user, resource]},
+                               {vals, [version]},
+                               {enc_key, fun enc_key/1},
+                               {dec_key, fun dec_key/1}]}]).
+
+enc_key(Server, User, Resource) ->
+    <<Server/binary, 0, User/binary, 0, Resource/binary>>.
+enc_key(Server, User) ->
+    <<Server/binary, 0, User/binary, 0>>.
+enc_key(Server) ->
+    <<Server/binary, 0>>.
+
+dec_key(Key) ->
+    binary:split(Key, <<0>>, [global]).
+dec_key(Key, Part) ->
+    lists:nth(Part, dec_key(Key)).
