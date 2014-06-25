@@ -35,6 +35,7 @@
 -export([
 	 start/2, stop/1, % gen_mod API
 	 muc_create_room/3,
+	 muc_delete_room/2,
 	 muc_add_member/3,
 	 muc_remove_member/3,
 	 muc_kick_user/3,
@@ -73,6 +74,12 @@ commands() ->
 				" returns 0 in res field if rooms exists, else returns 1",
 		       module = ?MODULE, function = muc_create_room,
 		       args = [{jid_room, binary}, {host, binary}, {jid_user, binary}],
+		       result = {res, restuple}},
+
+     #ejabberd_commands{name = muc_delete_room, tags = [muc_room],
+		       desc = "Delete MUC room jid-room if room exist",
+		       module = ?MODULE, function = muc_delete_room,
+		       args = [{jid_room, binary}, {reason, binary}],
 		       result = {res, restuple}},
 
      #ejabberd_commands{name = muc_add_member, tags = [muc_room],
@@ -120,6 +127,21 @@ commands() ->
 		       args = [{jid_user, binary}],
 		       result = {res, restuple}}
     ].
+
+%% Adapted from muc_create_room/3
+muc_delete_room(RoomJid, <<>>) ->
+    muc_delete_room(RoomJid, none);
+muc_delete_room(RoomJid, Reason) ->
+    #jid{luser = RoomName, lserver = Host} = jlib:string_to_jid(RoomJid),
+    %%TODO: check get_room_pid/2 . It is working well on cluster?  table muc_online_room is set to local_content
+    case get_room_pid(RoomName, Host) of
+        room_not_found ->
+            {104, "Room not found"};
+        RoomPid when is_pid(RoomPid) ->
+	        gen_fsm:send_all_state_event(RoomPid, {destroy, Reason}),
+            {ok, ""}
+    end.
+
 
 %%
 %% muc-create-room
