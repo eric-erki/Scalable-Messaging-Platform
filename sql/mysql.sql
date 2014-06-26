@@ -338,3 +338,11 @@ CREATE TABLE `gcm_cache` (
    `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
    UNIQUE KEY `i_gcm_cache_username_device_id` (`username`,`device_id`)
 ) ENGINE=InnoDB CHARACTER SET utf8;
+
+CREATE TABLE carboncopy (
+    server varchar(255) NOT NULL,
+    user varchar(255) NOT NULL,
+    resource varchar(255) NOT NULL,
+    version varchar(100) NOT NULL,
+    UNIQUE KEY i_carboncopy_server_user_resource (server, user, resource)
+) ENGINE=InnoDB CHARACTER SET utf8;

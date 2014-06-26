@@ -252,7 +252,21 @@ enable(mnesia, Host, U, R, CC) ->
      catch _:Error -> {error, Error}
      end;
 enable(p1db, Host, U, R, CC) ->
-    p1db:insert(carboncopy, enc_key(Host, U, R), CC).
+    p1db:insert(carboncopy, enc_key(Host, U, R), CC);
+enable(odbc, Host, U, R, CC) ->
+    case ejabberd_odbc:sql_transaction(Host,
+                                       [[<<"DELETE FROM carboncopy WHERE Server='">>,
+                                         ejabberd_odbc:escape(Host), <<"' AND User='">>, ejabberd_odbc:escape(U),
+                                         <<"' AND Resource='">>, ejabberd_odbc:escape(R), <<"'">>],
+                                        [<<"INSERT INTO carboncopy (Server,User,Resource,Version) VALUES ('">>,
+                                         ejabberd_odbc:escape(Host), <<"', '">>, ejabberd_odbc:escape(U), <<"', '">>,
+                                         ejabberd_odbc:escape(R), <<"', '">>, ejabberd_odbc:escape(CC), <<"')">>]]) of
+        {atomic, _} ->
+            ok;
+        _ ->
+                {error, <<"Transaction aborted">>}
+    end.
+
 
 disable(Host, U, R) ->
     disable(gen_mod:db_type(Host, ?MODULE), Host, U, R).
@@ -265,7 +279,16 @@ disable(mnesia, Host, U, R) ->
     catch _:Error -> {error, Error}
     end;
 disable(p1db, Host, U, R) ->
-    p1db:delete(carboncopy, enc_key(Host, U, R)).
+    p1db:delete(carboncopy, enc_key(Host, U, R));
+disable(odbc, Host, U, R) ->
+    case ejabberd_odbc:sql_query(Host, [<<"DELETE FROM carboncopy WHERE Server='">>,
+                                        ejabberd_odbc:escape(Host), <<"' AND User='">>, ejabberd_odbc:escape(U),
+                                        <<"' AND Resource='">>, ejabberd_odbc:escape(R), <<"'">>]) of
+        {updated, _} ->
+            ok;
+        {error, Err} ->
+            {error, Err}
+    end.
 
 %% list {resource, cc_version} with carbons enabled for given user and host
 list(User, Server) ->
@@ -278,6 +301,15 @@ list(p1db, User, Server) ->
         {ok, L} ->
             [{dec_key(Key2, 3), Version} || {Key2, Version, _VClock} <- L];
         {error, _} ->
+            []
+    end;
+list(odbc, User, Server) ->
+    case ejabberd_odbc:sql_query(Server, [<<"SELECT Resource, Version FROM carboncopy WHERE Server='">>,
+                                        ejabberd_odbc:escape(Server), <<"' AND User='">>,
+                                        ejabberd_odbc:escape(User), <<"'">>]) of
+        {selected, _, Values} ->
+            [{R, V} || [R, V] <- Values];
+        _ ->
             []
     end.
 
@@ -304,7 +336,9 @@ init_db(p1db, Host) ->
                      {schema, [{keys, [server, user, resource]},
                                {vals, [version]},
                                {enc_key, fun enc_key/1},
-                               {dec_key, fun dec_key/1}]}]).
+                               {dec_key, fun dec_key/1}]}]);
+init_db(odbc, _Host) ->
+    ok.
 
 enc_key(Server, User, Resource) ->
     <<Server/binary, 0, User/binary, 0, Resource/binary>>.
