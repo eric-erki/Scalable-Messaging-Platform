@@ -32,20 +32,32 @@
 -define(ACTIVE_ENABLED, true).
 
 %% dictionaries computed to generate reports
--define(COMPUTING_DICTS, [ hourly_active_users,
-                           daily_active_users,
-                           weekly_active_users,
-                           monthly_active_users
-	                 ]).
+-define(HYPERLOGLOGS, [ daily_active_users,
+                        weekly_active_users,
+                        monthly_active_users
+                      ]).
+% HyperLogLog notes:
+% Let σ ≈ 1.04/√m represent the standard error; the estimates provided by HYPERLOGLOG
+% are expected to be within σ, 2σ, 3σ of the exact count in respectively 65%, 95%, 99%
+% of all the cases.
+%
+% bits / memory / registers / σ 2σ 3σ
+% 10   1309  1024 ±3.25% ±6.50% ±9.75%
+% 11   2845  2048 ±2.30% ±4.60% ±6.90%
+% 12   6173  4096 ±1.62% ±3.26% ±4.89%
+% 13  13341  8192 ±1.15% ±2.30% ±3.45%
+% 14  28701 16384 ±0.81% ±1.62% ±2.43%
+% 15  62469 32768 ±0.57% ±1.14% ±1.71%
+% 16 131101 65536 ±0.40% ±0.81% ±1.23%
+
 -define(PROCESSINFO, process_info).
-% TODO use dict:update_counter instead of keysearch/keyreplace ?
 
 %% module functions
 -export([start/2, stop/1, is_loaded/0, init/1, start_monitor_worker/1]).
 -export([values/2, value/3, add_monitor/4, del_monitor/3]).
 -export([start_sampling/0, stop_sampling/0, sampling_loop/3]).
 -export([run_sample/0, run_sample/1]).
--export([get_sampling_counters/0, get_active_counters/1]).
+-export([get_sampling_counters/0, get_active_counters/1, get_active_log/1]).
 -export([add_sampling_condition/1, restart_sampling/0]).
 -export([flush_probe/2]).
 %% DB wrapper, waiting a better solution
@@ -284,7 +296,7 @@ try
                          {attributes, record_info(fields, mon)}]),
     case mnesia:table_info(mon, size) of
         0 ->
-            lists:foreach(fun(Hook) -> put(Hook, 0) end, ?SUPPORTED_HOOKS++?GLOBAL_HOOKS++?GENERATED_HOOKS++?COMPUTING_DICTS),
+            lists:foreach(fun(Hook) -> put(Hook, 0) end, ?SUPPORTED_HOOKS++?GLOBAL_HOOKS++?GENERATED_HOOKS++?HYPERLOGLOGS),
             lists:foreach(fun(Hook) -> put(Hook, []) end, ?DYNAMIC_HOOKS);
         _ ->
             [put(Key, Val) || {mon, Key, Val} <- ets:tab2list(mon)]
@@ -297,17 +309,22 @@ try
     end,
     [put(C, 0) || C <- [muc_message_size, message_send_size, message_receive_size]],
 
-    %% create the list of dictionaries updated by monitoring loop
-    Dicts = lists:foldl(fun(DictName, Acc) ->
-			    [{DictName, ehyperloglog:new(16) } | Acc]
-                        end, [], ?COMPUTING_DICTS),
-
     ProcName = gen_mod:get_module_proc(Host, ?PROCNAME),
     register(ProcName, self()),
     proc_lib:init_ack({ok, self()}),
 
+    Log = case get(hyperloglogs) of
+        [] ->
+            L = ehyperloglog:new(16),
+            put(hyperloglogs, [{Key, L} || Key <- ?HYPERLOGLOGS]),
+            [put(Key, 0) || Key <- ?HYPERLOGLOGS],
+            L;
+        [{_,L}|_] ->
+            L
+    end,
+
     %% start monitoring loop
-    loop(Host,[], Dicts)
+    loop(Host, [], Log)
 catch
     E:{{R}} ->
         ?ERROR_MSG("*** WARNING *** Monitoring process for host ~p died. Error: ~p - Reason: ~p", [Host,E,R]),
@@ -315,7 +332,9 @@ catch
 end.
 
 is_loaded() ->
-    ok.
+    [Host|_] = ejabberd_config:get_myhosts(),
+    ProcName = gen_mod:get_module_proc(Host, ?PROCNAME),
+    whereis(ProcName) =/= undefined.
 
 action(Host, Msg) ->
     %%Prior to this, we used Host, now we ignore this parameter because
@@ -374,29 +393,29 @@ sample(Msg) ->
     ?DEBUG("Sample ~p",[Msg]),
     catch mod_mon_sampling_loop ! Msg.
 
-loop(Host, Monitors, Dicts) ->
+loop(Host, Monitors, Log) ->
     receive
         {packet, Type, From, To, Packet} ->
             sample({packet, Host, Type, From, To, Packet}),
-            loop(Host, Monitors, Dicts);
+            loop(Host, Monitors, Log);
         {set, User, Resource, {Hook, Namespace, Count}} ->
             NewValues = update_probe_array(Hook, Namespace, Count),
             put(Hook, NewValues),
             sample({hook, {User, Host, Resource}, Hook}),
-            loop(Host, Monitors, Dicts);
+            loop(Host, Monitors, Log);
         {set, User, Resource, {Hook, Namespace}} ->
             NewValues = update_probe_array(Hook, Namespace),
             put(Hook, NewValues),
             sample({hook, {User, Host, Resource}, Hook}),
-            loop(Host, Monitors, Dicts);
+            loop(Host, Monitors, Log);
         {set, {Hook, Namespace, Count}} ->
             NewValues = update_probe_array(Hook, Namespace, Count),
             put(Hook, NewValues),
-            loop(Host, Monitors, Dicts);
+            loop(Host, Monitors, Log);
         {set, {Hook, Namespace}} ->
             NewValues = update_probe_array(Hook, Namespace),
             put(Hook, NewValues),
-            loop(Host, Monitors, Dicts);
+            loop(Host, Monitors, Log);
         {set, User, Resource, Hook} ->
             OldValue = case get(Hook) of
                         undefined -> 0;
@@ -404,7 +423,7 @@ loop(Host, Monitors, Dicts) ->
                         end,
             put(Hook, OldValue + 1),
             sample({hook, {User, Host, Resource}, Hook}),
-            loop(Host, Monitors, Dicts);
+            loop(Host, Monitors, Log);
         {set, User, Server, Resource, Hook} ->
             OldValue = case get(Hook) of
                         undefined -> 0;
@@ -412,61 +431,79 @@ loop(Host, Monitors, Dicts) ->
                         end,
             put(Hook, OldValue + 1),
             sample({hook, {User, Server, Resource}, Hook}),
-            loop(Host, Monitors, Dicts);
-        {active, Key} ->
-            %% ?DEBUG("ACTIVE USER: ~p", [Key]),
-            NewDicts = lists:map(fun({DictName, Dict}) ->
-                    UpdatedDict = ehyperloglog:update(Key, Dict),
-                    ActiveUsers = round(ehyperloglog:cardinality(UpdatedDict)),
-                    put(DictName, ActiveUsers),
-                    {DictName, UpdatedDict}
-                end, Dicts),
-            loop(Host, Monitors, NewDicts);
-        {flush_dict, DictName} ->
-            NewDicts = lists:map(
-                    fun({Name, _}) when Name==DictName ->
-                            put(DictName, 0),
-                            {Name, ehyperloglog:new(16)};
-                       (Other) ->
-                            Other
-                    end, Dicts),
-            loop(Host, Monitors, NewDicts);
+            loop(Host, Monitors, Log);
+        {reset, Class} ->
+            case get(Class) of
+                I when is_integer(I) -> put(Class, 0);
+                L when is_list(L) -> put(Class, []);
+                _ -> ok
+            end,
+            loop(Host, Monitors, Log);
+        {active, Probe} ->
+            loop(Host, Monitors, ehyperloglog:update(Probe, Log));
+        {flush_active, Probe} ->
+            Logs = lists:foldr(
+                    fun({Key, Val}, {Acc, Continue}) ->
+                            Merge = Continue and (Key =/= Probe),
+                            New = case Merge of
+                                true -> ehyperloglog:merge(Log, Val);
+                                false -> ehyperloglog:new(16)
+                            end,
+                            put(Key, round(ehyperloglog:cardinality(New))),
+                            {[{Key, New}|Acc], Merge}
+                    end,
+                    {[], true}, get(hyperloglogs)),
+            put(hyperloglogs, Logs),
+            loop(Host, Monitors, ehyperloglog:new(16));
+        refresh_active ->
+            {RemoteLogs, _} = rpc:multicall(nodes(), ?MODULE, get_active_log, [Host], 8000),
+            ClusterLog = lists:foldl(fun(Remote, Acc) when is_atom(Remote) -> Acc;
+                                        (Remote, Acc) -> ehyperloglog:merge(Acc, Remote)
+                    end, Log, RemoteLogs),
+            Logs = lists:map(fun({Key, Val}) ->
+                            Merge = ehyperloglog:merge(ClusterLog, Val),
+                            put(Key, round(ehyperloglog:cardinality(Merge))),
+                            {Key, Merge}
+                    end, get(hyperloglogs)),
+            put(hyperloglogs, Logs),
+            loop(Host, Monitors, ClusterLog);
+        {get, From, active} ->
+            From ! {values, [{Key, get(Key)} || Key <- ?HYPERLOGLOGS]},
+            loop(Host, Monitors, Log);
+        {get, From, active_log} ->
+            From ! {values, Log},
+            loop(Host, Monitors, Log);
         {get, From, hooks} ->
             From ! {values, get()},
-            loop(Host, Monitors, Dicts);
+            loop(Host, Monitors, Log);
         {get, From, hooks, Hook} ->
             From ! {value, get(Hook)},
-            loop(Host, Monitors, Dicts);
+            loop(Host, Monitors, Log);
         {get, From, Class} ->
-            Values = case lists:keysearch(Class, 1, Monitors) of
-                         {value, {Class, List}} ->
-                             lists:map(fun({I, M, F, A}) -> {I, apply(M, F, A)} end, List);
-                         _ ->
-                             undefined_class
-                     end,
+            Values = case proplists:get_value(Class, Monitors) of
+                undefined -> [];
+                List -> [{I, apply(M, F, A)} || {I, M, F, A} <- List]
+            end,
             From ! {values, Values},
-            loop(Host, Monitors, Dicts);
+            loop(Host, Monitors, Log);
         {get, From, Class, Mon} ->
-            Value = case lists:keysearch(Class, 1, Monitors) of
-                        {value, {Class, List}} ->
-                            case lists:keysearch(Mon, 1, List) of
-                                {value, {Mon, M, F, A}} ->
-                                    apply(M, F, A);
-                                _ ->
-                                    undefined_monitor
-                            end;
-                        _ ->
-                            undefined_class
-                    end,
+            Value = case proplists:get_value(Class, Monitors) of
+                undefined -> undefined;
+                List ->
+                    case lists:keysearch(Mon, 1, List) of
+                        {value, {Mon, M, F, A}} -> apply(M, F, A);
+                        _ -> undefined
+                    end
+            end,
             From ! {value, Value},
-            loop(Host, Monitors, Dicts);
+            loop(Host, Monitors, Log);
         {add, Class, Monitor, Module} ->
             NewMonitors = case ejabberd_config:get_local_option({modules, Host},
                                                                                 fun(V) when is_list(V) -> V end) of
                               undefined ->
                                   Monitors;
                               Modules ->
-                                  ActiveModules = lists:map(fun({M, _O}) -> M end, Modules),
+                                  ActiveModules = [M || {M, _} <- Modules],
                                   case lists:member(Module, ActiveModules) of
                                       false ->
                                           Monitors;
@@ -480,7 +517,7 @@ loop(Host, Monitors, Dicts) ->
                                           end
                                   end
                           end,
-            loop(Host, NewMonitors, Dicts);
+            loop(Host, NewMonitors, Log);
         {del, Class, Monitor} ->
             NewMonitors = case lists:keysearch(Class, 1, Monitors) of
                               {value, {Class, List}} ->
@@ -489,23 +526,23 @@ loop(Host, Monitors, Dicts) ->
                               _ ->
                                   Monitors
                           end,
-            loop(Host, NewMonitors, Dicts);
+            loop(Host, NewMonitors, Log);
         {muc, _Room, create} ->
             OldValue = get(muc_rooms),
             put(muc_rooms, OldValue + 1),
-            loop(Host, Monitors, Dicts);
+            loop(Host, Monitors, Log);
         {muc, _Room, destroy} ->
             OldValue = get(muc_rooms),
             put(muc_rooms, OldValue - 1),
-            loop(Host, Monitors, Dicts);
+            loop(Host, Monitors, Log);
         {muc, _Room, join} ->
             OldValue = get(muc_users),
             put(muc_users, OldValue + 1),
-            loop(Host, Monitors, Dicts);
+            loop(Host, Monitors, Log);
         {muc, _Room, leave} ->
             OldValue = get(muc_users),
             put(muc_users, OldValue - 1),
-            loop(Host, Monitors, Dicts);
+            loop(Host, Monitors, Log);
         {muc, _Room, muc_message_size, Size} ->
             OldValue = get(muc_message_size),
             Current = case is_list(Size) of
@@ -518,15 +555,15 @@ loop(Host, Monitors, Dicts) ->
                     Size
                 end,
             put(muc_message_size, OldValue + Current),
-            loop(Host, Monitors, Dicts);
+            loop(Host, Monitors, Log);
         {message_send_size, _User, _Resource, Size} ->
             OldValue = get(message_send_size),
             put(message_send_size, OldValue + Size),
-            loop(Host, Monitors, Dicts);
+            loop(Host, Monitors, Log);
         {message_receive_size, _User, _Resource, Size} ->
             OldValue = get(message_receive_size),
             put(message_receive_size, OldValue + Size),
-            loop(Host, Monitors, Dicts);
+            loop(Host, Monitors, Log);
         {proxy65, _FileName, Size} ->
             OldValue = case get(proxy65_size) of
                         undefined -> 0;
@@ -542,12 +579,12 @@ loop(Host, Monitors, Dicts) ->
                      Size
                 end,
             put(proxy65_size, OldValue + Current),
-            loop(Host, Monitors, Dicts);
+            loop(Host, Monitors, Log);
         stop ->
             ok;
         Unknown ->
             ?INFO_MSG("Unknown message received on mod_mon loop process for host ~p: ~p", [Host, Unknown]),
-            loop(Host, Monitors, Dicts)
+            loop(Host, Monitors, Log)
     end.
 
 %% private function used by loop to update array probes (like IQ or PubSub probes)
@@ -663,6 +700,9 @@ values(Host, Class) ->
 value(Host, Class, Mon) ->
     action(Host, {get, self(), Class, Mon}),
     wait(value).
+
+reset(Host, Class) ->
+    action(Host, {reset, Class}).
 
 get_sampling_hook_counters() ->
     sample({get_sampling_hook_counters, self()}),
@@ -1146,30 +1186,34 @@ active_user(LUser, LServer, LResource) ->
     end.
 
 get_active_counters(Host) when is_binary(Host) ->
+    if ?ACTIVE_ENABLED -> values(Host, active);
+       true -> []
+    end.
+
+get_active_log(Host) when is_binary(Host) ->
     if ?ACTIVE_ENABLED ->
-            lists:foldl(fun(DictName, Acc) ->
-                    action(Host, {get, self(), hooks, DictName}),
-                    case wait(value) of
-                        timeout -> Acc;
-                        Value -> [{DictName, Value}|Acc]
-                    end
-                end, [], ?COMPUTING_DICTS);
-       true ->
-            []
+            case values(Host, active_log) of
+                timeout -> undefined;
+                Log -> Log
+            end;
+       true -> undefined
     end.
 
 flush_probe(Host, Probe) when is_binary(Host), is_atom(Probe) ->
-    Available = lists:member(Probe, ?COMPUTING_DICTS),
-    if ?ACTIVE_ENABLED and Available ->
-            action(Host, {get, self(), hooks, Probe}),
-            Ret = case wait(value) of
-                timeout -> 0;
-                Value -> Value
-            end,
-            action(Host, {flush_dict, Probe}),
-            Ret;
+    case lists:member(Probe, ?HYPERLOGLOGS) of
         true ->
-            0
+            if ?ACTIVE_ENABLED ->
+                    action(Host, refresh_active), % TODO should be called every 90mn ?
+                    Active = values(Host, active),
+                    action(Host, {flush_active, Probe}),
+                    proplists:get_value(Probe, Active);
+                true ->
+                    0
+            end;
+        false ->
+            Ret = value(Host, hooks, Probe),
+            reset(Host, Probe),
+            Ret
     end.
 
 %%--------------------------------------------------------------------
@@ -1214,10 +1258,19 @@ list_components(Host) ->
 %%roster_get_subscription_lists
 %%roster_process_item
 
+put(hyperloglogs, Logs) ->
+    File = filename:join([mnesia:system_info(directory), "hyperloglog.bin"]),
+    file:write_file(File, term_to_binary(Logs));
 put(Key, Value) ->
     erlang:put(Key, Value),
     mnesia:dirty_write(#mon{key = Key, value = Value}).
 
+get(hyperloglogs) ->
+    File = filename:join([mnesia:system_info(directory), "hyperloglog.bin"]),
+    case file:read_file(File) of
+        {ok, Bin} -> binary_to_term(Bin);
+        _ -> []
+    end;
 get(Key) ->
     erlang:get(Key).
 %    case mnesia:dirty_read(mon, Key) of
@@ -1231,3 +1284,4 @@ get() ->
     erlang:get().
 %    mnesia:dirty_select(
 %      mon, [{#mon{key = '$1', value = '$2', _ = '_'}, [], [{{'$1', '$2'}}]}]).
+
