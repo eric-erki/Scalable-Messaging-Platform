@@ -59,7 +59,7 @@
 -export([run_sample/0, run_sample/1]).
 -export([get_sampling_counters/0, get_active_counters/1, get_active_log/1]).
 -export([add_sampling_condition/1, restart_sampling/0]).
--export([flush_probe/2]).
+-export([flush_probe/2, flush_active_log/3, refresh_active_log/1]).
 %% DB wrapper, waiting a better solution
 -export([db_table_size/1, db_table_size/2]).
 
@@ -321,6 +321,7 @@ try
         [{_,L}|_] ->
             L
     end,
+    timer:apply_interval(?HOUR, ?MODULE, refresh_active_log, [Host]),
 
     %% start monitoring loop
     loop(Host, [], Log)
@@ -351,11 +352,13 @@ action(Host, Msg) ->
         error
     end.
 
-wait(Result) ->
+wait(Result, ok) ->
     receive
         {Result, Data} -> Data
     after 4000 -> timeout
-    end.
+    end;
+wait(_, Error) ->
+    Error.
 
 get_vhost_name(Host) ->
    Table = gen_mod:get_module_proc(Host, ?PROCESSINFO),
@@ -438,34 +441,13 @@ loop(Host, Monitors, Log) ->
                 _ -> ok
             end,
             loop(Host, Monitors, Log);
+        {reset, active_log, Val} ->
+            loop(Host, Monitors, Val);
+        {reset, Probe, Value} ->
+            put(Probe, Value),
+            loop(Host, Monitors, Log);
         {active, Probe} ->
             loop(Host, Monitors, ehyperloglog:update(Probe, Log));
-        {flush_active, Probe} ->
-            Logs = lists:foldr(
-                    fun({Key, Val}, {Acc, Continue}) ->
-                            Merge = Continue and (Key =/= Probe),
-                            New = case Merge of
-                                true -> ehyperloglog:merge(Log, Val);
-                                false -> ehyperloglog:new(16)
-                            end,
-                            put(Key, round(ehyperloglog:cardinality(New))),
-                            {[{Key, New}|Acc], Merge}
-                    end,
-                    {[], true}, get(hyperloglogs)),
-            put(hyperloglogs, Logs),
-            loop(Host, Monitors, ehyperloglog:new(16));
-        refresh_active ->
-            {RemoteLogs, _} = rpc:multicall(nodes(), ?MODULE, get_active_log, [Host], 8000),
-            ClusterLog = lists:foldl(fun(Remote, Acc) when is_atom(Remote) -> Acc;
-                                        (Remote, Acc) -> ehyperloglog:merge(Acc, Remote)
-                    end, Log, RemoteLogs),
-            Logs = lists:map(fun({Key, Val}) ->
-                            Merge = ehyperloglog:merge(ClusterLog, Val),
-                            put(Key, round(ehyperloglog:cardinality(Merge))),
-                            {Key, Merge}
-                    end, get(hyperloglogs)),
-            put(hyperloglogs, Logs),
-            loop(Host, Monitors, ClusterLog);
         {get, From, active} ->
             From ! {values, [{Key, get(Key)} || Key <- ?HYPERLOGLOGS]},
             loop(Host, Monitors, Log);
@@ -693,15 +675,16 @@ del_monitor(Host, Class, Monitor) ->
     action(Host, {del, Class, Monitor}).
 
 values(Host, Class) ->
-    action(Host, {get, self(), Class}),
-    wait(values).
+    wait(values, action(Host, {get, self(), Class})).
 
 value(Host, Class, Mon) ->
-    action(Host, {get, self(), Class, Mon}),
-    wait(value).
+    wait(value, action(Host, {get, self(), Class, Mon})).
 
 reset(Host, Class) ->
     action(Host, {reset, Class}).
+
+reset(Host, Probe, Value) ->
+    action(Host, {reset, Probe, Value}).
 
 get_sampling_hook_counters() ->
     sample({get_sampling_hook_counters, self()}),
@@ -1190,11 +1173,7 @@ get_active_counters(Host) when is_binary(Host) ->
     end.
 
 get_active_log(Host) when is_binary(Host) ->
-    if ?ACTIVE_ENABLED ->
-            case values(Host, active_log) of
-                timeout -> undefined;
-                Log -> Log
-            end;
+    if ?ACTIVE_ENABLED -> values(Host, active_log);
        true -> undefined
     end.
 
@@ -1202,9 +1181,8 @@ flush_probe(Host, Probe) when is_binary(Host), is_atom(Probe) ->
     case lists:member(Probe, ?HYPERLOGLOGS) of
         true ->
             if ?ACTIVE_ENABLED ->
-                    action(Host, refresh_active), % TODO should be called every 90mn ?
                     Active = values(Host, active),
-                    action(Host, {flush_active, Probe}),
+                    flush_active_log(Host, Probe),
                     proplists:get_value(Probe, Active);
                 true ->
                     0
@@ -1214,6 +1192,54 @@ flush_probe(Host, Probe) when is_binary(Host), is_atom(Probe) ->
             reset(Host, Probe),
             Ret
     end.
+
+refresh_active_log(Host) ->
+    % this process can safely run on its own, thanks to put/get hyperloglogs not using dictionary
+    % it should be called at regular interval to keep logs consistency
+    % as timer is handled by main process handling the loop, we spawn here to not interfere with the loop
+    spawn(fun() ->
+        Nodes = ejabberd_cluster:get_nodes(),
+        {[Log|Logs], _} = rpc:multicall(Nodes, ?MODULE, get_active_log, [Host], 8000),
+        ClusterLog = lists:foldl(
+                fun(Remote, Acc) when is_atom(Remote) -> Acc;
+                   (Remote, Acc) -> ehyperloglog:merge(Acc, Remote)
+                end, Log, Logs),
+        reset(Host, active_log, ClusterLog),
+        UpdatedLogs = lists:map(
+                fun({Key, Val}) ->
+                        Merge = ehyperloglog:merge(ClusterLog, Val),
+                        reset(Host, Key, round(ehyperloglog:cardinality(Merge))),
+                        {Key, Merge}
+                end, get(hyperloglogs)),
+        put(hyperloglogs, UpdatedLogs)
+        end).
+
+flush_active_log(Host, Probe) ->
+    % this process can safely run on its own, thanks to put/get hyperloglogs not using dictionary
+    % it may be called at regular interval with timers or external cron
+    spawn(fun() ->
+        Nodes = ejabberd_cluster:get_nodes(),
+        {[Log|Logs], _} = rpc:multicall(Nodes, ?MODULE, get_active_log, [Host], 8000),
+        ClusterLog = lists:foldl(
+                fun(Remote, Acc) when is_atom(Remote) -> Acc;
+                   (Remote, Acc) -> ehyperloglog:merge(Acc, Remote)
+                end, Log, Logs),
+        rpc:multicall(Nodes, ?MODULE, flush_active_log, [Host, Probe, ClusterLog])
+        end).
+flush_active_log(Host, Probe, ClusterLog) ->
+    reset(Host, active_log, ehyperloglog:new(16)),
+    UpdatedLogs = lists:foldr(
+            fun({Key, Val}, {Acc, Continue}) ->
+                    Keep = Continue and (Key =/= Probe),
+                    Merge = if Keep -> ehyperloglog:merge(ClusterLog, Val);
+                               true -> ehyperloglog:new(16)
+                            end,
+                    reset(Host, Key, round(ehyperloglog:cardinality(Merge))),
+                    {[{Key, Merge}|Acc], Keep}
+            end,
+            {[], true}, get(hyperloglogs)),
+    put(hyperloglogs, UpdatedLogs),
+    ok.
 
 %%--------------------------------------------------------------------
 %% Function: is_subdomain(Domain1, Domain2) -> true | false
