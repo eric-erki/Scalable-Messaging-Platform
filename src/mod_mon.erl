@@ -263,9 +263,8 @@ stop(Host) ->
                           ejabberd_hooks:delete(Hook, global, ?MODULE, Hook, 20)
                   end, ?GLOBAL_HOOKS),
     ProcName = gen_mod:get_module_proc(Host, ?PROCNAME),
-    exit(whereis(ProcName), normal),
-    catch supervisor:delete_child(ejabberd_sup, ProcName),
-    {wait, ProcName}.
+    supervisor:terminate_child(ejabberd_sup,ProcName),
+    supervisor:delete_child(ejabberd_sup, ProcName).
 
 start_monitor_worker(Host) ->
     ?INFO_MSG("Starting mod_mon worker on host ~s...",[Host]),
