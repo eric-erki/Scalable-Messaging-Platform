@@ -1228,7 +1228,7 @@ flush_active_log(Host, Probe) ->
         end).
 flush_active_log(Host, Probe, ClusterLog) ->
     reset(Host, active_log, ehyperloglog:new(16)),
-    UpdatedLogs = lists:foldr(
+    {UpdatedLogs, _} = lists:foldr(
             fun({Key, Val}, {Acc, Continue}) ->
                     Keep = Continue and (Key =/= Probe),
                     Merge = if Keep -> ehyperloglog:merge(ClusterLog, Val);
