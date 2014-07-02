@@ -106,13 +106,7 @@ handle_call(_Request, _From, State) ->
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
 handle_cast({route, From, To, Packet, Hops}, State) ->
-    case catch ejabberd_sm:do_route1(From, To, Packet, Hops) of
-        {'EXIT', Reason} ->
-            ?ERROR_MSG("~p~nwhen processing: ~p",
-                       [Reason, {From, To, Packet, Hops}]);
-        _ ->
-            ok
-    end,
+    do_route(From, To, Packet, Hops),
     {noreply, State};
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -123,6 +117,9 @@ handle_cast(_Msg, State) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
+handle_info({route, From, To, Packet, Hops}, State) ->
+    do_route(From, To, Packet, Hops),
+    {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -146,4 +143,11 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-
+do_route(From, To, Packet, Hops) ->
+    case catch ejabberd_sm:do_route1(From, To, Packet, Hops) of
+        {'EXIT', Reason} ->
+            ?ERROR_MSG("~p~nwhen processing: ~p",
+                       [Reason, {From, To, Packet, Hops}]);
+        _ ->
+            ok
+    end.
