@@ -141,7 +141,7 @@ fi
 [ -z "$rate" ] || EJABBERD_OPTS="log_rate_limit $rate"
 [ -z "$rotate" ] || EJABBERD_OPTS="${EJABBERD_OPTS} log_rotate_size $rotate"
 [ -z "$count" ] || EJABBERD_OPTS="${EJABBERD_OPTS} log_rotate_count $count"
-[ -z "$date" ] || EJABBERD_OPTS="${EJABBERD_OPTS} log_rotate_date $date"
+[ -z "$date" ] || EJABBERD_OPTS="${EJABBERD_OPTS} log_rotate_date '$date'"
 [ -z "$EJABBERD_OPTS" ] || EJABBERD_OPTS="-ejabberd ${EJABBERD_OPTS}"
 
 # create the ejabberd home dir with the proper user if doesn't exist
