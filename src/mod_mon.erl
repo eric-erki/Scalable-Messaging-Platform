@@ -16,6 +16,8 @@
 
 -behaviour(gen_mod).
 
+-include("ejabberd_commands.hrl").
+
 %% SIZE_COUNTING is consuming but allows to know size of xmpp messages
 -define(SIZE_COUNTING, false).
 
@@ -62,6 +64,7 @@
 -export([flush_probe/2, flush_active_log/3, refresh_active_log/1]).
 %% DB wrapper, waiting a better solution
 -export([db_table_size/1, db_table_size/2]).
+-export([active_counters/1]).
 
 -define(GENERATED_HOOKS,
         [presence_receive_packet, presence_send_packet,
@@ -223,6 +226,9 @@ start(Host, Opts) ->
 
     ProcName = gen_mod:get_module_proc(Host, ?PROCNAME),
     Monitors = proplists:get_value(?MONITORS, Opts, []),
+
+    ejabberd_commands:register_commands(commands()),
+
     case whereis(ProcName) of
         undefined ->
             ?INFO_MSG("Starting monitor process ~p", [ProcName]),
@@ -255,6 +261,7 @@ start(Host, Opts) ->
     end.
 
 stop(Host) ->
+    ejabberd_commands:unregister_commands(commands()),
     stop_sampling(),
     lists:foreach(fun(Hook) ->
                           ejabberd_hooks:delete(Hook, Host, ?MODULE, Hook, 20)
@@ -265,6 +272,18 @@ stop(Host) ->
     ProcName = gen_mod:get_module_proc(Host, ?PROCNAME),
     supervisor:terminate_child(ejabberd_sup,ProcName),
     supervisor:delete_child(ejabberd_sup, ProcName).
+
+commands() ->
+    [#ejabberd_commands{name = active_counters,
+			tags = [mod_mon],
+			desc = "Stop an ejabberd module, reload code and start",
+			module = ?MODULE, function = active_counters,
+			args = [{host, binary}],
+			result = {counters, {list, {counter, {tuple, [{name, string}, {value, integer}]}}}}}].
+
+active_counters(Host) ->
+    C = get_active_counters(Host),
+    [{atom_to_binary(Name, latin1), Value} || {Name, Value} <- C].
 
 start_monitor_worker(Host) ->
     ?INFO_MSG("Starting mod_mon worker on host ~s...",[Host]),
@@ -1309,4 +1328,3 @@ get() ->
     erlang:get().
 %    mnesia:dirty_select(
 %      mon, [{#mon{key = '$1', value = '$2', _ = '_'}, [], [{{'$1', '$2'}}]}]).
-
