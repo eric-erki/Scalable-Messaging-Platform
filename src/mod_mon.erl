@@ -16,6 +16,8 @@
 
 -behaviour(gen_mod).
 
+-include("ejabberd_commands.hrl").
+
 %% SIZE_COUNTING is consuming but allows to know size of xmpp messages
 -define(SIZE_COUNTING, false).
 
@@ -57,11 +59,12 @@
 -export([values/2, value/3, add_monitor/4, del_monitor/3]).
 -export([start_sampling/0, stop_sampling/0, sampling_loop/3]).
 -export([run_sample/0, run_sample/1]).
--export([get_sampling_counters/0, get_active_counters/1, get_active_log/1]).
+-export([get_sampling_counters/0, get_active_log/1]).
 -export([add_sampling_condition/1, restart_sampling/0]).
 -export([flush_probe/2, flush_active_log/3, refresh_active_log/1]).
 %% DB wrapper, waiting a better solution
 -export([db_table_size/1, db_table_size/2]).
+-export([active_counters_command/1, flush_probe_command/2]).
 
 -define(GENERATED_HOOKS,
         [presence_receive_packet, presence_send_packet,
@@ -223,6 +226,9 @@ start(Host, Opts) ->
 
     ProcName = gen_mod:get_module_proc(Host, ?PROCNAME),
     Monitors = proplists:get_value(?MONITORS, Opts, []),
+
+    ejabberd_commands:register_commands(commands()),
+
     case whereis(ProcName) of
         undefined ->
             ?INFO_MSG("Starting monitor process ~p", [ProcName]),
@@ -255,6 +261,7 @@ start(Host, Opts) ->
     end.
 
 stop(Host) ->
+    ejabberd_commands:unregister_commands(commands()),
     stop_sampling(),
     lists:foreach(fun(Hook) ->
                           ejabberd_hooks:delete(Hook, Host, ?MODULE, Hook, 20)
@@ -265,6 +272,41 @@ stop(Host) ->
     ProcName = gen_mod:get_module_proc(Host, ?PROCNAME),
     supervisor:terminate_child(ejabberd_sup,ProcName),
     supervisor:delete_child(ejabberd_sup, ProcName).
+
+commands() ->
+    [#ejabberd_commands{name = active_counters,
+                        tags = [stats],
+                        desc = "Returns active users counter in time period (daily_active_users, weekly_active_users, monthly_active_users)",
+                        module = ?MODULE, function = active_counters_command,
+                        args = [{host, binary}],
+                        args_desc = [<<"Name of host which should return counters">>],
+                        result = {counters, {list, {counter, {tuple, [{name, string}, {value, integer}]}}}},
+                        result_desc = <<"List of counter names with values">>,
+                        args_example = [<<"xmpp.example.org">>],
+                        result_example = [{<<"daily_active_users">>, 100},
+                                          {<<"weekly_active_users">>, 1000},
+                                          {<<"monthly_active_users">>, 10000}]
+                       },
+     #ejabberd_commands{name = flush_probe,
+                        tags = [stats],
+                        desc = "Returns last value from probe and resets its historical data. Supported probes so far: hourly_active_users, daily_active_users, weekly_active_users, monthly_active_users",
+                        module = ?MODULE, function = flush_probe_command,
+                        args = [{server, binary}, {probe_name, binary}],
+                        result = {probe_value, integer}}].
+
+active_counters_command(Host) ->
+    C = get_active_counters(Host),
+    [{atom_to_binary(Name, latin1), Value} || {Name, Value} <- C].
+
+flush_probe_command(H, P) ->
+    Probe = jlib:binary_to_atom(P),
+    case flush_probe(H, Probe) of
+        N when is_integer(N) ->
+            N;
+        _ ->
+            0
+    end.
+
 
 start_monitor_worker(Host) ->
     ?INFO_MSG("Starting mod_mon worker on host ~s...",[Host]),
@@ -1309,4 +1351,3 @@ get() ->
     erlang:get().
 %    mnesia:dirty_select(
 %      mon, [{#mon{key = '$1', value = '$2', _ = '_'}, [], [{{'$1', '$2'}}]}]).
-
