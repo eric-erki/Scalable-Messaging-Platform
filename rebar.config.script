@@ -46,11 +46,6 @@ HiPE = case lists:keysearch(hipe, 1, Cfg) of
                []
        end,
 
-Includes = [{i, "include"},
-	    {i, filename:join(["deps", "esip", "include"])},
-	    {i, filename:join(["deps", "p1_stun", "include"])},
-            {i, filename:join(["deps", "p1_xml", "include"])}],
-
 SrcDirs = lists:foldl(
             fun({pubsub_ng, true}, Acc) ->
                     [mod_pubsub_ng|Acc];
@@ -144,15 +139,14 @@ TestConfig = case file:read_file_info(TestConfigFile) of
                      ""
              end,
 
-Config = [{erl_opts, Includes ++ Macros ++ HiPE ++ DebugInfo ++
+Config = [{erl_opts, Macros ++ HiPE ++ DebugInfo ++
                [{src_dirs, [asn1, src | SrcDirs]}]},
           {sub_dirs, ["rel"]},
           {keep_build_info, true},
           {ct_extra_params, "-ct_hooks cth_surefire "
            ++ TestConfig
            ++ "-include "
-           ++ filename:join([Cwd, "tools"]) ++ " "
-           ++ filename:join([Cwd, "deps", "p1_xml", "include"])},
+           ++ filename:join([Cwd, "tools"])},
           {eunit_compile_opts, [{i, "tools"}]},
           {post_hooks, PostHooks ++ CfgPostHooks},
           {port_env, [{"CFLAGS", "-g -O2 -Wall"}]},
