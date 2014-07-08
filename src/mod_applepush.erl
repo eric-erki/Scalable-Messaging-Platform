@@ -414,7 +414,10 @@ process_sm_iq(From, To, #iq{type = Type, sub_el = SubEl} = IQ) ->
                         true ->
                             IQ#iq{type = error,
                                   sub_el = [SubEl, ?ERR_NOT_ALLOWED]}
-                    end
+                    end;
+                _ ->
+                    IQ#iq{type = error,
+                          sub_el = [SubEl, ?ERR_ITEM_NOT_FOUND]}
             end;
         {set, _} ->
 	    IQ#iq{type = error, sub_el = [SubEl, ?ERR_NOT_ALLOWED]};
