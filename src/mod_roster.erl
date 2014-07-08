@@ -118,16 +118,16 @@ init_db(p1db, Host) ->
                                {vals, [name, subscription,
                                        ask, groups, askmessage,
                                        xs]},
-                               {enc_key, fun enc_key/1},
-                               {dec_key, fun dec_roster_key/1},
-                               {enc_val, fun enc_val/2},
-                               {dec_val, fun dec_val/2}]}]),
+                               {enc_key, fun ?MODULE:enc_key/1},
+                               {dec_key, fun ?MODULE:dec_roster_key/1},
+                               {enc_val, fun ?MODULE:enc_val/2},
+                               {dec_val, fun ?MODULE:dec_val/2}]}]),
     p1db:open_table(roster_version,
 		    [{group, Group},
                      {schema, [{keys, [server, user]},
                                {vals, [version]},
-                               {dec_key, fun dec_roster_version_key/1},
-                               {enc_key, fun enc_key/1}]}]);
+                               {dec_key, fun ?MODULE:dec_roster_version_key/1},
+                               {enc_key, fun ?MODULE:enc_key/1}]}]);
 init_db(odbc, Host) ->
     case use_cache(Host) of
         true ->

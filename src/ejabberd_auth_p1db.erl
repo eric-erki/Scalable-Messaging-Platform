@@ -59,8 +59,8 @@ init_db(Host) ->
                     [{group, Group},
                      {schema, [{keys, [server, user]},
                                {vals, [password]},
-                               {enc_key, fun enc_key/1},
-                               {dec_key, fun dec_key/1}]}]).
+                               {enc_key, fun ?MODULE:enc_key/1},
+                               {dec_key, fun ?MODULE:dec_key/1}]}]).
 
 plain_password_required() -> false.
 

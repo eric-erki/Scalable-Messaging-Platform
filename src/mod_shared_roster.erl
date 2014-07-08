@@ -113,21 +113,21 @@ init_db(p1db, Host) ->
     p1db:open_table(sr_group,
 		    [{group, Group},
                      {schema, [{keys, [host, group, server, user]},
-                               {enc_key, fun enc_key/1},
-                               {dec_key, fun dec_key/1}]}]),
+                               {enc_key, fun ?MODULE:enc_key/1},
+                               {dec_key, fun ?MODULE:dec_key/1}]}]),
     p1db:open_table(sr_opts,
 		    [{group, Group},
                      {schema, [{keys, [host, group]},
                                {vals, OptsFields},
-                               {enc_key, fun enc_key/1},
-                               {dec_key, fun dec_key/1},
-                               {enc_val, fun enc_val/2},
-                               {dec_val, fun dec_val/2}]}]),
+                               {enc_key, fun ?MODULE:enc_key/1},
+                               {dec_key, fun ?MODULE:dec_key/1},
+                               {enc_val, fun ?MODULE:enc_val/2},
+                               {dec_val, fun ?MODULE:dec_val/2}]}]),
     p1db:open_table(sr_user,
 		    [{group, Group},
                      {schema, [{keys, [host, server, user, group]},
-                               {enc_key, fun enc_key/1},
-                               {dec_key, fun dec_key/1}]}]);
+                               {enc_key, fun ?MODULE:enc_key/1},
+                               {dec_key, fun ?MODULE:dec_key/1}]}]);
 init_db(_, _) ->
     ok.
 

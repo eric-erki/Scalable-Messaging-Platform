@@ -52,8 +52,8 @@ init_db(p1db, Host) ->
 		    [{group, Group},
                      {schema, [{keys, [server, user]},
                                {vals, [hash]},
-                               {enc_key, fun enc_key/1},
-                               {dec_key, fun dec_key/1}]}]);
+                               {enc_key, fun ?MODULE:enc_key/1},
+                               {dec_key, fun ?MODULE:dec_key/1}]}]);
 init_db(_, _) ->
     ok.
 

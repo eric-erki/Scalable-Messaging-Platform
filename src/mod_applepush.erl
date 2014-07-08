@@ -98,10 +98,10 @@ init_db(p1db, Host) ->
 			       {vals, [app_id, send_body,
 				       send_from, local_badge,
 				       timestamp]},
-			       {enc_key, fun enc_key/1},
-			       {dec_key, fun dec_key/1},
-			       {enc_val, fun enc_val/2},
-			       {dec_val, fun dec_val/2}]}]);
+			       {enc_key, fun ?MODULE:enc_key/1},
+			       {dec_key, fun ?MODULE:dec_key/1},
+			       {enc_val, fun ?MODULE:enc_val/2},
+			       {dec_val, fun ?MODULE:dec_val/2}]}]);
 init_db(_, _) ->
     ok.
 
