@@ -40,6 +40,7 @@
 	 get_vh_rooms/1, shutdown_rooms/1,
 	 is_broadcasted/1, moderate_room_history/2, import/5,
 	 persist_recent_messages/1, can_use_nick/4,
+	 enc_key/1, dec_key/1, enc_aff/2, dec_aff/2,
          rh_prefix/2, key2us/2, rhus2key/4, import_start/2]).
 
 %% gen_server callbacks

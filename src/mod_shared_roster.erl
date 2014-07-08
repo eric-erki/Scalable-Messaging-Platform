@@ -39,6 +39,7 @@
 	 create_group/3, delete_group/2, get_group_opts/2,
 	 set_group_opts/3, get_group_users/2, import_start/2,
 	 get_group_explicit_users/2, is_user_in_group/3,
+	 enc_key/1, dec_key/1, enc_val/2, dec_val/2,
 	 add_user_to_group/3, remove_user_from_group/3]).
 
 -export([command_group_create/5, command_group_delete/2,

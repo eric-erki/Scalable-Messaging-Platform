@@ -13,6 +13,8 @@
 %% API
 -export([start/2, stop/1]).
 -export([user_send_packet/4, user_receive_packet/5,
+	 enc_key/1, dec_key/1, enc_val/2, dec_val/2,
+	 enc_prefs/2, dec_prefs/2,
          process_iq/3, remove_user/2]).
 
 -include_lib("stdlib/include/ms_transform.hrl").

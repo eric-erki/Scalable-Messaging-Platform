@@ -35,6 +35,7 @@
 	 check_packet/6, remove_user/2, item_to_raw/1,
 	 raw_to_item/1, is_list_needdb/1, updated_list/3,
          item_to_xml/1, get_user_lists/2, import/5, import_start/2,
+	 enc_key/1, dec_key/1, enc_val/2, dec_val/2,
          p1db_to_items/1, items_to_p1db/1, import_stop/2]).
 
 %% For mod_blocking

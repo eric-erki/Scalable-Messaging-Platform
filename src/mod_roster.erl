@@ -47,6 +47,8 @@
 	 get_jid_info/4, item_to_xml/1, webadmin_page/3,
 	 webadmin_user/4, get_versioning_feature/2,
 	 roster_versioning_enabled/1, roster_version/2,
+	 enc_key/1, enc_val/2, dec_val/2,
+	 dec_roster_key/1, dec_roster_version_key/1,
          record_to_string/1, groups_to_string/1, import_stop/2]).
 
 %% For benchmarking

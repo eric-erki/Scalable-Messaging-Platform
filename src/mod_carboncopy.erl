@@ -40,6 +40,8 @@
          iq_handler2/3,
          iq_handler1/3,
          remove_connection/4,
+	 enc_key/1,
+	 dec_key/1,
          is_carbon_copy/1]).
 
 -define(NS_CC_2, <<"urn:xmpp:carbons:2">>).

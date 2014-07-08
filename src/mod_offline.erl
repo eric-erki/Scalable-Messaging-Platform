@@ -37,6 +37,7 @@
 	 remove_expired_messages/1, remove_old_messages/2,
 	 remove_user/2, get_queue_length/2, webadmin_page/3, webadmin_user/4,
 	 webadmin_user_parse_query/5, count_offline_messages/3,
+	 enc_key/1, dec_key/1, enc_val/2, dec_val/2,
          export/1, import_info/0, import/5, import_start/2]).
 
 -include("ejabberd.hrl").

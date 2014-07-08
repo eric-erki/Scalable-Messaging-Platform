@@ -31,6 +31,7 @@
 -behaviour(gen_mod).
 
 -export([start/2, init/3, stop/1, get_sm_features/5,
+	 enc_key/1, dec_key/1,
 	 process_local_iq/3, process_sm_iq/3, reindex_vcards/0,
 	 remove_user/2, export/1, import_info/0, import/5, import_start/2]).
 

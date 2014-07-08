@@ -33,6 +33,7 @@
 -export([start/2, stop/1, process_local_iq/3, export/1,
 	 process_sm_iq/3, on_presence_update/4, import_info/0, import/5,
 	 store_last_info/4, get_last_info/2, remove_user/2,
+	 enc_key/1, dec_key/1, enc_val/2, dec_val/2,
          transform_options/1, import_start/2]).
 
 -include("ejabberd.hrl").

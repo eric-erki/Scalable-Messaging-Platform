@@ -35,6 +35,7 @@
 %% API
 -export([start_link/2, start/2, stop/1, export/1, import_info/0,
 	 import/5, closed_connection/3, get_connection_params/3,
+	 enc_key/1, dec_key/1, enc_val/2, dec_val/2,
          import_start/2]).
 
 %% gen_server callbacks

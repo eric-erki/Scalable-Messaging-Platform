@@ -39,6 +39,7 @@
 	 get_vh_registered_users_number/2, get_password/2,
 	 get_password_s/2, is_user_exists/2, remove_user/2,
 	 remove_user/3, store_type/0, export/1,
+	 enc_key/1, dec_key/1,
 	 import/2, plain_password_required/0]).
 
 -include("ejabberd.hrl").

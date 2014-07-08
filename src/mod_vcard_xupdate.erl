@@ -14,6 +14,7 @@
 
 %% hooks
 -export([update_presence/3, vcard_set/3, export/1,
+	 enc_key/1, dec_key/1,
          import_info/0, import/5, import_start/2]).
 
 -include("ejabberd.hrl").

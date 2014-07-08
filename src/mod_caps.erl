@@ -37,6 +37,7 @@
 -export([read_caps/1, caps_stream_features/2,
 	 disco_features/5, disco_identity/5, disco_info/5,
 	 get_features/2, export/1, import_info/0, import/5,
+	 enc_key/1, dec_key/1, enc_val/2, dec_val/2,
          import_start/2, import_stop/2]).
 
 %% gen_mod callbacks

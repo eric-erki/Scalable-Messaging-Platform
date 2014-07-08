@@ -46,6 +46,8 @@
 	 disco_items/5,
 	 send_announcement_to_all/3,
 	 announce_commands/4,
+	 enc_key/1,
+	 dec_key/1,
 	 announce_items/4]).
 
 -include("ejabberd.hrl").

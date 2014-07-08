@@ -31,6 +31,7 @@
 -behaviour(gen_mod).
 
 -export([start/2, stop/1, process_sm_iq/3, import_info/0,
+	 enc_key/1, dec_key/1,
 	 remove_user/2, get_data/2, export/1, import/5, import_start/2]).
 
 -include("ejabberd.hrl").

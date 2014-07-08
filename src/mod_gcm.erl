@@ -29,6 +29,10 @@
          transform_module_options/1,
          process_sm_iq/3,
          export/1,
+	 enc_key/1,
+	 dec_key/1,
+	 enc_val/2,
+	 dec_val/2,
     set_local_badge/3]).
 
 
