@@ -257,7 +257,7 @@ read_roster_version(LUser, LServer, p1db) ->
     end;
 read_roster_version(LUser, LServer, riak) ->
     case ejabberd_riak:get(roster_version, {LUser, LServer}) of
-        {ok, Version} -> Version;
+        {ok, #roster_version{version = V}} -> V;
         _Err -> error
     end.
 
