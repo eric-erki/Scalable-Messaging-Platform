@@ -72,9 +72,14 @@ init_per_group(p1db, Config) ->
     mod_muc:shutdown_rooms(?P1DB_VHOST),
     set_opt(server, ?P1DB_VHOST, Config);
 init_per_group(riak, Config) ->
-    mod_muc:shutdown_rooms(?RIAK_VHOST),
-    NewConfig = set_opt(server, ?RIAK_VHOST, Config),
-    clear_riak_tables(NewConfig);
+    case ejabberd_riak:is_connected() of
+	true ->
+	    mod_muc:shutdown_rooms(?RIAK_VHOST),
+	    NewConfig = set_opt(server, ?RIAK_VHOST, Config),
+	    clear_riak_tables(NewConfig);
+	Err ->
+	    {skip, {riak_not_available, Err}}
+    end;
 init_per_group(_GroupName, Config) ->
     Pid = start_event_relay(),
     set_opt(event_relay, Pid, Config).
