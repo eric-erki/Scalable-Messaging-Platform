@@ -115,9 +115,13 @@ commands() ->
     [#ejabberd_commands{name = restart_module,
 			tags = [erlang],
 			desc = "Stop an ejabberd module, reload code and start",
+			longdesc = "Returns integer code:\n"
+				   " - 0: code reloaded, module restarted\n"
+				   " - 1: error: module not loaded\n"
+				   " - 2: code not reloaded, but module restarted",
 			module = ?MODULE, function = restart_module,
 			args = [{module, binary}, {host, binary}],
-			result = {res, rescode}},
+			result = {res, integer}},
      #ejabberd_commands{name = create_account,
 			tags = [accounts],
 			desc = "Create an ejabberd user account",
@@ -463,18 +467,26 @@ commands() ->
 %%% Erlang
 %%%
 
-restart_module(ModuleString, Host) ->
-    Module = jlib:binary_to_atom(ModuleString),
+restart_module(Module, Host) when is_binary(Module) ->
+    restart_module(jlib:binary_to_atom(Module), Host);
+restart_module(Module, Host) when is_atom(Module) ->
     List = gen_mod:loaded_modules_with_opts(Host),
-    Opts = case lists:keysearch(Module, 1, List) of
-	     {value, {_, O}} -> O;
-	     _ -> []
-	   end,
-    gen_mod:stop_module(Host, Module),
-    code:delete(Module),
-    code:purge(Module),
-    gen_mod:start_module(Host, Module, Opts),
-    ok.
+    case proplists:get_value(Module, List) of
+	undefined ->
+	    1;
+	Opts ->
+	    gen_mod:stop_module(Host, Module),
+	    case code:soft_purge(Module) of
+		true ->
+		    code:delete(Module),
+		    code:load_file(Module),
+		    gen_mod:start_module(Host, Module, Opts),
+		    0;
+		false ->
+		    gen_mod:start_module(Host, Module, Opts),
+		    2
+	    end
+    end.
 
 %%%
 %%% Accounts
