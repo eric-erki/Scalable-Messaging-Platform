@@ -71,6 +71,8 @@ init_per_group(extauth, Config) ->
 init_per_group(p1db, Config) ->
     mod_muc:shutdown_rooms(?P1DB_VHOST),
     set_opt(server, ?P1DB_VHOST, Config);
+init_per_group(riak, Config) ->
+    set_opt(server, ?RIAK_VHOST, Config);
 init_per_group(_GroupName, Config) ->
     Pid = start_event_relay(),
     set_opt(event_relay, Pid, Config).
@@ -88,6 +90,8 @@ end_per_group(ldap, _Config) ->
 end_per_group(extauth, _Config) ->
     ok;
 end_per_group(p1db, _Config) ->
+    ok;
+end_per_group(riak, _Config) ->
     ok;
 end_per_group(_GroupName, Config) ->
     stop_event_relay(Config),
@@ -183,6 +187,29 @@ db_tests(p1db) ->
      {test_roster_remove, [parallel],
       [roster_remove_master,
        roster_remove_slave]}];
+db_tests(riak) ->
+    %% No support for mod_pubsub and mod_mam so far
+    [{single_user, [sequence],
+      [test_register,
+       auth_plain,
+       auth_md5,
+       presence_broadcast,
+       last,
+       roster_get,
+       private,
+       privacy,
+       blocking,
+       vcard,
+       muc_single,
+       test_unregister]},
+     {test_roster_subscribe, [parallel],
+      [roster_subscribe_master,
+       roster_subscribe_slave]},
+     {test_offline, [sequence],
+      [offline_master, offline_slave]},
+     {test_roster_remove, [parallel],
+      [roster_remove_master,
+       roster_remove_slave]}];
 db_tests(_) ->
     [{single_user, [sequence],
       [test_register,
@@ -227,6 +254,7 @@ groups() ->
      {mnesia, [sequence], db_tests(mnesia)},
      {mysql, [sequence], db_tests(mysql)},
      {pgsql, [sequence], db_tests(pgsql)},
+     {riak, [sequence], db_tests(riak)},
      {p1db, [sequence], db_tests(p1db)}].
 
 all() ->
@@ -236,6 +264,7 @@ all() ->
      {group, mysql},
      {group, pgsql},
      {group, extauth},
+     {group, riak},
      {group, p1db},
      stop_ejabberd].
 
