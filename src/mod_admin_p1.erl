@@ -89,6 +89,7 @@
 	 add_contacts/3, remove_contacts/3, transport_register/5,
 	 set_rosternick/3,
 	 send_chat/3, send_message/4, send_stanza/3,
+	 local_sessions_number/0,
 	 start_mass_message/3, stop_mass_message/1, mass_message/5]).
 
 -include("ejabberd.hrl").
@@ -463,6 +464,11 @@ commands() ->
 			args =
 			    [{user, binary}, {server, binary},
 			     {stanza, binary}],
+			result = {res, integer}},
+     #ejabberd_commands{name = local_sessions_number, tags = [stats],
+			desc = "Number of sessions in local node",
+			module = ?MODULE, function = local_sessions_number,
+			args = [],
 			result = {res, integer}},
      #ejabberd_commands{name = start_mass_message,
 			tags = [stanza],
@@ -1133,6 +1139,20 @@ stop_mass_message(Host) ->
 	undefined -> 1;
 	Pid -> Pid ! stop, 0
     end.
+
+%%%
+%%% Stats
+%%%
+
+local_sessions_number() ->
+    Iterator = fun(#session{sid = {_, Pid}}, Acc)
+		  when node(Pid) == node() ->
+		       Acc+1;
+		  (_Session, Acc) ->
+		       Acc
+	       end,
+    F = fun() -> mnesia:foldl(Iterator, 0, session) end,
+    mnesia:ets(F).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
