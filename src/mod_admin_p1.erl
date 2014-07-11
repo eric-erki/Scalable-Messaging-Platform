@@ -89,7 +89,7 @@
 	 add_contacts/3, remove_contacts/3, transport_register/5,
 	 set_rosternick/3,
 	 send_chat/3, send_message/4, send_stanza/3,
-	 local_sessions_number/0,
+	 local_sessions_number/0, local_muc_rooms_number/0,
 	 start_mass_message/3, stop_mass_message/1, mass_message/5]).
 
 -include("ejabberd.hrl").
@@ -104,6 +104,12 @@
 -define(MASSLOOP, massloop).
 
 -record(session, {usr, us, sid, priority, info}).
+
+-record(muc_online_room,
+        {name_host = {<<"">>, <<"">>} :: {binary(), binary()} | {'_', '$1'} | '$1' | '_',
+         timestamp = now() :: erlang:timestamp() | '_',
+         pid = self() :: pid() | '$1' | '$2' | '_'}).
+
 
 start(_Host, _Opts) ->
     ejabberd_commands:register_commands(commands()).
@@ -468,6 +474,11 @@ commands() ->
      #ejabberd_commands{name = local_sessions_number, tags = [stats],
 			desc = "Number of sessions in local node",
 			module = ?MODULE, function = local_sessions_number,
+			args = [],
+			result = {res, integer}},
+     #ejabberd_commands{name = local_muc_rooms_number, tags = [stats],
+			desc = "Number of MUC rooms in local node",
+			module = ?MODULE, function = local_muc_rooms_number,
 			args = [],
 			result = {res, integer}},
      #ejabberd_commands{name = start_mass_message,
@@ -1154,8 +1165,18 @@ local_sessions_number() ->
     F = fun() -> mnesia:foldl(Iterator, 0, session) end,
     mnesia:ets(F).
 
+local_muc_rooms_number() ->
+    Iterator = fun(#muc_online_room{pid = Pid}, Acc)
+		  when node(Pid) == node() ->
+		       Acc+1;
+		  (_Room, Acc) ->
+		       Acc
+	       end,
+    F = fun() -> mnesia:foldl(Iterator, 0, muc_online_room) end,
+    mnesia:ets(F).
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Internal functions
 
 %% -----------------------------
