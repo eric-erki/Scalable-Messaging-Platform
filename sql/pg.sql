@@ -88,6 +88,7 @@ CREATE TABLE archive (
     peer text NOT NULL,
     bare_peer text NOT NULL,
     xml text NOT NULL,
+    txt text,
     id SERIAL,
     created_at TIMESTAMP NOT NULL DEFAULT now()
 );
