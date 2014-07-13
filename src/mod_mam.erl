@@ -156,10 +156,10 @@ remove_user(LUser, LServer, odbc) ->
     SUser = ejabberd_odbc:escape(LUser),
     ejabberd_odbc:sql_query(
       LServer,
-      [<<"delete * from archive where username='">>, SUser, <<"';">>]),
+      [<<"delete from archive where username='">>, SUser, <<"';">>]),
     ejabberd_odbc:sql_query(
       LServer,
-      [<<"delete * from archive_prefs where username='">>, SUser, <<"';">>]).
+      [<<"delete from archive_prefs where username='">>, SUser, <<"';">>]).
 
 user_receive_packet(Pkt, C2SState, JID, Peer, _To) ->
     LUser = JID#jid.luser,
