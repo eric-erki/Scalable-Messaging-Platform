@@ -622,7 +622,7 @@ get_data(LServer, Host, From, p1db) ->
 get_data(LServer, Host, From, riak) ->
     #jid{luser = LUser, lserver = LServer} = From,
     US = {LUser, LServer},
-    case ejabberd_riak:get(irc_custom, {US, Host}) of
+    case ejabberd_riak:get(irc_custom, irc_custom_schema(), {US, Host}) of
         {ok, #irc_custom{data = Data}} ->
             Data;
         {error, notfound} ->
@@ -773,7 +773,8 @@ set_data(LServer, Host, From, Data, riak) ->
     {LUser, LServer, _} = jlib:jid_tolower(From),
     US = {LUser, LServer},
     {atomic, ejabberd_riak:put(#irc_custom{us_host = {US, Host},
-                                           data = Data})};
+                                           data = Data},
+			       irc_custom_schema())};
 set_data(LServer, Host, From, Data, odbc) ->
     SJID =
 	ejabberd_odbc:escape(jlib:jid_to_string(jlib:jid_tolower(jlib:jid_remove_resource(From)))),
@@ -1317,6 +1318,9 @@ conn_params_to_list(Params) ->
                Port, binary_to_list(P)}
       end, Params).
 
+irc_custom_schema() ->
+    {record_info(fields, irc_custom), #irc_custom{}}.
+
 ush2key(LUser, LServer, Host) ->
     <<Host/binary, 0, LServer/binary, 0, LUser/binary>>.
 
@@ -1411,6 +1415,7 @@ import(_LServer, {odbc, _}, riak, <<"irc_custom">>,
     Data = ejabberd_odbc:decode_term(SData),
     ejabberd_riak:put(
       #irc_custom{us_host = {{U, S}, IRCHost},
-                  data = Data});
+                  data = Data},
+      irc_custom_schema());
 import(_LServer, {odbc, _}, odbc, <<"irc_custom">>, _) ->
     ok.

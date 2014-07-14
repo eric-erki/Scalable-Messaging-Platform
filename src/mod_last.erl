@@ -198,7 +198,8 @@ get_last(LUser, LServer, p1db) ->
             Err
     end;
 get_last(LUser, LServer, riak) ->
-    case ejabberd_riak:get(last_activity, {LUser, LServer}) of
+    case ejabberd_riak:get(last_activity, last_activity_schema(),
+			   {LUser, LServer}) of
         {ok, #last_activity{timestamp = TimeStamp,
                             status = Status}} ->
             {ok, TimeStamp, Status};
@@ -284,7 +285,8 @@ store_last_info(LUser, LServer, TimeStamp, Status,
     US = {LUser, LServer},
     {atomic, ejabberd_riak:put(#last_activity{us = US,
                                               timestamp = TimeStamp,
-                                              status = Status})};
+                                              status = Status},
+			       last_activity_schema())};
 store_last_info(LUser, LServer, TimeStamp, Status,
 		odbc) ->
     Username = ejabberd_odbc:escape(LUser),
@@ -337,6 +339,9 @@ update_table() ->
 	  ?INFO_MSG("Recreating last_activity table", []),
 	  mnesia:transform_table(last_activity, ignore, Fields)
     end.
+
+last_activity_schema() ->
+    {record_info(fields, last_activity), #last_activity{}}.
 
 %% P1DB schema
 enc_key([Server]) ->
@@ -394,7 +399,7 @@ import(LServer, {odbc, _}, DBType, <<"last">>, [LUser, TimeStamp, State]) ->
         mnesia ->
             mnesia:dirty_write(LA);
         riak ->
-            ejabberd_riak:put(LA);
+            ejabberd_riak:put(LA, last_activity_schema());
         p1db ->
             USKey = us2key(LUser, LServer),
             p1db:async_insert(last_activity, USKey, la_to_p1db(LA));

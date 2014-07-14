@@ -222,7 +222,8 @@ process_blocklist_block(LUser, LServer, Filter,
 			riak) ->
     {atomic,
      begin
-         case ejabberd_riak:get(privacy, {LUser, LServer}) of
+         case ejabberd_riak:get(privacy, mod_privacy:privacy_schema(),
+				{LUser, LServer}) of
              {ok, #privacy{default = Default, lists = Lists} = P} ->
                  case lists:keysearch(Default, 1, Lists) of
                      {value, {_, List}} ->
@@ -242,7 +243,8 @@ process_blocklist_block(LUser, LServer, Filter,
          NewList = Filter(List),
          NewLists = [{NewDefault, NewList} | NewLists1],
          case ejabberd_riak:put(P#privacy{default = NewDefault,
-                                          lists = NewLists}) of
+                                          lists = NewLists},
+				mod_privacy:privacy_schema()) of
              ok ->
                  {ok, NewDefault, NewList};
              Err ->
@@ -369,7 +371,8 @@ unblock_by_filter(LUser, LServer, Filter, p1db) ->
     end;
 unblock_by_filter(LUser, LServer, Filter, riak) ->
     {atomic,
-     case ejabberd_riak:get(privacy, {LUser, LServer}) of
+     case ejabberd_riak:get(privacy, mod_privacy:privacy_schema(),
+			    {LUser, LServer}) of
          {error, _} ->
              %% No lists, nothing to unblock
              ok;
@@ -379,7 +382,8 @@ unblock_by_filter(LUser, LServer, Filter, riak) ->
                      NewList = Filter(List),
                      NewLists1 = lists:keydelete(Default, 1, Lists),
                      NewLists = [{Default, NewList} | NewLists1],
-                     case ejabberd_riak:put(P#privacy{lists = NewLists}) of
+                     case ejabberd_riak:put(P#privacy{lists = NewLists},
+					    mod_privacy:privacy_schema()) of
                          ok ->
                              {ok, Default, NewList};
                          Err ->
@@ -485,7 +489,8 @@ process_blocklist_get(LUser, LServer, p1db) ->
             error
     end;
 process_blocklist_get(LUser, LServer, riak) ->
-    case ejabberd_riak:get(privacy, {LUser, LServer}) of
+    case ejabberd_riak:get(privacy, {LUser, LServer},
+			   mod_privacy:privacy_schema()) of
         {ok, #privacy{default = Default, lists = Lists}} ->
             case lists:keysearch(Default, 1, Lists) of
                 {value, {_, List}} -> List;

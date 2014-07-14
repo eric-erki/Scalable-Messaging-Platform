@@ -499,6 +499,7 @@ create_users(UserPattern, PassPattern, Server, Total, DBType) ->
                       ejabberd_riak:put(
                         #passwd{us = US,
                                 password = Pass},
+			ejabberd_auth_riak:passwd_schema(),
                         [{'2i', [{<<"host">>, LServer}]}]);
                   odbc ->
                       erlang:error(odbc_not_supported)

@@ -482,7 +482,7 @@ caps_read_fun(_LServer, Node, p1db) ->
     end;
 caps_read_fun(_LServer, Node, riak) ->
     fun() ->
-            case ejabberd_riak:get(caps_features, Node) of
+            case ejabberd_riak:get(caps_features, caps_features_schema(), Node) of
                 {ok, #caps_features{features = Features}} -> {ok, Features};
                 _ -> error
             end
@@ -535,7 +535,8 @@ caps_write_fun(_LServer, Node, Features, p1db) ->
 caps_write_fun(_LServer, Node, Features, riak) ->
     fun () ->
             ejabberd_riak:put(#caps_features{node_pair = Node,
-                                             features = Features})
+                                             features = Features},
+			      caps_features_schema())
     end;
 caps_write_fun(LServer, NodePair, Features, odbc) ->
     fun () ->
@@ -769,6 +770,9 @@ enc_val(_, [I]) ->
 dec_val(_, <<I:32>>) ->
     [I].
 
+caps_features_schema() ->
+    {record_info(fields, caps_features), #caps_features{}}.
+
 export(_Server) ->
     [{caps_features,
       fun(_Host, #caps_features{node_pair = NodePair,
@@ -810,7 +814,8 @@ import_next(LServer, DBType, NodePair) ->
               #caps_features{node_pair = NodePair, features = I});
         [I] when is_integer(I), DBType == riak ->
             ejabberd_riak:put(
-              #caps_features{node_pair = NodePair, features = I});
+              #caps_features{node_pair = NodePair, features = I},
+	      caps_features_schema());
         [I] when is_integer(I), DBType == p1db ->
             NVFKey = null_feature(NodePair),
             p1db:async_insert(caps_features, NVFKey, <<I:32>>);
@@ -819,7 +824,8 @@ import_next(LServer, DBType, NodePair) ->
               #caps_features{node_pair = NodePair, features = Features});
         _ when DBType == riak ->
             ejabberd_riak:put(
-              #caps_features{node_pair = NodePair, features = Features});
+              #caps_features{node_pair = NodePair, features = Features},
+	      caps_features_schema());
         _ when DBType == p1db ->
             lists:foreach(
               fun(Feature) ->
