@@ -90,6 +90,7 @@
 	 set_rosternick/3,
 	 send_chat/3, send_message/4, send_stanza/3,
 	 local_sessions_number/0, local_muc_rooms_number/0,
+	 p1db_records_number/0,
 	 start_mass_message/3, stop_mass_message/1, mass_message/5]).
 
 -include("ejabberd.hrl").
@@ -481,6 +482,12 @@ commands() ->
 			module = ?MODULE, function = local_muc_rooms_number,
 			args = [],
 			result = {res, integer}},
+     #ejabberd_commands{name = p1db_records_number, tags = [stats],
+			desc = "Number of records in p1db tables",
+			module = ?MODULE, function = p1db_records_number,
+			args = [],
+			result = {modules, {list, {module, {tuple, [{name, string}, {size, integer}]}}}}
+		       },
      #ejabberd_commands{name = start_mass_message,
 			tags = [stanza],
 			desc = "Send chat message or stanza to a mass of users",
@@ -1174,6 +1181,10 @@ local_muc_rooms_number() ->
 	       end,
     F = fun() -> mnesia:foldl(Iterator, 0, muc_online_room) end,
     mnesia:ets(F).
+
+p1db_records_number() ->
+    [{atom_to_list(Table), Count} || Table <- p1db:opened_tables(),
+		       {ok, Count} <- [p1db:count(Table)]].
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
