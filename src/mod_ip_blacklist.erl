@@ -46,7 +46,7 @@
 -define(PROCNAME, ?MODULE).
 
 -define(BLC2S,
-	<<"http://xaai.process-one.net/bl_c2s.txt">>).
+	"http://xaai.process-one.net/bl_c2s.txt").
 
 -define(UPDATE_INTERVAL, 6).
 
