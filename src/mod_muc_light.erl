@@ -32,8 +32,6 @@
 
 -behaviour(gen_mod).
 
--compile(export_all).
-
 -export([
 	 start/2, stop/1, % gen_mod API
 	 muc_create_room/3,
