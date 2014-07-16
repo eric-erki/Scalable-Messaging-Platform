@@ -18,20 +18,10 @@
 
 -include("ejabberd_commands.hrl").
 
-%% SIZE_COUNTING is consuming but allows to know size of xmpp messages
--define(SIZE_COUNTING, false).
-
 -define(HOUR, 3600000).
 -define(DAY, 86400000).
 -define(WEEK, 604800000).
 -define(MONTH, 2592000000).
-
--ifdef(ANNON_CONNECTIONS).
--define(ANNONYMOUS_CONNECTIONS, true). %% set to true if monitored domains will accept annonymous connections
--else.
--define(ANNONYMOUS_CONNECTIONS, false). %% set to true if monitored domains will accept annonymous connections
--endif.
--define(ACTIVE_ENABLED, true).
 
 %% dictionaries computed to generate reports
 -define(HYPERLOGLOGS, [ daily_active_users,
@@ -991,7 +981,8 @@ send_hook(LUser, LServer, LResource, Name, Attrs, Els) ->
                 _ -> presence_send_packet
             end;
         <<"message">> ->
-            if ?SIZE_COUNTING ->
+	    case size_counting(LServer) of
+		true ->
                     Size = lists:foldl(fun(
                                          #xmlel{name = <<"body">>, children=[{xmlcdata, Data}]},
                                          Acc) ->
@@ -999,7 +990,7 @@ send_hook(LUser, LServer, LResource, Name, Attrs, Els) ->
                                           (_, Acc) -> Acc
                                        end, 0, Els),
                     action(LServer, {message_send_size, LUser, LResource, Size});
-                true ->
+                false ->
                     ok
             end,
             %% this acts as a sum value
@@ -1054,13 +1045,14 @@ receive_hook(LUser, LServer, LResource, Name, Attrs, Els) ->
                 _ -> presence_receive_packet
             end;
         <<"message">> ->
-            if ?SIZE_COUNTING ->
+            case size_counting(LServer) of
+		true ->
                     Size = lists:foldl(fun
                                            (#xmlel{name = <<"body">>, children=[{xmlcdata, Data}]}, Acc) -> Acc+size(Data);
                                            (_, Acc) -> Acc
                                        end, 0, Els),
                     action(LServer, {message_receive_size, LUser, LResource, Size});
-                true ->
+                false ->
                     ok
             end,
             %% This acts as a sum value:
@@ -1201,32 +1193,36 @@ chat_invitation_accepted(_Host, ServerHost, _Room, #jid{luser=LUser,lserver=LSer
 
 %% active user feature
 active_user(LUser, LServer, LResource) ->
-    if (not ?ANNONYMOUS_CONNECTIONS)
-        and ?ACTIVE_ENABLED ->
+    case (not ejabberd_auth_anonymous:allow_anonymous(LServer))
+        and active_enabled(LServer) of
+	true ->
             Key = <<LUser/binary, LResource/binary>>,
             action(LServer, {active, Key});
-        true ->
+        false ->
             ok
     end.
 
 get_active_counters(Host) when is_binary(Host) ->
-    if ?ACTIVE_ENABLED -> values(Host, active);
-       true -> []
+    case active_enabled(Host) of
+	true -> values(Host, active);
+	false -> []
     end.
 
 get_active_log(Host) when is_binary(Host) ->
-    if ?ACTIVE_ENABLED -> values(Host, active_log);
-       true -> undefined
+    case active_enabled(Host) of
+	true -> values(Host, active_log);
+	false -> undefined
     end.
 
 flush_probe(Host, Probe) when is_binary(Host), is_atom(Probe) ->
     case lists:member(Probe, ?HYPERLOGLOGS) of
         true ->
-            if ?ACTIVE_ENABLED ->
+            case active_enabled(Host) of
+		true ->
                     Active = values(Host, active),
                     flush_active_log(Host, Probe),
                     proplists:get_value(Probe, Active);
-                true ->
+                false ->
                     0
             end;
         false ->
@@ -1351,3 +1347,18 @@ get() ->
     erlang:get().
 %    mnesia:dirty_select(
 %      mon, [{#mon{key = '$1', value = '$2', _ = '_'}, [], [{{'$1', '$2'}}]}]).
+
+%% Size counting is consuming but allows to know size of xmpp messages
+size_counting(LServer) ->
+    gen_mod:get_module_opt(
+      LServer, ?MODULE, size_counting,
+      fun(true) -> true;
+	 (false) -> false
+      end, false).
+
+active_enabled(LServer) ->
+    gen_mod:get_module_opt(
+      LServer, ?MODULE, active_enabled,
+      fun(true) -> true;
+	 (false) -> false
+      end, true).
