@@ -32,6 +32,8 @@
 
 -behaviour(gen_mod).
 
+-compile(export_all).
+
 -export([
 	 start/2, stop/1, % gen_mod API
 	 muc_create_room/3,
@@ -226,25 +228,44 @@ build_demember_stanza(UserString, RoomString) ->
 muc_kick_user(RoomString, RoomHost, UserString) ->
     SenderJid = get_senderjid(RoomHost),
     RoomJid = jlib:string_to_jid(RoomString),
-    Nick = get_occupant_nick(RoomJid, UserString),
-    XmlEl = build_kick_stanza(Nick, RoomString),
-    case Nick of
-	occupant_not_found -> ok;
-	Nick -> ejabberd_router:route(SenderJid, RoomJid, XmlEl)
-    end,
-    {ok, ""}.
+    case get_occupant_nick(RoomJid, UserString) of
+	{ok, Nick} ->
+	    XmlEl = build_kick_stanza(Nick, RoomString),
+	    ejabberd_router:route(SenderJid, RoomJid, XmlEl),
+	    {ok, ""};
+	{error, room_not_found} ->
+	    {104, "Room not found"};
+	{error, occupant_not_found} ->
+	    {104, "User not found"}
+    end.
 
 get_occupant_nick(RoomJid, UserString) ->
-    Occupants = get_room_occupants(RoomJid#jid.luser, RoomJid#jid.lserver),
-    List = lists:dropwhile(fun({Fulljid, _Nick, _Role}) ->
-	    A = binary:longest_common_prefix([Fulljid, UserString]),
-	    B = size(UserString),
-	    A /= B
-	end,
-	Occupants),
-    case List of
-	[{_, Nick, _} | _ ] -> Nick;
-	_ -> occupant_not_found
+    case jlib:string_to_jid(iolist_to_binary(UserString)) of
+	#jid{luser = LUser, lserver = LServer, lresource = LResource} = JID ->
+	    LJID = jlib:jid_tolower(JID),
+	    case get_room_occupants(RoomJid#jid.luser, RoomJid#jid.lserver) of
+		{ok, Occupants} ->
+		    if LResource /= <<"">> ->
+			    case dict:find(LJID, Occupants) of
+				{ok, Occupant} ->
+				    {ok, Occupant#user.nick};
+				error ->
+				    {error, occupant_not_found}
+			    end;
+		       true ->
+			    dict:fold(
+			      fun({U, S, _}, Occupant, {error, occupant_not_found})
+				    when U == LUser, S == LServer ->
+				      {ok, Occupant#user.nick};
+				 (_, _, Acc) ->
+				      Acc
+			      end, {error, occupant_not_found}, Occupants)
+		    end;
+		Err ->
+		    Err
+	    end;
+	error ->
+	    {error, occupant_not_found}
     end.
 
 build_kick_stanza(Nick, RoomString) ->
@@ -267,19 +288,17 @@ build_kick_stanza(Nick, RoomString) ->
 
 get_room_occupants(Room, Host) ->
     case get_room_pid(Room, Host) of
-        room_not_found -> throw({error, room_not_found});
+        room_not_found -> {error, room_not_found};
         Pid -> get_room_occupants(Pid)
     end.
 
 get_room_occupants(Pid) ->
-    S = get_room_state(Pid),
-    lists:map(
-      fun({_LJID, Info}) ->
-              {jlib:jid_to_string(Info#user.jid),
-               Info#user.nick,
-               atom_to_list(Info#user.role)}
-      end,
-      dict:to_list(S#state.users)).
+    case catch get_room_state(Pid) of
+	{ok, S} ->
+	    {ok, S#state.users};
+	_Err ->
+	    {error, room_not_found}
+    end.
 
 %% @doc Get the Pid of an existing MUC room, or 'room_not_found'.
 get_room_pid(Name, Service) ->
@@ -291,9 +310,7 @@ get_room_pid(Name, Service) ->
     end.
 
 get_room_state(Room_pid) ->
-    {ok, R} = gen_fsm:sync_send_all_state_event(Room_pid, get_state),
-    R.
-
+    gen_fsm:sync_send_all_state_event(Room_pid, get_state).
 
 %%
 %% muc-purge-archive
