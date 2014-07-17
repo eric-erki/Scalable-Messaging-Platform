@@ -101,8 +101,8 @@ shutdown_rooms(Host) ->
 					 <<"conference.@HOST@">>),
     lists:flatmap(
       fun(#muc_online_room{pid = Pid}) ->
-              ejabberd_cluster:send(Pid, system_shutdown),
               if node(Pid) == node() ->
+		      ejabberd_cluster:send(Pid, system_shutdown),
                       [Pid];
                  true ->
                       []
