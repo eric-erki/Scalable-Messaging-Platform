@@ -239,9 +239,8 @@ start(Host, Opts) ->
                 end,
             case WorkerStarted of
                 ok ->
-                    lists:foreach(fun({Class, Monitor, Module}) ->
-                                      ProcName ! {add, Class, Monitor, Module}
-                                  end, Monitors),
+                    [ProcName ! {add, Class, Monitor, Module}
+                     || {Class, Monitor, Module} <- Monitors],
                     start;
                 error ->
                     not_started
@@ -1208,7 +1207,7 @@ flush_probe(Host, Probe) when is_binary(Host), is_atom(Probe) ->
     case lists:member(Probe, ?HYPERLOGLOGS) of
         true ->
             case active_enabled(Host) of
-		true ->
+                true ->
                     Active = values(Host, active),
                     flush_active_log(Host, Probe),
                     proplists:get_value(Probe, Active);
@@ -1233,14 +1232,13 @@ refresh_active_log(Host) ->
                    (Remote, Acc) -> ehyperloglog:merge(Acc, Remote)
                 end, Log, Logs),
         reset(Host, active_log, ClusterLog),
-        UpdatedLogs = lists:map(
-                fun({Key, Val}) ->
-                        Merge = ehyperloglog:merge(ClusterLog, Val),
-                        reset(Host, Key, round(ehyperloglog:cardinality(Merge))),
-                        {Key, Merge}
-                end, get(hyperloglogs)),
+        UpdatedLogs = [refresh_active_log(Host, Key, ehyperloglog:merge(ClusterLog, Val))
+                       || {Key, Val} <- get(hyperloglogs)],
         put(hyperloglogs, UpdatedLogs)
         end).
+refresh_active_log(Host, Probe, Log) ->
+    reset(Host, Probe, round(ehyperloglog:cardinality(Log))),
+    {Probe, Log}.
 
 flush_active_log(Host, Probe) ->
     % this process can safely run on its own, thanks to put/get hyperloglogs not using dictionary
@@ -1259,15 +1257,15 @@ flush_active_log(Host, Probe, ClusterLog) ->
     {UpdatedLogs, _} = lists:foldr(
             fun({Key, Val}, {Acc, Continue}) ->
                     Keep = Continue and (Key =/= Probe),
-                    Merge = if Keep -> ehyperloglog:merge(ClusterLog, Val);
-                               true -> ehyperloglog:new(16)
-                            end,
-                    reset(Host, Key, round(ehyperloglog:cardinality(Merge))),
-                    {[{Key, Merge}|Acc], Keep}
+                    {[flush_active_log(Host, Key, Val, ClusterLog, Keep)|Acc], Keep}
             end,
             {[], true}, get(hyperloglogs)),
     put(hyperloglogs, UpdatedLogs),
     ok.
+flush_active_log(Host, Probe, Log, ClusterLog, true) ->
+    refresh_active_log(Host, Probe, ehyperloglog:merge(ClusterLog, Log));
+flush_active_log(Host, Probe, _Log, _ClusterLog, false) ->
+    refresh_active_log(Host, Probe, ehyperloglog:new(16)).
 
 %%--------------------------------------------------------------------
 %% Function: is_subdomain(Domain1, Domain2) -> true | false
