@@ -343,10 +343,10 @@ try
     register(ProcName, self()),
     proc_lib:init_ack({ok, self()}),
 
-    Log = case get(hyperloglogs) of
+    Log = case get_hyperloglogs() of
         [] ->
             L = ehyperloglog:new(16),
-            put(hyperloglogs, [{Key, L} || Key <- ?HYPERLOGLOGS]),
+            put_hyperloglogs([{Key, L} || Key <- ?HYPERLOGLOGS]),
             [put(Key, 0) || Key <- ?HYPERLOGLOGS],
             L;
         [{_,L}|_] ->
@@ -1202,6 +1202,15 @@ get_active_log(Host) when is_binary(Host) ->
 	true -> values(Host, active_log);
 	false -> undefined
     end.
+get_active_cluster_log(Host, Nodes) when is_binary(Host) ->
+    case rpc:multicall(Nodes, ?MODULE, get_active_log, [Host], 8000) of
+        {[Log|Logs], _} ->
+            lists:foldl(fun(Remote, Acc) when is_atom(Remote) -> Acc;
+                           (Remote, Acc) -> ehyperloglog:merge(Acc, Remote)
+                        end, Log, Logs);
+        _ ->
+            undefined
+    end.
 
 flush_probe(Host, Probe) when is_binary(Host), is_atom(Probe) ->
     case lists:member(Probe, ?HYPERLOGLOGS) of
@@ -1225,47 +1234,50 @@ refresh_active_log(Host) ->
     % it should be called at regular interval to keep logs consistency
     % as timer is handled by main process handling the loop, we spawn here to not interfere with the loop
     spawn(fun() ->
-        Nodes = ejabberd_cluster:get_nodes(),
-        {[Log|Logs], _} = rpc:multicall(Nodes, ?MODULE, get_active_log, [Host], 8000),
-        ClusterLog = lists:foldl(
-                fun(Remote, Acc) when is_atom(Remote) -> Acc;
-                   (Remote, Acc) -> ehyperloglog:merge(Acc, Remote)
-                end, Log, Logs),
-        reset(Host, active_log, ClusterLog),
-        UpdatedLogs = [refresh_active_log(Host, Key, ehyperloglog:merge(ClusterLog, Val))
-                       || {Key, Val} <- get(hyperloglogs)],
-        put(hyperloglogs, UpdatedLogs)
+                Nodes = ejabberd_cluster:get_nodes(),
+                case get_active_cluster_log(Host, Nodes) of
+                    undefined ->
+                        undefined;
+                    ClusterLog ->
+                        reset(Host, active_log, ClusterLog),
+                        put_hyperloglogs([merge_active_log(Host, Key, Val, ClusterLog)
+                                          || {Key, Val} <- get_hyperloglogs()])
+                end
         end).
-refresh_active_log(Host, Probe, Log) ->
-    reset(Host, Probe, round(ehyperloglog:cardinality(Log))),
-    {Probe, Log}.
 
 flush_active_log(Host, Probe) ->
     % this process can safely run on its own, thanks to put/get hyperloglogs not using dictionary
     % it may be called at regular interval with timers or external cron
     spawn(fun() ->
-        Nodes = ejabberd_cluster:get_nodes(),
-        {[Log|Logs], _} = rpc:multicall(Nodes, ?MODULE, get_active_log, [Host], 8000),
-        ClusterLog = lists:foldl(
-                fun(Remote, Acc) when is_atom(Remote) -> Acc;
-                   (Remote, Acc) -> ehyperloglog:merge(Acc, Remote)
-                end, Log, Logs),
-        rpc:multicall(Nodes, ?MODULE, flush_active_log, [Host, Probe, ClusterLog])
+                Nodes = ejabberd_cluster:get_nodes(),
+                case get_active_cluster_log(Host, Nodes) of
+                    undefined ->
+                        undefined;
+                    ClusterLog ->
+                        rpc:multicall(Nodes, ?MODULE, flush_active_log, [Host, Probe, ClusterLog])
+                end
         end).
 flush_active_log(Host, Probe, ClusterLog) ->
     reset(Host, active_log, ehyperloglog:new(16)),
     {UpdatedLogs, _} = lists:foldr(
             fun({Key, Val}, {Acc, Continue}) ->
                     Keep = Continue and (Key =/= Probe),
-                    {[flush_active_log(Host, Key, Val, ClusterLog, Keep)|Acc], Keep}
+                    NewLog = case Keep of
+                        true -> merge_active_log(Host, Key, Val, ClusterLog);
+                        false -> reset_active_log(Host, Key)
+                    end,
+                    {[NewLog|Acc], Keep}
             end,
-            {[], true}, get(hyperloglogs)),
-    put(hyperloglogs, UpdatedLogs),
-    ok.
-flush_active_log(Host, Probe, Log, ClusterLog, true) ->
-    refresh_active_log(Host, Probe, ehyperloglog:merge(ClusterLog, Log));
-flush_active_log(Host, Probe, _Log, _ClusterLog, false) ->
-    refresh_active_log(Host, Probe, ehyperloglog:new(16)).
+            {[], true}, get_hyperloglogs()),
+    put_hyperloglogs(UpdatedLogs).
+
+merge_active_log(Host, Probe, Log, ClusterLog) ->
+    Merge = ehyperloglog:merge(ClusterLog, Log),
+    reset(Host, Probe, round(ehyperloglog:cardinality(Merge))),
+    {Probe, Merge}.
+reset_active_log(Host, Probe) ->
+    reset(Host, Probe, 0),
+    {Probe, ehyperloglog:new(16)}.
 
 %%--------------------------------------------------------------------
 %% Function: is_subdomain(Domain1, Domain2) -> true | false
@@ -1309,19 +1321,26 @@ list_components(Host) ->
 %%roster_get_subscription_lists
 %%roster_process_item
 
-put(hyperloglogs, Logs) ->
+put_hyperloglogs(Logs) ->
     File = filename:join([mnesia:system_info(directory), "hyperloglog.bin"]),
-    file:write_file(File, term_to_binary(Logs));
+    file:write_file(File, term_to_binary(Logs)).
+
 put(Key, Value) ->
     erlang:put(Key, Value),
     mnesia:dirty_write(#mon{key = Key, value = Value}).
 
-get(hyperloglogs) ->
+get_hyperloglogs() ->
     File = filename:join([mnesia:system_info(directory), "hyperloglog.bin"]),
     case file:read_file(File) of
-        {ok, Bin} -> binary_to_term(Bin);
-        _ -> []
-    end;
+        {ok, Bin} ->
+            case binary_to_term(Bin) of
+                List when is_list(List) -> List;
+                _ -> []
+            end;
+        _ ->
+            []
+    end.
+
 get(Key) ->
     erlang:get(Key).
 %    case mnesia:dirty_read(mon, Key) of
