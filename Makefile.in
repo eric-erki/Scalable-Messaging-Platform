@@ -105,8 +105,6 @@ spec:
 
 DLLs := $(wildcard deps/*/priv/*.so) $(wildcard deps/*/priv/lib/*.so) $(wildcard priv/lib/*.so)
 
-DEPS_BEAMS := $(wildcard deps/*/ebin/*.beam)
-DEPS_BEAMS_FILTERED := $(filter-out deps/p1db/ebin/p1_server.beam deps/p1db/ebin/p1_fsm.beam,$(DEPS_BEAMS))
 install: all
 	#
 	# Configuration files
@@ -142,7 +140,7 @@ install: all
 	$(INSTALL) -m 644 ebin/*.app $(BEAMDIR)
 	$(INSTALL) -m 644 ebin/*.beam $(BEAMDIR)
 	$(INSTALL) -m 644 deps/*/ebin/*.app $(BEAMDIR)
-	$(INSTALL) -m 644 $(DEPS_BEAMS_FILTERED) $(BEAMDIR)
+	$(INSTALL) -m 644 deps/*/ebin/*.beam $(BEAMDIR)
 	rm -f $(BEAMDIR)/configure.beam
 	#
 	# ejabberd header files
