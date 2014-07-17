@@ -269,9 +269,9 @@ commands() ->
                         desc = "Returns active users counter in time period (daily_active_users, weekly_active_users, monthly_active_users)",
                         module = ?MODULE, function = active_counters_command,
                         args = [{host, binary}],
-                        args_desc = [<<"Name of host which should return counters">>],
+                        args_desc = ["Name of host which should return counters"],
                         result = {counters, {list, {counter, {tuple, [{name, string}, {value, integer}]}}}},
-                        result_desc = <<"List of counter names with values">>,
+                        result_desc = "List of counter names with values",
                         args_example = [<<"xmpp.example.org">>],
                         result_example = [{<<"daily_active_users">>, 100},
                                           {<<"weekly_active_users">>, 1000},
@@ -534,8 +534,8 @@ loop(Host, Monitors, Log) ->
         {del, Class, Monitor} ->
             NewMonitors = case lists:keysearch(Class, 1, Monitors) of
                               {value, {Class, List}} ->
-                                  NewClassMonitors = lists:filter(fun(X) -> X /= Monitor end, List),
-                                  lists:keyreplace(Class, 1, Monitors, NewClassMonitors);
+                                  NewList = lists:filter(fun(X) -> X /= Monitor end, List),
+                                  lists:keyreplace(Class, 1, Monitors, {Class, NewList});
                               _ ->
                                   Monitors
                           end,
@@ -815,22 +815,12 @@ db_table_size(session, _Host) ->
 db_table_size(s2s, _Host) ->
     0;
 db_table_size(Table, Host) ->
-    Query = case undefined %TODO%?SGBD
- of
-                mysql -> [<<"select table_rows from information_schema.tables where table_name='">>, (db_mnesia_to_sql(Table))/binary, <<"'">>];
-                _ -> [<<"select count(*) from ">>, (db_mnesia_to_sql(Table))/binary]
-            end,
+    %% TODO (for MySQL):
+    %% Query = [<<"select table_rows from information_schema.tables where table_name='">>,
+    %%          db_mnesia_to_sql(Table), <<"'">>];
+    Query = [<<"select count(*) from ">>, db_mnesia_to_sql(Table)],
     case catch ejabberd_odbc:sql_query(Host, Query) of
-        V when is_integer(V) ->
-            V;
-        V when is_binary(V) ->
-            case catch jlib:binary_to_integer(V) of
-                {'EXIT', _} -> 0;
-                Int -> Int
-            end;
-        {selected, [_], [{V}]} when is_integer(V) ->
-            V;
-        {selected, [_], [{V}]} when is_binary(V) ->
+        {selected, [_], [[V]]} ->
             case catch jlib:binary_to_integer(V) of
                 {'EXIT', _} -> 0;
                 Int -> Int
@@ -902,7 +892,7 @@ sm_register_connection_hook(SID, #jid{luser=LUser,lserver=LServer,lresource=LRes
         http_ws -> action(LServer, {set, LUser, LResource, sm_register_connection_http_ws});
         _ -> none
     end,
-    AuthModule = xml:get_attr_s(auth_module, Info),
+    AuthModule = proplists:get_value(auth_module, Info),
     Annonymous = (AuthModule == ejabberd_auth_anonymous),
     US = <<LUser/binary,"@",LServer/binary>>,
     active_user(LUser, LServer, LResource),
@@ -920,7 +910,7 @@ sm_remove_connection_hook(_SID, #jid{luser=LUser,lserver=LServer,lresource=LReso
         http_ws -> action(LServer, {set, LUser, LResource, sm_remove_connection_http_ws});
         _ -> none
     end,
-    AuthModule = xml:get_attr_s(auth_module, Info),
+    AuthModule = proplists:get_value(auth_module, Info),
     Annonymous = (AuthModule == ejabberd_auth_anonymous),
     US = <<LUser/binary,"@",LServer/binary>>,
     compute(LServer, {remove_connection, US, LServer, Annonymous}),
