@@ -818,13 +818,7 @@ make_sql_query(LUser, _LServer, Start, End, With, RSM) ->
                     _ ->
                         []
                 end,
-    LUser2 = case With of
-                     {room, {Roomname, _, <<>>}} ->
-                          Roomname;
-                     _ ->
-                          LUser
-                 end,
-    SUser = ejabberd_odbc:escape(LUser2),
+    SUser = ejabberd_odbc:escape(LUser),
     {[<<"select timestamp, xml, peer from archive where username='">>,
       SUser, <<"'">>] ++ WithClause ++ StartClause ++ EndClause ++
          DirectionClause ++ LimitClause ++ [<<";">>],
