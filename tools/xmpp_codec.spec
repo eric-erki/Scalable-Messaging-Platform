@@ -2177,6 +2177,35 @@
            refs = [#ref{name = delay, min = 0,
                         max = 1, label = '$delay'}]}).
 
+-xml(carbons_disable,
+     #elem{name = <<"disable">>,
+           xmlns = <<"urn:xmpp:carbons:2">>,
+           result = {carbons_disable}}).
+
+-xml(carbons_enable,
+     #elem{name = <<"enable">>,
+	   xmlns = <<"urn:xmpp:carbons:2">>,
+	   result = {carbons_enable}}).
+
+-xml(carbons_private,
+     #elem{name = <<"private">>,
+	   xmlns = <<"urn:xmpp:carbons:2">>,
+	   result = {carbons_private}}).
+
+-xml(carbons_received,
+     #elem{name = <<"received">>,
+	   xmlns = <<"urn:xmpp:carbons:2">>,
+	   result = {carbons_received, '$forwarded'},
+	   refs = [#ref{name = forwarded, min = 1,
+                        max = 1, label = '$forwarded'}]}).
+
+-xml(carbons_sent,
+     #elem{name = <<"sent">>,
+	   xmlns = <<"urn:xmpp:carbons:2">>,
+	   result = {carbons_sent, '$forwarded'},
+	   refs = [#ref{name = forwarded, min = 1,
+                        max = 1, label = '$forwarded'}]}).
+
 dec_tzo(Val) ->
     [H1, M1] = str:tokens(Val, <<":">>),
     H = jlib:binary_to_integer(H1),

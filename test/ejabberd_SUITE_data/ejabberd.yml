@@ -42,6 +42,8 @@ host_config:
         db_type: odbc
       mod_vcard: 
         db_type: odbc
+      mod_carboncopy:
+        db_type: odbc
       mod_adhoc: []
       mod_configure: []
       mod_disco: []
@@ -98,6 +100,8 @@ Welcome to this XMPP server."
         db_type: odbc
       mod_vcard: 
         db_type: odbc
+      mod_carboncopy:
+        db_type: odbc
       mod_adhoc: []
       mod_configure: []
       mod_disco: []
@@ -138,6 +142,8 @@ Welcome to this XMPP server."
         db_type: p1db
       mod_vcard:
         search: false
+        db_type: p1db
+      mod_carboncopy:
         db_type: p1db
       mod_adhoc: []
       mod_configure: []
@@ -186,6 +192,8 @@ Welcome to this XMPP server."
       mod_mam: 
         db_type: internal
       mod_vcard: 
+        db_type: internal
+      mod_carboncopy:
         db_type: internal
       mod_adhoc: []
       mod_configure: []
