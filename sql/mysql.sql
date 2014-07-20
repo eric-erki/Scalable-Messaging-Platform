@@ -341,8 +341,8 @@ CREATE TABLE `gcm_cache` (
 
 CREATE TABLE carboncopy (
     server varchar(255) NOT NULL,
-    user varchar(255) NOT NULL,
+    username varchar(255) NOT NULL,
     resource varchar(255) NOT NULL,
     version varchar(100) NOT NULL,
-    UNIQUE KEY i_carboncopy_server_user_resource (server, user, resource)
+    UNIQUE KEY i_carboncopy_server_username_resource (server, username, resource)
 ) ENGINE=InnoDB CHARACTER SET utf8;

@@ -254,9 +254,9 @@ enable(p1db, Host, U, R, CC) ->
 enable(odbc, Host, U, R, CC) ->
     case ejabberd_odbc:sql_transaction(Host,
                                        [[<<"DELETE FROM carboncopy WHERE Server='">>,
-                                         ejabberd_odbc:escape(Host), <<"' AND User='">>, ejabberd_odbc:escape(U),
+                                         ejabberd_odbc:escape(Host), <<"' AND Username='">>, ejabberd_odbc:escape(U),
                                          <<"' AND Resource='">>, ejabberd_odbc:escape(R), <<"'">>],
-                                        [<<"INSERT INTO carboncopy (Server,User,Resource,Version) VALUES ('">>,
+                                        [<<"INSERT INTO carboncopy (Server,Username,Resource,Version) VALUES ('">>,
                                          ejabberd_odbc:escape(Host), <<"', '">>, ejabberd_odbc:escape(U), <<"', '">>,
                                          ejabberd_odbc:escape(R), <<"', '">>, ejabberd_odbc:escape(CC), <<"')">>]]) of
         {atomic, _} ->
@@ -280,7 +280,7 @@ disable(p1db, Host, U, R) ->
     p1db:delete(carboncopy, enc_key(Host, U, R));
 disable(odbc, Host, U, R) ->
     case ejabberd_odbc:sql_query(Host, [<<"DELETE FROM carboncopy WHERE Server='">>,
-                                        ejabberd_odbc:escape(Host), <<"' AND User='">>, ejabberd_odbc:escape(U),
+                                        ejabberd_odbc:escape(Host), <<"' AND Username='">>, ejabberd_odbc:escape(U),
                                         <<"' AND Resource='">>, ejabberd_odbc:escape(R), <<"'">>]) of
         {updated, _} ->
             ok;
@@ -303,7 +303,7 @@ list(p1db, User, Server) ->
     end;
 list(odbc, User, Server) ->
     case ejabberd_odbc:sql_query(Server, [<<"SELECT Resource, Version FROM carboncopy WHERE Server='">>,
-                                        ejabberd_odbc:escape(Server), <<"' AND User='">>,
+                                        ejabberd_odbc:escape(Server), <<"' AND Username='">>,
                                         ejabberd_odbc:escape(User), <<"'">>]) of
         {selected, _, Values} ->
             [{R, V} || [R, V] <- Values];

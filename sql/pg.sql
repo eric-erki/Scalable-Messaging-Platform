@@ -331,3 +331,12 @@ CREATE TABLE caps_features (
 );
 
 CREATE INDEX i_caps_features_node_subnode ON caps_features USING btree (node, subnode);
+
+CREATE TABLE carboncopy (
+    server text NOT NULL,
+    username text NOT NULL,
+    resource text NOT NULL,
+    version text NOT NULL
+);
+
+CREATE UNIQUE INDEX i_carboncopy_server_username_resource ON carboncopy USING btree (server, username, resource);
