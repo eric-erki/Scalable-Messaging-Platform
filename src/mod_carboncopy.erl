@@ -44,10 +44,6 @@
 	 dec_key/1,
          is_carbon_copy/1]).
 
--define(NS_CC_2, <<"urn:xmpp:carbons:2">>).
--define(NS_CC_1, <<"urn:xmpp:carbons:1">>).
--define(NS_FORWARD, <<"urn:xmpp:forward:0">>).
-
 -include("ejabberd.hrl").
 -include("logger.hrl").
 -include("jlib.hrl").
@@ -62,8 +58,8 @@ is_carbon_copy(Packet) ->
 	case xml:get_subtag(Packet, <<"sent">>) of
 		#xmlel{name= <<"sent">>, attrs = AAttrs}  ->
 	    	case xml:get_attr_s(<<"xmlns">>, AAttrs) of
-				?NS_CC_2 -> true;
-				?NS_CC_1 -> true;
+				?NS_CARBONS_2 -> true;
+				?NS_CARBONS_1 -> true;
 				_ -> false
 			end;
 		_ -> false
@@ -71,30 +67,30 @@ is_carbon_copy(Packet) ->
 
 start(Host, Opts) ->
     IQDisc = gen_mod:get_opt(iqdisc, Opts,fun gen_iq_handler:check_type/1, one_queue),
-    mod_disco:register_feature(Host, ?NS_CC_1),
-    mod_disco:register_feature(Host, ?NS_CC_2),
+    mod_disco:register_feature(Host, ?NS_CARBONS_1),
+    mod_disco:register_feature(Host, ?NS_CARBONS_2),
     init_db(gen_mod:db_type(Opts), Host),
     ejabberd_hooks:add(unset_presence_hook,Host, ?MODULE, remove_connection, 10),
     %% why priority 89: to define clearly that we must run BEFORE mod_logdb hook (90)
     ejabberd_hooks:add(user_send_packet,Host, ?MODULE, user_send_packet, 89),
     ejabberd_hooks:add(user_receive_packet,Host, ?MODULE, user_receive_packet, 89),
-    gen_iq_handler:add_iq_handler(ejabberd_sm, Host, ?NS_CC_2, ?MODULE, iq_handler2, IQDisc),
-    gen_iq_handler:add_iq_handler(ejabberd_sm, Host, ?NS_CC_1, ?MODULE, iq_handler1, IQDisc).
+    gen_iq_handler:add_iq_handler(ejabberd_sm, Host, ?NS_CARBONS_2, ?MODULE, iq_handler2, IQDisc),
+    gen_iq_handler:add_iq_handler(ejabberd_sm, Host, ?NS_CARBONS_1, ?MODULE, iq_handler1, IQDisc).
 
 stop(Host) ->
-    gen_iq_handler:remove_iq_handler(ejabberd_sm, Host, ?NS_CC_1),
-    gen_iq_handler:remove_iq_handler(ejabberd_sm, Host, ?NS_CC_2),
-    mod_disco:unregister_feature(Host, ?NS_CC_2),
-    mod_disco:unregister_feature(Host, ?NS_CC_1),
+    gen_iq_handler:remove_iq_handler(ejabberd_sm, Host, ?NS_CARBONS_1),
+    gen_iq_handler:remove_iq_handler(ejabberd_sm, Host, ?NS_CARBONS_2),
+    mod_disco:unregister_feature(Host, ?NS_CARBONS_2),
+    mod_disco:unregister_feature(Host, ?NS_CARBONS_1),
     %% why priority 89: to define clearly that we must run BEFORE mod_logdb hook (90)
     ejabberd_hooks:delete(user_send_packet,Host, ?MODULE, user_send_packet, 89),
     ejabberd_hooks:delete(user_receive_packet,Host, ?MODULE, user_receive_packet, 89),
     ejabberd_hooks:delete(unset_presence_hook,Host, ?MODULE, remove_connection, 10).
 
 iq_handler2(From, To, IQ) ->
-	iq_handler(From, To, IQ, ?NS_CC_2).
+	iq_handler(From, To, IQ, ?NS_CARBONS_2).
 iq_handler1(From, To, IQ) ->
-	iq_handler(From, To, IQ, ?NS_CC_1).
+	iq_handler(From, To, IQ, ?NS_CARBONS_1).
 
 iq_handler(From, _To,  #iq{type=set, sub_el = #xmlel{name = Operation, children = []}} = IQ, CC)->
     ?INFO_MSG("carbons IQ received: ~p", [IQ]),
@@ -198,7 +194,7 @@ send_copies(JID, Packet, Direction)->
 	      end, TargetJIDs),
     ok.
 
-build_forward_packet(JID, Packet, Sender, Dest, Direction, ?NS_CC_2) ->
+build_forward_packet(JID, Packet, Sender, Dest, Direction, ?NS_CARBONS_2) ->
     #xmlel{name = <<"message">>,
 	   attrs = [{<<"xmlns">>, <<"jabber:client">>},
 		    {<<"type">>, <<"chat">>},
@@ -206,7 +202,7 @@ build_forward_packet(JID, Packet, Sender, Dest, Direction, ?NS_CC_2) ->
 		    {<<"to">>, jlib:jid_to_string(Dest)}],
 	   children = [
 		#xmlel{name = list_to_binary(atom_to_list(Direction)),
-		       attrs = [{<<"xmlns">>, ?NS_CC_2}],
+		       attrs = [{<<"xmlns">>, ?NS_CARBONS_2}],
 		       children = [
 			#xmlel{name = <<"forwarded">>,
 			       attrs = [{<<"xmlns">>, ?NS_FORWARD}],
@@ -214,7 +210,7 @@ build_forward_packet(JID, Packet, Sender, Dest, Direction, ?NS_CC_2) ->
 				complete_packet(JID, Packet, Direction)]}
 		]}
 	   ]};
-build_forward_packet(JID, Packet, Sender, Dest, Direction, ?NS_CC_1) ->
+build_forward_packet(JID, Packet, Sender, Dest, Direction, ?NS_CARBONS_1) ->
     #xmlel{name = <<"message">>,
 	   attrs = [{<<"xmlns">>, <<"jabber:client">>},
 		    {<<"type">>, <<"chat">>},
@@ -222,7 +218,7 @@ build_forward_packet(JID, Packet, Sender, Dest, Direction, ?NS_CC_1) ->
 		    {<<"to">>, jlib:jid_to_string(Dest)}],
 	   children = [
 		#xmlel{name = list_to_binary(atom_to_list(Direction)),
-			attrs = [{<<"xmlns">>, ?NS_CC_1}]},
+			attrs = [{<<"xmlns">>, ?NS_CARBONS_1}]},
 		#xmlel{name = <<"forwarded">>,
 		       attrs = [{<<"xmlns">>, ?NS_FORWARD}],
 		       children = [complete_packet(JID, Packet, Direction)]}

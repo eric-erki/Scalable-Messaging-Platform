@@ -21,8 +21,6 @@
 -include("jlib.hrl").
 -include("logger.hrl").
 
--define(NS_FORWARD, <<"urn:xmpp:forward:0">>).
-
 -record(archive_msg,
         {us = {<<"">>, <<"">>}                :: {binary(), binary()} | '$2',
          id = <<>>                            :: binary() | '_',
