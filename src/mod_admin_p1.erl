@@ -88,7 +88,8 @@
 	 get_roster/2, get_roster_with_presence/2,
 	 add_contacts/3, remove_contacts/3, transport_register/5,
 	 set_rosternick/3,
-	 send_chat/3, send_message/4, send_stanza/3]).
+	 send_chat/3, send_message/4, send_stanza/3,
+	 start_mass_message/3, stop_mass_message/1, mass_message/5]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -98,6 +99,8 @@
 -include("mod_roster.hrl").
 
 -include("jlib.hrl").
+
+-define(MASSLOOP, massloop).
 
 -record(session, {usr, us, sid, priority, info}).
 
@@ -460,6 +463,18 @@ commands() ->
 			args =
 			    [{user, binary}, {server, binary},
 			     {stanza, binary}],
+			result = {res, integer}},
+     #ejabberd_commands{name = start_mass_message,
+			tags = [stanza],
+			desc = "Send chat message or stanza to a mass of users",
+			module = ?MODULE, function = start_mass_message,
+			args = [{server, binary}, {file, binary}, {rate, integer}],
+			result = {res, integer}},
+     #ejabberd_commands{name = stop_mass_message,
+			tags = [stanza],
+			desc = "Force stop of current mass message job",
+			module = ?MODULE, function = stop_mass_message,
+			args = [{server, binary}],
 			result = {res, integer}}].
 
 
@@ -1084,6 +1099,42 @@ send_stanza(FromJID, ToJID, StanzaStr) ->
 	  0
     end.
 
+start_mass_message(Host, File, Rate) ->
+    From = jlib:make_jid(<<>>, Host, <<>>),
+    Proc = gen_mod:get_module_proc(Host, ?MASSLOOP),
+    Delay = 60000 div Rate,
+    case whereis(Proc) of
+	undefined ->
+	    case mass_message_parse_file(File) of
+		{error, _} -> 4;
+		{ok, _, []} -> 3;
+		{ok, <<>>, _} -> 2;
+		{ok, Body, Tos} when is_binary(Body) ->
+		    Stanza = #xmlel{name = <<"message">>,
+			    attrs = [{<<"type">>, <<"chat">>}],
+			    children = [#xmlel{name = <<"body">>, attrs = [],
+					    children = [{xmlcdata, Body}]}]},
+		    Pid = spawn(?MODULE, mass_message, [Host, Delay, Stanza, From, Tos]),
+		    register(Proc, Pid),
+		    0;
+		{ok, Stanza, Tos} ->
+		    Pid = spawn(?MODULE, mass_message, [Host, Delay, Stanza, From, Tos]),
+		    register(Proc, Pid),
+		    0
+	    end;
+	_ ->
+	    % return error if loop already/still running
+	    1
+    end.
+
+stop_mass_message(Host) ->
+    Proc = gen_mod:get_module_proc(Host, ?MASSLOOP),
+    case whereis(Proc) of
+	undefined -> 1;
+	Pid -> Pid ! stop, 0
+    end.
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Internal functions
 
@@ -1392,6 +1443,65 @@ clean_session_list([S1, S2 | Rest], Res) ->
 	      true -> clean_session_list([S2 | Rest], Res)
 	   end;
        true -> clean_session_list([S2 | Rest], [S1 | Res])
+    end.
+
+mass_message_parse_file(File) ->
+    case file:open(File, read) of
+	{ok, IoDevice} ->
+	    case mass_message_parse_body(IoDevice) of
+		Header when is_binary(Header) ->
+		    Packet = case xml_stream:parse_element(Header) of
+			    {error, _} -> Header;  % Header is message Body
+			    Stanza -> Stanza       % Header is xmpp stanza
+			end,
+		    Uids = case mass_message_parse_uids(IoDevice) of
+			    List when is_list(List) -> List;
+			    _ -> []
+			end,
+		    file:close(IoDevice),
+		    {ok, Packet, Uids};
+		Error ->
+		    file:close(IoDevice),
+		    Error
+	    end;
+	Error ->
+	    Error
+    end.
+
+mass_message_parse_body(IoDevice) ->
+    mass_message_parse_body(IoDevice, file:read_line(IoDevice), <<>>).
+mass_message_parse_body(_IoDevice, {ok, "\n"}, Acc) -> Acc;
+mass_message_parse_body(IoDevice, {ok, Data}, Acc) ->
+    [Line|_] = binary:split(list_to_binary(Data), <<"\n">>),
+    NextLine = file:read_line(IoDevice),
+    mass_message_parse_body(IoDevice, NextLine, <<Acc/binary, Line/binary>>);
+mass_message_parse_body(_IoDevice, eof, Acc) -> Acc;
+mass_message_parse_body(_IoDevice, Error, _) -> Error.
+
+mass_message_parse_uids(IoDevice) ->
+    mass_message_parse_uids(IoDevice, file:read_line(IoDevice), []).
+mass_message_parse_uids(IoDevice, {ok, Data}, Acc) ->
+    [Uid|_] = binary:split(list_to_binary(Data), <<"\n">>),
+    NextLine = file:read_line(IoDevice),
+    mass_message_parse_uids(IoDevice, NextLine, [Uid|Acc]);
+mass_message_parse_uids(_IoDevice, eof, Acc) -> lists:reverse(Acc);
+mass_message_parse_uids(_IoDevice, Error, _) -> Error.
+
+mass_message(_Host, _Delay, _Stanza, _From, []) -> done;
+mass_message(Host, Delay, Stanza, From, [Uid|Others]) ->
+    receive stop ->
+	    Proc = gen_mod:get_module_proc(Host, ?MASSLOOP),
+	    ?ERROR_MSG("~p mass messaging stopped~n"
+		       "Was about to send message to ~s~n"
+		       "With ~p remaining recipients",
+		    [Proc, Uid, length(Others)]),
+	    stopped
+    after Delay ->
+	    To = jlib:make_jid(Uid, Host, <<>>),
+	    Attrs = lists:keystore(<<"id">>, 1, Stanza#xmlel.attrs,
+			{<<"id">>, <<"job:", (randoms:get_string())/binary>>}),
+	    ejabberd_router:route(From, To, Stanza#xmlel{attrs = Attrs}),
+	    mass_message(Host, Delay, Stanza, From, Others)
     end.
 
 %% -----------------------------
