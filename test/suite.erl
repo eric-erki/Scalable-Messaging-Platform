@@ -97,6 +97,8 @@ init_stream(Config) ->
     {xmlstreamstart, <<"stream:stream">>, Attrs} = recv(),
     <<"jabber:client">> = xml:get_attr_s(<<"xmlns">>, Attrs),
     <<"1.0">> = xml:get_attr_s(<<"version">>, Attrs),
+    StreamID = xml:get_attr_s(<<"id">>, Attrs),
+    NewConfig = set_opt(stream_id, StreamID, Config),
     #stream_features{sub_els = Fs} = recv(),
     Mechs = lists:flatmap(
               fun(#sasl_mechanisms{list = Ms}) ->
@@ -111,9 +113,11 @@ init_stream(Config) ->
               set_opt(starttls, true, Acc);
          (#compression{methods = Ms}, Acc) ->
               set_opt(compression, Ms, Acc);
+	 (#p1_rebind{}, Acc) ->
+	      set_opt(p1_rebind, true, Acc);
          (_, Acc) ->
               Acc
-      end, set_opt(mechs, Mechs, Config), Fs).
+      end, set_opt(mechs, Mechs, NewConfig), Fs).
 
 disconnect(Config) ->
     Socket = ?config(socket, Config),
@@ -185,13 +189,15 @@ wait_auth_SASL_result(Config) ->
             {xmlstreamstart, <<"stream:stream">>, Attrs} = recv(),
             <<"jabber:client">> = xml:get_attr_s(<<"xmlns">>, Attrs),
             <<"1.0">> = xml:get_attr_s(<<"version">>, Attrs),
+	    StreamID = xml:get_attr_s(<<"id">>, Attrs),
+	    NewConfig = set_opt(stream_id, StreamID, Config),
             #stream_features{sub_els = Fs} = recv(),
 	    lists:foldl(
 	      fun(#feature_sm{}, ConfigAcc) ->
 		      set_opt(sm, true, ConfigAcc);
 		 (_, ConfigAcc) ->
 		      ConfigAcc
-	      end, Config, Fs);
+	      end, NewConfig, Fs);
         #sasl_challenge{text = ClientIn} ->
             {Response, SASL} = (?config(sasl, Config))(ClientIn),
             send(Config, #sasl_response{text = Response}),

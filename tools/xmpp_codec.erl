@@ -491,9 +491,23 @@ decode({xmlel, _name, _attrs, _} = _el) ->
       {<<"c">>, <<"http://jabber.org/protocol/caps">>} ->
 	  decode_caps(_el);
       {<<"ack">>, <<"p1:ack">>} -> decode_p1_ack(_el);
+      {<<"standby">>, <<"p1:rebind">>} ->
+	  decode_p1_standby(_el);
       {<<"rebind">>, <<"p1:rebind">>} ->
 	  decode_p1_rebind(_el);
+      {<<"sid">>, <<"p1:rebind">>} ->
+	  decode_p1_rebind_sid(_el);
+      {<<"jid">>, <<"p1:rebind">>} ->
+	  decode_p1_rebind_jid(_el);
+      {<<"failure">>, <<"p1:rebind">>} ->
+	  decode_p1_rebind_failure(_el);
       {<<"push">>, <<"p1:push">>} -> decode_p1_push(_el);
+      {<<"status">>, <<"p1:push">>} ->
+	  decode_p1_push_status(_el);
+      {<<"session">>, <<"p1:push">>} ->
+	  decode_p1_push_session(_el);
+      {<<"keepalive">>, <<"p1:push">>} ->
+	  decode_p1_push_keepalive(_el);
       {<<"stream:features">>,
        <<"http://etherx.jabber.org/streams">>} ->
 	  decode_stream_features(_el);
@@ -1131,8 +1145,15 @@ is_known_tag({xmlel, _name, _attrs, _} = _el) ->
       {<<"c">>, <<"http://jabber.org/protocol/caps">>} ->
 	  true;
       {<<"ack">>, <<"p1:ack">>} -> true;
+      {<<"standby">>, <<"p1:rebind">>} -> true;
       {<<"rebind">>, <<"p1:rebind">>} -> true;
+      {<<"sid">>, <<"p1:rebind">>} -> true;
+      {<<"jid">>, <<"p1:rebind">>} -> true;
+      {<<"failure">>, <<"p1:rebind">>} -> true;
       {<<"push">>, <<"p1:push">>} -> true;
+      {<<"status">>, <<"p1:push">>} -> true;
+      {<<"session">>, <<"p1:push">>} -> true;
+      {<<"keepalive">>, <<"p1:push">>} -> true;
       {<<"stream:features">>,
        <<"http://etherx.jabber.org/streams">>} ->
 	  true;
@@ -1606,11 +1627,20 @@ encode({caps, _, _, _} = C) ->
 		[{<<"xmlns">>, <<"http://jabber.org/protocol/caps">>}]);
 encode({p1_ack} = Ack) ->
     encode_p1_ack(Ack, [{<<"xmlns">>, <<"p1:ack">>}]);
-encode({p1_rebind} = Rebind) ->
+encode({p1_standby, _} = Standby) ->
+    encode_p1_standby(Standby,
+		      [{<<"xmlns">>, <<"p1:rebind">>}]);
+encode({p1_rebind, _, _} = Rebind) ->
     encode_p1_rebind(Rebind,
 		     [{<<"xmlns">>, <<"p1:rebind">>}]);
-encode({p1_push} = Push) ->
+encode({p1_rebind_failure, _} = Failure) ->
+    encode_p1_rebind_failure(Failure,
+			     [{<<"xmlns">>, <<"p1:rebind">>}]);
+encode({p1_push, _, _, _} = Push) ->
     encode_p1_push(Push, [{<<"xmlns">>, <<"p1:push">>}]);
+encode({p1_push_status, _, _} = Status) ->
+    encode_p1_push_status(Status,
+			  [{<<"xmlns">>, <<"p1:push">>}]);
 encode({stream_features, _} = Stream_features) ->
     encode_stream_features(Stream_features,
 			   [{<<"xmlns">>,
@@ -1860,8 +1890,11 @@ pp(compress, 1) -> [methods];
 pp(compressed, 0) -> [];
 pp(compression, 1) -> [methods];
 pp(stream_features, 1) -> [sub_els];
-pp(p1_push, 0) -> [];
-pp(p1_rebind, 0) -> [];
+pp(p1_push_status, 2) -> [type, text];
+pp(p1_push, 3) -> [keepalive, session, status];
+pp(p1_rebind_failure, 1) -> [reason];
+pp(p1_rebind, 2) -> [jid, sid];
+pp(p1_standby, 1) -> [set];
 pp(p1_ack, 0) -> [];
 pp(caps, 3) -> [hash, node, ver];
 pp(feature_register, 0) -> [];
@@ -12617,21 +12650,360 @@ encode_p1_ack({p1_ack}, _xmlns_attrs) ->
     _attrs = _xmlns_attrs,
     {xmlel, <<"ack">>, _attrs, _els}.
 
-decode_p1_rebind({xmlel, <<"rebind">>, _attrs, _els}) ->
-    {p1_rebind}.
+decode_p1_standby({xmlel, <<"standby">>, _attrs,
+		   _els}) ->
+    Set = decode_p1_standby_els(_els, <<>>),
+    {p1_standby, Set}.
 
-encode_p1_rebind({p1_rebind}, _xmlns_attrs) ->
-    _els = [],
+decode_p1_standby_els([], Set) ->
+    decode_p1_standby_cdata(Set);
+decode_p1_standby_els([{xmlcdata, _data} | _els],
+		      Set) ->
+    decode_p1_standby_els(_els,
+			  <<Set/binary, _data/binary>>);
+decode_p1_standby_els([_ | _els], Set) ->
+    decode_p1_standby_els(_els, Set).
+
+encode_p1_standby({p1_standby, Set}, _xmlns_attrs) ->
+    _els = encode_p1_standby_cdata(Set, []),
+    _attrs = _xmlns_attrs,
+    {xmlel, <<"standby">>, _attrs, _els}.
+
+decode_p1_standby_cdata(<<>>) ->
+    erlang:error({xmpp_codec,
+		  {missing_cdata, <<>>, <<"standby">>, <<"p1:rebind">>}});
+decode_p1_standby_cdata(_val) ->
+    case catch dec_bool(_val) of
+      {'EXIT', _} ->
+	  erlang:error({xmpp_codec,
+			{bad_cdata_value, <<>>, <<"standby">>,
+			 <<"p1:rebind">>}});
+      _res -> _res
+    end.
+
+encode_p1_standby_cdata(_val, _acc) ->
+    [{xmlcdata, enc_bool(_val)} | _acc].
+
+decode_p1_rebind({xmlel, <<"rebind">>, _attrs, _els}) ->
+    {Sid, Jid} = decode_p1_rebind_els(_els, undefined,
+				      undefined),
+    {p1_rebind, Jid, Sid}.
+
+decode_p1_rebind_els([], Sid, Jid) -> {Sid, Jid};
+decode_p1_rebind_els([{xmlel, <<"jid">>, _attrs, _} =
+			  _el
+		      | _els],
+		     Sid, Jid) ->
+    _xmlns = get_attr(<<"xmlns">>, _attrs),
+    if _xmlns == <<>>; _xmlns == <<"p1:rebind">> ->
+	   decode_p1_rebind_els(_els, Sid,
+				decode_p1_rebind_jid(_el));
+       true -> decode_p1_rebind_els(_els, Sid, Jid)
+    end;
+decode_p1_rebind_els([{xmlel, <<"sid">>, _attrs, _} =
+			  _el
+		      | _els],
+		     Sid, Jid) ->
+    _xmlns = get_attr(<<"xmlns">>, _attrs),
+    if _xmlns == <<>>; _xmlns == <<"p1:rebind">> ->
+	   decode_p1_rebind_els(_els, decode_p1_rebind_sid(_el),
+				Jid);
+       true -> decode_p1_rebind_els(_els, Sid, Jid)
+    end;
+decode_p1_rebind_els([_ | _els], Sid, Jid) ->
+    decode_p1_rebind_els(_els, Sid, Jid).
+
+encode_p1_rebind({p1_rebind, Jid, Sid}, _xmlns_attrs) ->
+    _els = 'encode_p1_rebind_$jid'(Jid,
+				   'encode_p1_rebind_$sid'(Sid, [])),
     _attrs = _xmlns_attrs,
     {xmlel, <<"rebind">>, _attrs, _els}.
 
-decode_p1_push({xmlel, <<"push">>, _attrs, _els}) ->
-    {p1_push}.
+'encode_p1_rebind_$sid'(undefined, _acc) -> _acc;
+'encode_p1_rebind_$sid'(Sid, _acc) ->
+    [encode_p1_rebind_sid(Sid, []) | _acc].
 
-encode_p1_push({p1_push}, _xmlns_attrs) ->
-    _els = [],
+'encode_p1_rebind_$jid'(undefined, _acc) -> _acc;
+'encode_p1_rebind_$jid'(Jid, _acc) ->
+    [encode_p1_rebind_jid(Jid, []) | _acc].
+
+decode_p1_rebind_sid({xmlel, <<"sid">>, _attrs,
+		      _els}) ->
+    Cdata = decode_p1_rebind_sid_els(_els, <<>>), Cdata.
+
+decode_p1_rebind_sid_els([], Cdata) ->
+    decode_p1_rebind_sid_cdata(Cdata);
+decode_p1_rebind_sid_els([{xmlcdata, _data} | _els],
+			 Cdata) ->
+    decode_p1_rebind_sid_els(_els,
+			     <<Cdata/binary, _data/binary>>);
+decode_p1_rebind_sid_els([_ | _els], Cdata) ->
+    decode_p1_rebind_sid_els(_els, Cdata).
+
+encode_p1_rebind_sid(Cdata, _xmlns_attrs) ->
+    _els = encode_p1_rebind_sid_cdata(Cdata, []),
+    _attrs = _xmlns_attrs,
+    {xmlel, <<"sid">>, _attrs, _els}.
+
+decode_p1_rebind_sid_cdata(<<>>) ->
+    erlang:error({xmpp_codec,
+		  {missing_cdata, <<>>, <<"sid">>, <<"p1:rebind">>}});
+decode_p1_rebind_sid_cdata(_val) -> _val.
+
+encode_p1_rebind_sid_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_p1_rebind_jid({xmlel, <<"jid">>, _attrs,
+		      _els}) ->
+    Cdata = decode_p1_rebind_jid_els(_els, <<>>), Cdata.
+
+decode_p1_rebind_jid_els([], Cdata) ->
+    decode_p1_rebind_jid_cdata(Cdata);
+decode_p1_rebind_jid_els([{xmlcdata, _data} | _els],
+			 Cdata) ->
+    decode_p1_rebind_jid_els(_els,
+			     <<Cdata/binary, _data/binary>>);
+decode_p1_rebind_jid_els([_ | _els], Cdata) ->
+    decode_p1_rebind_jid_els(_els, Cdata).
+
+encode_p1_rebind_jid(Cdata, _xmlns_attrs) ->
+    _els = encode_p1_rebind_jid_cdata(Cdata, []),
+    _attrs = _xmlns_attrs,
+    {xmlel, <<"jid">>, _attrs, _els}.
+
+decode_p1_rebind_jid_cdata(<<>>) ->
+    erlang:error({xmpp_codec,
+		  {missing_cdata, <<>>, <<"jid">>, <<"p1:rebind">>}});
+decode_p1_rebind_jid_cdata(_val) ->
+    case catch dec_jid(_val) of
+      {'EXIT', _} ->
+	  erlang:error({xmpp_codec,
+			{bad_cdata_value, <<>>, <<"jid">>, <<"p1:rebind">>}});
+      _res -> _res
+    end.
+
+encode_p1_rebind_jid_cdata(_val, _acc) ->
+    [{xmlcdata, enc_jid(_val)} | _acc].
+
+decode_p1_rebind_failure({xmlel, <<"failure">>, _attrs,
+			  _els}) ->
+    Reason = decode_p1_rebind_failure_els(_els, <<>>),
+    {p1_rebind_failure, Reason}.
+
+decode_p1_rebind_failure_els([], Reason) ->
+    decode_p1_rebind_failure_cdata(Reason);
+decode_p1_rebind_failure_els([{xmlcdata, _data} | _els],
+			     Reason) ->
+    decode_p1_rebind_failure_els(_els,
+				 <<Reason/binary, _data/binary>>);
+decode_p1_rebind_failure_els([_ | _els], Reason) ->
+    decode_p1_rebind_failure_els(_els, Reason).
+
+encode_p1_rebind_failure({p1_rebind_failure, Reason},
+			 _xmlns_attrs) ->
+    _els = encode_p1_rebind_failure_cdata(Reason, []),
+    _attrs = _xmlns_attrs,
+    {xmlel, <<"failure">>, _attrs, _els}.
+
+decode_p1_rebind_failure_cdata(<<>>) -> undefined;
+decode_p1_rebind_failure_cdata(_val) -> _val.
+
+encode_p1_rebind_failure_cdata(undefined, _acc) -> _acc;
+encode_p1_rebind_failure_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_p1_push({xmlel, <<"push">>, _attrs, _els}) ->
+    {Status, Keepalive, Session} = decode_p1_push_els(_els,
+						      undefined, undefined,
+						      undefined),
+    {p1_push, Keepalive, Session, Status}.
+
+decode_p1_push_els([], Status, Keepalive, Session) ->
+    {Status, Keepalive, Session};
+decode_p1_push_els([{xmlel, <<"keepalive">>, _attrs,
+		     _} =
+			_el
+		    | _els],
+		   Status, Keepalive, Session) ->
+    _xmlns = get_attr(<<"xmlns">>, _attrs),
+    if _xmlns == <<>>; _xmlns == <<"p1:push">> ->
+	   decode_p1_push_els(_els, Status,
+			      decode_p1_push_keepalive(_el), Session);
+       true ->
+	   decode_p1_push_els(_els, Status, Keepalive, Session)
+    end;
+decode_p1_push_els([{xmlel, <<"session">>, _attrs, _} =
+			_el
+		    | _els],
+		   Status, Keepalive, Session) ->
+    _xmlns = get_attr(<<"xmlns">>, _attrs),
+    if _xmlns == <<>>; _xmlns == <<"p1:push">> ->
+	   decode_p1_push_els(_els, Status, Keepalive,
+			      decode_p1_push_session(_el));
+       true ->
+	   decode_p1_push_els(_els, Status, Keepalive, Session)
+    end;
+decode_p1_push_els([{xmlel, <<"status">>, _attrs, _} =
+			_el
+		    | _els],
+		   Status, Keepalive, Session) ->
+    _xmlns = get_attr(<<"xmlns">>, _attrs),
+    if _xmlns == <<>>; _xmlns == <<"p1:push">> ->
+	   decode_p1_push_els(_els, decode_p1_push_status(_el),
+			      Keepalive, Session);
+       true ->
+	   decode_p1_push_els(_els, Status, Keepalive, Session)
+    end;
+decode_p1_push_els([_ | _els], Status, Keepalive,
+		   Session) ->
+    decode_p1_push_els(_els, Status, Keepalive, Session).
+
+encode_p1_push({p1_push, Keepalive, Session, Status},
+	       _xmlns_attrs) ->
+    _els = 'encode_p1_push_$session'(Session,
+				     'encode_p1_push_$keepalive'(Keepalive,
+								 'encode_p1_push_$status'(Status,
+											  []))),
     _attrs = _xmlns_attrs,
     {xmlel, <<"push">>, _attrs, _els}.
+
+'encode_p1_push_$status'(undefined, _acc) -> _acc;
+'encode_p1_push_$status'(Status, _acc) ->
+    [encode_p1_push_status(Status, []) | _acc].
+
+'encode_p1_push_$keepalive'(undefined, _acc) -> _acc;
+'encode_p1_push_$keepalive'(Keepalive, _acc) ->
+    [encode_p1_push_keepalive(Keepalive, []) | _acc].
+
+'encode_p1_push_$session'(undefined, _acc) -> _acc;
+'encode_p1_push_$session'(Session, _acc) ->
+    [encode_p1_push_session(Session, []) | _acc].
+
+decode_p1_push_status({xmlel, <<"status">>, _attrs,
+		       _els}) ->
+    Text = decode_p1_push_status_els(_els, <<>>),
+    Type = decode_p1_push_status_attrs(_attrs, undefined),
+    {p1_push_status, Type, Text}.
+
+decode_p1_push_status_els([], Text) ->
+    decode_p1_push_status_cdata(Text);
+decode_p1_push_status_els([{xmlcdata, _data} | _els],
+			  Text) ->
+    decode_p1_push_status_els(_els,
+			      <<Text/binary, _data/binary>>);
+decode_p1_push_status_els([_ | _els], Text) ->
+    decode_p1_push_status_els(_els, Text).
+
+decode_p1_push_status_attrs([{<<"type">>, _val}
+			     | _attrs],
+			    _Type) ->
+    decode_p1_push_status_attrs(_attrs, _val);
+decode_p1_push_status_attrs([_ | _attrs], Type) ->
+    decode_p1_push_status_attrs(_attrs, Type);
+decode_p1_push_status_attrs([], Type) ->
+    decode_p1_push_status_attr_type(Type).
+
+encode_p1_push_status({p1_push_status, Type, Text},
+		      _xmlns_attrs) ->
+    _els = encode_p1_push_status_cdata(Text, []),
+    _attrs = encode_p1_push_status_attr_type(Type,
+					     _xmlns_attrs),
+    {xmlel, <<"status">>, _attrs, _els}.
+
+decode_p1_push_status_attr_type(undefined) -> undefined;
+decode_p1_push_status_attr_type(_val) ->
+    case catch dec_enum(_val, [away, chat, dnd, xa]) of
+      {'EXIT', _} ->
+	  erlang:error({xmpp_codec,
+			{bad_attr_value, <<"type">>, <<"status">>,
+			 <<"p1:push">>}});
+      _res -> _res
+    end.
+
+encode_p1_push_status_attr_type(undefined, _acc) ->
+    _acc;
+encode_p1_push_status_attr_type(_val, _acc) ->
+    [{<<"type">>, enc_enum(_val)} | _acc].
+
+decode_p1_push_status_cdata(<<>>) -> undefined;
+decode_p1_push_status_cdata(_val) -> _val.
+
+encode_p1_push_status_cdata(undefined, _acc) -> _acc;
+encode_p1_push_status_cdata(_val, _acc) ->
+    [{xmlcdata, _val} | _acc].
+
+decode_p1_push_session({xmlel, <<"session">>, _attrs,
+			_els}) ->
+    Duration = decode_p1_push_session_attrs(_attrs,
+					    undefined),
+    Duration.
+
+decode_p1_push_session_attrs([{<<"duration">>, _val}
+			      | _attrs],
+			     _Duration) ->
+    decode_p1_push_session_attrs(_attrs, _val);
+decode_p1_push_session_attrs([_ | _attrs], Duration) ->
+    decode_p1_push_session_attrs(_attrs, Duration);
+decode_p1_push_session_attrs([], Duration) ->
+    decode_p1_push_session_attr_duration(Duration).
+
+encode_p1_push_session(Duration, _xmlns_attrs) ->
+    _els = [],
+    _attrs = encode_p1_push_session_attr_duration(Duration,
+						  _xmlns_attrs),
+    {xmlel, <<"session">>, _attrs, _els}.
+
+decode_p1_push_session_attr_duration(undefined) ->
+    erlang:error({xmpp_codec,
+		  {missing_attr, <<"duration">>, <<"session">>,
+		   <<"p1:push">>}});
+decode_p1_push_session_attr_duration(_val) ->
+    case catch dec_int(_val, 0, infinity) of
+      {'EXIT', _} ->
+	  erlang:error({xmpp_codec,
+			{bad_attr_value, <<"duration">>, <<"session">>,
+			 <<"p1:push">>}});
+      _res -> _res
+    end.
+
+encode_p1_push_session_attr_duration(_val, _acc) ->
+    [{<<"duration">>, enc_int(_val)} | _acc].
+
+decode_p1_push_keepalive({xmlel, <<"keepalive">>,
+			  _attrs, _els}) ->
+    Max = decode_p1_push_keepalive_attrs(_attrs, undefined),
+    Max.
+
+decode_p1_push_keepalive_attrs([{<<"max">>, _val}
+				| _attrs],
+			       _Max) ->
+    decode_p1_push_keepalive_attrs(_attrs, _val);
+decode_p1_push_keepalive_attrs([_ | _attrs], Max) ->
+    decode_p1_push_keepalive_attrs(_attrs, Max);
+decode_p1_push_keepalive_attrs([], Max) ->
+    decode_p1_push_keepalive_attr_max(Max).
+
+encode_p1_push_keepalive(Max, _xmlns_attrs) ->
+    _els = [],
+    _attrs = encode_p1_push_keepalive_attr_max(Max,
+					       _xmlns_attrs),
+    {xmlel, <<"keepalive">>, _attrs, _els}.
+
+decode_p1_push_keepalive_attr_max(undefined) ->
+    erlang:error({xmpp_codec,
+		  {missing_attr, <<"max">>, <<"keepalive">>,
+		   <<"p1:push">>}});
+decode_p1_push_keepalive_attr_max(_val) ->
+    case catch dec_int(_val, 0, infinity) of
+      {'EXIT', _} ->
+	  erlang:error({xmpp_codec,
+			{bad_attr_value, <<"max">>, <<"keepalive">>,
+			 <<"p1:push">>}});
+      _res -> _res
+    end.
+
+encode_p1_push_keepalive_attr_max(_val, _acc) ->
+    [{<<"max">>, enc_int(_val)} | _acc].
 
 decode_stream_features({xmlel, <<"stream:features">>,
 			_attrs, _els}) ->

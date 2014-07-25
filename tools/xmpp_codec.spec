@@ -809,15 +809,81 @@
            xmlns = <<"http://etherx.jabber.org/streams">>,
            result = {stream_features, '$_els'}}).
 
+-xml(p1_push_keepalive,
+     #elem{name = <<"keepalive">>,
+	   xmlns = <<"p1:push">>,
+	   result = '$max',
+	   attrs = [#attr{name = <<"max">>,
+			  required = true,
+			  dec = {dec_int, [0, infinity]},
+                          enc = {enc_int, []}}]}).
+
+-xml(p1_push_session,
+     #elem{name = <<"session">>,
+	   xmlns = <<"p1:push">>,
+	   result = '$duration',
+	   attrs = [#attr{name = <<"duration">>,
+			  required = true,
+			  dec = {dec_int, [0, infinity]},
+                          enc = {enc_int, []}}]}).
+
+-xml(p1_push_status,
+     #elem{name = <<"status">>,
+	   xmlns = <<"p1:push">>,
+	   result = {p1_push_status, '$type', '$text'},
+	   attrs = [#attr{name = <<"type">>,
+			  enc = {enc_enum, []},
+                          dec = {dec_enum, [[away, chat, dnd, xa]]}}],
+	   cdata = #cdata{label = '$text'}}).
+
 -xml(p1_push,
      #elem{name = <<"push">>,
-           result = {p1_push},
-           xmlns = <<"p1:push">>}).
+           result = {p1_push, '$keepalive', '$session', '$status'},
+           xmlns = <<"p1:push">>,
+	   refs = [#ref{name = p1_push_keepalive, min = 0, max = 1,
+			label = '$keepalive'},
+		   #ref{name = p1_push_session, min = 0, max = 1,
+			label = '$session'},
+		   #ref{name = p1_push_status, min = 0, max = 1,
+			label = '$status'}]}).
+
+-xml(p1_rebind_failure,
+     #elem{name = <<"failure">>,
+	   xmlns = <<"p1:rebind">>,
+	   result = {p1_rebind_failure, '$reason'},
+	   cdata = #cdata{label = '$reason'}}).
+
+-xml(p1_rebind_jid,
+     #elem{name = <<"jid">>,
+	   xmlns = <<"p1:rebind">>,
+	   result = '$cdata',
+	   cdata = #cdata{required = true,
+			  enc = {enc_jid, []},
+			  dec = {dec_jid, []}}}).
+
+-xml(p1_rebind_sid,
+     #elem{name = <<"sid">>,
+	   xmlns = <<"p1:rebind">>,
+	   result = '$cdata',
+	   cdata = #cdata{required = true}}).
 
 -xml(p1_rebind,
      #elem{name = <<"rebind">>,
-           result = {p1_rebind},
-           xmlns = <<"p1:rebind">>}).
+           result = {p1_rebind, '$jid', '$sid'},
+           xmlns = <<"p1:rebind">>,
+	   refs = [#ref{name = p1_rebind_jid, min = 0, max = 1,
+			label = '$jid'},
+		   #ref{name = p1_rebind_sid, min = 0, max = 1,
+			label = '$sid'}]}).
+
+-xml(p1_standby,
+     #elem{name = <<"standby">>,
+	   xmlns = <<"p1:rebind">>,
+	   result = {p1_standby, '$set'},
+	   cdata = #cdata{label = '$set',
+			  required = true,
+			  enc = {enc_bool, []},
+			  dec = {dec_bool, []}}}).
 
 -xml(p1_ack,
      #elem{name = <<"ack">>,

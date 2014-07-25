@@ -60,6 +60,8 @@
 -record(sm_enable, {max :: non_neg_integer(),
                     resume = false :: any()}).
 
+-record(p1_rebind_failure, {reason :: binary()}).
+
 -record(starttls_failure, {}).
 
 -record(sasl_challenge, {text :: any()}).
@@ -131,8 +133,6 @@
 -record(sasl_auth, {mechanism :: binary(),
                     text :: any()}).
 
--record(p1_push, {}).
-
 -record(legacy_delay, {stamp :: binary(),
                        from :: any()}).
 
@@ -179,6 +179,13 @@
                     always = [] :: [any()],
                     never = [] :: [any()]}).
 
+-record(p1_push_status, {type :: 'away' | 'chat' | 'dnd' | 'xa',
+                         text :: binary()}).
+
+-record(p1_push, {keepalive :: non_neg_integer(),
+                  session :: non_neg_integer(),
+                  status :: #p1_push_status{}}).
+
 -record(caps, {hash :: binary(),
                node :: binary(),
                ver :: any()}).
@@ -200,7 +207,8 @@
 -record(mam_archived, {by :: any(),
                        id :: binary()}).
 
--record(p1_rebind, {}).
+-record(p1_rebind, {jid :: any(),
+                    sid :: binary()}).
 
 -record(compress_failure, {reason :: 'processing-failed' | 'setup-failed' | 'unsupported-method'}).
 
@@ -304,6 +312,8 @@
                      middle :: binary(),
                      prefix :: binary(),
                      suffix :: binary()}).
+
+-record(p1_standby, {set :: any()}).
 
 -record(identity, {category :: binary(),
                    type :: binary(),

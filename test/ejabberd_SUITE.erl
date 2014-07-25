@@ -154,6 +154,8 @@ init_per_testcase(TestCase, OrigConfig) ->
             connect(Config);
         auth_plain ->
             connect(Config);
+	p1_rebind_reconnect ->
+	    connect(Config);
         test_bind ->
             auth(connect(Config));
 	sm_resume ->
@@ -186,6 +188,8 @@ no_db_tests() ->
        stats,
        sm,
        sm_resume,
+       p1_rebind,
+       p1_rebind_reconnect,
        disco]},
      {test_proxy65, [parallel],
       [proxy65_master, proxy65_slave]}].
@@ -553,6 +557,44 @@ sm_resume(Config) ->
     #message{from = ServerJID, to = MyJID, body = [Txt]} = recv(),
     #sm_r{} = recv(),
     send(Config, #sm_a{h = 1}),
+    disconnect(Config).
+
+p1_rebind(Config) ->
+    MyJID = my_jid(Config),
+    true = ?config(p1_rebind, Config),
+    StreamID = ?config(stream_id, Config),
+    send(Config, #presence{}),
+    #presence{from = MyJID} = recv(),
+    #iq{type = result} =
+	send_recv(
+	  Config,
+	  #iq{type = set,
+	      sub_els = [#p1_push{keepalive = 30,
+				  session = 60,
+				  status = #p1_push_status{
+					      type = xa,
+					      text = <<"offline">>}}]}),
+    close_socket(Config),
+    %% High quality code on that side!
+    timer:sleep(1000),
+    {save_config, set_opt(prev_stream_id, StreamID, Config)}.
+
+p1_rebind_reconnect(Config) ->
+    MyJID = my_jid(Config),
+    {p1_rebind, RebindConfig} = ?config(saved_config, Config),
+    StreamID = ?config(prev_stream_id, RebindConfig),
+    Server = ?config(server, Config),
+    ServerJID = jlib:make_jid(<<"">>, Server, <<"">>),
+    Txt = #text{data = <<"body">>},
+    Msg = #message{from = ServerJID, to = MyJID, body = [Txt]},
+    %% Route message. The message should be queued by the C2S process.
+    timer:sleep(1000),
+    ejabberd_router:route(ServerJID, MyJID, xmpp_codec:encode(Msg)),
+    send(Config, #p1_rebind{jid = MyJID, sid = StreamID}),
+    #p1_rebind{} = recv(),
+    ?recv2(
+       #message{from = ServerJID, to = MyJID, body = [Txt]},
+       #presence{from = MyJID}),
     disconnect(Config).
 
 private(Config) ->
