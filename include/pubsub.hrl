@@ -25,8 +25,7 @@
 
 %% -------------------------------
 %% Pubsub constants
--define(ERR_EXTENDED(E, C),
-	mod_pubsub:extended_error(E, C)).
+-define(ERR_EXTENDED(E, C), mod_pubsub:extended_error(E, C)).
 
 %% The actual limit can be configured with mod_pubsub's option max_items_node
 -define(MAXITEMS, 10).
@@ -59,8 +58,12 @@
 %% of the current node. For example:
 %% ```<<"/home/localhost/user">>'''</p>
 
--type(nodeIdx() :: pos_integer()).
-%% @type nodeIdx() = integer().
+-type(nodeIdx() :: pos_integer() | binary()).
+%% @type nodeIdx() = integer() | binary().
+%% note: pos_integer() should always be used, but we allow anything else coded
+%% as binary, so one can have a custom implementation of nodetree with custom
+%% indexing (see nodetree_virtual). this also allows to use any kind of key for
+%% indexing nodes, as this can be usefull with external backends such as odbc.
 
 -type(itemId() :: binary()).
 %% @type itemId() = string().
@@ -68,27 +71,12 @@
 -type(subId() :: binary()).
 %% @type subId() = string().
 
-
-%% @type payload() = [#xmlelement{} | #xmlcdata{}].
-
-%% @type stanzaError() = #xmlelement{}.
-%% Example:
-%%    ```{xmlelement, "error",
-%%        [{"code", Code}, {"type", Type}],
-%%        [{xmlelement, Condition, [{"xmlns", ?NS_STANZAS}], []}]}'''
-%% @type pubsubIQResponse() = #xmlelement{}.
-%% Example:
-%%    ```{xmlelement, "pubsub",
-%%               [{"xmlns", ?NS_PUBSUB_EVENT}],
-%%               [{xmlelement, "affiliations", [],
-%%               []}]}'''
-
 -type(nodeOption() ::
     {Option::atom(),
-     Value::binary() | [binary()] | boolean() | non_neg_integer()
+     Value::atom() | [binary()] | boolean() | non_neg_integer()
 }).
 
--type(nodeOptions() :: [NodeOption::mod_pubsub:nodeOption(),...]).
+-type(nodeOptions() :: [mod_pubsub:nodeOption(),...]).
 
 %% @type nodeOption() = {Option, Value}
 %%    Option = atom()
@@ -101,26 +89,9 @@
      Value::binary() | [binary()] | boolean()
 }).
 
--type(subOptions() :: [SubOption::mod_pubsub:subOption(),...]).
+-type(subOptions() :: [mod_pubsub:subOption(),...]).
 
-%% @type nodeType() = string().
-%% <p>The <tt>nodeType</tt> is a string containing the name of the PubSub
-%% plugin to use to manage a given node. For example, it can be
-%% <tt>"flat"</tt>, <tt>"hometree"</tt> or <tt>"blog"</tt>.</p>
 
-%% @type jid() = {jid, User, Server, Resource, LUser, LServer, LResource}
-%%    User      = string()
-%%    Server    = string()
-%%    Resource  = string()
-%%    LUser     = string()
-%%    LServer   = string()
-%%    LResource = string().
-
-%-type(ljid() :: {binary(), binary(), binary()}).
-%% @type ljid() = {User, Server, Resource}
-%%     User     = string()
-%%     Server   = string()
-%%     Resource = string().
 
 -type(affiliation() :: 'none'
                      | 'owner'
@@ -150,7 +121,7 @@
                       | 'subscribers'
                       | 'open'
 ).
-
+%% @type publishModel() = 'publishers' | 'subscribers' | 'open'
 
 -record(pubsub_index,
 {
@@ -161,54 +132,42 @@
 
 -record(pubsub_node,
 {
-    nodeid               ,%:: {Host::mod_pubsub:host(), NodeId::mod_pubsub:nodeId()},
-    id                   ,%:: mod_pubsub:nodeIdx(),
-    parents = []         ,%:: [Parent_NodeId::mod_pubsub:nodeId()],
-    type    = <<"flat">> ,%:: binary(),
-    owners  = []         ,%:: [Owner::ljid(),...],
-    options = []          %:: mod_pubsub:nodeOptions()
+    nodeid              ,% :: {mod_pubsub:host(), mod_pubsub:nodeId()},
+    id                  ,% :: mod_pubsub:nodeIdx(), % TODO id->nodeidx
+    parents = []        ,% :: [mod_pubsub:nodeId(),...],
+    type    = <<"flat">>,% :: binary(),
+    owners  = []        ,% :: [jlib:ljid(),...],
+    options = []        % :: mod_pubsub:nodeOptions()
 }).
 
-
-%-record(pubsub_state,
-%	{stateid, nodeidx, items = [], affiliation = none,
-%	 subscriptions = []}).
 -record(pubsub_state,
 {
-    stateid                ,%:: {Entity::ljid(), NodeIdx::mod_pubsub:nodeIdx()},
-    nodeidx                ,%:: mod_pubsub:nodeIdx(),
-    items         = []     ,%:: [ItemId::mod_pubsub:itemId()],
-    affiliation   = 'none' ,%:: mod_pubsub:affiliation(),
-    subscriptions = []      %:: [{mod_pubsub:subscription(), mod_pubsub:subId()}]
+    stateid               ,% :: {jlib:ljid(), mod_pubsub:nodeIdx()},
+    nodeidx               ,% :: mod_pubsub:nodeIdx(),
+    items         = []    ,% :: [mod_pubsub:itemId(),...],
+    affiliation   = 'none',% :: mod_pubsub:affiliation(),
+    subscriptions = []    % :: [{mod_pubsub:subscription(), mod_pubsub:subId()}]
 }).
-
-%-record(pubsub_item,
-%	{itemid, nodeidx, creation = {unknown, unknown},
-%	 modification = {unknown, unknown}, payload = []}).
 
 -record(pubsub_item,
 {
-    itemid                            ,%:: {mod_pubsub:itemId(), mod_pubsub:nodeIdx()},
-    nodeidx                           ,%:: mod_pubsub_nodeIdx(),
-    creation     = {unknown, unknown} ,%:: {erlang:timestamp(), ljid()},
-    modification = {unknown, unknown} ,%:: {erlang:timestamp(), ljid()},
-    payload      = []                  %:: mod_pubsub:payload()
+    itemid                           ,% :: {mod_pubsub:itemId(), mod_pubsub:nodeIdx()},
+    nodeidx                          ,% :: mod_pubsub:nodeIdx(),
+    creation     = {unknown, unknown},% :: {erlang:timestamp(), jlib:ljid()},
+    modification = {unknown, unknown},% :: {erlang:timestamp(), jlib:ljid()},
+    payload      = []                % :: mod_pubsub:payload()
 }).
 
-%-record(pubsub_subscription, {subid, options}).
 -record(pubsub_subscription,
 {
-    subid   ,%:: mod_pubsub:subId(),
-    options  %:: [] | mod_pubsub:subOptions()
+    subid        ,% :: mod_pubsub:subId(),
+    options = [] % :: mod_pubsub:subOptions()
 }).
-
-%-record(pubsub_last_item,
-%	{nodeid, itemid, creation, payload}).
 
 -record(pubsub_last_item,
 {
-    nodeid   ,%:: mod_pubsub:nodeIdx(),
-    itemid   ,%:: mod_pubsub:itemId(),
-    creation ,%:: {erlang:timestamp(), ljid()},
-    payload   %:: mod_pubsub:payload()
+    nodeid   ,% :: mod_pubsub:nodeIdx(),
+    itemid   ,% :: mod_pubsub:itemId(),
+    creation ,% :: {erlang:timestamp(), jlib:ljid()},
+    payload  % :: mod_pubsub:payload()
 }).

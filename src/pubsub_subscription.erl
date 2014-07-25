@@ -123,36 +123,36 @@
 %%====================================================================
 init() -> ok = create_table().
 
-subscribe_node(JID, NodeID, Options) ->
+subscribe_node(JID, NodeId, Options) ->
     case catch mnesia:sync_dirty(fun add_subscription/3,
-				 [JID, NodeID, Options])
+				 [JID, NodeId, Options])
 	of
       {'EXIT', {aborted, Error}} -> Error;
       {error, Error} -> {error, Error};
       Result -> {result, Result}
     end.
 
-unsubscribe_node(JID, NodeID, SubID) ->
+unsubscribe_node(JID, NodeId, SubID) ->
     case catch mnesia:sync_dirty(fun delete_subscription/3,
-				 [JID, NodeID, SubID])
+				 [JID, NodeId, SubID])
 	of
       {'EXIT', {aborted, Error}} -> Error;
       {error, Error} -> {error, Error};
       Result -> {result, Result}
     end.
 
-get_subscription(JID, NodeID, SubID) ->
+get_subscription(JID, NodeId, SubID) ->
     case catch mnesia:sync_dirty(fun read_subscription/3,
-				 [JID, NodeID, SubID])
+				 [JID, NodeId, SubID])
 	of
       {'EXIT', {aborted, Error}} -> Error;
       {error, Error} -> {error, Error};
       Result -> {result, Result}
     end.
 
-set_subscription(JID, NodeID, SubID, Options) ->
+set_subscription(JID, NodeId, SubID, Options) ->
     case catch mnesia:sync_dirty(fun write_subscription/4,
-				 [JID, NodeID, SubID, Options])
+				 [JID, NodeId, SubID, Options])
 	of
       {'EXIT', {aborted, Error}} -> Error;
       {error, Error} -> {error, Error};
@@ -209,13 +209,13 @@ create_table() ->
 -spec(add_subscription/3 ::
 (
   _JID    :: ljid(),
-  _NodeID :: mod_pubsub:nodeIdx(),
+  _NodeId :: mod_pubsub:nodeIdx(),
   Options :: [] | mod_pubsub:subOptions())
     -> SubId :: mod_pubsub:subId()
 ).
 
-add_subscription(_JID, _NodeID, []) -> make_subid();
-add_subscription(_JID, _NodeID, Options) ->
+add_subscription(_JID, _NodeId, []) -> make_subid();
+add_subscription(_JID, _NodeId, Options) ->
     SubID = make_subid(),
     mnesia:write(#pubsub_subscription{subid = SubID,
 				      options = Options}),
@@ -224,24 +224,24 @@ add_subscription(_JID, _NodeID, Options) ->
 -spec(delete_subscription/3 ::
 (
   _JID    :: _,
-  _NodeID :: _,
+  _NodeId :: _,
   SubId   :: mod_pubsub:subId())
     -> ok
 ).
 
-delete_subscription(_JID, _NodeID, SubID) ->
+delete_subscription(_JID, _NodeId, SubID) ->
     mnesia:delete({pubsub_subscription, SubID}).
 
 -spec(read_subscription/3 ::
 (
   _JID    :: ljid(),
-  _NodeID :: _,
+  _NodeId :: _,
   SubID   :: mod_pubsub:subId())
     -> mod_pubsub:pubsubSubscription()
      | {error, notfound}
 ).
 
-read_subscription(_JID, _NodeID, SubID) ->
+read_subscription(_JID, _NodeId, SubID) ->
     case mnesia:read({pubsub_subscription, SubID}) of
       [Sub] -> Sub;
       _ -> {error, notfound}
@@ -250,13 +250,13 @@ read_subscription(_JID, _NodeID, SubID) ->
 -spec(write_subscription/4 ::
 (
   _JID    :: ljid(),
-  _NodeID :: _,
+  _NodeId :: _,
   SubID   :: mod_pubsub:subId(),
   Options :: mod_pubsub:subOptions())
     -> ok
 ).
 
-write_subscription(_JID, _NodeID, SubID, Options) ->
+write_subscription(_JID, _NodeId, SubID, Options) ->
     mnesia:write(#pubsub_subscription{subid = SubID,
 				      options = Options}).
 
@@ -364,33 +364,20 @@ tr_xfield_values(Value) ->
     #xmlel{name = <<"value">>, attrs = [],
 	   children = [{xmlcdata, Value}]}.
 
--spec(xfield_var/1 ::
-(
-  Var :: 'deliver'
-       | 'digest'
-       | 'digest_frequency'
-       | 'expire'
-       | 'include_body'
-       | 'show_values'
-       | 'subscription_type'
-       | 'subscription_depth')
-    -> binary()
-).
-
 xfield_var(deliver) -> ?PUBSUB_DELIVER;
-xfield_var(digest) -> ?PUBSUB_DIGEST;
-xfield_var(digest_frequency) -> ?PUBSUB_DIGEST_FREQUENCY;
-xfield_var(expire) -> ?PUBSUB_EXPIRE;
-xfield_var(include_body) -> ?PUBSUB_INCLUDE_BODY;
+%xfield_var(digest) -> ?PUBSUB_DIGEST;
+%xfield_var(digest_frequency) -> ?PUBSUB_DIGEST_FREQUENCY;
+%xfield_var(expire) -> ?PUBSUB_EXPIRE;
+%xfield_var(include_body) -> ?PUBSUB_INCLUDE_BODY;
 xfield_var(show_values) -> ?PUBSUB_SHOW_VALUES;
 xfield_var(subscription_type) -> ?PUBSUB_SUBSCRIPTION_TYPE;
 xfield_var(subscription_depth) -> ?PUBSUB_SUBSCRIPTION_DEPTH.
 
 xfield_type(deliver) -> <<"boolean">>;
-xfield_type(digest) -> <<"boolean">>;
-xfield_type(digest_frequency) -> <<"text-single">>;
-xfield_type(expire) -> <<"text-single">>;
-xfield_type(include_body) -> <<"boolean">>;
+%xfield_type(digest) -> <<"boolean">>;
+%xfield_type(digest_frequency) -> <<"text-single">>;
+%xfield_type(expire) -> <<"text-single">>;
+%xfield_type(include_body) -> <<"boolean">>;
 xfield_type(show_values) ->
     {<<"list-multi">>,
      [{<<"away">>, ?SHOW_VALUE_AWAY_LABEL},
@@ -409,41 +396,23 @@ xfield_type(subscription_depth) ->
 
 %% Return the XForm variable label for a subscription option key.
 xfield_label(deliver) -> ?DELIVER_LABEL;
-xfield_label(digest) -> ?DIGEST_LABEL;
-xfield_label(digest_frequency) -> ?DIGEST_FREQUENCY_LABEL;
-xfield_label(expire) -> ?EXPIRE_LABEL;
-xfield_label(include_body) -> ?INCLUDE_BODY_LABEL;
+%xfield_label(digest) -> ?DIGEST_LABEL;
+%xfield_label(digest_frequency) -> ?DIGEST_FREQUENCY_LABEL;
+%xfield_label(expire) -> ?EXPIRE_LABEL;
+%xfield_label(include_body) -> ?INCLUDE_BODY_LABEL;
 xfield_label(show_values) -> ?SHOW_VALUES_LABEL;
 %% Return the XForm value for a subscription option key.
 %% Convert erlang booleans to XForms.
 xfield_label(subscription_type) -> ?SUBSCRIPTION_TYPE_LABEL;
 xfield_label(subscription_depth) -> ?SUBSCRIPTION_DEPTH_LABEL.
 
--spec(xfield_val/2 ::
-(
-  Field :: 'deliver'
-         | 'digest'
-         | 'digest_frequency'
-         | 'expire'
-         | 'include_body'
-         | 'show_values'
-         | 'subscription_type'
-         | 'subscription_depth',
-  Val :: boolean()
-       | binary()
-       | integer()
-       | [binary()]
-       | erlang:timestamp())
-    -> [binary()]
-).
-
 xfield_val(deliver, Val) -> [bool_to_xopt(Val)];
-xfield_val(digest, Val) -> [bool_to_xopt(Val)];
-xfield_val(digest_frequency, Val) ->
-    [iolist_to_binary(integer_to_list(Val))];
-xfield_val(expire, Val) ->
-    [jlib:now_to_utc_string(Val)];
-xfield_val(include_body, Val) -> [bool_to_xopt(Val)];
+%xfield_val(digest, Val) -> [bool_to_xopt(Val)];
+%xfield_val(digest_frequency, Val) ->
+%    [iolist_to_binary(integer_to_list(Val))];
+%xfield_val(expire, Val) ->
+%    [jlib:now_to_utc_string(Val)];
+%xfield_val(include_body, Val) -> [bool_to_xopt(Val)];
 xfield_val(show_values, Val) -> Val;
 xfield_val(subscription_type, items) -> [<<"items">>];
 xfield_val(subscription_type, nodes) -> [<<"nodes">>];

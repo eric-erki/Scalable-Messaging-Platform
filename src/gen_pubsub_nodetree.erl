@@ -41,7 +41,7 @@
 ).
 
 -type(nodeIdx() :: mod_pubsub:nodeIdx()
-                | mod_pubsub_odbc:nodeIdx()
+                 | mod_pubsub_odbc:nodeIdx()
 ).
 
 -type(pubsubNode() :: mod_pubsub:pubsubNode()
@@ -98,12 +98,12 @@
 
 -callback get_subnodes(Host :: host(),
                        NodeId :: nodeId(),
-                       From :: ljid()) ->
+                       From :: jid()) ->
     [pubsubNode()].
 
 -callback get_subnodes_tree(Host :: host(),
                             NodeId :: nodeId(),
-                            From :: ljid()) ->
+                            From :: jid()) ->
     [pubsubNode()].
 
 -callback create_node(Host :: host(),
@@ -113,7 +113,8 @@
                       Options :: nodeOptions(),
                       Parents :: [nodeId()]) ->
     {ok, NodeIdx::nodeIdx()} |
-    {error, xmlel()}.
+    {error, xmlel()} |
+    {error, {virtual, {host(), nodeId()}}}.
 
 -callback delete_node(Host :: host(),
                       NodeId :: nodeId()) ->

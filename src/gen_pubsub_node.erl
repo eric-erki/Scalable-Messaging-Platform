@@ -132,7 +132,7 @@
 
 -callback subscribe_node(NodeIdx :: nodeIdx(),
                          Sender :: jid(),
-                         Subscriber :: ljid(),
+                         Subscriber :: jid(),
                          AccessModel :: accessModel(),
                          SendLast :: 'never' | 'on_sub' | 'on_sub_and_presence',
                          PresenceSubscription :: boolean(),
@@ -145,7 +145,7 @@
 
 -callback unsubscribe_node(NodeIdx :: nodeIdx(),
                            Sender :: jid(),
-                           Subscriber :: ljid(),
+                           Subscriber :: jid(),
                            SubId :: subId()) ->
     {result, default} |
     {error, xmlel()}.
@@ -184,7 +184,7 @@
     {result, affiliation()}.
 
 -callback set_affiliation(NodeIdx :: nodeIdx(),
-                          Owner :: ljid(),
+                          Owner :: jid(),
                           Affiliation :: affiliation()) ->
     ok |
     {error, xmlel()}.
@@ -196,12 +196,12 @@
     }.
 
 -callback get_entity_subscriptions(Host :: host(),
-                                   Owner :: jid()) ->
+                                   Key :: jid()) ->
     {result, [{pubsubNode(), subscription(), subId(), ljid()}]
     }.
 
 -callback get_subscriptions(NodeIdx :: nodeIdx(),
-                            Owner :: ljid()) ->
+                            Owner :: jid()) ->
     {result, [{subscription(), subId()}]}.
 
 -callback get_pending_nodes(Host :: host(),
@@ -212,7 +212,7 @@
     {result, [pubsubState()]}.
 
 -callback get_state(NodeIdx :: nodeIdx(),
-                    JID :: ljid()) ->
+                    Key :: ljid()) ->
     pubsubState().
 
 -callback set_state(State::pubsubState()) ->

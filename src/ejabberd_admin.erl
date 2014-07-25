@@ -230,11 +230,6 @@ commands() ->
 			module = ?MODULE, function = delete_old_messages,
 			args = [{days, integer}], result = {res, rescode}},
 	 
-     #ejabberd_commands{name = rename_default_nodeplugin, tags = [mnesia],
-			desc = "Update PubSub table from old ejabberd trunk SVN to 2.1.0",
-			module = mod_pubsub, function = rename_default_nodeplugin,
-			args = [], result = {res, rescode}},
-
      #ejabberd_commands{name = backup_p1db, tags = [p1db],
 			desc = "Backup the P1DB database",
 			module = ?MODULE, function = backup_p1db,
