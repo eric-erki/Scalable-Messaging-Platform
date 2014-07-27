@@ -1780,4 +1780,7 @@ clear_riak_tables(Config) ->
     ok = ejabberd_riak:delete(privacy, US),
     ok = ejabberd_riak:delete(private_storage, {U, S, <<"storage:bookmarks">>}),
     ok = ejabberd_riak:delete(muc_room, USRoom),
+    ok = ejabberd_riak:delete_by_index(offline_msg, <<"us">>, USSlave),
+    ok = ejabberd_riak:delete_by_index(offline_msg, <<"us">>, USMaster),
+    ok = ejabberd_riak:delete_by_index(offline_msg, <<"us">>, US),
     Config.
