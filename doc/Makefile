@@ -11,17 +11,17 @@ CONTRIBUTED_MODULES = ""
 all:	release pdf html
 
 release:
-	@echo "Notes for the releaser:"
-	@echo "* Do not forget to add a link to the release notes in guide.tex"
-	@echo "* Do not forget to update the version number in src/ejabberd.app.src!"
-	@echo "* Do not forget to update the features in introduction.tex (including \new{} and \improved{} tags)."
-	@echo "Press any key to continue"
+	@printf '%s\n' "Notes for the releaser:"
+	@printf '%s\n' "* Do not forget to add a link to the release notes in guide.tex"
+	@printf '%s\n' "* Do not forget to update the version number in src/ejabberd.app.src!"
+	@printf '%s\n' "* Do not forget to update the features in introduction.tex (including \new{} and \improved{} tags)."
+	@printf '%s\n' "Press any key to continue"
 	##@read foo
-	@echo "% ejabberd version (automatically generated)." > version.tex
-	@echo "\newcommand{\version}{"`sed '/vsn/!d;s/\(.*\)"\(.*\)"\(.*\)/\2/' ../src/ejabberd.app.src`"}" >> version.tex
-	@echo -n "% Contributed modules (automatically generated)."  > contributed_modules.tex
-	@echo -e "$(CONTRIBUTED_MODULES)" >> contributed_modules.tex
-	@echo "% mod_admin_p1 commands list."
+	@printf '%s\n' "% ejabberd version (automatically generated)." > version.tex
+	@printf '%s\n' "\newcommand{\version}{"`sed '/vsn/!d;s/\(.*\)"\(.*\)"\(.*\)/\2/' ../src/ejabberd.app.src`"}" >> version.tex
+	@printf '%s\n' -n "% Contributed modules (automatically generated)."  > contributed_modules.tex
+	@printf '%s\n' -e "$(CONTRIBUTED_MODULES)" >> contributed_modules.tex
+	@printf '%s\n' "% mod_admin_p1 commands list."
 
 html:	guide.html dev.html features.html
 
