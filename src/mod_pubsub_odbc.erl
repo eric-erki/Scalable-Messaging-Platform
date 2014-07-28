@@ -3367,7 +3367,7 @@ broadcast(Host, _Node, _Nidx, _Type, NodeOptions, Subscriptions, Stanza, SHIM) -
         normal -> Stanza;
         MsgType -> add_message_type(Stanza, atom_to_binary(MsgType, latin1))
     end,
-    lists:foreach(fun ({LJID, NodeName, SubIds}) ->
+    lists:foreach(fun ({LJID, _NodeId, SubIds}) ->
                 Send = case {SHIM, SubIds} of
                     {false, _} -> Message;
                     {true, [_]} -> Message;
