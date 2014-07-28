@@ -851,8 +851,7 @@ pubsub(Config) ->
        #message{sub_els = [#pubsub_event{
                               items = [#pubsub_event_items{
                                           node = Node,
-                                          retract = [ItemID]}]},
-                           #shim{headers = [{<<"Collection">>, Node}]}]}),
+                                          retract = [ItemID]}]}]}),
     %% Unsubscribe from node "presence"
     #iq{type = result, sub_els = []} =
         send_recv(Config,
