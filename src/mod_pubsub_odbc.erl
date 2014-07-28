@@ -2618,7 +2618,7 @@ get_affiliations(Host, Node, JID, Plugins) when is_list(Plugins) ->
                             if (Node == <<>>) or (Node == NodeId) ->
                                     [#xmlel{name = <<"affiliation">>,
                                             attrs = [{<<"affiliation">>, affiliation_to_string(Affiliation)}
-                                                     | nodeAttr(Node)]}];
+                                                     | nodeAttr(NodeId)]}];
                                 true ->
                                     []
                             end;
