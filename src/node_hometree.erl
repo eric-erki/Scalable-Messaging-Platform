@@ -55,11 +55,12 @@
          get_entity_subscriptions/2, get_node_subscriptions/1,
          get_subscriptions/2, set_subscriptions/4,
          get_pending_nodes/2, get_states/1, get_state/2,
-         set_state/1, get_items/6, get_items/2, get_item/7,
+         set_state/1, get_items/6, get_items/2,
+         get_items/7, get_items/3, get_item/7,
          get_item/2, set_item/1, get_item_name/3, node_to_path/1,
          path_to_node/1]).
 
-init(_Host, _ServerHost, _Opts) ->
+init(Host, ServerHost, _Opts) ->
     pubsub_subscription:init(),
     mnesia:create_table(pubsub_state,
                         [{disc_copies, [node()]}, {index, [nodeidx]},
@@ -71,9 +72,11 @@ init(_Host, _ServerHost, _Opts) ->
     ItemsFields = record_info(fields, pubsub_item),
     case mnesia:table_info(pubsub_item, attributes) of
         ItemsFields -> ok;
-        _ ->
-            mnesia:transform_table(pubsub_item, ignore, ItemsFields)
+        _ -> mnesia:transform_table(pubsub_item, ignore, ItemsFields)
     end,
+    Owner = mod_pubsub:service_jid(Host),
+    mod_pubsub:create_node(Host, ServerHost, <<"/home">>, Owner, <<"hometree">>),
+    mod_pubsub:create_node(Host, ServerHost, <<"/home/", ServerHost/binary>>, Owner, <<"hometree">>),
     ok.
 
 terminate(_Host, _ServerHost) ->
@@ -498,10 +501,7 @@ get_entity_affiliations(Host, Owner) ->
     SubKey = jlib:jid_tolower(Owner),
     GenKey = jlib:jid_remove_resource(SubKey),
     States = mnesia:match_object(#pubsub_state{stateid = {GenKey, '_'}, _ = '_'}),
-    NodeTree = case catch ets:lookup(gen_mod:get_module_proc(Host, config), nodetree) of
-        [{nodetree, N}] -> N;
-        _ -> nodetree_tree
-    end,
+    NodeTree = mod_pubsub:tree(Host),
     Reply = lists:foldl(fun (#pubsub_state{stateid = {_, N}, affiliation = A}, Acc) ->
                     case NodeTree:get_node(N) of
                         #pubsub_node{nodeid = {Host, _}} = Node -> [{Node, A} | Acc];
@@ -549,10 +549,7 @@ get_entity_subscriptions(Host, Owner) ->
             ++
             mnesia:match_object(#pubsub_state{stateid = {SubKey, '_'}, _ = '_'})
     end,
-    NodeTree = case catch ets:lookup(gen_mod:get_module_proc(Host, config), nodetree) of
-        [{nodetree, N}] -> N;
-        _ -> nodetree_tree
-    end,
+    NodeTree = mod_pubsub:tree(Host),
     Reply = lists:foldl(fun (#pubsub_state{stateid = {J, N}, subscriptions = Ss}, Acc) ->
                     case NodeTree:get_node(N) of
                         #pubsub_node{nodeid = {Host, _}} = Node ->
@@ -648,10 +645,7 @@ get_pending_nodes(Host, Owner) ->
                                                affiliation = owner,
                                                _ = '_'}),
     NodeIdxs = [Nidx || #pubsub_state{stateid = {_, Nidx}} <- States],
-    NodeTree = case catch ets:lookup(gen_mod:get_module_proc(Host, config), nodetree) of
-        [{nodetree, N}] -> N;
-        _ -> nodetree_tree
-    end,
+    NodeTree = mod_pubsub:tree(Host),
     Reply = mnesia:foldl(fun (#pubsub_state{stateid = {_, Nidx}} = S, Acc) ->
                     case lists:member(Nidx, NodeIdxs) of
                         true ->
@@ -726,12 +720,15 @@ del_state(Nidx, Key) ->
 %% they can implement this function like this:
 %% ```get_items(Nidx, From) ->
 %%           node_default:get_items(Nidx, From).'''</p>
-get_items(Nidx, _From) ->
+get_items(Nidx, From) ->
+    get_items(Nidx, From, none).
+get_items(Nidx, _From, _RSM) ->
     Items = mnesia:index_read(pubsub_item, Nidx, #pubsub_item.nodeidx),
-    {result, lists:reverse(lists:keysort(#pubsub_item.modification, Items))}.
+    {result, {lists:reverse(lists:keysort(#pubsub_item.modification, Items)), none}}.
 
-
-get_items(Nidx, JID, AccessModel, PresenceSubscription, RosterGroup, _SubId) ->
+get_items(Nidx, JID, AccessModel, PresenceSubscription, RosterGroup, SubId) ->
+    get_items(Nidx, JID, AccessModel, PresenceSubscription, RosterGroup, SubId, none).
+get_items(Nidx, JID, AccessModel, PresenceSubscription, RosterGroup, _SubId, _RSM) ->
     SubKey = jlib:jid_tolower(JID),
     GenKey = jlib:jid_remove_resource(SubKey),
     GenState = get_state(Nidx, GenKey),
@@ -826,7 +823,7 @@ get_item_name(_Host, _Node, Id) ->
 %% @doc <p>Return the name of the node if known: Default is to return
 %% node id.</p>
 node_to_path(Node) ->
-    str:tokens((Node), <<"/">>).
+    str:tokens(Node, <<"/">>).
 
 path_to_node([]) -> <<>>;
 path_to_node(Path) -> iolist_to_binary(str:join([<<"">> | Path], <<"/">>)).

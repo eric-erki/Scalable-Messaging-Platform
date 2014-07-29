@@ -66,9 +66,9 @@ set_node(Record) when is_record(Record, pubsub_node) ->
         [First | _] -> First
     end,
     Type = Record#pubsub_node.type,
-    H = mod_pubsub_odbc:escape(Host),
-    N = mod_pubsub_odbc:escape(Node),
-    P = mod_pubsub_odbc:escape(Parent),
+    H = node_hometree_odbc:encode_host(Host),
+    N = ejabberd_odbc:escape(Node),
+    P = ejabberd_odbc:escape(Parent),
     Nidx = case nodeidx(Host, Node) of
         {result, OldNidx} ->
             catch
@@ -99,7 +99,7 @@ set_node(Record) when is_record(Record, pubsub_node) ->
         _ ->
             lists:foreach(fun ({Key, Value}) ->
                         SKey = iolist_to_binary(atom_to_list(Key)),
-                        SValue = mod_pubsub_odbc:escape(
+                        SValue = ejabberd_odbc:escape(
                                 list_to_binary(
                                     lists:flatten(io_lib:fwrite("~p", [Value])))),
                         catch
@@ -116,8 +116,8 @@ get_node(Host, Node, _From) ->
     get_node(Host, Node).
 
 get_node(Host, Node) ->
-    H = mod_pubsub_odbc:escape(Host),
-    N = mod_pubsub_odbc:escape(Node),
+    H = node_hometree_odbc:encode_host(Host),
+    N = ejabberd_odbc:escape(Node),
     case catch
         ejabberd_odbc:sql_query_t([<<"select node, parent, type, nodeid from "
                                      "pubsub_node where host='">>,
@@ -139,8 +139,7 @@ get_node(Nidx) ->
                                    Nidx, <<"';">>])
     of
         {selected,
-         [<<"host">>, <<"node">>, <<"parent">>, <<"type">>],
-         [[Host, Node, Parent, Type]]} ->
+         [<<"host">>, <<"node">>, <<"parent">>, <<"type">>], [[Host, Node, Parent, Type]]} ->
             raw_to_node(Host, [Node, Parent, Type, Nidx]);
         {'EXIT', _Reason} ->
             {error, ?ERR_INTERNAL_SERVER_ERROR};
@@ -152,14 +151,14 @@ get_nodes(Host, _From) ->
     get_nodes(Host).
 
 get_nodes(Host) ->
-    H = mod_pubsub_odbc:escape(Host),
+    H = node_hometree_odbc:encode_host(Host),
     case catch
         ejabberd_odbc:sql_query_t([<<"select node, parent, type, nodeid from "
                                      "pubsub_node where host='">>, H, <<"';">>])
     of
         {selected,
          [<<"node">>, <<"parent">>, <<"type">>, <<"nodeid">>], RItems} ->
-            lists:map(fun (Item) -> raw_to_node(Host, Item) end, RItems);
+            [raw_to_node(Host, Item) || Item <- RItems];
         _ ->
             []
     end.
@@ -179,8 +178,8 @@ get_subnodes(Host, Node, _From) ->
     get_subnodes(Host, Node).
 
 get_subnodes(Host, Node) ->
-    H = mod_pubsub_odbc:escape(Host),
-    N = mod_pubsub_odbc:escape(Node),
+    H = node_hometree_odbc:encode_host(Host),
+    N = ejabberd_odbc:escape(Node),
     case catch
         ejabberd_odbc:sql_query_t([<<"select node, parent, type, nodeid from "
                                      "pubsub_node where host='">>,
@@ -188,7 +187,7 @@ get_subnodes(Host, Node) ->
     of
         {selected,
          [<<"node">>, <<"parent">>, <<"type">>, <<"nodeid">>], RItems} ->
-            lists:map(fun (Item) -> raw_to_node(Host, Item) end, RItems);
+            [raw_to_node(Host, Item) || Item <- RItems];
         _ ->
             []
     end.
@@ -197,8 +196,8 @@ get_subnodes_tree(Host, Node, _From) ->
     get_subnodes_tree(Host, Node).
 
 get_subnodes_tree(Host, Node) ->
-    H = mod_pubsub_odbc:escape(Host),
-    N = mod_pubsub_odbc:escape(Node),
+    H = node_hometree_odbc:encode_host(Host),
+    N = ejabberd_odbc:escape(Node),
     case catch
         ejabberd_odbc:sql_query_t([<<"select node, parent, type, nodeid from "
                                      "pubsub_node where host='">>,
@@ -229,8 +228,7 @@ create_node(Host, Node, Type, Owner, Options, Parents) ->
                                 {result, PNode} ->
                                     case nodeowners(PNode) of
                                         [{<<>>, Host, <<>>}] -> true;
-                                        Owners ->
-                                            lists:member(BJID, Owners)
+                                        Owners -> lists:member(BJID, Owners)
                                     end;
                                 _ ->
                                     false
@@ -258,12 +256,11 @@ create_node(Host, Node, Type, Owner, Options, Parents) ->
     end.
 
 delete_node(Host, Node) ->
-    H = mod_pubsub_odbc:escape(Host),
-    N = mod_pubsub_odbc:escape(Node),
+    H = node_hometree_odbc:encode_host(Host),
+    N = ejabberd_odbc:escape(Node),
     Removed = get_subnodes_tree(Host, Node),
-    catch
-    ejabberd_odbc:sql_query_t([<<"delete from pubsub_node where host='">>,
-                               H, <<"' and node like '">>, N, <<"%';">>]),
+    catch ejabberd_odbc:sql_query_t([<<"delete from pubsub_node where host='">>,
+                                     H, <<"' and node like '">>, N, <<"%';">>]),
     Removed.
 
 %% helpers
@@ -275,8 +272,7 @@ raw_to_node(Host, [Node, Parent, Type, Nidx]) ->
         {selected, [<<"name">>, <<"val">>], ROptions} ->
             DbOpts = lists:map(fun ([Key, Value]) ->
                             RKey = jlib:binary_to_atom(Key),
-                            Tokens = element(2, erl_scan:string(
-                                        binary_to_list(<<Value/binary, ".">>))),
+                            Tokens = element(2, erl_scan:string(binary_to_list(<<Value/binary, ".">>))),
                             RValue = element(2, erl_parse:parse_term(Tokens)),
                             {RKey, RValue}
                     end,
@@ -299,8 +295,8 @@ raw_to_node(Host, [Node, Parent, Type, Nidx]) ->
                  id = Nidx, type = Type, options = Options}.
 
 nodeidx(Host, Node) ->
-    H = mod_pubsub_odbc:escape(Host),
-    N = mod_pubsub_odbc:escape(Node),
+    H = node_hometree_odbc:encode_host(Host),
+    N = ejabberd_odbc:escape(Node),
     case catch
         ejabberd_odbc:sql_query_t([<<"select nodeid from pubsub_node where "
                                      "host='">>,
@@ -316,8 +312,4 @@ nodeidx(Host, Node) ->
 
 nodeowners(Nidx) ->
     {result, Res} = node_hometree_odbc:get_node_affiliations(Nidx),
-    lists:foldl(fun
-            ({LJID, owner}, Acc) -> [LJID | Acc];
-            (_, Acc) -> Acc
-        end,
-        [], Res).
+    [LJID || {LJID, Aff} <- Res, Aff =:= owner].

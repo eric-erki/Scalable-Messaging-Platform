@@ -32,25 +32,11 @@
 
 -include("jlib.hrl").
 
--type(host() :: mod_pubsub:host()
-              | mod_pubsub_odbc:host()
-).
-
--type(nodeId() :: mod_pubsub:nodeId()
-                | mod_pubsub_odbc:nodeId()
-).
-
--type(nodeIdx() :: mod_pubsub:nodeIdx()
-                 | mod_pubsub_odbc:nodeIdx()
-).
-
--type(pubsubNode() :: mod_pubsub:pubsubNode()
-                    | mod_pubsub_odbc:pubsubNode()
-).
-
--type(nodeOptions() :: mod_pubsub:nodeOptions()
-                     | mod_pubsub_odbc:nodeOptions()
-).
+-type(host() :: mod_pubsub:host()).
+-type(nodeId() :: mod_pubsub:nodeId()).
+-type(nodeIdx() :: mod_pubsub:nodeIdx()).
+-type(pubsubNode() :: mod_pubsub:pubsubNode()).
+-type(nodeOptions() :: mod_pubsub:nodeOptions()).
 
 -callback init(Host :: host(),
                ServerHost :: binary(),
@@ -61,7 +47,7 @@
 -callback options() -> nodeOptions().
 
 -callback set_node(PubsubNode :: pubsubNode()) ->
-    ok | {result, NodeIdx::mod_pubsub_odbc:nodeIdx()} | {error, xmlel()}.
+    ok | {result, NodeIdx::nodeIdx()} | {error, xmlel()}.
 
 -callback get_node(Host   :: host(),
                    NodeId :: nodeId(),

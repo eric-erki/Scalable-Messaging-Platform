@@ -32,61 +32,20 @@
 
 -include("jlib.hrl").
 
--type(host() :: mod_pubsub:host()
-              | mod_pubsub_odbc:host()
-).
-
--type(nodeId() :: mod_pubsub:nodeId()
-                | mod_pubsub_odbc:nodeId()
-).
-
--type(nodeIdx() :: mod_pubsub:nodeIdx()
-                | mod_pubsub_odbc:nodeIdx()
-).
-
--type(itemId() :: mod_pubsub:itemId()
-                | mod_pubsub_odbc:itemId()
-).
-
--type(pubsubNode() :: mod_pubsub:pubsubNode()
-                    | mod_pubsub_odbc:pubsubNode()
-).
-
--type(pubsubState() :: mod_pubsub:pubsubState()
-                     | mod_pubsub_odbc:pubsubState()
-).
-
--type(pubsubItem() :: mod_pubsub:pubsubItem()
-                    | mod_pubsub_odbc:pubsubItem()
-).
-
--type(subOptions() :: mod_pubsub:subOptions()
-                    | mod_pubsub_odbc:subOptions()
-).
-
--type(affiliation() :: mod_pubsub:affiliation()
-                     | mod_pubsub_odbc:affiliation()
-).
-
--type(subscription() :: mod_pubsub:subscription()
-                      | mod_pubsub_odbc:subscription()
-).
-
--type(subId() :: mod_pubsub:subId()
-               | mod_pubsub_odbc:subId()
-).
-
--type(accessModel() :: mod_pubsub:accessModel()
-                     | mod_pubsub_odbc:accessModel()
-).
-
--type(publishModel() :: mod_pubsub:publishModel()
-                     | mod_pubsub_odbc:publishModel()
-).
-
--type(payload() :: mod_pubsub:payload()
-                 | mod_pubsub_odbc:payload()
-).
+-type(host() :: mod_pubsub:host()).
+-type(nodeId() :: mod_pubsub:nodeId()).
+-type(nodeIdx() :: mod_pubsub:nodeIdx()).
+-type(itemId() :: mod_pubsub:itemId()).
+-type(pubsubNode() :: mod_pubsub:pubsubNode()).
+-type(pubsubState() :: mod_pubsub:pubsubState()).
+-type(pubsubItem() :: mod_pubsub:pubsubItem()).
+-type(subOptions() :: mod_pubsub:subOptions()).
+-type(affiliation() :: mod_pubsub:affiliation()).
+-type(subscription() :: mod_pubsub:subscription()).
+-type(subId() :: mod_pubsub:subId()).
+-type(accessModel() :: mod_pubsub:accessModel()).
+-type(publishModel() :: mod_pubsub:publishModel()).
+-type(payload() :: mod_pubsub:payload()).
 
 -callback init(Host :: binary(),
                ServerHost :: binary(),
@@ -224,13 +183,15 @@
                     AccessModel :: accessModel(),
                     Presence_Subscription :: boolean(),
                     RosterGroup :: boolean(),
-                    SubId :: subId()) ->
-    {result, [pubsubItem()]} |
+                    SubId :: subId(),
+                    RSM :: none | rsm_in()) ->
+    {result, {[pubsubItem()], none | rsm_out()}} |
     {error, xmlel()}.
 
 -callback get_items(NodeIdx :: nodeIdx(),
-                    From :: jid()) ->
-    {result, [pubsubItem()]}.
+                    From :: jid(),
+                    RSM :: none | rsm_in()) ->
+    {result, {[pubsubItem()], none | rsm_out()}}.
 
 -callback get_item(NodeIdx :: nodeIdx(),
                    ItemId :: itemId(),

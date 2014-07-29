@@ -135,8 +135,8 @@ update_node_database(Host, ServerHost) ->
 			lists:foreach(fun ({H, N}) when is_binary(N) ->
 				    [Node] = mnesia:read({pubsub_node, {H, N}}),
 				    Type = Node#pubsub_node.type,
-				    BN = element(2, mod_pubsub:node_call(Type, path_to_node, [N])),
-				    BP = case [element(2, mod_pubsub:node_call(Type, path_to_node, [P]))
+				    BN = element(2, mod_pubsub:node_call(H, Type, path_to_node, [N])),
+				    BP = case [element(2, mod_pubsub:node_call(H, Type, path_to_node, [P]))
 						|| P <- Node#pubsub_node.parents] of
 					[<<>>] -> [];
 					Parents -> Parents

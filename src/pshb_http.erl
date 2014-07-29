@@ -54,8 +54,7 @@
 process([Domain | _Rest] = LocalPath,
 	#request{auth = Auth} = Request) ->
     UD = get_auth(Auth),
-    Module = backend(Domain),
-    case catch out(Module, Request, Request#request.method,
+    case catch out(mod_pubsub, Request, Request#request.method,
 		   LocalPath, UD)
 	of
       {'EXIT', Error} ->
@@ -430,13 +429,6 @@ error(Code) -> {Code, [], <<"">>}.
 
 success(200) -> {200, [], <<"">>};
 success(Code) -> {Code, [], <<"">>}.
-
-backend(Domain) ->
-    Modules = gen_mod:loaded_modules(Domain),
-    case lists:member(mod_pubsub_odbc, Modules) of
-      true -> mod_pubsub_odbc;
-      _ -> mod_pubsub
-    end.
 
 uniqid(false) ->
     {T1, T2, T3} = now(),

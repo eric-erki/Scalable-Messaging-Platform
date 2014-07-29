@@ -40,12 +40,25 @@
          get_entity_subscriptions/2, get_node_subscriptions/1,
          get_subscriptions/2, set_subscriptions/4,
          get_pending_nodes/2, get_states/1, get_state/2,
-         set_state/1, get_items/6, get_items/2, get_item/7,
+         set_state/1, get_items/7, get_items/3, get_item/7,
          get_item/2, set_item/1, get_item_name/3, node_to_path/1,
          path_to_node/1]).
 
-init(Host, ServerHost, Opts) ->
-    node_hometree:init(Host, ServerHost, Opts).
+init(_Host, _ServerHost, _Opts) ->
+    pubsub_subscription:init(),
+    mnesia:create_table(pubsub_state,
+                        [{disc_copies, [node()]}, {index, [nodeidx]},
+                         {type, ordered_set},
+                         {attributes, record_info(fields, pubsub_state)}]),
+    mnesia:create_table(pubsub_item,
+                        [{disc_only_copies, [node()]}, {index, [nodeidx]},
+                         {attributes, record_info(fields, pubsub_item)}]),
+    ItemsFields = record_info(fields, pubsub_item),
+    case mnesia:table_info(pubsub_item, attributes) of
+        ItemsFields -> ok;
+        _ -> mnesia:transform_table(pubsub_item, ignore, ItemsFields)
+    end,
+    ok.
 
 terminate(Host, ServerHost) ->
     node_hometree:terminate(Host, ServerHost).
@@ -82,20 +95,16 @@ subscribe_node(Nidx, Sender, Subscriber, AccessModel,
                                  RosterGroup, Options).
 
 unsubscribe_node(Nidx, Sender, Subscriber, SubId) ->
-    node_hometree:unsubscribe_node(Nidx, Sender,
-                                   Subscriber, SubId).
+    node_hometree:unsubscribe_node(Nidx, Sender, Subscriber, SubId).
 
 publish_item(Nidx, Publisher, Model, MaxItems, ItemId, Payload) ->
-    node_hometree:publish_item(Nidx, Publisher, Model,
-                               MaxItems, ItemId, Payload).
+    node_hometree:publish_item(Nidx, Publisher, Model, MaxItems, ItemId, Payload).
 
 remove_extra_items(Nidx, MaxItems, ItemIds) ->
-    node_hometree:remove_extra_items(Nidx, MaxItems,
-                                     ItemIds).
+    node_hometree:remove_extra_items(Nidx, MaxItems, ItemIds).
 
 delete_item(Nidx, Publisher, PublishModel, ItemId) ->
-    node_hometree:delete_item(Nidx, Publisher,
-                              PublishModel, ItemId).
+    node_hometree:delete_item(Nidx, Publisher, PublishModel, ItemId).
 
 purge_node(Nidx, Owner) ->
     node_hometree:purge_node(Nidx, Owner).
@@ -110,8 +119,7 @@ get_affiliation(Nidx, Owner) ->
     node_hometree:get_affiliation(Nidx, Owner).
 
 set_affiliation(Nidx, Owner, Affiliation) ->
-    node_hometree:set_affiliation(Nidx, Owner,
-                                  Affiliation).
+    node_hometree:set_affiliation(Nidx, Owner, Affiliation).
 
 get_entity_subscriptions(Host, Owner) ->
     node_hometree:get_entity_subscriptions(Host, Owner).
@@ -123,8 +131,7 @@ get_subscriptions(Nidx, Owner) ->
     node_hometree:get_subscriptions(Nidx, Owner).
 
 set_subscriptions(Nidx, Owner, Subscription, SubId) ->
-    node_hometree:set_subscriptions(Nidx, Owner,
-                                    Subscription, SubId).
+    node_hometree:set_subscriptions(Nidx, Owner, Subscription, SubId).
 
 get_pending_nodes(Host, Owner) ->
     node_hometree:get_pending_nodes(Host, Owner).
@@ -138,19 +145,17 @@ get_state(Nidx, JID) ->
 set_state(State) ->
     node_hometree:set_state(State).
 
-get_items(Nidx, From) ->
-    node_hometree:get_items(Nidx, From).
+get_items(Nidx, From, RSM) ->
+    node_hometree:get_items(Nidx, From, RSM).
 
-get_items(Nidx, JID, AccessModel,
-          PresenceSubscription, RosterGroup, SubId) ->
+get_items(Nidx, JID, AccessModel, PresenceSubscription, RosterGroup, SubId, RSM) ->
     node_hometree:get_items(Nidx, JID, AccessModel,
-                            PresenceSubscription, RosterGroup, SubId).
+                            PresenceSubscription, RosterGroup, SubId, RSM).
 
 get_item(Nidx, ItemId) ->
     node_hometree:get_item(Nidx, ItemId).
 
-get_item(Nidx, ItemId, JID, AccessModel,
-         PresenceSubscription, RosterGroup, SubId) ->
+get_item(Nidx, ItemId, JID, AccessModel, PresenceSubscription, RosterGroup, SubId) ->
     node_hometree:get_item(Nidx, ItemId, JID, AccessModel,
                            PresenceSubscription, RosterGroup, SubId).
 
