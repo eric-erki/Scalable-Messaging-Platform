@@ -1115,11 +1115,11 @@ start_mass_message(Host, File, Rate) ->
 			    children = [#xmlel{name = <<"body">>, attrs = [],
 					    children = [{xmlcdata, Body}]}]},
 		    Pid = spawn(?MODULE, mass_message, [Host, Delay, Stanza, From, Tos]),
-		    register(Proc, Pid),
+		    global:register_name(Proc, Pid),
 		    0;
 		{ok, Stanza, Tos} ->
 		    Pid = spawn(?MODULE, mass_message, [Host, Delay, Stanza, From, Tos]),
-		    register(Proc, Pid),
+		    global:register_name(Proc, Pid),
 		    0
 	    end;
 	_ ->
@@ -1129,7 +1129,7 @@ start_mass_message(Host, File, Rate) ->
 
 stop_mass_message(Host) ->
     Proc = gen_mod:get_module_proc(Host, ?MASSLOOP),
-    case whereis(Proc) of
+    case global:whereis_name(Proc) of
 	undefined -> 1;
 	Pid -> Pid ! stop, 0
     end.
