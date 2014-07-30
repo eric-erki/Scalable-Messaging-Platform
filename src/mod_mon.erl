@@ -1204,7 +1204,8 @@ get_active_log(Host) when is_binary(Host) ->
     end.
 get_active_cluster_log(Host, Nodes) when is_binary(Host) ->
     case rpc:multicall(Nodes, ?MODULE, get_active_log, [Host], 8000) of
-        {[Log|Logs], _} ->
+        {Success, _Fail} ->
+            [Log|Logs] = [L || L <- Success, L =/= error],
             lists:foldl(fun(Remote, Acc) when is_atom(Remote) -> Acc;
                            (Remote, Acc) -> ehyperloglog:merge(Acc, Remote)
                         end, Log, Logs);
