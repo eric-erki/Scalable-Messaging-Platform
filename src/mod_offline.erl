@@ -27,18 +27,26 @@
 -module(mod_offline).
 
 -author('alexey@process-one.net').
+-define(GEN_SERVER, p1_server).
+-behaviour(?GEN_SERVER).
 
 -behaviour(gen_mod).
 
 -export([count_offline_messages/2]).
 
--export([start/2, loop/2, stop/1, store_packet/3, get_offline_els/2,
+-export([start/2,
+         start_link/2,
+         stop/1, store_packet/3, get_offline_els/2,
 	 resend_offline_messages/2, pop_offline_messages/3,
 	 remove_expired_messages/1, remove_old_messages/2,
 	 remove_user/2, get_queue_length/2, webadmin_page/3, webadmin_user/4,
 	 webadmin_user_parse_query/5, count_offline_messages/3,
 	 enc_key/1, dec_key/1, enc_val/2, dec_val/2,
          export/1, import_info/0, import/5, import_start/2]).
+
+%% gen_server callbacks
+-export([init/1, handle_call/3, handle_cast/2,
+	 handle_info/2, terminate/2, code_change/3]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -57,13 +65,39 @@
          to = #jid{}           :: jid() | '_',
          packet = #xmlel{}     :: xmlel() | '_'}).
 
+-record(state,
+	{host = <<"">> :: binary(),
+         access_max_offline_messages}).
+
 -define(PROCNAME, ejabberd_offline).
 
 -define(OFFLINE_TABLE_LOCK_THRESHOLD, 1000).
 
 -define(MAX_USER_MESSAGES, infinity).
 
+start_link(Host, Opts) ->
+    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
+    ?GEN_SERVER:start_link({local, Proc}, ?MODULE,
+                           [Host, Opts], []).
+
 start(Host, Opts) ->
+    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
+    ChildSpec = {Proc, {?MODULE, start_link, [Host, Opts]},
+		 temporary, 1000, worker, [?MODULE]},
+    supervisor:start_child(ejabberd_sup, ChildSpec).
+
+stop(Host) ->
+    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
+    ?GEN_SERVER:call(Proc, stop),
+    supervisor:delete_child(ejabberd_sup, Proc),
+    ok.
+
+
+%%====================================================================
+%% gen_server callbacks
+%%====================================================================
+
+init([Host, Opts]) ->
     init_db(gen_mod:db_type(Opts), Host),
     ejabberd_hooks:add(offline_message_hook, Host, ?MODULE,
 		       store_packet, 50),
@@ -85,8 +119,55 @@ start(Host, Opts) ->
 	gen_mod:get_opt(access_max_user_messages, Opts,
                         fun(A) when is_atom(A) -> A end,
 			max_user_offline_messages),
-    register(gen_mod:get_module_proc(Host, ?PROCNAME),
-	     spawn(?MODULE, loop, [Host, AccessMaxOfflineMsgs])).
+    {ok,
+     #state{host = Host,
+            access_max_offline_messages = AccessMaxOfflineMsgs}}.
+
+
+handle_call(stop, _From, State) ->
+    {stop, normal, ok, State}.
+
+
+handle_cast(_Msg, State) -> {noreply, State}.
+
+
+handle_info(#offline_msg{us = UserServer} = Msg, State) ->
+    #state{host = Host,
+           access_max_offline_messages = AccessMaxOfflineMsgs} = State,
+    DBType = gen_mod:db_type(Host, ?MODULE),
+    Msgs = receive_all(UserServer, [Msg], DBType),
+    Len = length(Msgs),
+    MaxOfflineMsgs = get_max_user_messages(AccessMaxOfflineMsgs,
+                                           UserServer, Host),
+    store_offline_msg(Host, UserServer, Msgs, Len, MaxOfflineMsgs, DBType),
+    {noreply, State};
+
+handle_info(_Info, State) ->
+    ?ERROR_MSG("got unexpected info: ~p", [_Info]),
+    {noreply, State}.
+
+
+terminate(_Reason, State) ->
+    Host = State#state.host,
+    ejabberd_hooks:delete(offline_message_hook, Host,
+			  ?MODULE, store_packet, 50),
+    ejabberd_hooks:delete(resend_offline_messages_hook,
+			  Host, ?MODULE, pop_offline_messages, 50),
+    ejabberd_hooks:delete(remove_user, Host, ?MODULE,
+			  remove_user, 50),
+    ejabberd_hooks:delete(anonymous_purge_hook, Host,
+			  ?MODULE, remove_user, 50),
+    ejabberd_hooks:delete(webadmin_page_host, Host,
+			  ?MODULE, webadmin_page, 50),
+    ejabberd_hooks:delete(webadmin_user, Host,
+			  ?MODULE, webadmin_user, 50),
+    ejabberd_hooks:delete(webadmin_user_parse_query, Host,
+			  ?MODULE, webadmin_user_parse_query, 50),
+    ok.
+
+
+code_change(_OldVsn, State, _Extra) -> {ok, State}.
+
 
 init_db(mnesia, _Host) ->
     mnesia:create_table(offline_msg,
@@ -109,19 +190,6 @@ init_db(p1db, Host) ->
 init_db(_, _) ->
     ok.
 
-loop(Host, AccessMaxOfflineMsgs) ->
-    receive
-      #offline_msg{us = UserServer} = Msg ->
-	  DBType = gen_mod:db_type(Host, ?MODULE),
-	  Msgs = receive_all(UserServer, [Msg], DBType),
-	  Len = length(Msgs),
-	  MaxOfflineMsgs =
-	      get_max_user_messages(AccessMaxOfflineMsgs, UserServer, Host),
-	  store_offline_msg(Host, UserServer, Msgs, Len, MaxOfflineMsgs,
-			    DBType),
-	  loop(Host, AccessMaxOfflineMsgs);
-      _ -> loop(Host, AccessMaxOfflineMsgs)
-    end.
 
 store_offline_msg(_Host, US, Msgs, Len, MaxOfflineMsgs,
 		  mnesia) ->
@@ -240,24 +308,6 @@ receive_all(US, Msgs, DBType) ->
 		end
     end.
 
-stop(Host) ->
-    ejabberd_hooks:delete(offline_message_hook, Host,
-			  ?MODULE, store_packet, 50),
-    ejabberd_hooks:delete(resend_offline_messages_hook,
-			  Host, ?MODULE, pop_offline_messages, 50),
-    ejabberd_hooks:delete(remove_user, Host, ?MODULE,
-			  remove_user, 50),
-    ejabberd_hooks:delete(anonymous_purge_hook, Host,
-			  ?MODULE, remove_user, 50),
-    ejabberd_hooks:delete(webadmin_page_host, Host, ?MODULE,
-			  webadmin_page, 50),
-    ejabberd_hooks:delete(webadmin_user, Host, ?MODULE,
-			  webadmin_user, 50),
-    ejabberd_hooks:delete(webadmin_user_parse_query, Host,
-			  ?MODULE, webadmin_user_parse_query, 50),
-    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    exit(whereis(Proc), stop),
-    {wait, Proc}.
 
 store_packet(From, To, Packet) ->
     Type = xml:get_tag_attr_s(<<"type">>, Packet),
