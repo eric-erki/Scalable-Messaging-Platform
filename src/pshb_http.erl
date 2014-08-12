@@ -51,7 +51,7 @@
 
 -export([process/2]).
 
-process([Domain | _Rest] = LocalPath,
+process([_Domain | _Rest] = LocalPath,
 	#request{auth = Auth} = Request) ->
     UD = get_auth(Auth),
     case catch out(mod_pubsub, Request, Request#request.method,
