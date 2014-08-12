@@ -848,7 +848,7 @@ get_items(Nidx, _From,
                                       first = <<"modification@", F/binary>>,
                                       last = <<"modification@", (jlib:i2l(L))/binary>>},
                     {result, {[raw_to_item(Nidx, RItem) || RItem <- RItems], RsmOut}};
-                0 ->
+                [] ->
                     {result, {[], #rsm_out{count = Count}}}
             end;
         _ ->
