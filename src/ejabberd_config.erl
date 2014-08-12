@@ -688,6 +688,7 @@ replace_module(mod_roster_odbc) -> {mod_roster, odbc};
 replace_module(mod_shared_roster_odbc) -> {mod_shared_roster, odbc};
 replace_module(mod_vcard_odbc) -> {mod_vcard, odbc};
 replace_module(mod_vcard_xupdate_odbc) -> {mod_vcard_xupdate, odbc};
+replace_module(mod_pubsub_odbc) -> {mod_pubsub, odbc};
 replace_module(Module) -> Module.
 
 replace_modules(Modules) ->
