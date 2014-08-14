@@ -173,12 +173,14 @@ init([Host, ServerHost, Access, Room, HistorySize,
 			    jid = jlib:make_jid(Room, Host, <<"">>),
 			    room_shaper = Shaper}),
     add_to_log(room_existence, started, State),
-    {ok, normal_state, State};
+    State1 = set_hibernate_timer_if_empty(State),
+    {ok, normal_state, State1};
 init([StateName,
       #state{room = Room, host = Host, server_host = ServerHost} = StateData]) ->
     process_flag(trap_exit, true),
     mod_muc:register_room(ServerHost, Host, Room, self()),
-    {ok, StateName, StateData}.
+    StateData1 = set_hibernate_timer_if_empty(StateData),
+    {ok, StateName, StateData1}.
 
 normal_state({route, From, <<"">>,
 	      #xmlel{name = <<"message">>, attrs = Attrs,
@@ -692,6 +694,26 @@ normal_state({route, From, ToNick,
 	  end
     end,
     {next_state, normal_state, StateData};
+normal_state(hibernate, #state{config = Config} = StateData) ->
+    case ?DICT:size(StateData#state.users) of
+	0 ->
+	    StateData1 = StateData#state{shutdown_reason = hibernated},
+	    if Config#config.persistent ->
+		    TS = now_to_usec(now()),
+		    Config1 = Config#config{hibernate_time = TS},
+		    StateData2 = StateData1#state{config = Config1},
+		    mod_muc:store_room(StateData2#state.server_host,
+				       StateData2#state.host,
+				       StateData2#state.room,
+				       make_opts(StateData2),
+				       make_affiliations(StateData2)),
+		    {stop, normal, StateData2};
+	       true ->
+		    {stop, normal, StateData1}
+	    end;
+	_ ->
+	    {next_state, normal_state, StateData}
+    end;
 normal_state(_Event, StateData) ->
     {next_state, normal_state, StateData}.
 
@@ -899,6 +921,8 @@ terminate(_Reason, _StateName, StateData) ->
                     <<"The room has been destroyed">>;
                 replaced ->
                     <<"The room has been moved">>;
+		hibernated ->
+		    <<"The room has been hibernated">>;
 		_ -> <<"Room terminates">>
 	      end,
     ItemAttrs = [{<<"affiliation">>, <<"none">>},
@@ -921,6 +945,7 @@ terminate(_Reason, _StateName, StateData) ->
 			 Nick = Info#user.nick,
 			 if Reason == system_shutdown;
                             Reason == destroyed;
+			    Reason == hibernated;
                             Reason == replaced ->
 			       route_stanza(jlib:jid_replace_resource(StateData#state.jid,
 								      Nick),
@@ -931,7 +956,8 @@ terminate(_Reason, _StateName, StateData) ->
 		 end,
 		 [], StateData#state.users),
     add_to_log(room_existence, stopped, StateData),
-    if Reason == system_shutdown -> persist_muc_history(StateData);
+    if Reason == system_shutdown; Reason == hibernated ->
+	    persist_muc_history(StateData);
        true -> ok
     end,
     mod_muc:unregister_room(StateData#state.server_host,
@@ -1633,7 +1659,8 @@ set_role(JID, Role, StateData) ->
 					StateData#state.users, LJIDs),
 			    StateData#state.nicks}
 		     end,
-    StateData#state{users = Users, nicks = Nicks}.
+    set_hibernate_timer_if_empty(
+      StateData#state{users = Users, nicks = Nicks}).
 
 get_role(JID, StateData) ->
     LJID = jlib:jid_tolower(JID),
@@ -1813,6 +1840,7 @@ add_online_user(JID, Nick, Role, StateData) ->
 			   end,
 			   [LJID], StateData#state.nicks),
     tab_add_online_user(JID, StateData),
+    ?GEN_FSM:cancel_timer(StateData#state.hibernate_timer),
     StateData#state{users = Users, nicks = Nicks}.
 
 remove_online_user(JID, StateData) ->
@@ -1833,7 +1861,8 @@ remove_online_user(JID, StateData, Reason) ->
 		  (?DICT):store(Nick, U -- [LJID], StateData#state.nicks);
 	      error -> StateData#state.nicks
 	    end,
-    StateData#state{users = Users, nicks = Nicks}.
+    set_hibernate_timer_if_empty(
+      StateData#state{users = Users, nicks = Nicks}).
 
 filter_presence(#xmlel{name = <<"presence">>,
 		       attrs = Attrs, children = Els}) ->
@@ -4255,6 +4284,8 @@ encode_opts(_, Vals) ->
                                    BinVal;
 			       vcard ->
 				   BinVal;
+			       hibernate_time ->
+				   BinVal;
                                captcha_whitelist ->
                                    jlib:expr_to_term(BinVal);
                                _ ->
@@ -4829,6 +4860,26 @@ fsm_limit_opts() ->
 
 route_stanza(From, To, El) ->
     ejabberd_router:route(From, To, El).
+
+set_hibernate_timer_if_empty(StateData) ->
+    case ?DICT:size(StateData#state.users) of
+	0 ->
+	    ?GEN_FSM:cancel_timer(StateData#state.hibernate_timer),
+	    Timeout = gen_mod:get_module_opt(StateData#state.server_host,
+					     mod_muc, hibernate_timeout,
+					     fun(I) when is_integer(I), I>0 ->
+						     I
+					     end),
+	    if Timeout /= undefined ->
+		    TRef = ?GEN_FSM:send_event_after(
+			      timer:seconds(Timeout), hibernate),
+		    StateData#state{hibernate_timer = TRef};
+	       true ->
+		    StateData
+	    end;
+	_ ->
+	    StateData
+    end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Multicast

@@ -60,6 +60,7 @@
     max_users                            = ?MAX_USERS_DEFAULT :: non_neg_integer() | none,
     logging                              = false :: boolean(),
     vcard                                = <<"">> :: binary(),
+    hibernate_time                       = 0 :: non_neg_integer(),
     captcha_whitelist                    = (?SETS):empty() :: gb_set()
 }).
 
@@ -104,6 +105,7 @@
     subject_author          = <<"">> :: binary(),
     just_created            = false :: boolean(),
     activity                = treap:empty() :: treap:treap(),
+    hibernate_timer         = make_ref() :: reference(),
     room_shaper             = none :: shaper:shaper(),
     shutdown_reason         :: atom(),
     room_queue              = queue:new() :: queue()
