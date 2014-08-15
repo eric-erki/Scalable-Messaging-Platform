@@ -4006,7 +4006,7 @@ is_encapsulated_forward(_El) ->
 
 inherit_session_state(#state{user = U, server = S} = StateData, ResumeID) ->
     case jlib:base64_to_term(ResumeID) of
-      {term, {U, S, R, Time}} ->
+      {term, {R, Time}} ->
 	  case ejabberd_sm:get_session_pid(U, S, R) of
 	    none ->
 		{error, <<"Previous session PID not found">>};
@@ -4046,8 +4046,6 @@ inherit_session_state(#state{user = U, server = S} = StateData, ResumeID) ->
 		      {error, <<"Cannot grab session state">>}
 		end
 	  end;
-      {term, {_WrongU, _WrongS, _R, _Time}} ->
-	  {error, <<"Previous JID doesn't match authenticated JID">>};
       _ ->
 	  {error, <<"Invalid 'previd' value">>}
     end.
@@ -4057,11 +4055,7 @@ resume_session(FsmRef) ->
 
 make_resume_id(StateData) ->
     {Time, _} = StateData#state.sid,
-    ID = {StateData#state.user,
-	  StateData#state.server,
-	  StateData#state.resource,
-	  Time},
-    jlib:term_to_base64(ID).
+    jlib:term_to_base64({StateData#state.resource, Time}).
 
 fix_packet(StateData, FromJID, ToJID, El) ->
     ejabberd_hooks:run_fold(
