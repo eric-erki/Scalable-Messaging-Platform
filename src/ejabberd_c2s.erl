@@ -788,10 +788,13 @@ wait_for_auth({xmlstreamelement, El}, StateData) ->
 								  P, D, DGen)
 		    of
 		  {true, AuthModule} ->
-		      ?INFO_MSG("(~w) Accepted legacy authentication "
-				"for ~s by ~p",
-				[StateData#state.socket,
-				 jlib:jid_to_string(JID), AuthModule]),
+                      ?INFO_MSG("(~w) Accepted legacy authentication for ~s by ~p from ~s",
+                                [StateData#state.socket,
+                                 jlib:jid_to_string(JID), AuthModule,
+                                 jlib:ip_to_list(StateData#state.ip)]),
+		      ejabberd_hooks:run(c2s_auth_result, StateData#state.server,
+					 [true, U, StateData#state.server,
+					  StateData#state.ip]),
 		      case need_redirect(StateData#state{user = U}) of
 			{true, Host} ->
 			    ?INFO_MSG("(~w) Redirecting ~s to ~s",
@@ -843,9 +846,13 @@ wait_for_auth({xmlstreamelement, El}, StateData) ->
 					  NewStateData#state{debug = DebugFlag})
 		      end;
 		  _ ->
-		      ?INFO_MSG("(~w) Failed legacy authentication for ~s",
-				[StateData#state.socket,
-				 jlib:jid_to_string(JID)]),
+                      ?INFO_MSG("(~w) Failed legacy authentication for ~s from ~s",
+                                [StateData#state.socket,
+                                 jlib:jid_to_string(JID),
+                                 jlib:ip_to_list(StateData#state.ip)]),
+		      ejabberd_hooks:run(c2s_auth_result, StateData#state.server,
+					 [false, U, StateData#state.server,
+					  StateData#state.ip]),
 		      Err = jlib:make_error_reply(El, ?ERR_NOT_AUTHORIZED),
 		      send_element(StateData, Err),
 		      fsm_next_state(wait_for_auth, StateData)
@@ -860,9 +867,13 @@ wait_for_auth({xmlstreamelement, El}, StateData) ->
 		       fsm_next_state(wait_for_auth, StateData);
 		   true ->
 		       ?INFO_MSG("(~w) Forbidden legacy authentication "
-				 "for ~s",
+				 "for ~s from ~s",
 				 [StateData#state.socket,
-				  jlib:jid_to_string(JID)]),
+				  jlib:jid_to_string(JID),
+				  jlib:ip_to_list(StateData#state.ip)]),
+		       ejabberd_hooks:run(c2s_auth_result, StateData#state.server,
+					  [false, U, StateData#state.server,
+					   StateData#state.ip]),
 		       Err = jlib:make_error_reply(El, ?ERR_NOT_ALLOWED),
 		       send_element(StateData, Err),
 		       fsm_next_state(wait_for_auth, StateData)
@@ -939,8 +950,12 @@ wait_for_feature_request({xmlstreamelement, El},
 		%AuthModule = xml:get_attr_s(auth_module, Props),
 		AuthModule = proplists:get_value(auth_module, Props, undefined),
 		?INFO_MSG("(~w) Accepted authentication for ~s "
-			  "by ~p",
-			  [StateData#state.socket, U, AuthModule]),
+			  "by ~p from ~s",
+			  [StateData#state.socket, U, AuthModule,
+			   jlib:ip_to_list(StateData#state.ip)]),
+		ejabberd_hooks:run(c2s_auth_result, StateData#state.server,
+				   [true, U, StateData#state.server,
+				    StateData#state.ip]),
 		case need_redirect(StateData#state{user = U}) of
 		  {true, Host} ->
 		      ?INFO_MSG("(~w) Redirecting ~s to ~s",
@@ -970,9 +985,13 @@ wait_for_feature_request({xmlstreamelement, El},
 		fsm_next_state(wait_for_sasl_response,
 			       StateData#state{sasl_state = NewSASLState});
 	    {error, Error, Username} ->
-		?INFO_MSG("(~w) Failed authentication for ~s@~s",
-			  [StateData#state.socket, Username,
-			   StateData#state.server]),
+                ?INFO_MSG("(~w) Failed authentication for ~s@~s from ~s",
+                          [StateData#state.socket,
+                           Username, StateData#state.server,
+                           jlib:ip_to_list(StateData#state.ip)]),
+		ejabberd_hooks:run(c2s_auth_result, StateData#state.server,
+				   [false, Username, StateData#state.server,
+				    StateData#state.ip]),
 		send_element(StateData,
 			     #xmlel{name = <<"failure">>,
 				    attrs = [{<<"xmlns">>, ?NS_SASL}],
@@ -1126,8 +1145,12 @@ wait_for_sasl_response({xmlstreamelement, El},
 %		AuthModule = xml:get_attr_s(auth_module, Props),
 		AuthModule = proplists:get_value(auth_module, Props, <<>>),
 		?INFO_MSG("(~w) Accepted authentication for ~s "
-			  "by ~p",
-			  [StateData#state.socket, U, AuthModule]),
+			  "by ~p from ~s",
+			  [StateData#state.socket, U, AuthModule,
+			   jlib:ip_to_list(StateData#state.ip)]),
+		ejabberd_hooks:run(c2s_auth_result, StateData#state.server,
+				   [true, U, StateData#state.server,
+				    StateData#state.ip]),
 		case need_redirect(StateData#state{user = U}) of
 		  {true, Host} ->
 		      ?INFO_MSG("(~w) Redirecting ~s to ~s",
@@ -1154,8 +1177,12 @@ wait_for_sasl_response({xmlstreamelement, El},
 %		AuthModule = xml:get_attr_s(auth_module, Props),
 		AuthModule = proplists:get_value(auth_module, Props, undefined),
 		?INFO_MSG("(~w) Accepted authentication for ~s "
-			  "by ~p",
-			  [StateData#state.socket, U, AuthModule]),
+			  "by ~p from ~s",
+			  [StateData#state.socket, U, AuthModule,
+			   jlib:ip_to_list(StateData#state.ip)]),
+		ejabberd_hooks:run(c2s_auth_result, StateData#state.server,
+				   [true, U, StateData#state.server,
+				    StateData#state.ip]),
 		case need_redirect(StateData#state{user = U}) of
 		  {true, Host} ->
 		      ?INFO_MSG("(~w) Redirecting ~s to ~s",
@@ -1187,9 +1214,13 @@ wait_for_sasl_response({xmlstreamelement, El},
 		fsm_next_state(wait_for_sasl_response,
 			       StateData#state{sasl_state = NewSASLState});
 	    {error, Error, Username} ->
-		?INFO_MSG("(~w) Failed authentication for ~s@~s",
-			  [StateData#state.socket, Username,
-			   StateData#state.server]),
+		?INFO_MSG("(~w) Failed authentication for ~s@~s from ~s",
+                          [StateData#state.socket,
+                           Username, StateData#state.server,
+                           jlib:ip_to_list(StateData#state.ip)]),
+		ejabberd_hooks:run(c2s_auth_result, StateData#state.server,
+				   [false, Username, StateData#state.server,
+				    StateData#state.ip]),
 		send_element(StateData,
 			     #xmlel{name = <<"failure">>,
 				    attrs = [{<<"xmlns">>, ?NS_SASL}],
