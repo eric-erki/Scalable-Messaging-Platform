@@ -344,56 +344,47 @@ init([{SockMod, Socket}, Opts, FSMLimitOpts]) ->
 	 end,
     FlashHack = ejabberd_config:get_option(
                   flash_hack, fun(B) when is_boolean(B) -> B end, false),
-    %% Check if IP is blacklisted:
-    case is_ip_blacklisted(IP) of
-      true ->
-	  ?INFO_MSG("Connection attempt from blacklisted "
-		    "IP: ~s (~w)",
-		    [jlib:ip_to_list(IP), IP]),
-	  {stop, normal};
-      false ->
-	  StartTLSRes = if TLSEnabled andalso
-                           SockMod /= ejabberd_frontend_socket ->
-                                SockMod:starttls(Socket, TLSOpts);
-                           true ->
-                                {ok, Socket}
-                        end,
-          case StartTLSRes of
-              {ok, Socket1} ->
-                  SocketMonitor = SockMod:monitor(Socket1),
-                  StateData = #state{socket = Socket1, sockmod = SockMod,
-                                     socket_monitor = SocketMonitor,
-                                     xml_socket = XMLSocket, zlib = Zlib,
-                                     tls = TLS,
-                                     tls_required = StartTLSRequired,
-                                     tls_enabled = TLSEnabled,
-                                     tls_options = TLSOpts,
-                                     sid = {now(), self()},
-                                     streamid = new_id(), access = Access,
-                                     shaper = Shaper, ip = IP,
-                                     mgmt_state = StreamMgmtState,
-                                     mgmt_max_queue = MaxAckQueue,
-                                     mgmt_timeout = ResumeTimeout,
-                                     mgmt_resend = ResendOnTimeout,
-                                     redirect = Redirect,
-                                     flash_hack = FlashHack,
-                                     fsm_limit_opts = FSMLimitOpts},
-                  erlang:send_after(?C2S_OPEN_TIMEOUT, self(),
-                                    open_timeout),
-                  update_internal_dict(StateData),
-                  case get_jid_from_opts(Opts) of
-                      {ok,
-                       #jid{user = U, server = Server, resource = R} = JID} ->
-                          (?GEN_FSM):send_event(self(), open_session),
-                          {ok, wait_for_session,
-                           StateData#state{user = U, server = Server,
-                                           resource = R,
-                                           jid = JID, lang = <<"">>}};
-                      _ -> {ok, wait_for_stream, StateData, ?C2S_OPEN_TIMEOUT}
-                  end;
-              {error, _Reason} ->
-                  {stop, normal}
-          end
+    StartTLSRes = if TLSEnabled andalso
+		     SockMod /= ejabberd_frontend_socket ->
+			  SockMod:starttls(Socket, TLSOpts);
+		     true ->
+			  {ok, Socket}
+		  end,
+    case StartTLSRes of
+	{ok, Socket1} ->
+	    SocketMonitor = SockMod:monitor(Socket1),
+	    StateData = #state{socket = Socket1, sockmod = SockMod,
+			       socket_monitor = SocketMonitor,
+			       xml_socket = XMLSocket, zlib = Zlib,
+			       tls = TLS,
+			       tls_required = StartTLSRequired,
+			       tls_enabled = TLSEnabled,
+			       tls_options = TLSOpts,
+			       sid = {now(), self()},
+			       streamid = new_id(), access = Access,
+			       shaper = Shaper, ip = IP,
+			       mgmt_state = StreamMgmtState,
+			       mgmt_max_queue = MaxAckQueue,
+			       mgmt_timeout = ResumeTimeout,
+			       mgmt_resend = ResendOnTimeout,
+			       redirect = Redirect,
+			       flash_hack = FlashHack,
+			       fsm_limit_opts = FSMLimitOpts},
+	    erlang:send_after(?C2S_OPEN_TIMEOUT, self(),
+			      open_timeout),
+	    update_internal_dict(StateData),
+	    case get_jid_from_opts(Opts) of
+		{ok,
+		 #jid{user = U, server = Server, resource = R} = JID} ->
+		    (?GEN_FSM):send_event(self(), open_session),
+		    {ok, wait_for_session,
+		     StateData#state{user = U, server = Server,
+				     resource = R,
+				     jid = JID, lang = <<"">>}};
+		_ -> {ok, wait_for_stream, StateData, ?C2S_OPEN_TIMEOUT}
+	    end;
+	{error, _Reason} ->
+	    {stop, normal}
     end;
 init([StateName, StateData, _FSMLimitOpts]) ->
     MRef =
@@ -456,21 +447,22 @@ wait_for_stream({xmlstreamstart, Name, Attrs},
                         jlib:nameprep(xml:get_attr_s(<<"to">>, Attrs));
                     S -> S
                 end,
+	  Lang = case xml:get_attr_s(<<"xml:lang">>, Attrs) of
+		     Lang1 when byte_size(Lang1) =< 35 ->
+			 %% As stated in BCP47, 4.4.1:
+			 %% Protocols or specifications that
+			 %% specify limited buffer sizes for
+			 %% language tags MUST allow for
+			 %% language tags of at least 35 characters.
+			 Lang1;
+		     _ ->
+			 %% Do not store long language tag to
+			 %% avoid possible DoS/flood attacks
+			 <<"">>
+		 end,
+	  IsBlacklistedIP = is_ip_blacklisted(StateData#state.ip, Lang),
 	  case lists:member(Server, ?MYHOSTS) of
-	    true ->
-		Lang = case xml:get_attr_s(<<"xml:lang">>, Attrs) of
-			 Lang1 when byte_size(Lang1) =< 35 ->
-			     %% As stated in BCP47, 4.4.1:
-			     %% Protocols or specifications that
-			     %% specify limited buffer sizes for
-			     %% language tags MUST allow for
-			     %% language tags of at least 35 characters.
-			     Lang1;
-			 _ ->
-			     %% Do not store long language tag to
-			     %% avoid possible DoS/flood attacks
-			     <<"">>
-		       end,
+	    true when IsBlacklistedIP == false ->
 		change_shaper(StateData,
 			      jlib:make_jid(<<"">>, Server, <<"">>)),
 		case xml:get_attr_s(<<"version">>, Attrs) of
@@ -681,6 +673,15 @@ wait_for_stream({xmlstreamstart, Name, Attrs},
 							    lang = Lang})
 		      end
 		end;
+	    true ->
+		IP = StateData#state.ip,
+		{true, LogReason, ReasonT} = IsBlacklistedIP,
+		?INFO_MSG("Connection attempt from blacklisted IP ~s: ~s",
+			  [jlib:ip_to_list(IP), LogReason]),
+		send_header(StateData, Server, <<"">>, DefaultLang),
+		send_element(StateData, ?POLICY_VIOLATION_ERR(Lang, ReasonT)),
+		send_trailer(StateData),
+		{stop, normal, StateData};
 	    _ ->
 		send_header(StateData, ?MYNAME, <<"">>, DefaultLang),
 		send_element(StateData, ?HOST_UNKNOWN_ERR),
@@ -2903,9 +2904,9 @@ fsm_reply(Reply, wait_for_resume, StateData) ->
 fsm_reply(Reply, StateName, StateData) ->
     {reply, Reply, StateName, StateData, ?C2S_OPEN_TIMEOUT}.
 
-is_ip_blacklisted(undefined) -> false;
-is_ip_blacklisted({IP, _Port}) ->
-    ejabberd_hooks:run_fold(check_bl_c2s, false, [IP]).
+is_ip_blacklisted(undefined, _Lang) -> false;
+is_ip_blacklisted({IP, _Port}, Lang) ->
+    ejabberd_hooks:run_fold(check_bl_c2s, false, [IP, Lang]).
 
 check_from(El, FromJID) ->
     case xml:get_tag_attr(<<"from">>, El) of
