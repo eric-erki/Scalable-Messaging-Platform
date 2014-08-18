@@ -4869,7 +4869,7 @@ set_hibernate_timer_if_empty(StateData) ->
 					     mod_muc, hibernate_timeout,
 					     fun(I) when is_integer(I), I>0 ->
 						     I
-					     end),
+					     end, undefined),
 	    if Timeout /= undefined ->
 		    TRef = ?GEN_FSM:send_event_after(
 			      timer:seconds(Timeout), hibernate),
