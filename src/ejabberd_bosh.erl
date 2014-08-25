@@ -526,11 +526,12 @@ active1(#body{attrs = Attrs} = Req, From, State) ->
 		   State7#state{prev_rid = RID, el_ibuf = InBuf}};
 	      RespEls == [] ->
 		  State6 = drop_holding_receiver(State5),
-		  State7 = restart_wait_timer(State6),
+		  State7 = stop_inactivity_timer(State6),
+		  State8 = restart_wait_timer(State7),
 		  Receivers = gb_trees:insert(RID, {From, #body{}},
-					      State7#state.receivers),
+					      State8#state.receivers),
 		  {next_state, active,
-		   State7#state{prev_rid = RID, receivers = Receivers}};
+		   State8#state{prev_rid = RID, receivers = Receivers}};
 	      true ->
 		  State6 = drop_holding_receiver(State5),
 		  reply_next_state(State6#state{prev_rid = RID},
