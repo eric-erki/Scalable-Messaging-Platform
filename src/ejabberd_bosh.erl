@@ -470,10 +470,11 @@ active1(#body{attrs = Attrs} = Req, From, State) ->
                      do_reply(State, From, PrevBody, RID)};
                 none ->
                     State1 = drop_holding_receiver(State),
-                    State2 = restart_inactivity_timer(State1),
+                    State2 = stop_inactivity_timer(State1),
+                    State3 = restart_wait_timer(State2),
                     Receivers = gb_trees:insert(RID, {From, Req},
-                                                State2#state.receivers),
-                    {next_state, active, State2#state{receivers = Receivers}}
+                                                State3#state.receivers),
+                    {next_state, active, State3#state{receivers = Receivers}}
             end;
        not IsValidKey ->
 	   reply_stop(State,
