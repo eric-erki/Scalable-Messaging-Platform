@@ -232,36 +232,36 @@ process_request(Data, IP, Type) ->
 		 SID = get_attr(sid, Attrs),
 		 To = get_attr(to, Attrs),
 		 if SID == <<"">>, To == <<"">> ->
-			bosh_response(#body{http_reason =
+			bosh_response_with_msg(#body{http_reason =
 						<<"Missing 'to' attribute">>,
 					    attrs =
 						[{type, <<"terminate">>},
 						 {condition,
 						  <<"improper-addressing">>}]},
-                                      Type);
+                                      Type, Body);
 		    SID == <<"">> ->
 			case start(Body, IP, make_sid()) of
 			  {ok, Pid} -> process_request(Pid, Body, IP, Type);
 			  _Err ->
-			      bosh_response(#body{http_reason =
+			      bosh_response_with_msg(#body{http_reason =
 						      <<"Failed to start BOSH session">>,
 						  attrs =
 						      [{type, <<"terminate">>},
 						       {condition,
 							<<"internal-server-error">>}]},
-                                            Type)
+                                            Type, Body)
 			end;
 		    true ->
 			case mod_bosh:find_session(SID) of
 			  {ok, Pid} -> process_request(Pid, Body, IP, Type);
 			  error ->
-			      bosh_response(#body{http_reason =
+			      bosh_response_with_msg(#body{http_reason =
 						      <<"Session ID mismatch">>,
 						  attrs =
 						      [{type, <<"terminate">>},
 						       {condition,
 							<<"item-not-found">>}]},
-                                            Type)
+                                            Type, Body)
 			end
 		 end;
 	     {error, Reason} -> http_error(400, Reason, Type)
@@ -1006,6 +1006,11 @@ bosh_response(Body, Type) ->
             end,
     {200, Body#body.http_reason, ?HEADER(CType),
      encode_body(Body, Type)}.
+
+bosh_response_with_msg(Body, Type, RcvBody) ->
+    ?DEBUG("send error reply:~p~n** Receiced body: ~p",
+	   [Body, RcvBody]),
+    bosh_response(Body, Type).
 
 http_error(Status, Reason, Type) ->
     CType = case Type of
