@@ -131,6 +131,30 @@ CfgPostHooks = lists:flatmap(
                          []
                  end, Cfg),
 
+CfgXrefs = lists:flatmap(
+	     fun({mysql, false}) ->
+		     ["(\".*mysql.*\":_/_)"];
+		({pgsql, false}) ->
+		     ["(\".*pgsql.*\":_/_)"];
+		({pam, false}) ->
+		     ["(\"epam\":_/_)"];
+		({riak, false}) ->
+		     ["(\"riak.*\":_/_)"];
+		({json, false}) ->
+		    ["(\"jiffy\":_/_)"];
+		({p1db, false}) ->
+		     ["(\"p1db.*\":_/_)"];
+		({zlib, false}) ->
+		     ["(\"ezlib\":_/_)"];
+		({http, false}) ->
+		     ["(\"lhttpc\":_/_)"];
+		({iconv, false}) ->
+		     ["(\"iconv\":_/_)"];
+		(_) ->
+		     []
+            end, Cfg),
+
+
 {ok, Cwd} = file:get_cwd(),
 
 TestConfigFile = filename:join([Cwd, "test", "config.ctc"]),
@@ -149,6 +173,12 @@ Config = [{erl_opts, Macros ++ HiPE ++ DebugInfo ++
            ++ TestConfig
            ++ "-include "
            ++ filename:join([Cwd, "tools"])},
+	  {xref_warnings, false},
+          {xref_checks, []},
+	  {xref_queries,
+	   [{"(XC - UC) || (XU - X - B - "
+	     ++ string:join(["(\"gen_transport\":_/_) - (\"eprof\":_/_)"]
+			    ++ CfgXrefs, " - ") ++ ")", []}]},
           {eunit_compile_opts, [{i, "tools"}]},
           {post_hooks, PostHooks ++ CfgPostHooks},
           {port_env, [{"CFLAGS", "-g -O2 -Wall"}]},
