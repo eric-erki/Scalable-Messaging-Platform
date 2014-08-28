@@ -29,8 +29,9 @@
 -author('alexey@process-one.net').
 
 %% API
--export([start_link/1, init/1, get_pids/1,
-	 get_random_pid/1, transform_options/1]).
+-export([start_link/1, init/1, get_pids/1, get_pids_shard/2,
+	 get_random_pid/1, get_random_pid_shard/2,
+	 transform_options/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -53,15 +54,33 @@ start_link(Host) ->
 init([Host]) ->
     PoolSize = get_pool_size(Host),
     StartInterval = get_start_interval(Host),
+
+    Pool =
+	lists:map(fun (I) ->
+			  {ejabberd_odbc:get_proc(Host, I),
+			   {ejabberd_odbc, start_link,
+			    [Host, I, StartInterval * 1000]},
+			   transient, 2000, worker, [?MODULE]}
+		  end,
+		  lists:seq(1, PoolSize)),
+
+    ShardPools =
+	lists:map(
+	  fun(S) ->
+		  lists:map(
+		    fun (I) ->
+			    {ejabberd_odbc:get_proc(Host, S, I),
+			     {ejabberd_odbc, start_link,
+			      [Host, S, I, StartInterval * 1000]},
+			     transient, 2000, worker, [?MODULE]}
+		    end,
+		    lists:seq(1, PoolSize))
+	  end,
+	  lists:seq(1, get_shard_size(Host))),
     {ok,
      {{one_for_one, PoolSize * 10, 1},
-      lists:map(fun (I) ->
-			{ejabberd_odbc:get_proc(Host, I),
-			 {ejabberd_odbc, start_link,
-			  [Host, I, StartInterval * 1000]},
-			 transient, 2000, worker, [?MODULE]}
-		end,
-		lists:seq(1, PoolSize))}}.
+      lists:flatten([Pool, ShardPools])}}.
+
 
 get_start_interval(Host) ->
     ejabberd_config:get_option(
@@ -75,8 +94,22 @@ get_pool_size(Host) ->
       fun(I) when is_integer(I), I>0 -> I end,
       ?DEFAULT_POOL_SIZE).
 
+get_shard_size(Host) ->
+    length(ejabberd_config:get_option(
+	     {shards, Host},
+	     fun(S) when is_list(S) -> S end,
+	     [])).
+
 get_pids(Host) ->
-    [ejabberd_odbc:get_proc(Host, I) || I <- lists:seq(1, get_pool_size(Host))].
+    [ejabberd_odbc:get_proc(Host, I) ||
+	I <- lists:seq(1, get_pool_size(Host))].
+
+get_pids_shard(Host, Key) ->
+    [ejabberd_odbc:get_proc(Host, get_shard(Host, Key), I) ||
+	I <- lists:seq(1, get_pool_size(Host))].
+
+get_shard(Host, Key) ->
+    erlang:phash2(Key, get_shard_size(Host)) + 1.
 
 get_random_pid(Host) ->
     get_random_pid(Host, now()).
@@ -85,10 +118,20 @@ get_random_pid(Host, Term) ->
     I = erlang:phash2(Term, get_pool_size(Host)) + 1,
     ejabberd_odbc:get_proc(Host, I).
 
+get_random_pid_shard(Host, Key) ->
+    get_random_pid_shard(Host, Key, now()).
+
+get_random_pid_shard(Host, Key, Term) ->
+    I = erlang:phash2(Term, get_pool_size(Host)) + 1,
+    S = get_shard(Host, Key),
+    ejabberd_odbc:get_proc(Host, S, I).
+
+
 transform_options(Opts) ->
     lists:foldl(fun transform_options/2, [], Opts).
 
-transform_options({odbc_server, {Type, Server, Port, DB, User, Pass}}, Opts) ->
+transform_options({odbc_server,
+		   {Type, Server, Port, DB, User, Pass}}, Opts) ->
     [{odbc_type, Type},
      {odbc_server, Server},
      {odbc_port, Port},
@@ -96,8 +139,10 @@ transform_options({odbc_server, {Type, Server, Port, DB, User, Pass}}, Opts) ->
      {odbc_username, User},
      {odbc_password, Pass}|Opts];
 transform_options({odbc_server, {mysql, Server, DB, User, Pass}}, Opts) ->
-    transform_options({odbc_server, {mysql, Server, ?MYSQL_PORT, DB, User, Pass}}, Opts);
+    transform_options(
+      {odbc_server, {mysql, Server, ?MYSQL_PORT, DB, User, Pass}}, Opts);
 transform_options({odbc_server, {pgsql, Server, DB, User, Pass}}, Opts) ->
-    transform_options({odbc_server, {pgsql, Server, ?PGSQL_PORT, DB, User, Pass}}, Opts);
+    transform_options(
+      {odbc_server, {pgsql, Server, ?PGSQL_PORT, DB, User, Pass}}, Opts);
 transform_options(Opt, Opts) ->
     [Opt|Opts].
