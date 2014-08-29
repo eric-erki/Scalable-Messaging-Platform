@@ -352,7 +352,7 @@ delete_item(Nidx, Publisher, PublishModel, ItemId) ->
             {error, ?ERR_FORBIDDEN};
         true ->
             case del_item(Nidx, ItemId) of
-                {deleted, 1} -> {result, {default, broadcast}};
+                {updated, 1} -> {result, {default, broadcast}};
                 _ -> {error, ?ERR_ITEM_NOT_FOUND}
             end
     end.
