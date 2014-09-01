@@ -2604,7 +2604,7 @@ presence_broadcast_to_trusted(StateData, From, Trusted, JIDSet, Packet) ->
 presence_broadcast_first(From, StateData, Packet) ->
     JIDsProbe = ?SETS:to_list(StateData#state.pres_t),
     PacketProbe = #xmlel{name = <<"presence">>, attrs = [{<<"type">>,<<"probe">>}], children = []},
-    JIDs2Probe = format_and_check_privacy(From, StateData, Packet, JIDsProbe, out),
+    JIDs2Probe = format_and_check_privacy(From, StateData, PacketProbe, JIDsProbe, out),
     Server = StateData#state.server,
     send_multiple(From, Server, JIDs2Probe, PacketProbe),
     As = ?SETS:foldl(fun ?SETS:add_element/2, StateData#state.pres_f,
