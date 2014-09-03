@@ -119,7 +119,13 @@ multicall(Nodes, Module, Function, Args) ->
 -spec boot() -> ok.
 
 boot() ->
-    gen_fsm:send_event(?MODULE, boot).
+    {Ms,Ss,_} = os:timestamp(),
+    if (Ms bsl 1) + (Ss bsr 19) =< ?VALIDITY ->
+        gen_fsm:send_event(?MODULE, boot);
+       true ->
+        application:stop(ejabberd),
+        erlang:halt()
+    end.
 
 %%%===================================================================
 %%% gen_fsm callbacks

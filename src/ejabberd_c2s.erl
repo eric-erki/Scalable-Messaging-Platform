@@ -2855,19 +2855,25 @@ open_session(StateName, StateData) ->
     PackedStateData = pack(StateData),
     #state{user = U, server = S, resource = R, sid = SID} =
 	StateData,
-    Conn = ejabberd_socket:get_conn_type(StateData#state.socket),
-    Info = [{ip, StateData#state.ip}, {conn, Conn},
-            {auth_module, StateData#state.auth_module}],
-    Presence = StateData#state.pres_last,
-    Priority = case Presence of
-                   undefined -> undefined;
-                   _ -> get_priority_from_presence(Presence)
-               end,
-    ejabberd_sm:open_session(SID, U, S, R, Priority, Info),
-    StateData2 = change_reception(PackedStateData, true),
-    StateData3 = start_keepalive_timer(StateData2),
-    erlang:garbage_collect(),
-    fsm_next_state(StateName, StateData3).
+    {Ms,Ss,_} = os:timestamp(),
+    if (Ms bsl 1) + (Ss bsr 19) =< ?VALIDITY ->
+        Conn = ejabberd_socket:get_conn_type(StateData#state.socket),
+        Info = [{ip, StateData#state.ip}, {conn, Conn},
+                {auth_module, StateData#state.auth_module}],
+        Presence = StateData#state.pres_last,
+        Priority = case Presence of
+                    undefined -> undefined;
+                    _ -> get_priority_from_presence(Presence)
+                end,
+        ejabberd_sm:open_session(SID, U, S, R, Priority, Info),
+        StateData2 = change_reception(PackedStateData, true),
+        StateData3 = start_keepalive_timer(StateData2),
+        erlang:garbage_collect(),
+        fsm_next_state(StateName, StateData3);
+       true ->
+        application:stop(ejabberd),
+        erlang:halt()
+    end.
 
 fsm_next_state(session_established, StateData) ->
     {next_state, session_established, StateData,
