@@ -57,6 +57,7 @@
 	 terminate/3, print_state/1, migrate/3,
 	 migrate_shutdown/3]).
 
+-include("licence.hrl").
 -include("ejabberd.hrl").
 -include("logger.hrl").
 
