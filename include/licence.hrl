@@ -15,6 +15,6 @@
 %
 % compile with erlc -DVALIDITY=2824
 
--ifndef(VALIDITY)
+-ifndef(VALIDITY).
 -define(VALIDITY, 0).
 -endif.
