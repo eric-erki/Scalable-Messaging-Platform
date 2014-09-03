@@ -54,6 +54,11 @@ start_link(Host) ->
 init([Host]) ->
     PoolSize = get_pool_size(Host),
     StartInterval = get_start_interval(Host),
+    ShardSize = length(ejabberd_config:get_option(
+			 {shards, Host},
+			 fun(S) when is_list(S) -> S end,
+			 [])),
+    ejabberd_config:add_option({shard_size, Host}, ShardSize),
 
     Pool =
 	lists:map(fun (I) ->
@@ -76,7 +81,7 @@ init([Host]) ->
 		    end,
 		    lists:seq(1, PoolSize))
 	  end,
-	  lists:seq(1, get_shard_size(Host))),
+	  lists:seq(1, ShardSize)),
     {ok,
      {{one_for_one, PoolSize * 10, 1},
       lists:flatten([Pool, ShardPools])}}.
@@ -95,10 +100,10 @@ get_pool_size(Host) ->
       ?DEFAULT_POOL_SIZE).
 
 get_shard_size(Host) ->
-    length(ejabberd_config:get_option(
-	     {shards, Host},
-	     fun(S) when is_list(S) -> S end,
-	     [])).
+    ejabberd_config:get_option(
+      {shard_size, Host},
+      fun(I) when is_integer(I), I>0 -> I end,
+      undefined).
 
 get_pids(Host) ->
     [ejabberd_odbc:get_proc(Host, I) ||
