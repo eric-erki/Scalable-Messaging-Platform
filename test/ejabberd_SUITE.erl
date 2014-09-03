@@ -208,6 +208,8 @@ db_tests(p1db) ->
        blocking,
        vcard,
        test_unregister]},
+     {test_muc_register, [sequence],
+      [muc_register_master, muc_register_slave]},
      {test_roster_subscribe, [parallel],
       [roster_subscribe_master,
        roster_subscribe_slave]},
@@ -238,6 +240,8 @@ db_tests(riak) ->
        blocking,
        vcard,
        test_unregister]},
+     {test_muc_register, [sequence],
+      [muc_register_master, muc_register_slave]},
      {test_roster_subscribe, [parallel],
       [roster_subscribe_master,
        roster_subscribe_slave]},
@@ -265,6 +269,8 @@ db_tests(_) ->
        vcard,
        pubsub,
        test_unregister]},
+     {test_muc_register, [sequence],
+      [muc_register_master, muc_register_slave]},
      {test_roster_subscribe, [parallel],
       [roster_subscribe_master,
        roster_subscribe_slave]},
@@ -1331,6 +1337,66 @@ muc_slave(Config) ->
 					       role = none}]}]} = recv(),
     disconnect(Config).
 
+muc_register_nick(Config, MUC, PrevNick, Nick) ->
+    {Registered, PrevNickVals} = if PrevNick /= <<"">> ->
+					 {true, [PrevNick]};
+				    true ->
+					 {false, []}
+				 end,
+    %% Request register form
+    #iq{type = result,
+	sub_els = [#register{registered = Registered,
+			     xdata = #xdata{type = form,
+					    fields = FsWithoutNick}}]} =
+	send_recv(Config, #iq{type = get, to = MUC,
+			      sub_els = [#register{}]}),
+    %% Check if 'nick' field presents
+    #xdata_field{type = 'text-single',
+		 var = <<"nick">>,
+		 values = PrevNickVals} =
+	lists:keyfind(<<"nick">>, #xdata_field.var, FsWithoutNick),
+    X = #xdata{type = submit,
+	       fields = [#xdata_field{var = <<"nick">>, values = [Nick]}]},
+    %% Submitting form
+    #iq{type = result, sub_els = [_|_]} =
+	send_recv(Config, #iq{type = set, to = MUC,
+			      sub_els = [#register{xdata = X}]}),
+    %% Check if the nick was registered
+    #iq{type = result,
+	sub_els = [#register{registered = true,
+			     xdata = #xdata{type = form,
+					    fields = FsWithNick}}]} =
+	send_recv(Config, #iq{type = get, to = MUC,
+			      sub_els = [#register{}]}),
+    #xdata_field{type = 'text-single', var = <<"nick">>,
+		 values = [Nick]} = 
+	lists:keyfind(<<"nick">>, #xdata_field.var, FsWithNick).
+
+muc_register_master(Config) ->
+    MUC = muc_jid(Config),
+    %% Register nick "master1"
+    muc_register_nick(Config, MUC, <<"">>, <<"master1">>),
+    %% Unregister nick "master1" via jabber:register
+    #iq{type = result, sub_els = [_|_]} =
+	send_recv(Config, #iq{type = set, to = MUC,
+			      sub_els = [#register{remove = true}]}),
+    %% Register nick "master2"
+    muc_register_nick(Config, MUC, <<"">>, <<"master2">>),
+    %% Now register nick "master"
+    muc_register_nick(Config, MUC, <<"master2">>, <<"master">>),
+    disconnect(Config).
+
+muc_register_slave(Config) ->
+    MUC = muc_jid(Config),
+    %% Trying to register occupied nick "master"
+    X = #xdata{type = submit,
+	       fields = [#xdata_field{var = <<"nick">>,
+				      values = [<<"master">>]}]},
+    #iq{type = error} =
+	send_recv(Config, #iq{type = set, to = MUC,
+			      sub_els = [#register{xdata = X}]}),
+    disconnect(Config).
+
 announce_master(Config) ->
     MyJID = my_jid(Config),
     ServerJID = server_jid(Config),
@@ -1791,4 +1857,6 @@ clear_riak_tables(Config) ->
     ejabberd_auth:remove_user(<<"test_slave">>, Server),
     ejabberd_auth:remove_user(<<"test_master">>, Server),
     mod_muc:forget_room(Server, URoom, SRoom),
+    ejabberd_riak:delete(muc_registered, {{<<"test_slave">>, Server}, SRoom}),
+    ejabberd_riak:delete(muc_registered, {{<<"test_master">>, Server}, SRoom}),
     Config.
