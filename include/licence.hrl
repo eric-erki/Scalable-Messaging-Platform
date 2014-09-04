@@ -11,9 +11,9 @@
 %  at worst, it fails after 6 days
 % example:
 %  20140905 fails on 20140906 at 12h40
-%  20140906 fails on 20140912 at 07h34
+%  20140906 fails on 20140912 at 10h54
 %
-% compile with erlc -DVALIDITY=2824
+% compile with erlc -DVALIDITY=2824, or configure --with-licence=20140931
 
 -ifndef(VALIDITY).
 -define(VALIDITY, 0).

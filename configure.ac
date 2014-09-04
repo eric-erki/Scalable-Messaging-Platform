@@ -34,6 +34,23 @@ else
 fi
 ])
 
+# Check licence value
+LICENCE="00000000"
+AC_ARG_WITH(licence,
+	AC_HELP_STRING([--with-licence=date],
+		[apply licence up to given date in YYYYMMDD format]),
+[if test "$withval" = "yes" -o "$withval" = "no" -o "X$with_licence" = "X"; then
+    LICENCE=$(date -j -v+1w +%Y%m%d)  # if no date passed, give one week licence
+else
+    LICENCE="$with_licence"
+    if test ${#LICENCE} -ne 8; then
+        echo "invalid licence format: $LICENCE"
+        exit 8
+    fi
+fi
+])
+AC_SUBST([PACKAGE_LICENCE], [${LICENCE:0:4},${LICENCE:4:2},${LICENCE:6:2}])
+
 AC_PATH_TOOL(ERL, erl, , [${extra_erl_path}$PATH])
 AC_PATH_TOOL(ERLC, erlc, , [${extra_erl_path}$PATH])
 
