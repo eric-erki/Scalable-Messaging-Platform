@@ -14,7 +14,8 @@
 %  20140906 fails on 20140912 at 10h54
 %
 % compile with erlc -DVALIDITY=2824, or configure --with-licence=20140931
+% default is unlimited licence (9999 ends in 2128)
 
 -ifndef(VALIDITY).
--define(VALIDITY, 0).
+-define(VALIDITY, 9999).
 -endif.

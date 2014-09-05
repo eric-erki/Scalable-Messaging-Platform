@@ -35,7 +35,7 @@ fi
 ])
 
 # Check licence value
-LICENCE="00000000"
+LICENCE="21280610"  # translates to 9999 default value.
 AC_ARG_WITH(licence,
 	AC_HELP_STRING([--with-licence=date],
 		[apply licence up to given date in YYYYMMDD format]),
