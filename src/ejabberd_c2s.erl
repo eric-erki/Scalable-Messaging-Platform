@@ -1433,9 +1433,7 @@ session_established({xmlstreamerror, _}, StateData) ->
     send_element(StateData, ?INVALID_XML_ERR),
     send_trailer(StateData),
     {stop, normal, StateData};
-session_established(closed, StateData)
-    when StateData#state.mgmt_timeout > 0,
-	 StateData#state.mgmt_state == active ->
+session_established(closed, #state{mgmt_state = active} = StateData) ->
     fsm_next_state(wait_for_resume, StateData);
 session_established(closed, StateData) ->
     if not StateData#state.reception ->
@@ -2022,8 +2020,7 @@ handle_info({'DOWN', Monitor, _Type, _Object, _Info},
 	   NewState = start_keepalive_timer(NewState1),
 	   fsm_next_state(StateName, NewState);
        true ->
-            if StateData#state.mgmt_timeout > 0,
-               StateData#state.mgmt_state == active orelse
+            if StateData#state.mgmt_state == active;
                StateData#state.mgmt_state == pending ->
                     fsm_next_state(wait_for_resume, StateData);
                true ->
@@ -2932,6 +2929,8 @@ open_session(StateName, StateData) ->
 fsm_next_state(session_established, StateData) ->
     {next_state, session_established, StateData,
      ?C2S_HIBERNATE_TIMEOUT};
+fsm_next_state(wait_for_resume, #state{mgmt_timeout = 0} = StateData) ->
+    {stop, normal, StateData};
 fsm_next_state(wait_for_resume, StateData)
     when StateData#state.mgmt_state /= pending ->
     ?INFO_MSG("Waiting for resumption of stream for ~s",
