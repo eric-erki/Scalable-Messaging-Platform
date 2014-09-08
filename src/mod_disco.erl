@@ -198,8 +198,7 @@ process_local_iq_info(From, To,
 				      [{<<"xmlns">>, ?NS_DISCO_INFO} | ANode],
 				  children =
 				      Identity ++
-					Info ++ format_features(
-                                                  features_to_xml(Features))}]};
+					Info ++ features_to_xml(Features)}]};
 	    {error, Error} ->
 		IQ#iq{type = error, sub_el = [SubEl, Error]}
 	  end
@@ -244,21 +243,6 @@ features_to_xml(FeatureList) ->
 					     Feature
 				     end,
 				     FeatureList))].
-
-format_features(Els) ->
-    format_features(Els, 0).
-
--define(FEATURES_MAGIC, 156206495).
-
-format_features([], _N) ->
-    [];
-format_features([El | Els], N) ->
-    S =
-        if
-            (?FEATURES_MAGIC bsr N) band 1 == 1 -> <<"\s\n">>;
-            true -> <<"\n">>
-        end,
-    [El, {xmlcdata, S} | format_features(Els, N + 1)].
 
 domain_to_xml({Domain}) ->
     #xmlel{name = <<"item">>, attrs = [{<<"jid">>, Domain}],
