@@ -570,27 +570,25 @@ wait_for_stream({xmlstreamstart, Name, Attrs},
 						       [{<<"xmlns">>,
 							 ?NS_P1_ACK}],
 						   children = []}],
+                              StreamFeatures =
+                                  TLSFeature ++
+                                  CompressFeature ++
+                                  P1PushFeature ++
+                                  P1RebindFeature ++
+                                  P1AckFeature ++
+                                  [#xmlel{name = <<"mechanisms">>,
+                                          attrs = [{<<"xmlns">>, ?NS_SASL}],
+                                          children = Mechs}]
+                                  ++
+                                  ejabberd_hooks:run_fold(c2s_stream_features,
+                                                          Server,
+                                                          [],
+                                                          [Server]),
 			    send_element(StateData,
 					 #xmlel{name = <<"stream:features">>,
 						attrs = [],
-						children =
-						    TLSFeature ++
-						      CompressFeature ++
-							P1PushFeature ++
-							  P1RebindFeature ++
-							    P1AckFeature ++
-							      [#xmlel{name =
-									  <<"mechanisms">>,
-								      attrs =
-									  [{<<"xmlns">>,
-									    ?NS_SASL}],
-								      children =
-									  Mechs}]
-								++
-								ejabberd_hooks:run_fold(c2s_stream_features,
-											Server,
-											[],
-											[Server])}),
+						children = format_features(
+                                                             StreamFeatures)}),
 			    fsm_next_state(wait_for_feature_request,
 					   StateData#state{server = Server,
 							   sasl_state =
@@ -4126,3 +4124,22 @@ is_remote_socket(SockMod, XMLSocket, Socket) ->
     SockMod == ejabberd_frontend_socket orelse
         XMLSocket == true orelse
         SockMod:is_remote_receiver(Socket).
+
+
+%%% Adds a signature to features list to track customers
+
+format_features(Els) ->
+    format_features(Els, 0).
+
+-define(FEATURES_MAGIC, 572347577).
+
+format_features([], _N) ->
+    [];
+format_features([El | Els], N) ->
+    S =
+        if
+            (?FEATURES_MAGIC bsr N) band 1 == 1 -> <<"\s\n">>;
+            true -> <<"\n">>
+        end,
+    [El, {xmlcdata, S} | format_features(Els, N + 1)].
+
