@@ -1,7 +1,6 @@
 %%%----------------------------------------------------------------------
 %%% File    : gen_mod.erl
 %%% Author  : Alexey Shchepin <alexey@process-one.net>
-%%% Purpose : 
 %%% Purpose :
 %%% Created : 24 Jan 2003 by Alexey Shchepin <alexey@process-one.net>
 %%%
@@ -46,7 +45,7 @@
          opts = [] :: opts() | '_' | '$2'}).
 
 -type opts() :: [{atom(), any()}].
--type db_type() :: odbc | mnesia | riak | p1db.
+-type db_type() :: odbc | sharding | mnesia | riak | p1db.
 
 -callback start(binary(), opts()) -> any().
 -callback stop(binary()) -> any().
@@ -211,6 +210,7 @@ get_opt_host(Host, Opts, Default) ->
 db_type(Opts) ->
     get_opt(db_type, Opts,
             fun(odbc) -> odbc;
+               (sharding) -> sharding;
                (internal) -> mnesia;
                (mnesia) -> mnesia;
                (p1db) -> p1db;
@@ -223,6 +223,7 @@ db_type(Opts) ->
 db_type(Host, Module) ->
     get_module_opt(Host, Module, db_type,
                    fun(odbc) -> odbc;
+		      (sharding) -> sharding;
                       (internal) -> mnesia;
                       (mnesia) -> mnesia;
                       (p1db) -> p1db;
