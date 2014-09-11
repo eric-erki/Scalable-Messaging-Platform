@@ -63,6 +63,8 @@
          redirect = false :: boolean(),
 	 aux_fields = [] :: [{atom(), any()}],
          fsm_limit_opts = [] :: [{atom(), any()}],
+         csi_state = active,
+         csi_queue = [],
          mgmt_state = disabled :: mgmt_state(),
          mgmt_xmlns = <<"">> :: binary(),
          mgmt_queue :: ?TQUEUE,
