@@ -1,6 +1,10 @@
 %% Created automatically by XML generator (xml_gen.erl)
 %% Source: xmpp_codec.spec
 
+-record(chatstate, {type :: active | composing | gone | inactive | paused}).
+
+-record(csi, {type :: active | inactive}).
+
 -record(feature_register, {}).
 
 -record(sasl_success, {text :: any()}).
@@ -14,8 +18,6 @@
 
 -record(text, {lang :: binary(),
                data :: binary()}).
-
--record(chatstate_paused, {}).
 
 -record(streamhost, {jid :: any(),
                      host :: binary(),
@@ -32,8 +34,6 @@
 -record(pubsub_unsubscribe, {node :: binary(),
                              jid :: any(),
                              subid :: binary()}).
-
--record(csi_inactive, {}).
 
 -record(ping, {}).
 
@@ -137,12 +137,8 @@
 
 -record(sasl_response, {text :: any()}).
 
--record(chatstate_inactive, {}).
-
 -record(pubsub_subscribe, {node :: binary(),
                            jid :: any()}).
-
--record(chatstate_composing, {}).
 
 -record(sasl_auth, {mechanism :: binary(),
                     text :: any()}).
@@ -253,8 +249,6 @@
 
 -record(block_list, {}).
 
--record(csi_active, {}).
-
 -record(xdata_field, {label :: binary(),
                       type :: 'boolean' | 'fixed' | 'hidden' | 'jid-multi' | 'jid-single' | 'list-multi' | 'list-single' | 'text-multi' | 'text-private' | 'text-single',
                       var :: binary(),
@@ -291,8 +285,6 @@
                       dstaddr :: binary(),
                       mode = tcp :: 'tcp' | 'udp',
                       sid :: binary()}).
-
--record(chatstate_active, {}).
 
 -record(vcard_org, {name :: binary(),
                     units = [] :: [binary()]}).
@@ -530,122 +522,4 @@
 -record(time, {tzo :: any(),
                utc :: any()}).
 
--type xmpp_codec_type() :: #session{} |
-                           #compression{} |
-                           #pubsub_subscription{} |
-                           #version{} |
-                           #pubsub_affiliation{} |
-                           #muc_admin{} |
-                           #sm_a{} |
-                           #carbons_sent{} |
-                           #p1_rebind{} |
-                           #sasl_abort{} |
-                           #carbons_received{} |
-                           #pubsub_retract{} |
-                           #compressed{} |
-                           #block_list{} |
-                           #'see-other-host'{} |
-                           #starttls_proceed{} |
-                           #sm_resumed{} |
-                           #forwarded{} |
-                           #privacy_list{} |
-                           #text{} |
-                           #vcard_org{} |
-                           #feature_sm{} |
-                           #pubsub_item{} |
-                           #roster_item{} |
-                           #pubsub_event_item{} |
-                           #muc_item{} |
-                           #shim{} |
-                           #pubsub_event_items{} |
-                           #disco_items{} |
-                           #pubsub_options{} |
-                           #sasl_success{} |
-                           #compress{} |
-                           #bytestreams{} |
-                           #vcard_key{} |
-                           #identity{} |
-                           #feature_csi{} |
-                           #legacy_delay{} |
-                           #muc_user_destroy{} |
-                           #muc_owner_destroy{} |
-                           #privacy{} |
-                           #delay{} |
-                           #muc_history{} |
-                           #bookmark_url{} |
-                           #vcard_email{} |
-                           #vcard_label{} |
-                           #vcard_tel{} |
-                           #vcard_logo{} |
-                           #disco_info{} |
-                           #vcard_geo{} |
-                           #vcard_photo{} |
-                           #muc_owner{} |
-                           #pubsub{} |
-                           #sm_r{} |
-                           #muc_actor{} |
-                           #error{} |
-                           #stream_error{} |
-                           #feature_register{} |
-                           #roster{} |
-                           #muc_user{} |
-                           #vcard_adr{} |
-                           #register{} |
-                           #csi_active{} |
-                           #muc_invite{} |
-                           #carbons_disable{} |
-                           #chatstate_active{} |
-                           #bookmark_conference{} |
-                           #time{} |
-                           #sasl_response{} |
-                           #chatstate_inactive{} |
-                           #pubsub_subscribe{} |
-                           #presence{} |
-                           #message{} |
-                           #sm_enable{} |
-                           #chatstate_gone{} |
-                           #starttls_failure{} |
-                           #sasl_challenge{} |
-                           #gone{} |
-                           #private{} |
-                           #compress_failure{} |
-                           #sasl_failure{} |
-                           #bookmark_storage{} |
-                           #vcard_name{} |
-                           #sm_resume{} |
-                           #carbons_enable{} |
-                           #carbons_private{} |
-                           #pubsub_unsubscribe{} |
-                           #csi_inactive{} |
-                           #muc_decline{} |
-                           #sasl_auth{} |
-                           #p1_push{} |
-                           #pubsub_publish{} |
-                           #unblock{} |
-                           #p1_ack{} |
-                           #block{} |
-                           #xdata{} |
-                           #iq{} |
-                           #last{} |
-                           #redirect{} |
-                           #sm_enabled{} |
-                           #pubsub_event{} |
-                           #vcard_sound{} |
-                           #chatstate_paused{} |
-                           #streamhost{} |
-                           #stat{} |
-                           #xdata_field{} |
-                           #bind{} |
-                           #sm_failed{} |
-                           #vcard{} |
-                           #chatstate_composing{} |
-                           #ping{} |
-                           #disco_item{} |
-                           #privacy_item{} |
-                           #caps{} |
-                           #muc{} |
-                           #stream_features{} |
-                           #stats{} |
-                           #pubsub_items{} |
-                           #starttls{} |
-                           #sasl_mechanisms{}.
+
