@@ -43,6 +43,7 @@ DepConfiguredApps = lists:flatmap(
                          ({lager, true}) -> [lager, goldrush];
                          ({lager, false}) -> [p1_logger];
                          ({airbrake, true}) -> [erlbrake];
+			 ({p1db, true}) -> [p1db, myproto];
                          (_) -> []
                       end, Vars),
 
