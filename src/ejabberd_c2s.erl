@@ -622,10 +622,6 @@ wait_for_stream({xmlstreamstart, Name, Attrs},
                                             false ->
                                                 []
                                         end,
-                                    ClientStateFeature =
-                                        [#xmlel{name = <<"csi">>,
-                                                attrs = [{<<"xmlns">>, ?NS_CLIENT_STATE}],
-                                                children = []}],
 				  StreamFeatures = [#xmlel{name = <<"push">>,
 							   attrs =
 							       [{<<"xmlns">>,
@@ -644,7 +640,6 @@ wait_for_stream({xmlstreamstart, Name, Attrs},
 						     ++
 						     RosterVersioningFeature ++
                                                      StreamManagementFeature ++
-                                                     ClientStateFeature ++
                                                      ejabberd_hooks:run_fold(c2s_post_auth_features,
                                                                              Server, [], [Server]) ++
 						       ejabberd_hooks:run_fold(c2s_stream_features,
