@@ -426,9 +426,9 @@ format_arg({array, Elements}, {list, ElementsDef})
     [format_arg(Element, ElementsDef)
      || Element <- Elements];
 format_arg(Arg, integer) when is_integer(Arg) -> Arg;
-format_arg(Arg, binary) when is_list(Arg) -> list_to_binary(Arg);
+format_arg(Arg, binary) when is_list(Arg) -> unicode:characters_to_binary(Arg);
 format_arg(Arg, binary) when is_binary(Arg) -> Arg;
-format_arg(Arg, string) when is_list(Arg) -> list_to_binary(Arg);
+format_arg(Arg, string) when is_list(Arg) -> unicode:characters_to_binary(Arg);
 format_arg(Arg, string) when is_binary(Arg) -> Arg;
 format_arg(Arg, Format) ->
     ?ERROR_MSG("don't know how to format Arg ~p for format ~p", [Arg, Format]),
