@@ -616,14 +616,14 @@ compute_monitor(Probes, {'-', Probe}, Acc) ->
 %%====================================================================
 
 init_backend(_Host, {statsd, Ip, Service}) ->
+    application:load(statsderl),
     application:set_env(statsderl, base_key, Service),
     application:set_env(statsderl, hostname, Ip),
-    application:load(statsderl),
-    {ok, _Pid} = statsderl:start_link(),
+    application:start(statsderl),
     statsd;
 init_backend(_Host, statsd) ->
     application:load(statsderl),
-    {ok, _Pid} = statsderl:start_link(),
+    application:start(statsderl),
     statsd;
 init_backend(Host, mnesia) ->
     Table = gen_mod:get_module_proc(Host, mon),
