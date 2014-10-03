@@ -426,13 +426,18 @@ format_arg({array, Elements}, {list, ElementsDef})
     [format_arg(Element, ElementsDef)
      || Element <- Elements];
 format_arg(Arg, integer) when is_integer(Arg) -> Arg;
-format_arg(Arg, binary) when is_list(Arg) -> unicode:characters_to_binary(Arg);
+format_arg(Arg, binary) when is_list(Arg) -> process_unicode_codepoints(Arg);
 format_arg(Arg, binary) when is_binary(Arg) -> Arg;
-format_arg(Arg, string) when is_list(Arg) -> unicode:characters_to_binary(Arg);
+format_arg(Arg, string) when is_list(Arg) -> process_unicode_codepoints(Arg);
 format_arg(Arg, string) when is_binary(Arg) -> Arg;
 format_arg(Arg, Format) ->
     ?ERROR_MSG("don't know how to format Arg ~p for format ~p", [Arg, Format]),
     error.
+
+process_unicode_codepoints(Str) ->
+    iolist_to_binary(lists:map(fun(X) when X > 255 -> unicode:characters_to_binary([X]);
+                                  (Y) -> Y
+                               end, Str)).
 
 %% -----------------------------
 %% Result
