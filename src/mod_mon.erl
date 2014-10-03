@@ -35,6 +35,8 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
+-export([info/1]).
+
 %% handled ejabberd hooks
 -export([
          offline_message_hook/3,
@@ -66,7 +68,7 @@
 -compile({no_auto_import, [get/1]}).
 
 -record(mon, {probe, value}).
--record(state, {host, size_count, active_count, backend, log, timers=[]}).
+-record(state, {host, size_count, active_count, backends, monitors, log, timers=[]}).
 
 %%====================================================================
 %% API
@@ -111,7 +113,8 @@ dump(Host) when is_binary(Host) ->
 init([Host, Opts]) ->
     % List enabled monitors, defaults all
     Monitors = gen_mod:get_opt(monitors, Opts,
-                               fun(L) when is_list(L) -> L end, ?SUPPORTED_HOOKS),
+                               fun(L) when is_list(L) -> L end, [])
+               ++ ?DEFAULT_MONITORS,
     % Size counting is consuming but allows to know size of xmpp messages
     SizeCount = gen_mod:get_opt(size_count, Opts,
                                 fun(A) when is_atom(A) -> A end, false),
@@ -119,19 +122,14 @@ init([Host, Opts]) ->
     ActiveCount = gen_mod:get_opt(active_count, Opts,
                                   fun(A) when is_atom(A) -> A end, true)
                   and not ejabberd_auth_anonymous:allow_anonymous(Host),
+    Log = init_log(Host, ActiveCount),
 
-    % Statistics backend
-    Backend = gen_mod:get_opt(backend, Opts,
-                              fun({statsd, Ip, Service}) ->
-                                    application:set_env(statsderl, base_key, Service),
-                                    application:set_env(statsderl, hostname, Ip),
-                                    statsd;
-                                 (statsd) -> statsd;
-                                %%  (rrd) -> rrd;  TODO rrdtool
-                                 (internal) -> mnesia;
-                                 (mnesia) -> mnesia;
-                                 (_) -> none
-                              end, none),
+    % Statistics backends
+    BackendsSpec = gen_mod:get_opt(backends, Opts,
+                                   fun(List) when is_list(List) -> List;
+                                      (Term) -> [Term]
+                                   end, []),
+    Backends = lists:usort([init_backend(Host, Spec) || Spec <- BackendsSpec]),
 
     %% Note: we use priority of 20 cause some modules can block execution of hooks
     %% example; mod_offline stops the hook if it stores packets
@@ -140,55 +138,19 @@ init([Host, Opts]) ->
     %                        str:tokens(Dom, <<".">>),
     %                        str:tokens(Host, <<".">>))],
     [ejabberd_hooks:add(Hook, Component, ?MODULE, Hook, 20)
-     || Component <- [Host], Hook <- Monitors], % Todo, Components for muc and pubsub
+     || Component <- [Host], % Todo, Components for muc and pubsub
+        Hook <- ?SUPPORTED_HOOKS],
     ejabberd_commands:register_commands(commands()),
 
-    % Init backend if any
-    case Backend of
-        statsd ->
-            application:load(statsderl),
-            {ok, _Pid} = statsderl:start_link();
-        mnesia ->
-            % Create persistent cache table
-            Table = gen_mod:get_module_proc(Host, mon),
-            mnesia:create_table(Table,
-                                [{disc_copies, [node()]},
-                                 {local_content, true},
-                                 {record_name, mon},
-                                 {attributes, record_info(fields, mon)}]),
-            % Restore persistent values if any
-            [put(Key, Val) || {mon, Key, Val} <- ets:tab2list(Table)];
-        none ->
-            ok
-    end,
-
-    % Init hyperloglog for active users count
-    Log = if ActiveCount ->
-            case read_logs() of
-                [] ->
-                    L = ehyperloglog:new(16),
-                    write_logs([{Key, L} || Key <- ?HYPERLOGLOGS]),
-                    [put(Key, 0) || Key <- ?HYPERLOGLOGS],
-                    L;
-                Logs ->
-                    [put(Key, round(ehyperloglog:cardinality(Val))) || {Key, Val} <- Logs],
-                    proplists:get_value(hd(?HYPERLOGLOGS), Logs)
-            end;
-        true ->
-            undefined
-    end,
-
-    % Start timers for cache and backend sync
+    % Start timers for cache and backends sync
     {ok, T1} = timer:apply_interval(?HOUR, ?MODULE, sync_log, [Host]),
     {ok, T2} = timer:send_interval(?MINUTE, push),
-
-    % {ok, T3} = timer:apply_interval(?MINUTE, ?MODULE, run_monitors, [Host]),  TODO
-    % [put(I, apply(M, F, A)) || {I, M, F, A} <- get('$monitors')]
 
     {ok, #state{host = Host,
                 size_count = SizeCount,
                 active_count = ActiveCount,
-                backend = Backend,
+                backends = Backends,
+                monitors = Monitors,
                 log = Log,
                 timers = [T1,T2]}}.
 
@@ -238,7 +200,12 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info(push, State) ->
-    push(State#state.host, State#state.backend),
+    run_monitors(State#state.host, State#state.monitors),
+    Probes = [{Key, Val} || {Key, Val} <- get(),
+                            is_integer(Val) and not proplists:is_defined(Key, ?JABS)], %% TODO really not sync JABS ?
+    [push(State#state.host, Probes, Backend) || Backend <- State#state.backends],
+    [put(Key, 0) || {Key, _} <- Probes,
+                    not lists:member(Key, ?NO_COUNTER_PROBES)],
     {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -351,10 +318,6 @@ get(Key) ->
         Val -> Val
     end.
 
-get_probes() ->
-    [{Key, Val} || {Key, Val} <- get(),
-        is_integer(Val) and not proplists:is_defined(Key, ?JABS)].
-
 %%====================================================================
 %% database api
 %%====================================================================
@@ -417,7 +380,6 @@ get_probes() ->
 
 offline_message_hook(_From, #jid{lserver=LServer}, _Packet) ->
     cast(LServer, {inc, offline_message}).
-    %cast(LServer, {inc, 'OFF'}).
 resend_offline_messages_hook(Ls, _User, Server) ->
     cast(jlib:nameprep(Server), {inc, resend_offline_messages}),
     Ls.
@@ -429,7 +391,6 @@ sm_register_connection_hook(_SID, #jid{luser=LUser,lserver=LServer,lresource=LRe
     end,
     Hook = hookid(concat(<<"sm_register_connection">>, Post)),
     cast(LServer, {inc, Hook}),
-    cast(LServer, {inc, 'LOG'}),
     Item = <<LUser/binary, LResource/binary>>,
     cast(LServer, {active, Item}).
 sm_remove_connection_hook(_SID, #jid{lserver=LServer}, Info) ->
@@ -477,8 +438,7 @@ s2s_receive_packet(_From, #jid{lserver=LServer},
                    #xmlel{name=Name, attrs=Attrs}) ->
     Type = xml:get_attr_s(<<"type">>, Attrs),
     Hook = hookid(concat(<<"s2s">>, packet(<<"receive">>, Name, Type))),
-    cast(LServer, {inc, Hook}),
-    cast(LServer, {inc, 'EXT'}).
+    cast(LServer, {inc, Hook}).
 
 remove_user(_User, Server) ->
     cast(jlib:nameprep(Server), {inc, remove_user}).
@@ -504,8 +464,9 @@ pubsub_create_node(ServerHost, _Host, _Node, _Nidx, _NodeOptions) ->
     cast(ServerHost, {inc, pubsub_create_node}).
 pubsub_delete_node(ServerHost, _Host, _Node, _Nidx) ->
     cast(ServerHost, {inc, pubsub_delete_node}).
-pubsub_publish_item(ServerHost, _Node, _Publisher, _From, _ItemId, _Payload) ->
-    cast(ServerHost, {inc, pubsub_publish_item}).  % TODO handle payload size
+pubsub_publish_item(ServerHost, _Node, _Publisher, _From, _ItemId, _Packet) ->
+    %Size = erlang:external_size(Packet),
+    cast(ServerHost, {inc, pubsub_publish_item}).
 %pubsub_broadcast_stanza(Host, Node, Count, _Stanza) ->
 %    cast(Host, {inc, {pubsub_broadcast_stanza, Node, Count}}).
 
@@ -526,6 +487,20 @@ pubsub_publish_item(ServerHost, _Node, _Publisher, _From, _ItemId, _Payload) ->
 % 14  28701 16384 ±0.81% ±1.62% ±2.43%
 % 15  62469 32768 ±0.57% ±1.14% ±1.71%
 % 16 131101 65536 ±0.40% ±0.81% ±1.23%   <=== we take this one
+
+init_log(_Host, false) ->
+    undefined;
+init_log(_Host, true) ->
+    case read_logs() of
+        [] ->
+            L = ehyperloglog:new(16),
+            write_logs([{Key, L} || Key <- ?HYPERLOGLOGS]),
+            [put(Key, 0) || Key <- ?HYPERLOGLOGS],
+            L;
+        Logs ->
+            [put(Key, round(ehyperloglog:cardinality(Val))) || {Key, Val} <- Logs],
+            proplists:get_value(hd(?HYPERLOGLOGS), Logs)
+    end.
 
 cluster_log(Host, Nodes) ->
     case rpc:multicall(Nodes, ?MODULE, value, [Host, log], 8000) of
@@ -606,17 +581,69 @@ read_logs() ->
     end.
 
 %%====================================================================
+%% high level monitors
+%%====================================================================
+
+run_monitors(_Host, Monitors) ->
+    Probes = [{Key, Val} || {Key, Val} <- get(), is_integer(Val)],
+    lists:foreach(
+        fun({I, M, F, A}) -> put(I, apply(M, F, A));
+           ({I, M, F, A, Fun}) -> put(I, Fun(apply(M, F, A)));
+           ({I, Spec}) -> put(I, eval_monitors(Probes, Spec, 0));
+           (_) -> ok
+        end, Monitors).
+
+eval_monitors(_, [], Acc) ->
+    Acc;
+eval_monitors(Probes, [Action|Tail], Acc) ->
+    eval_monitors(Probes, Tail, compute_monitor(Probes, Action, Acc)).
+
+compute_monitor(Probes, Probe, Acc) when is_atom(Probe) ->
+    compute_monitor(Probes, {'+', Probe}, Acc);
+compute_monitor(Probes, {'+', Probe}, Acc) ->
+    case proplists:get_value(Probe, Probes) of
+        undefined -> Acc;
+        Val -> Acc+Val
+    end;
+compute_monitor(Probes, {'-', Probe}, Acc) ->
+    case proplists:get_value(Probe, Probes) of
+        undefined -> Acc;
+        Val -> Acc-Val
+    end.
+
+%%====================================================================
 %% Cache sync
 %%====================================================================
 
-push(Host, mnesia) ->
+init_backend(_Host, {statsd, Ip, Service}) ->
+    application:set_env(statsderl, base_key, Service),
+    application:set_env(statsderl, hostname, Ip),
+    application:load(statsderl),
+    {ok, _Pid} = statsderl:start_link(),
+    statsd;
+init_backend(_Host, statsd) ->
+    application:load(statsderl),
+    {ok, _Pid} = statsderl:start_link(),
+    statsd;
+init_backend(Host, mnesia) ->
+    Table = gen_mod:get_module_proc(Host, mon),
+    mnesia:create_table(Table,
+                        [{disc_copies, [node()]},
+                         {local_content, true},
+                         {record_name, mon},
+                         {attributes, record_info(fields, mon)}]),
+    [put(Key, Val) || {mon, Key, Val} <- ets:tab2list(Table)],
+    mnesia;
+init_backend(_, _) ->
+    none.
+
+push(Host, Probes, mnesia) ->
     Table = gen_mod:get_module_proc(Host, mon),
     Cache = [{Key, Val} || {mon, Key, Val} <- ets:tab2list(Table)],
     lists:foreach(
         fun({Key, Val}) ->
                 case proplists:get_value(Key, ?NO_COUNTER_PROBES) of
                     undefined ->
-                        put(Key, 0),
                         case proplists:get_value(Key, Cache) of
                             undefined -> mnesia:dirty_write(Table, #mon{probe = Key, value = Val});
                             Old -> [mnesia:dirty_write(Table, #mon{probe = Key, value = Old+Val}) || Val > 0]
@@ -629,23 +656,23 @@ push(Host, mnesia) ->
                     _ ->
                         ok
                 end
-        end, get_probes());
-push(Host, statsd) ->
+        end, Probes);
+push(Host, Probes, statsd) ->
+    % Librato metrics are name first with service name (to group the metrics from a service),
+    % then type of service (xmpp, etc) and then name of the data itself
+    % example:  ejabberd-p1net.xmpp.packet_send
+    Node = atom_to_binary(node(), latin1),
+    BaseId = <<Host/binary, ".xmpp.", Node/binary>>,
     lists:foreach(
         fun({Key, Val}) ->
-                Id = <<(atom_to_binary(Key, latin1))/binary, ".", Host/binary>>,
-                % TODO Id should include node()
+                Id = <<BaseId/binary, ".", (atom_to_binary(Key, latin1))/binary>>,
                 case proplists:get_value(Key, ?NO_COUNTER_PROBES) of
-                    undefined ->
-                        put(Key, 0),
-                        [statsderl:increment(Id, Val, 0.5) || Val > 0];
-                    gauge ->
-                        statsderl:gauge(Id, Val, 1.0);
-                    _ ->
-                        ok
+                    undefined -> [statsderl:increment(Id, Val, 0.5) || Val > 0];
+                    gauge -> statsderl:gauge(Id, Val, 1.0);
+                    _ -> ok
                 end
-        end, get_probes());
-push(_Host, none) ->
+        end, Probes);
+push(_Host, _Probes, none) ->
     ok.
 
 %%====================================================================
@@ -666,17 +693,33 @@ jabs(Host) ->
 
 reset_jabs(Host) ->
     Table = gen_mod:get_module_proc(Host, mon),
-    [mnesia:dirty_write(Mon#mon{value = 0})
+    [mnesia:dirty_write(Table, Mon#mon{value = 0})
      || Mon <- ets:tab2list(Table),
         proplists:is_defined(Mon#mon.probe, ?JABS)].
 
-% estimation of packet size:
-%    case xml:get_subtag(Packet, <<"body">>) of
-%        #xmlel{children=Els} ->
-%            Size = lists:foldl(fun({xmlcdata, Data}, Acc) -> Acc+size(Data);
-%                                  (_, Acc) -> Acc
-%                               end, 0, Els),
-%            cast(LServer, {inc, message_send_size, Size});
-%        _ ->
-%            ok
-%    end,
+
+%%====================================================================
+%% Temporary helper to get clear cluster view ov most important probes
+%%====================================================================
+
+merge_sets([L]) -> L;
+merge_sets([L1,L2]) -> merge_set(L1,L2);
+merge_sets([L1,L2|Tail]) -> merge_sets([merge_set(L1,L2)|Tail]).
+merge_set(L1, L2) ->
+    lists:foldl(fun({K,V}, Acc) ->
+                case proplists:get_value(K, Acc) of
+                    undefined -> [{K,V}|Acc];
+                    Old -> lists:keyreplace(K, 1, Acc, {K,Old+V})
+                end
+        end, L1, L2).
+
+tab2set(Mons) when is_list(Mons) ->
+    [{K,V} || {mon,K,V} <- Mons];
+tab2set(_) ->
+    [].
+
+info(Host) when is_binary(Host) ->
+    Table = gen_mod:get_module_proc(Host, mon),
+    Probes = merge_sets([tab2set(rpc:call(Node, ets, tab2list, [Table])) || Node <- ejabberd_cluster:get_nodes()]),
+    [{Key, Val} || {Key, Val} <- Probes,
+                   lists:member(Key, [c2s_receive, c2s_send, s2s_receive, s2s_send])].
