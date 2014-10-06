@@ -55,7 +55,6 @@ get_user_roster(Server, User) ->
                           {"User-Agent", "ejabberd"}],
                          <<"">>, []) of
         {ok, 200, _, RespBody} ->
-                    io:format("Got ~p \n", [RespBody]),
             try mochijson2:decode(RespBody) of
                 JSon -> json_to_rosteritems(Server, User, JSon)
             catch
