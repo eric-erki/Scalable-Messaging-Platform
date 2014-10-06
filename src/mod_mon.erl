@@ -623,6 +623,7 @@ init_backend(_Host, {statsd, Ip, Service}) ->
     statsd;
 init_backend(_Host, statsd) ->
     application:load(statsderl),
+    application:set_env(statsderl, base_key, <<"xmpp">>),
     application:start(statsderl),
     statsd;
 init_backend(Host, mnesia) ->
@@ -660,9 +661,10 @@ push(Host, Probes, mnesia) ->
 push(Host, Probes, statsd) ->
     % Librato metrics are name first with service name (to group the metrics from a service),
     % then type of service (xmpp, etc) and then name of the data itself
-    % example:  ejabberd-p1net.xmpp.packet_send
-    Node = atom_to_binary(node(), latin1),
-    BaseId = <<Host/binary, ".xmpp.", Node/binary>>,
+    % example => xmpp.process-one.net.xmpp-1.chat_receive_packet
+    [_, NodeId] = str:tokens(atom_to_binary(node(), latin1), <<"@">>),
+    [Node | _] = str:tokens(NodeId, <<".">>),
+    BaseId = <<Host/binary, ".", Node/binary>>,
     lists:foreach(
         fun({Key, Val}) ->
                 Id = <<BaseId/binary, ".", (atom_to_binary(Key, latin1))/binary>>,
