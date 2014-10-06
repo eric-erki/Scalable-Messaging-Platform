@@ -45,7 +45,7 @@
          opts = [] :: opts() | '_' | '$2'}).
 
 -type opts() :: [{atom(), any()}].
--type db_type() :: odbc | sharding | mnesia | riak | p1db.
+-type db_type() :: odbc | sharding | mnesia | riak | p1db | rest.
 
 -callback start(binary(), opts()) -> any().
 -callback stop(binary()) -> any().
@@ -214,7 +214,8 @@ db_type(Opts) ->
                (internal) -> mnesia;
                (mnesia) -> mnesia;
                (p1db) -> p1db;
-               (riak) -> riak
+               (riak) -> riak;
+	       (rest) -> rest
             end,
             mnesia).
 
@@ -227,7 +228,8 @@ db_type(Host, Module) ->
                       (internal) -> mnesia;
                       (mnesia) -> mnesia;
                       (p1db) -> p1db;
-                      (riak) -> riak
+                      (riak) -> riak;
+                      (rest) -> rest
                    end,
                    mnesia).
 

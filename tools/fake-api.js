@@ -5,10 +5,10 @@ var fs = require("fs");
 var path = require("path");
 var util = require("util");
 
-
-
-//var genx = require('genx'); // tried genx for generating the xml, but it was 4x slower than direct output
-
+var rosterfile_arg = "rosters.json"; //which roster file to use
+var rosters_file = fs.readFileSync(rosterfile_arg);
+var rosters = JSON.parse(rosters_file);
+   
 
 
 console.log("Fake API for testing \n");
@@ -23,6 +23,7 @@ var delay = 0;
 var handlers = [
 	{regexp : new RegExp("^/api/auth$"), fun : auth},
 	{regexp : new RegExp("^/api/user$"), fun : user},
+	{regexp : new RegExp("^/api/roster$"), fun : roster},
 	];
 
 
@@ -45,6 +46,26 @@ function onRequest(request, response) {
 	response.end();
 }
 
+function roster(request, response) {
+  parts = url.parse(request.url, true);
+  query = parts.query;
+  username = query.username
+  console.log("Retrieving roster for user " + username );
+
+  request.on('data', function(data) {
+  });
+  request.on('end', function() {
+          if (username in rosters) {
+              response.writeHead(200, {"Content-Type": "application/json"});
+              response.write(JSON.stringify(rosters[username]));
+          } else {
+            console.log("User not found: " + username);
+            response.writeHead(404, {"Content-Type": "text/plain"});
+            response.write("404 Not found");
+          }
+      response.end();
+  });
+}
 
 function auth(request, response) {
   parts = url.parse(request.url, true);
