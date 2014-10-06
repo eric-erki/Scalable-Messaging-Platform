@@ -55,12 +55,12 @@ store_type() -> external.
 check_password(_User, _Server, <<>>) ->
     false;
 check_password(User, Server, Password) ->
-    %UID = jlib:jid_to_string(jlib:make_jid(User, Server, <<>>)),
-    URI = build_url(Server, "/auth", [{"username", User}, {"password",Password}]),
+    UID = jlib:jid_to_string(jlib:make_jid(User, Server, <<>>)),
+    URI = build_url(Server, "/auth", [{"jid", UID}, {"password",Password}]),
     case http_p1:request(get, URI,
                          [{"connection", "keep-alive"},
                           {"content-type", "application/json"},
-			  {"User-Agent", "ejabberd"}],
+                          {"User-Agent", "ejabberd"}],
                          <<"">>, []) of
         {ok, 200, _, _RespBody} ->
             true;
@@ -81,12 +81,12 @@ check_password(User, Server, Password) ->
     end.
 
 is_user_exists(User, Server) ->
-    %UID = jlib:jid_to_string(jlib:make_jid(User, Server, <<>>)),
-    URI = build_url(Server, "/user", [{"username", User}]),
+    UID = jlib:jid_to_string(jlib:make_jid(User, Server, <<>>)),
+    URI = build_url(Server, "/user", [{"jid", UID}]),
     case http_p1:request(get, URI,
                          [{"connection", "keep-alive"},
                           {"content-type", "application/json"},
-			  {"User-Agent", "ejabberd"}],
+                          {"User-Agent", "ejabberd"}],
                          <<"">>, []) of
         {ok, 200, _, _RespBody} ->
             true;
