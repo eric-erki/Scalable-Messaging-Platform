@@ -29,156 +29,138 @@
 
 %% External exports
 -export([start/1, set_password/3, check_password/3,
-	 check_password/5, try_register/3,
-	 dirty_get_registered_users/0, get_vh_registered_users/1,
-	 get_vh_registered_users/2, init_db/0,
-	 get_vh_registered_users_number/1,
-	 get_vh_registered_users_number/2, get_password/2,
-	 get_password_s/2, is_user_exists/2, remove_user/2,
-	 remove_user/3, store_type/0, export/1, import/2,
-	 plain_password_required/0]).
+         check_password/5, try_register/3,
+         dirty_get_registered_users/0, get_vh_registered_users/1,
+         get_vh_registered_users/2,
+         get_vh_registered_users_number/1,
+         get_vh_registered_users_number/2, get_password/2,
+         get_password_s/2, is_user_exists/2, remove_user/2,
+         remove_user/3, store_type/0,
+         plain_password_required/0]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
-
-
 
 %%%----------------------------------------------------------------------
 %%% API
 %%%----------------------------------------------------------------------
 start(_Host) ->
-    inets:start(),
+    http_p1:start(),
     ok.
 
-plain_password_required() ->
-    true.
+plain_password_required() -> true.
 
-store_type() ->
-    external.  %%TODO:  is this ok?.  We need plain password to be able to pass them to the api..
+store_type() -> external.
 
-get_base_url(Server) ->
-    Url = ejabberd_config:get_option({base_url, Server}, fun(X) when is_list(X) orelse is_binary(X) -> X end, no_default),
-    Url.
-
-url_encode(B) when is_binary(B) ->
-    url_encode(binary_to_list(B));
-url_encode(L) when is_list(L) ->
-    http_uri:encode(L).
-
-encode_params(Params) ->
-    string:join([ [url_encode(Key), "=", url_encode(Val)] || {Key, Val} <- Params], "&").
-build_url_for(Server, Path, Params) ->
-    Base = get_base_url(Server),
-    binary_to_list(iolist_to_binary([Base, Path,"?", encode_params(Params)])).  %%httpc requires lists
-
+check_password(_User, _Server, <<>>) ->
+    false;
 check_password(User, Server, Password) ->
-    UserJid = jlib:jid_to_string(jlib:make_jid(User, Server, <<>>)),
-    case httpc:request(build_url_for(Server, "/auth", [{"jid", UserJid}, {"password",Password}])) of
-        {ok, {{_,200,_},_,_RespBody}} ->
+    %UID = jlib:jid_to_string(jlib:make_jid(User, Server, <<>>)),
+    URI = build_url(Server, "/auth", [{"username", User}, {"password",Password}]),
+    case http_p1:request(get, URI,
+                         [{"connection", "keep-alive"},
+                          {"content-type", "application/json"},
+			  {"User-Agent", "ejabberd"}],
+                         <<"">>, []) of
+        {ok, 200, _, _RespBody} ->
             true;
-        {ok, {{_,401,_},_,_RespBody}} ->
+        {ok, 401, _, _RespBody} ->
             false;
-        {ok, {{_,Other,_},_,RespBody}} ->
+        {ok, Other, _, RespBody} ->
             ?ERROR_MSG("The authentication module ~p returned "
-				       "an error~nwhen checking user ~p password in server "
-				       "~p~nError message: ~p",
-				       [?MODULE, User, Server, {Other, RespBody}]),
+                                       "an error~nwhen checking user ~p password in server "
+                                       "~p~nError message: ~p",
+                                       [?MODULE, User, Server, {Other, RespBody}]),
+            false;
+        {error, Reason} ->
+            ?ERROR_MSG("HTTP request failed:~n"
+                       "** URI = ~s~n"
+                       "** Err = ~p",
+                       [URI, Reason]),
             false
     end.
 
-%% @spec (User, Server) -> true | false | {error, Error}
 is_user_exists(User, Server) ->
-    UserJid = jlib:jid_to_string(jlib:make_jid(User, Server, <<>>)),
-    case httpc:request(build_url_for(Server, "/user", [{"jid", UserJid}])) of
-        {ok, {{_,200,_},_,_RespBody}} ->
+    %UID = jlib:jid_to_string(jlib:make_jid(User, Server, <<>>)),
+    URI = build_url(Server, "/user", [{"username", User}]),
+    case http_p1:request(get, URI,
+                         [{"connection", "keep-alive"},
+                          {"content-type", "application/json"},
+			  {"User-Agent", "ejabberd"}],
+                         <<"">>, []) of
+        {ok, 200, _, _RespBody} ->
             true;
-        {ok, {{_,401,_},_,_RespBody}} ->
+        {ok, 401, _, _RespBody} ->
             false;
-        {ok, {{_,Other,_},_,RespBody}} ->
-            {error, {rest_error, {Other, RespBody}}}
+        {ok, Other, _, RespBody} ->
+            {error, {rest_error, {Other, RespBody}}};
+        {error, Reason} ->
+            ?ERROR_MSG("HTTP request failed:~n"
+                       "** URI = ~s~n"
+                       "** Err = ~p",
+                       [URI, Reason]),
+            {error, {rest_error, {error, Reason}}}
     end.
 
 
 %% Functions not implemented or not relevant for REST authentication
 
-init_db() ->
-    ok. %%TODO: Is this neccesary?
+check_password(_User, _Server, _Password, _Digest, _DigestGen) ->
+    false.
 
-check_password(_User, _Server, _Password, _Digest,
-	       _DigestGen) ->
-    not_implemented.  %% TODO:  we need this?  can use digest?
-
-%% @spec (User::string(), Server::string(), Password::string()) ->
-%%       ok | {error, invalid_jid}
 set_password(_User, _Server, _Password) ->
-    not_implemented.  %%TODO:  return error?
+    {error, not_allowed}.
 
-%% @spec (User, Server, Password) -> {atomic, ok} | {atomic, exists} | {error, invalid_jid} | {aborted, Reason}
-try_register(_User, _Server, _PasswordList) ->
-    not_implemented. %%TODO:  return error?
+try_register(_User, _Server, _Password) ->
+    {error, not_allowed}.
 
-%% Get all registered users in Mnesia
 dirty_get_registered_users() ->
-    not_implemented. %%TODO
+    [].
 
 get_vh_registered_users(_Server) ->
-    not_implemented.
+    [].
 
-get_vh_registered_users(_Server,
-			[{from, Start}, {to, End}])
-    when is_integer(Start) and is_integer(End) ->
-    not_implemented;
-get_vh_registered_users(_Server,
-			[{limit, Limit}, {offset, Offset}])
-    when is_integer(Limit) and is_integer(Offset) ->
-    not_implemented;
-get_vh_registered_users(_Server, [{prefix, Prefix}])
-    when is_binary(Prefix) ->
-    not_implemented;
-get_vh_registered_users(_Server,
-			[{prefix, Prefix}, {from, Start}, {to, End}])
-    when is_binary(Prefix) and is_integer(Start) and
-	   is_integer(End) ->
-    not_implemented;
-get_vh_registered_users(_Server,
-			[{prefix, Prefix}, {limit, Limit}, {offset, Offset}])
-    when is_binary(Prefix) and is_integer(Limit) and
-	   is_integer(Offset) ->
-    not_implemented;
-get_vh_registered_users(_Server, _) ->
-    not_implemented.
+get_vh_registered_users(_Server, _Data) ->
+    [].
 
 get_vh_registered_users_number(_Server) ->
-    not_implemented.
+    0.
 
-get_vh_registered_users_number(_Server,
-			       [{prefix, Prefix}])
-    when is_binary(Prefix) ->
-    not_implemented;
-get_vh_registered_users_number(_Server, _) ->
-    not_implemented.
+get_vh_registered_users_number(_Server, _Data) ->
+    0.
 
 get_password(_User, _Server) ->
-    not_implemented.
+    false.
 
 get_password_s(_User, _Server) ->
-    not_implemented.
+    <<"">>.
 
 
-%% @spec (User, Server) -> ok
-%% @doc Remove user.
-%% Note: it returns ok even if there was some problem removing the user.
 remove_user(_User, _Server) ->
-    not_implemented.
+    false.
 
-%% @spec (User, Server, Password) -> ok | not_exists | not_allowed | bad_request
-%% @doc Remove user if the provided password is correct.
 remove_user(_User, _Server, _Password) ->
-    not_implemented.
+    false.
 
+%%%----------------------------------------------------------------------
+%%% HTTP helpers
+%%%----------------------------------------------------------------------
 
-export(_Server) ->
-    not_implemented.
+url(Server, Path) ->
+    Base = ejabberd_config:get_option({ext_api_url, Server},
+                                      fun(X) -> iolist_to_binary(X) end,
+                                      <<"http://localhost/api">>),
+    <<Base/binary, (iolist_to_binary(Path))/binary>>.
 
-import(_LServer, [_LUser, _Password, _TimeStamp]) ->
-    not_implemented.
+encode_params(Params) ->
+    [<<$&, ParHead/binary>> | ParTail] =
+        [<<"&", (iolist_to_binary(Key))/binary, "=", (ejabberd_http:url_encode(Value))/binary>>
+            || {Key, Value} <- Params],
+    iolist_to_binary([ParHead | ParTail]).
+
+build_url(Server, Path, []) ->
+    binary_to_list(url(Server, Path));
+build_url(Server, Path, Params) ->
+    Base = url(Server, Path),
+    Pars = encode_params(Params),
+    binary_to_list(<<Base/binary, $?, Pars/binary>>).  %%httpc requires lists
