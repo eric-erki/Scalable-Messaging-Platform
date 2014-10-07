@@ -48,7 +48,9 @@ get_jid_info(LServer, LUser, LJID) ->
     end.
 
 get_user_roster(Server, User) ->
-    URI = build_url(Server, "/roster", [{"username", User}]),
+    %URI = build_url(Server, "/roster", [{"username", User}]),
+    UID = jlib:jid_to_string(jlib:make_jid(User, Server, <<>>)),
+    URI = build_url(Server, "/roster", [{"jid", UID}]),
     case http_p1:request(get, URI,
                          [{"connection", "keep-alive"},
                           {"content-type", "application/json"},
