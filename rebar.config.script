@@ -69,6 +69,7 @@ Deps = [{p1_cache_tab, ".*", {git, "git://github.com/processone/cache_tab"}},
 	{p1_stun, ".*", {git, "git://github.com/processone/stun"}},
         {p1_yaml, ".*", {git, "git://github.com/processone/p1_yaml"}},
         {ehyperloglog, ".*", {git, "https://github.com/vaxelfel/eHyperLogLog.git"}},
+        {statsderl, ".*", {git, "https://github.com/lpgauth/statsderl.git"}},
         {p1_utils, ".*", {git, "git://github.com/processone/p1_utils"}}],
 ConfigureCmd = fun(Pkg, Flags) ->
                        {'get-deps',
