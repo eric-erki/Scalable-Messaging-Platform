@@ -615,15 +615,15 @@ compute_monitor(Probes, {'-', Probe}, Acc) ->
 %% Cache sync
 %%====================================================================
 
-init_backend(_Host, {statsd, Ip, Service}) ->
+init_backend(Host, {statsd, Ip}) ->
     application:load(statsderl),
-    application:set_env(statsderl, base_key, Service),
+    application:set_env(statsderl, base_key, binary_to_list(Host)),
     application:set_env(statsderl, hostname, Ip),
     application:start(statsderl),
     statsd;
-init_backend(_Host, statsd) ->
+init_backend(Host, statsd) ->
     application:load(statsderl),
-    application:set_env(statsderl, base_key, <<"xmpp">>),
+    application:set_env(statsderl, base_key, binary_to_list(Host)),
     application:start(statsderl),
     statsd;
 init_backend(Host, mnesia) ->
@@ -633,7 +633,6 @@ init_backend(Host, mnesia) ->
                          {local_content, true},
                          {record_name, mon},
                          {attributes, record_info(fields, mon)}]),
-    [put(Key, Val) || {mon, Key, Val} <- ets:tab2list(Table)],
     mnesia;
 init_backend(_, _) ->
     none.
@@ -658,13 +657,13 @@ push(Host, Probes, mnesia) ->
                         ok
                 end
         end, Probes);
-push(Host, Probes, statsd) ->
+push(_Host, Probes, statsd) ->
     % Librato metrics are name first with service name (to group the metrics from a service),
     % then type of service (xmpp, etc) and then name of the data itself
-    % example => xmpp.process-one.net.xmpp-1.chat_receive_packet
+    % example => process-one.net.xmpp.xmpp-1.chat_receive_packet
     [_, NodeId] = str:tokens(atom_to_binary(node(), latin1), <<"@">>),
     [Node | _] = str:tokens(NodeId, <<".">>),
-    BaseId = <<Host/binary, ".", Node/binary>>,
+    BaseId = <<"xmpp.", Node/binary>>,
     lists:foreach(
         fun({Key, Val}) ->
                 Id = <<BaseId/binary, ".", (atom_to_binary(Key, latin1))/binary>>,

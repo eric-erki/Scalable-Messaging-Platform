@@ -43,7 +43,6 @@
          {pubsub_users, gauge},
          {memory, gauge},
          {processes, gauge},
-         {runtime, gauge},
          {daily_active_users, gauge},
          {weekly_active_users, gauge},
          {monthly_active_users, gauge}]).
