@@ -56,7 +56,7 @@ check_password(_User, _Server, <<>>) ->
     false;
 check_password(User, Server, Password) ->
     UID = jlib:jid_to_string(jlib:make_jid(User, Server, <<>>)),
-    URI = build_url(Server, "/auth", [{"jid", UID}, {"password",Password}]),
+    URI = build_url(Server, "/user/auth", [{"jid", UID}, {"password",Password}]),
     case http_p1:request(get, URI,
                          [{"connection", "keep-alive"},
                           {"content-type", "application/json"},
