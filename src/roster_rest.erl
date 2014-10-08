@@ -33,7 +33,7 @@
 -include("logger.hrl").
 -include("mod_roster.hrl").
 
-start(Host, Opts) ->
+start(_Host, _Opts) ->
     http_p1:start(),
     ok.
 
@@ -48,7 +48,7 @@ get_jid_info(LServer, LUser, LJID) ->
     end.
 
 get_user_roster(Server, User) ->
-    URI = build_url(Server, "/roster", [{"username", User}]),
+    URI = build_url(Server, [{"username", User}]),
     case http_p1:request(get, URI,
                          [{"connection", "keep-alive"},
                           {"content-type", "application/json"},
@@ -109,10 +109,13 @@ fields_to_roster(_LServer, _LUser, _Item,
 %%% HTTP helpers
 %%%----------------------------------------------------------------------
 
-url(Server, Path) ->
+url(Server) ->
     Base = ejabberd_config:get_option({ext_api_url, Server},
                                       fun(X) -> iolist_to_binary(X) end,
                                       <<"http://localhost/api">>),
+    Path = ejabberd_config:get_option({ext_api_path_roster, Server},
+				      fun(X) -> iolist_to_binary(X) end,
+				      <<"/roster">>),
     <<Base/binary, (iolist_to_binary(Path))/binary>>.
 
 encode_params(Params) ->
@@ -121,9 +124,9 @@ encode_params(Params) ->
             || {Key, Value} <- Params],
     iolist_to_binary([ParHead | ParTail]).
 
-build_url(Server, Path, []) ->
-    binary_to_list(url(Server, Path));
-build_url(Server, Path, Params) ->
-    Base = url(Server, Path),
+build_url(Server, []) ->
+    binary_to_list(url(Server));
+build_url(Server, Params) ->
+    Base = url(Server),
     Pars = encode_params(Params),
     binary_to_list(<<Base/binary, $?, Pars/binary>>).  %%httpc requires lists

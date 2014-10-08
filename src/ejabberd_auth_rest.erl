@@ -56,7 +56,7 @@ check_password(_User, _Server, <<>>) ->
     false;
 check_password(User, Server, Password) ->
     UID = jlib:jid_to_string(jlib:make_jid(User, Server, <<>>)),
-    URI = build_url(Server, "/auth", [{"jid", UID}, {"password",Password}]),
+    URI = build_url(Server, auth, [{"jid", UID}, {"password",Password}]),
     case http_p1:request(get, URI,
                          [{"connection", "keep-alive"},
                           {"content-type", "application/json"},
@@ -82,7 +82,7 @@ check_password(User, Server, Password) ->
 
 is_user_exists(User, Server) ->
     UID = jlib:jid_to_string(jlib:make_jid(User, Server, <<>>)),
-    URI = build_url(Server, "/user", [{"jid", UID}]),
+    URI = build_url(Server, user, [{"jid", UID}]),
     case http_p1:request(get, URI,
                          [{"connection", "keep-alive"},
                           {"content-type", "application/json"},
@@ -146,10 +146,22 @@ remove_user(_User, _Server, _Password) ->
 %%% HTTP helpers
 %%%----------------------------------------------------------------------
 
-url(Server, Path) ->
+path(Server, auth) ->
+    ejabberd_config:get_option({ext_api_path_auth, Server},
+			       fun(X) -> iolist_to_binary(X) end,
+			       <<"/auth">>);
+path(Server, user) ->
+    ejabberd_config:get_option({ext_api_path_user, Server},
+			       fun(X) -> iolist_to_binary(X) end,
+			       <<"/user">>);
+path(_Server, Method) when is_binary(Method) orelse is_list(Method)->
+    Method.
+
+url(Server, Method) ->
     Base = ejabberd_config:get_option({ext_api_url, Server},
                                       fun(X) -> iolist_to_binary(X) end,
                                       <<"http://localhost/api">>),
+    Path = path(Server, Method),
     <<Base/binary, (iolist_to_binary(Path))/binary>>.
 
 encode_params(Params) ->
@@ -158,9 +170,9 @@ encode_params(Params) ->
             || {Key, Value} <- Params],
     iolist_to_binary([ParHead | ParTail]).
 
-build_url(Server, Path, []) ->
-    binary_to_list(url(Server, Path));
-build_url(Server, Path, Params) ->
-    Base = url(Server, Path),
+build_url(Server, Method, []) ->
+    binary_to_list(url(Server, Method));
+build_url(Server, Method, Params) ->
+    Base = url(Server, Method),
     Pars = encode_params(Params),
     binary_to_list(<<Base/binary, $?, Pars/binary>>).  %%httpc requires lists
