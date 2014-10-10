@@ -149,7 +149,7 @@ init([Host, Opts]) ->
     make_dir_rec(Logdir),
     {ok,
      #modstate{host = MyHost, logdir = Logdir,
-	       user = jlib:string_to_jid(SJID)}}.
+	       user = SJID}}.
 
 terminate(_Reason, #modstate{host = Host}) ->
     ?INFO_MSG("Stopping c2s debug module for: ~s", [Host]),
