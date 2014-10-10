@@ -925,7 +925,7 @@ kick_user(User, Server) ->
     lists:foreach(
 	fun(Resource) ->
 		PID = get_session_pid(User, Server, Resource),
-		PID ! disconnect
+		PID ! kick
 	end, Resources),
     length(Resources).
 
