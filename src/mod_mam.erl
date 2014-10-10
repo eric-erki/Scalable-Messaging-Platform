@@ -58,11 +58,11 @@ start(Host, Opts) ->
 		       remove_user, 50),
     ok.
 
-init_db(odbc, Host) ->
+init_db(DBType, Host) when DBType==odbc orelse DBType==sharding ->
     Muchost = gen_mod:get_module_opt_host(Host, mod_muc,
                                          <<"conference.@HOST@">>),
-    ets:insert(ejabberd_modules, {ejabberd_module, {mod_mam, Muchost}, [{db_type,odbc}]}),
-    mnesia:dirty_write({local_config, {modules,Muchost}, [{mod_mam, [{db_type,odbc}]}]});
+    ets:insert(ejabberd_modules, {ejabberd_module, {mod_mam, Muchost}, [{db_type,DBType}]}),
+    mnesia:dirty_write({local_config, {modules,Muchost}, [{mod_mam, [{db_type,DBType}]}]});
 init_db(mnesia, _Host) ->
     mnesia:create_table(archive_msg,
                         [{disc_only_copies, [node()]},
@@ -150,13 +150,17 @@ remove_user(LUser, LServer, p1db) ->
         {error, _} = Err ->
             {aborted, Err}
     end;
-remove_user(LUser, LServer, odbc) ->
+remove_user(LUser, LServer, DBType) when DBType==odbc orelse DBType==sharding ->
     SUser = ejabberd_odbc:escape(LUser),
+    Key = case DBType of
+	      odbc -> undefined;
+	      sharding -> LUser
+    end,
     ejabberd_odbc:sql_query(
-      LServer,
+      LServer, Key,
       [<<"delete from archive where username='">>, SUser, <<"';">>]),
     ejabberd_odbc:sql_query(
-      LServer,
+      LServer, Key,
       [<<"delete from archive_prefs where username='">>, SUser, <<"';">>]).
 
 user_receive_packet(Pkt, C2SState, JID, Peer, _To) ->
@@ -222,7 +226,7 @@ process_iq(#jid{lserver = LServer} = From,
            #iq{type = get, sub_el = #xmlel{name = <<"query">>} = SubEl} = IQ) ->
     case catch lists:foldl(
                  fun(#xmlel{name = <<"start">>} = El, {_, End, With, RSM}) ->
-                         {{_, _, _} = 
+                         {{_, _, _} =
                               jlib:datetime_string_to_timestamp(
                                 xml:get_tag_cdata(El)),
                           End, With, RSM};
@@ -409,7 +413,8 @@ do_store(Pkt, LUser, LServer, Peer, Type, p1db) ->
         {error, _} = Err ->
             Err
     end;
-do_store(Pkt, LUser, LServer, Peer, _Type, odbc) ->
+do_store(Pkt, LUser, LServer, Peer, _Type, DBType)
+  when DBType==odbc orelse DBType==sharding->
     TSinteger = now_to_usec(now()),
     ID = TS = jlib:integer_to_binary(TSinteger),
     BarePeer = jlib:jid_to_string(
@@ -419,8 +424,12 @@ do_store(Pkt, LUser, LServer, Peer, _Type, odbc) ->
               jlib:jid_tolower(Peer)),
     XML = xml:element_to_binary(Pkt),
     Body = xml:get_subtag_cdata(Pkt, <<"body">>),
+    Key = case DBType of
+	      odbc -> undefined;
+	      sharding -> LUser
+	  end,
     case ejabberd_odbc:sql_query(
-           LServer,
+           LServer, Key,
            [<<"insert into archive (username, timestamp, "
               "peer, bare_peer, xml, txt) values (">>,
             <<"'">>, ejabberd_odbc:escape(LUser), <<"', ">>,
@@ -439,6 +448,7 @@ do_store(Pkt, LUser, LServer, Peer, _Type, odbc) ->
 write_prefs(LUser, LServer, Host, Default, Always, Never) ->
     DBType = case gen_mod:db_type(Host, ?MODULE) of
 		 odbc -> {odbc, Host};
+		 sharding -> {sharding, Host};
 		 DB -> DB
 	     end,
     Prefs = #archive_prefs{us = {LUser, LServer},
@@ -464,12 +474,16 @@ write_prefs(LUser, LServer, Prefs, p1db) ->
 write_prefs(LUser, _LServer, #archive_prefs{default = Default,
                                            never = Never,
                                            always = Always},
-            {odbc, Host}) ->
+            {DBType, Host}) ->
     SUser = ejabberd_odbc:escape(LUser),
     SDefault = erlang:atom_to_binary(Default, utf8),
     SAlways = ejabberd_odbc:encode_term(Always),
     SNever = ejabberd_odbc:encode_term(Never),
-    case update(Host, <<"archive_prefs">>,
+    Key = case DBType of
+	      odbc -> undefined;
+	      sharding -> LUser
+    end,
+    case update(Host, Key, <<"archive_prefs">>,
                 [<<"username">>, <<"def">>, <<"always">>, <<"never">>],
                 [SUser, SDefault, SAlways, SNever],
                 [<<"username='">>, SUser, <<"'">>]) of
@@ -517,11 +531,17 @@ get_prefs(LUser, LServer, p1db) ->
         {error, _} ->
             error
     end;
-get_prefs(LUser, LServer, odbc) ->
+get_prefs(LUser, LServer, DBType)
+  when DBType==odbc orelse DBType==sharding->
+    Key = case DBType of
+	      odbc -> undefined;
+	      sharding -> LUser
+	  end,
     case ejabberd_odbc:sql_query(
-           LServer, [<<"select def, always, never from archive_prefs ">>,
-                     <<"where username='">>,
-                     ejabberd_odbc:escape(LUser), <<"';">>]) of
+	   LServer, Key,
+	   [<<"select def, always, never from archive_prefs ">>,
+	    <<"where username='">>,
+	    ejabberd_odbc:escape(LUser), <<"';">>]) of
         {selected, _, [[SDefault, SAlways, SNever]]} ->
             Default = erlang:binary_to_existing_atom(SDefault, utf8),
             Always = ejabberd_odbc:decode_term(SAlways),
@@ -538,13 +558,15 @@ select_and_send(#jid{lserver = LServer} = From,
                 To, Start, End, With, RSM, QID) ->
     DBType = case gen_mod:db_type(LServer, ?MODULE) of
 		 odbc -> {odbc, LServer};
+		 sharding -> {sharding, LServer};
 		 DB -> DB
 	     end,
     select_and_send(From, To, Start, End, With, RSM, QID,
                     DBType).
 
 select_and_send(From, To, Start, End, With, RSM, QID, DBType) ->
-    {Msgs, Count} = select_and_start(From, To, Start, End, With, RSM, DBType),
+    {Msgs, Count} = select_and_start(From, To, Start, End, With,
+				     RSM, DBType),
     SortedMsgs = lists:keysort(2, Msgs),
     send(From, To, SortedMsgs, RSM, Count, QID).
 
@@ -610,11 +632,15 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
             {[], 0}
     end;
 select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
-       Start, End, With, RSM, {odbc, Host}) ->
-    %?ERROR_MSG("XXX ~p", [JidRequestor]),
-    {Query, CountQuery} = make_sql_query(LUser, LServer, Start, End, With, RSM),
-    case {ejabberd_odbc:sql_query(Host, Query),
-          ejabberd_odbc:sql_query(Host, CountQuery)} of
+       Start, End, With, RSM, {DBType, Host}) ->
+        {Query, CountQuery} = make_sql_query(LUser, LServer,
+					     Start, End, With, RSM),
+    Key = case DBType of
+	      odbc -> undefined;
+	      sharding -> LUser
+	  end,
+    case {ejabberd_odbc:sql_query(Host, Key, Query),
+          ejabberd_odbc:sql_query(Host, Key, CountQuery)} of
         {{selected, _, Res}, {selected, _, [[Count]]}} ->
             {lists:map(
                fun([TS, XML, PeerBin]) ->
@@ -843,22 +869,22 @@ get_jids(Els) ->
               []
       end, Els).
 
-update(LServer, Table, Fields, Vals, Where) ->
+update(LServer, Key, Table, Fields, Vals, Where) ->
     UPairs = lists:zipwith(fun (A, B) ->
 				   <<A/binary, "='", B/binary, "'">>
 			   end,
 			   Fields, Vals),
-    case ejabberd_odbc:sql_query(LServer,
+    case ejabberd_odbc:sql_query(LServer, Key,
 				 [<<"update ">>, Table, <<" set ">>,
 				  join(UPairs, <<", ">>), <<" where ">>, Where,
 				  <<";">>])
 	of
-      {updated, 1} -> {updated, 1};
-      _ ->
-	  ejabberd_odbc:sql_query(LServer,
-				  [<<"insert into ">>, Table, <<"(">>,
-				   join(Fields, <<", ">>), <<") values ('">>,
-				   join(Vals, <<"', '">>), <<"');">>])
+	{updated, 1} -> {updated, 1};
+	_ ->
+	    ejabberd_odbc:sql_query(LServer, Key,
+				    [<<"insert into ">>, Table, <<"(">>,
+				     join(Fields, <<", ">>), <<") values ('">>,
+				     join(Vals, <<"', '">>), <<"');">>])
     end.
 
 %% Almost a copy of string:join/2.

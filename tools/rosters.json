@@ -1,0 +1,9 @@
+{
+"1": { "roster": [
+	{"jid": "2@localhost", "subscription": "both", "nick": "user 20"},
+	{"jid": "3@localhost", "subscription": "both", "nick": "user 30"}
+]},
+"2": { "roster": [
+	{"jid": "1@localhost", "subscription": "both", "nick": "user 10"}
+	]}
+}

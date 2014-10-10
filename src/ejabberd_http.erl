@@ -61,6 +61,7 @@
     request_headers = []       :: list(),
     end_of_request = false     :: boolean(),
     default_host               :: binary(),
+    options = []               :: list(),
     trail = <<>>               :: binary(),
     websocket_handlers = []    :: [{[binary()], atom(), list()}]
 }).
@@ -124,6 +125,10 @@ init({SockMod, Socket}, Opts) ->
              true -> [{[<<"http-poll">>], ejabberd_http_poll}];
              false -> []
            end,
+    XMLRPC = case proplists:get_bool(xmlrpc, Opts) of
+		 true -> [{[], ejabberd_xmlrpc}];
+		 false -> []
+	     end,
     DefinedHandlers = gen_mod:get_opt(
                         request_handlers, Opts,
                         fun(Hs) ->
@@ -132,7 +137,7 @@ init({SockMod, Socket}, Opts) ->
                                   Mod} || {Path, Mod} <- Hs]
                         end, []),
     RequestHandlers = DefinedHandlers ++ Captcha ++ Register ++
-        Admin ++ Bind ++ Poll,
+        Admin ++ Bind ++ Poll ++ XMLRPC,
     ?DEBUG("S: ~p~n", [RequestHandlers]),
     WebSocketHandlers = gen_mod:get_opt(
                           websocket_handlers, Opts,
@@ -157,7 +162,7 @@ init({SockMod, Socket}, Opts) ->
                                   fun iolist_to_binary/1),
     ?INFO_MSG("started: ~p", [{SockMod1, Socket1}]),
     State = #state{sockmod = SockMod1, socket = Socket1,
-		   default_host = DefaultHost,
+		   default_host = DefaultHost, options = Opts,
 		   request_handlers = RequestHandlers,
 		   websocket_handlers = WebSocketHandlers},
     receive_headers(State).
@@ -415,6 +420,7 @@ process_request(#state{request_method = Method,
 		       request_lang = Lang,
 		       sockmod = SockMod,
 		       socket = Socket,
+		       options = Options,
 		       request_host = Host,
 		       request_port = Port,
 		       request_tp = TP,
@@ -444,6 +450,7 @@ process_request(#state{request_method = Method,
                                host = Host,
                                port = Port,
                                tp = TP,
+			       opts = Options,
                                headers = RequestHeaders,
                                ip = IP},
             case process(RequestHandlers ++ WebSocketHandlers, Request, Socket, SockMod, Trail) of

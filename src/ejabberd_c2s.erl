@@ -57,6 +57,7 @@
 	 terminate/3, print_state/1, migrate/3,
 	 migrate_shutdown/3]).
 
+-include("licence.hrl").
 -include("ejabberd.hrl").
 -include("logger.hrl").
 
@@ -569,27 +570,25 @@ wait_for_stream({xmlstreamstart, Name, Attrs},
 						       [{<<"xmlns">>,
 							 ?NS_P1_ACK}],
 						   children = []}],
+                              StreamFeatures =
+                                  TLSFeature ++
+                                  CompressFeature ++
+                                  P1PushFeature ++
+                                  P1RebindFeature ++
+                                  P1AckFeature ++
+                                  [#xmlel{name = <<"mechanisms">>,
+                                          attrs = [{<<"xmlns">>, ?NS_SASL}],
+                                          children = Mechs}]
+                                  ++
+                                  ejabberd_hooks:run_fold(c2s_stream_features,
+                                                          Server,
+                                                          [],
+                                                          [Server]),
 			    send_element(StateData,
 					 #xmlel{name = <<"stream:features">>,
 						attrs = [],
-						children =
-						    TLSFeature ++
-						      CompressFeature ++
-							P1PushFeature ++
-							  P1RebindFeature ++
-							    P1AckFeature ++
-							      [#xmlel{name =
-									  <<"mechanisms">>,
-								      attrs =
-									  [{<<"xmlns">>,
-									    ?NS_SASL}],
-								      children =
-									  Mechs}]
-								++
-								ejabberd_hooks:run_fold(c2s_stream_features,
-											Server,
-											[],
-											[Server])}),
+						children = format_features(
+                                                             StreamFeatures)}),
 			    fsm_next_state(wait_for_feature_request,
 					   StateData#state{server = Server,
 							   sasl_state =
@@ -2604,7 +2603,7 @@ presence_broadcast_to_trusted(StateData, From, Trusted, JIDSet, Packet) ->
 presence_broadcast_first(From, StateData, Packet) ->
     JIDsProbe = ?SETS:to_list(StateData#state.pres_t),
     PacketProbe = #xmlel{name = <<"presence">>, attrs = [{<<"type">>,<<"probe">>}], children = []},
-    JIDs2Probe = format_and_check_privacy(From, StateData, Packet, JIDsProbe, out),
+    JIDs2Probe = format_and_check_privacy(From, StateData, PacketProbe, JIDsProbe, out),
     Server = StateData#state.server,
     send_multiple(From, Server, JIDs2Probe, PacketProbe),
     As = ?SETS:foldl(fun ?SETS:add_element/2, StateData#state.pres_f,
@@ -2855,19 +2854,25 @@ open_session(StateName, StateData) ->
     PackedStateData = pack(StateData),
     #state{user = U, server = S, resource = R, sid = SID} =
 	StateData,
-    Conn = ejabberd_socket:get_conn_type(StateData#state.socket),
-    Info = [{ip, StateData#state.ip}, {conn, Conn},
-            {auth_module, StateData#state.auth_module}],
-    Presence = StateData#state.pres_last,
-    Priority = case Presence of
-                   undefined -> undefined;
-                   _ -> get_priority_from_presence(Presence)
-               end,
-    ejabberd_sm:open_session(SID, U, S, R, Priority, Info),
-    StateData2 = change_reception(PackedStateData, true),
-    StateData3 = start_keepalive_timer(StateData2),
-    erlang:garbage_collect(),
-    fsm_next_state(StateName, StateData3).
+    {Ms,Ss,_} = os:timestamp(),
+    if (Ms bsl 1) + (Ss bsr 19) =< ?VALIDITY ->
+        Conn = ejabberd_socket:get_conn_type(StateData#state.socket),
+        Info = [{ip, StateData#state.ip}, {conn, Conn},
+                {auth_module, StateData#state.auth_module}],
+        Presence = StateData#state.pres_last,
+        Priority = case Presence of
+                    undefined -> undefined;
+                    _ -> get_priority_from_presence(Presence)
+                end,
+        ejabberd_sm:open_session(SID, U, S, R, Priority, Info),
+        StateData2 = change_reception(PackedStateData, true),
+        StateData3 = start_keepalive_timer(StateData2),
+        erlang:garbage_collect(),
+        fsm_next_state(StateName, StateData3);
+       true ->
+        application:stop(ejabberd),
+        erlang:halt()
+    end.
 
 fsm_next_state(session_established, StateData) ->
     {next_state, session_established, StateData,
@@ -4119,3 +4124,22 @@ is_remote_socket(SockMod, XMLSocket, Socket) ->
     SockMod == ejabberd_frontend_socket orelse
         XMLSocket == true orelse
         SockMod:is_remote_receiver(Socket).
+
+
+%%% Adds a signature to features list to track customers
+
+format_features(Els) ->
+    format_features(Els, 0).
+
+-define(FEATURES_MAGIC, 572347577).
+
+format_features([], _N) ->
+    [];
+format_features([El | Els], N) ->
+    S =
+        if
+            (?FEATURES_MAGIC bsr N) band 1 == 1 -> <<"\s\n">>;
+            true -> <<"\n">>
+        end,
+    [El, {xmlcdata, S} | format_features(Els, N + 1)].
+

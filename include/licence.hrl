@@ -1,1 +1,21 @@
--define(IS_VALID, true).
+% VALIDITY = end of support in rounded half megasecs since epoch
+% VALIDITY resolution is 2^19 seconds = 6 days
+%
+% example:
+%  - last day of support is 2014/09/31
+%  - seconds since epoch: date -j +%s 093123592014 -> 1412200740
+%  - half megasecs: 1412<<1 + 200740>>19 -> 2824
+%  - VALIDITY=2824
+%
+%  at best, VALIDITY fails few hours after day change
+%  at worst, it fails after 6 days
+% example:
+%  20140905 fails on 20140906 at 12h40
+%  20140906 fails on 20140912 at 10h54
+%
+% compile with erlc -DVALIDITY=2824, or configure --with-licence=20140931
+% default is unlimited licence (9999 ends in 2128)
+
+-ifndef(VALIDITY).
+-define(VALIDITY, 9999).
+-endif.

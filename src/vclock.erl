@@ -194,6 +194,12 @@ get_property(Key, PairList) ->
 %% ===================================================================
 -ifdef(TEST).
 
+-define(SEC_TO_EPOCH, 62167219200).
+
+moment() ->
+    {Mega, Sec, _Micro} = os:timestamp(),
+    (Mega * 1000000) + Sec + ?SEC_TO_EPOCH.
+
 % doc Serves as both a trivial test and some example code.
 example_test() ->
     A = vclock:fresh(),
@@ -214,7 +220,7 @@ example_test() ->
 
 prune_small_test() ->
     % vclock with less entries than small_vclock will be untouched
-    Now = riak_core_util:moment(),
+    Now = moment(),
     OldTime = Now - 32000000,
     SmallVC = [{<<"1">>, {1, OldTime}},
                {<<"2">>, {2, OldTime}},
@@ -224,7 +230,7 @@ prune_small_test() ->
 
 prune_young_test() ->
     % vclock with all entries younger than young_vclock will be untouched
-    Now = riak_core_util:moment(),
+    Now = moment(),
     NewTime = Now - 1,
     VC = [{<<"1">>, {1, NewTime}},
           {<<"2">>, {2, NewTime}},
@@ -235,7 +241,7 @@ prune_young_test() ->
 prune_big_test() ->
     % vclock not preserved by small or young will be pruned down to
     % no larger than big_vclock entries
-    Now = riak_core_util:moment(),
+    Now = moment(),
     NewTime = Now - 1000,
     VC = [{<<"1">>, {1, NewTime}},
           {<<"2">>, {2, NewTime}},
@@ -247,7 +253,7 @@ prune_big_test() ->
 prune_old_test() ->
     % vclock not preserved by small or young will be pruned down to
     % no larger than big_vclock and no entries more than old_vclock ago
-    Now = riak_core_util:moment(),
+    Now = moment(),
     NewTime = Now - 1000,
     OldTime = Now - 100000,    
     VC = [{<<"1">>, {1, NewTime}},
@@ -260,7 +266,7 @@ prune_old_test() ->
 prune_order_test() ->
     % vclock with two nodes of the same timestamp will be pruned down
     % to the same node
-    Now = riak_core_util:moment(),
+    Now = moment(),
     OldTime = Now - 100000,    
     VC1 = [{<<"1">>, {1, OldTime}},
            {<<"2">>, {2, OldTime}}],

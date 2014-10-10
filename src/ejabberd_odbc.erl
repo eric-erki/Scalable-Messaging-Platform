@@ -33,11 +33,13 @@
 -behaviour(?GEN_FSM).
 
 %% External exports
--export([start/2, start_link/3, sql_query/2,
-	 sql_query_t/1, sql_transaction/2, sql_bloc/2, escape/1,
+-export([start/2, start_link/3, start_link/4, sql_query/2,
+	 sql_query/3, sql_query_t/1, sql_transaction/2,
+	 sql_transaction/3, sql_bloc/2, sql_bloc/3, escape/1,
 	 escape_like/1, to_bool/1, keep_alive/1,
-	 sql_query_on_all_connections/2, encode_term/1,
-	 decode_term/1, get_proc/2]).
+	 sql_query_on_all_connections/2, sql_query_on_all_connections/3,
+	 encode_term/1, decode_term/1,
+	 get_proc/2, get_proc/3]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3, handle_sync_event/4,
@@ -54,6 +56,7 @@
 -record(state,
 	{db_ref = self()                     :: pid(),
          db_type = odbc                      :: pgsql | mysql | odbc,
+	 shard = undefined                   :: undefined | non_neg_integer(),
          start_interval = 0                  :: non_neg_integer(),
          host = <<"">>                       :: binary(),
 	 max_pending_requests_len            :: non_neg_integer(),
@@ -98,7 +101,12 @@ start(Host, Num) ->
 
 start_link(Host, Num, StartInterval) ->
     (?GEN_FSM):start_link({local, get_proc(Host, Num)}, ?MODULE,
-			  [Host, StartInterval],
+			  [Host, StartInterval, undefined],
+			  fsm_limit_opts() ++ (?FSMOPTS)).
+
+start_link(Host, Shard, Num, StartInterval) ->
+    (?GEN_FSM):start_link({local, get_proc(Host, Shard, Num)}, ?MODULE,
+			  [Host, StartInterval, Shard],
 			  fsm_limit_opts() ++ (?FSMOPTS)).
 
 -type sql_query() :: [sql_query() | binary()].
@@ -112,7 +120,15 @@ start_link(Host, Num, StartInterval) ->
 sql_query(Host, Query) ->
     sql_call(Host, {sql_query, Query}).
 
--spec sql_query_on_all_connections(binary(), sql_query()) -> [sql_query_result()].
+-spec sql_query(binary(), term(), sql_query()) -> sql_query_result().
+
+sql_query(Host, undefined, Query) ->
+    sql_call(Host, {sql_query, Query});
+sql_query(Host, Key, Query) ->
+    sql_call(Host, Key, {sql_query, Query}).
+
+-spec sql_query_on_all_connections(binary(), sql_query()) ->
+    [sql_query_result()].
 
 sql_query_on_all_connections(Host, Query) ->
     F = fun (Pid) ->
@@ -122,6 +138,18 @@ sql_query_on_all_connections(Host, Query) ->
 					   ?TRANSACTION_TIMEOUT)
 	end,
     lists:map(F, ejabberd_odbc_sup:get_pids(Host)).
+
+-spec sql_query_on_all_connections(binary(), term(), sql_query()) ->
+    [sql_query_result()].
+
+sql_query_on_all_connections(Host, Key, Query) ->
+    F = fun (Pid) ->
+		(?GEN_FSM):sync_send_event(Pid,
+					   {sql_cmd, {sql_query, Query},
+					    erlang:now()},
+					   ?TRANSACTION_TIMEOUT)
+	end,
+    lists:map(F, ejabberd_odbc_sup:get_pids_shard(Host, Key)).
 
 -spec sql_transaction(binary(), [sql_query()] | fun(() -> any())) ->
                              {atomic, any()} |
@@ -138,22 +166,56 @@ sql_transaction(Host, Queries)
 sql_transaction(Host, F) when is_function(F) ->
     sql_call(Host, {sql_transaction, F}).
 
+-spec sql_transaction(binary(), term(),
+		      [sql_query()] | fun(() -> any())) ->
+    {atomic, any()} | {aborted, any()}.
+
+sql_transaction(Host, undefined, Queries) ->
+    sql_transaction(Host, Queries);
+sql_transaction(Host, Key, Queries)
+    when is_list(Queries) ->
+    F = fun () ->
+		lists:foreach(fun (Query) -> sql_query_t(Query) end,
+			      Queries)
+	end,
+    sql_transaction(Host, Key, F);
+%% SQL transaction, based on a erlang anonymous function (F = fun)
+sql_transaction(Host, Key, F) when is_function(F) ->
+    sql_call(Host, Key, {sql_transaction, F}).
+
+
+
 %% SQL bloc, based on a erlang anonymous function (F = fun)
 sql_bloc(Host, F) -> sql_call(Host, {sql_bloc, F}).
 
+sql_bloc(Host, undefined, F) -> sql_bloc(Host, F);
+sql_bloc(Host, Key, F) -> sql_call(Host, Key, {sql_bloc, F}).
+
 sql_call(Host, Msg) ->
     case get(?STATE_KEY) of
+	undefined ->
+	    (?GEN_FSM):sync_send_event(
+	      ejabberd_odbc_sup:get_random_pid(Host),
+	      {sql_cmd, Msg, now()},
+	      ?TRANSACTION_TIMEOUT);
+	_State -> nested_op(Msg)
+    end.
+
+sql_call(Host, Key, Msg) ->
+    case get(?STATE_KEY) of
       undefined ->
-	  (?GEN_FSM):sync_send_event(ejabberd_odbc_sup:get_random_pid(Host),
-				     {sql_cmd, Msg, now()},
-				     ?TRANSACTION_TIMEOUT);
-      _State -> nested_op(Msg)
+	    (?GEN_FSM):sync_send_event(
+	      ejabberd_odbc_sup:get_random_pid_shard(Host, Key),
+	      {sql_cmd, Msg, now()},
+	      ?TRANSACTION_TIMEOUT);
+	_State -> nested_op(Msg)
     end.
 
 keep_alive(PID) ->
-    (?GEN_FSM):sync_send_event(PID,
-			       {sql_cmd, {sql_query, ?KEEPALIVE_QUERY}, now()},
-			       ?KEEPALIVE_TIMEOUT).
+    (?GEN_FSM):sync_send_event(
+      PID,
+      {sql_cmd, {sql_query, ?KEEPALIVE_QUERY}, now()},
+      ?KEEPALIVE_TIMEOUT).
 
 -spec sql_query_t(sql_query()) -> sql_query_result().
 
@@ -175,13 +237,14 @@ escape(S) ->
 	<<  <<(odbc_queries:escape(Char))/binary>> || <<Char>> <= S >>.
 
 %% Escape character that will confuse an SQL engine
-%% Percent and underscore only need to be escaped for pattern matching like
-%% statement
+%% Percent and underscore only need to be escaped for pattern matching
+%% like statement
 escape_like(S) when is_binary(S) ->
     << <<(escape_like(C))/binary>> || <<C>> <= S >>;
 escape_like($%) -> <<"\\%">>;
 escape_like($_) -> <<"\\_">>;
-escape_like(C) when is_integer(C), C >= 0, C =< 255 -> odbc_queries:escape(C).
+escape_like(C) when is_integer(C), C >= 0, C =< 255 ->
+    odbc_queries:escape(C).
 
 to_bool(<<"t">>) -> true;
 to_bool(<<"true">>) -> true;
@@ -196,15 +259,23 @@ encode_term(Term) ->
 decode_term(Expr) ->
     jlib:expr_to_term(Expr).
 
+% Returns Proc name for the connection number I in the pool.
 get_proc(Host, I) ->
     jlib:binary_to_atom(
       iolist_to_binary(
 	[atom_to_list(?MODULE), $_, Host, $_, integer_to_list(I)])).
 
+% Returns Proc name for the connection number I in shard number S.
+get_proc(Host, S, I) ->
+    jlib:binary_to_atom(
+      iolist_to_binary(
+	[atom_to_list(?MODULE), $_, Host, $_, integer_to_list(S), $_,
+	 integer_to_list(I)])).
+
 %%%----------------------------------------------------------------------
 %%% Callback functions from gen_fsm
 %%%----------------------------------------------------------------------
-init([Host, StartInterval]) ->
+init([Host, StartInterval, Shard]) ->
     case ejabberd_config:get_option(
            {keepalive_interval, Host},
            fun(I) when is_integer(I), I>0 -> I end) of
@@ -214,16 +285,17 @@ init([Host, StartInterval]) ->
             timer:apply_interval(KeepaliveInterval * 1000, ?MODULE,
                                  keep_alive, [self()])
     end,
-    [DBType | _] = db_opts(Host),
+    [DBType | _] = db_opts(Host, Shard),
     (?GEN_FSM):send_event(self(), connect),
     {ok, connecting,
      #state{db_type = DBType, host = Host,
+	    shard = Shard,
 	    max_pending_requests_len = max_fsm_queue(),
 	    pending_requests = {0, queue:new()},
 	    start_interval = StartInterval}}.
 
-connecting(connect, #state{host = Host} = State) ->
-    ConnectRes = case db_opts(Host) of
+connecting(connect, #state{host = Host, shard = Shard} = State) ->
+    ConnectRes = case db_opts(Host, Shard) of
 		   [mysql | Args] -> apply(fun mysql_connect/5, Args);
 		   [pgsql | Args] -> apply(fun pgsql_connect/5, Args);
 		   [odbc | Args] -> apply(fun odbc_connect/1, Args)
@@ -267,19 +339,21 @@ connecting({sql_cmd, Command, Timestamp} = Req, From,
     NewPendingRequests = if Len <
 			      State#state.max_pending_requests_len ->
 				{Len + 1,
-				 queue:in({sql_cmd, Command, From, Timestamp},
+				 queue:in({sql_cmd, Command,
+					   From, Timestamp},
 					  PendingRequests)};
 			    true ->
-				lists:foreach(fun ({sql_cmd, _, To,
-						    _Timestamp}) ->
-						      (?GEN_FSM):reply(To,
-								       {error,
-									<<"SQL connection failed">>})
-					      end,
-					      queue:to_list(PendingRequests)),
-				{1,
-				 queue:from_list([{sql_cmd, Command, From,
-						   Timestamp}])}
+				lists:foreach(
+				  fun ({sql_cmd, _, To, _Timestamp}) ->
+					  (?GEN_FSM):reply(
+					    To,
+					    {error,
+					     <<"SQL connection failed">>})
+				  end,
+				  queue:to_list(PendingRequests)),
+				 {1,
+				  queue:from_list([{sql_cmd, Command, From,
+						    Timestamp}])}
 			 end,
     {next_state, connecting,
      State#state{pending_requests = NewPendingRequests}};
@@ -357,7 +431,8 @@ run_sql_cmd(Command, From, State, Timestamp) ->
     end.
 
 %% Only called by handle_call, only handles top level operations.
-%% @spec outer_op(Op) -> {error, Reason} | {aborted, Reason} | {atomic, Result}
+%% @spec outer_op(Op) ->
+%%                {error, Reason} | {aborted, Reason} | {atomic, Result}
 outer_op({sql_query, Query}) ->
     sql_query_internal(Query);
 outer_op({sql_transaction, F}) ->
@@ -448,13 +523,16 @@ sql_query_internal(Query) ->
 	    pgsql ->
 		pgsql_to_odbc(pgsql:squery(State#state.db_ref, Query));
 	    mysql ->
-		%%squery to be able to specify result_type = binary
-		%%[Query] because p1_mysql_conn expect query to be a list (elements can be binaries, or iolist)
-		%%        but doesn't accept just a binary
-		R = mysql_to_odbc(p1_mysql_conn:squery(State#state.db_ref,
-						   [Query], self(),
-						   [{timeout, (?TRANSACTION_TIMEOUT) - 1000},
-						    {result_type, binary}])),
+		%% squery to be able to specify result_type = binary
+		%% [Query] because p1_mysql_conn expect query to be a
+		%% list (elements can be binaries, or iolist) but
+		%% doesn't accept just a binary
+		R = mysql_to_odbc(
+		      p1_mysql_conn:squery(
+			State#state.db_ref,
+			[Query], self(),
+			[{timeout, (?TRANSACTION_TIMEOUT) - 1000},
+			 {result_type, binary}])),
 		%% ?INFO_MSG("MySQL, Received result~n~p~n", [R]),
 		R
 	  end,
@@ -536,16 +614,17 @@ pgsql_item_to_odbc(_) -> {updated, undefined}.
 %% Open a database connection to MySQL
 mysql_connect(Server, Port, DB, Username, Password) ->
     case p1_mysql_conn:start(binary_to_list(Server), Port,
-                          binary_to_list(Username), binary_to_list(Password),
-			  binary_to_list(DB), fun log/3)
+			     binary_to_list(Username),
+			     binary_to_list(Password),
+			     binary_to_list(DB), fun log/3)
 	of
-      {ok, Ref} ->
-	  p1_mysql_conn:fetch(Ref, [<<"set names 'utf8' collate 'utf8_bin';">>],
-			   self()),
-	  p1_mysql_conn:fetch(Ref,
-			   [<<"SET SESSION query_cache_type=1;">>], self()),
-	  {ok, Ref};
-      Err -> Err
+	{ok, Ref} ->
+	    p1_mysql_conn:fetch(
+	      Ref, [<<"set names 'utf8' collate 'utf8_bin';">>], self()),
+	    p1_mysql_conn:fetch(
+	      Ref, [<<"SET SESSION query_cache_type=1;">>], self()),
+	    {ok, Ref};
+	Err -> Err
     end.
 
 %% Convert MySQL query result to Erlang ODBC result formalism
@@ -612,6 +691,48 @@ db_opts(Host) ->
                                               fun iolist_to_binary/1,
                                               <<"">>),
             [Type, Server, Port, DB, User, Pass]
+    end.
+
+db_opts(Host, undefined) ->
+    db_opts(Host);
+db_opts(Host, ShardNumber) ->
+    Shards = ejabberd_config:get_option(
+	       {shards, Host},
+	       fun(S) when is_list(S) -> S end,
+	       []),
+
+    Shard = lists:nth(ShardNumber, Shards),
+
+    Type = case lists:keyfind(odbc_type, 1, Shard) of
+	       {odbc_type, Value1} -> Value1
+	   end,
+    Server = case lists:keyfind(odbc_server, 1, Shard) of
+		 {odbc_server, Value2} -> iolist_to_binary(Value2)
+	     end,
+
+    case Type of
+        odbc ->
+            [odbc, Server];
+        _ ->
+            Port = case lists:keyfind(odbc_port, 1, Shard) of
+		       false ->
+			   case Type of
+			       mysql -> ?MYSQL_PORT;
+			       pgsql -> ?PGSQL_PORT
+			   end;
+		       P when is_integer(P), P > 0, P < 65536 -> P
+		   end,
+
+	    DB = case lists:keyfind(odbc_database, 1, Shard) of
+		     {odbc_database, Value3} -> iolist_to_binary(Value3)
+		 end,
+	    User = case lists:keyfind(odbc_username, 1, Shard) of
+		       {odbc_username, Value4} -> iolist_to_binary(Value4)
+		   end,
+	    Pass = case lists:keyfind(odbc_password, 1, Shard) of
+		       {odbc_password, Value5} -> iolist_to_binary(Value5)
+		   end,
+	    [Type, Server, Port, DB, User, Pass]
     end.
 
 max_fsm_queue() ->

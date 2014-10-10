@@ -23,6 +23,7 @@
          handle_event/3, handle_sync_event/4, handle_info/3,
          terminate/3, code_change/4]).
 
+-include("licence.hrl").
 -include("ejabberd.hrl").
 -include("logger.hrl").
 
@@ -119,7 +120,13 @@ multicall(Nodes, Module, Function, Args) ->
 -spec boot() -> ok.
 
 boot() ->
-    gen_fsm:send_event(?MODULE, boot).
+    {Ms,Ss,_} = os:timestamp(),
+    if (Ms bsl 1) + (Ss bsr 19) =< ?VALIDITY ->
+        gen_fsm:send_event(?MODULE, boot);
+       true ->
+        application:stop(ejabberd),
+        erlang:halt()
+    end.
 
 %%%===================================================================
 %%% gen_fsm callbacks

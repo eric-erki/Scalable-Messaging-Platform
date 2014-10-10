@@ -37,6 +37,9 @@
 %% Version
 {vsn, "@PACKAGE_VERSION@"}.
 
+%% Licence
+{licence, {@PACKAGE_LICENCE@}}.
+
 %% Variables for overlay template files
 
 %% Platform-specific installation paths

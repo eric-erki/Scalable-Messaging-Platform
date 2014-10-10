@@ -260,7 +260,9 @@ read_roster_version(LUser, LServer, riak) ->
 			   {LUser, LServer}) of
         {ok, #roster_version{version = V}} -> V;
         _Err -> error
-    end.
+    end;
+read_roster_version(LUser, LServer, rest) ->
+	error.
 
 write_roster_version(LUser, LServer) ->
     write_roster_version(LUser, LServer, false).
@@ -303,7 +305,9 @@ write_roster_version(LUser, LServer, _InTransaction, Ver,
 		     riak) ->
     US = {LUser, LServer},
     ejabberd_riak:put(#roster_version{us = US, version = Ver},
-		      roster_version_schema()).
+		      roster_version_schema());
+write_roster_version(_LUser, _LServer, _InTransaction, _Ver, rest) ->
+    error.
 
 process_iq_get(From, To, #iq{sub_el = SubEl} = IQ) ->
     LUser = From#jid.luser,
@@ -447,7 +451,12 @@ get_roster(LUser, LServer, odbc) ->
                                 end,
                        [R#roster{groups = Groups}]
                end, Items),
-    RItems.
+    RItems;
+get_roster(LUser, LServer, rest) ->
+    case roster_rest:get_user_roster(LServer, LUser) of
+            {ok, Items} -> Items;
+            _ -> []
+    end.
 
 get_roster_odbc(LUser, LServer) ->
     Res = case use_cache(LServer) of
@@ -523,6 +532,14 @@ item_to_xml(Item) ->
 get_roster_by_jid_t(LUser, LServer, LJID) ->
     DBType = gen_mod:db_type(LServer, ?MODULE),
     get_roster_by_jid_t(LUser, LServer, LJID, DBType).
+
+get_roster_by_jid_t(LUser, LServer, LJID, rest) ->
+     case roster_rest:get_jid_info(LServer, LUser, LJID) of
+             {ok, Item} -> Item;
+             not_found -> 
+            #roster{usj = {LUser, LServer, LJID},   %%No idea why,  but on the other backends if is not found it returns this
+                    us = {LUser, LServer}, jid = LJID}
+     end;
 
 get_roster_by_jid_t(LUser, LServer, LJID, mnesia) ->
     case mnesia:read({roster, {LUser, LServer, LJID}}) of
@@ -765,7 +782,9 @@ get_subscription_lists(_, LUser, LServer, riak) ->
 				    <<"us">>, {LUser, LServer}) of
         {ok, Items} -> Items;
         _Err -> []
-    end.
+    end;
+get_subscription_lists(_, LUser, LServer, rest) ->
+        get_roster(LUser, LServer, rest).
 
 fill_subscription_lists(LServer, [#roster{} = I | Is],
 			F, T, B) ->
@@ -811,14 +830,17 @@ roster_subscribe_t(LUser, LServer, LJID, Item, p1db) ->
     p1db:insert(roster, USJKey, Val);
 roster_subscribe_t(LUser, LServer, _LJID, Item, riak) ->
     ejabberd_riak:put(Item, roster_schema(),
-                      [{'2i', [{<<"us">>, {LUser, LServer}}]}]).
+                      [{'2i', [{<<"us">>, {LUser, LServer}}]}]);
+roster_subscribe_t(_LUser, _LServer, _LJID, _Item, rest) ->
+        error.
 
 transaction(LServer, F) ->
     case gen_mod:db_type(LServer, ?MODULE) of
       mnesia -> mnesia:transaction(F);
       odbc -> ejabberd_odbc:sql_transaction(LServer, F);
       p1db -> {atomic, F()};
-      riak -> {atomic, F()}
+      riak -> {atomic, F()};
+      rest -> {atomic, F()}  %%transaction?
     end.
 
 in_subscription(_, User, Server, JID, Type, Reason) ->
@@ -890,7 +912,9 @@ get_roster_by_jid_with_groups_t(LUser, LServer, LJID, riak) ->
                     us = {LUser, LServer}, jid = LJID};
         Err ->
             exit(Err)
-    end.
+    end;
+get_roster_by_jid_with_groups_t(LUser, LServer, LJID, rest) ->
+    get_roster_by_jid_t(LUser, LServer, LJID, rest).   %%what is the difference?
 
 process_subscription(Direction, User, Server, JID1,
 		     Type, Reason) ->
@@ -1117,7 +1141,9 @@ remove_user(LUser, LServer, p1db) ->
             {aborted, Err}
     end;
 remove_user(LUser, LServer, riak) ->
-    {atomic, ejabberd_riak:delete_by_index(roster, <<"us">>, {LUser, LServer})}.
+    {atomic, ejabberd_riak:delete_by_index(roster, <<"us">>, {LUser, LServer})};
+remove_user(LUser, LServer, riak) ->
+     error.
 
 send_unsubscription_to_rosteritems(LUser, LServer) ->
     RosterItems = get_user_roster([], {LUser, LServer}),
@@ -1191,7 +1217,9 @@ update_roster_t(LUser, LServer, LJID, Item, p1db) ->
     p1db:insert(roster, USJKey, item_to_p1db(Item));
 update_roster_t(LUser, LServer, _LJID, Item, riak) ->
     ejabberd_riak:put(Item, roster_schema(),
-                      [{'2i', [{<<"us">>, {LUser, LServer}}]}]).
+                      [{'2i', [{<<"us">>, {LUser, LServer}}]}]);
+update_roster_t(_LUser, _LServer, _LJID, Item, rest) ->
+    error.
 
 del_roster_t(LUser, LServer, LJID) ->
     DBType = gen_mod:db_type(LServer, ?MODULE),
@@ -1208,7 +1236,9 @@ del_roster_t(LUser, LServer, LJID, p1db) ->
     USJKey = usj2key(LUser, LServer, LJID),
     p1db:delete(roster, USJKey);
 del_roster_t(LUser, LServer, LJID, riak) ->
-    ejabberd_riak:delete(roster, {LUser, LServer, LJID}).
+    ejabberd_riak:delete(roster, {LUser, LServer, LJID});
+del_roster_t(_LUser, _LServer, _LJID, rest) ->
+    error.
 
 process_item_set_t(LUser, LServer,
 		   #xmlel{attrs = Attrs, children = Els}) ->
@@ -1326,7 +1356,9 @@ get_in_pending_subscriptions(Ls, User, Server, odbc) ->
                           both -> true;
                           _ -> false
                       end
-              end, Items)).
+              end, Items));
+get_in_pending_subscriptions(_Ls, _User, _Server, rest) ->
+        [].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -1390,7 +1422,16 @@ read_subscription_and_groups(LUser, LServer, LJID,
             {Subscription, Groups};
         _ ->
             error
-    end.
+    end;
+read_subscription_and_groups(LUser, LServer, LJID,
+			     rest) ->
+      case get_roster_by_jid_with_groups_t(LUser, LServer, LJID, rest) of
+        #roster{subscription = Subscription,
+	       groups = Groups} ->
+                {Subscription, Groups};
+        _ ->
+                error
+      end.
 
 get_jid_info(_, User, Server, JID) ->
     LJID = jlib:jid_tolower(JID),
