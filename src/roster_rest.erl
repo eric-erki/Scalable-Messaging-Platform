@@ -71,7 +71,7 @@ get_user_roster(Server, User) ->
     end.
 
 json_to_rosteritems(LServer, LUser, {[{<<"roster">>, Roster}]}) ->
-    try lists:map(fun ({struct, Fields}) ->
+    try lists:map(fun ({Fields}) ->
                           fields_to_roster(LServer, LUser, #roster{}, Fields)
                   end,
                   Roster)
