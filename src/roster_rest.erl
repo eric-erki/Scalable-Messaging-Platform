@@ -24,8 +24,6 @@
 
 -module(roster_rest).
 
--behaviour(mod_roster_extern).
-
 -export([start/2, stop/1, get_user_roster/2, get_jid_info/3]).
 
 -include("jlib.hrl").
