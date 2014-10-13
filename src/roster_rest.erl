@@ -33,7 +33,7 @@
 -include("logger.hrl").
 -include("mod_roster.hrl").
 
-start(Host, Opts) ->
+start(_Host, _Opts) ->
     http_p1:start(),
     ok.
 
@@ -57,7 +57,7 @@ get_user_roster(Server, User) ->
                           {"User-Agent", "ejabberd"}],
                          <<"">>, []) of
         {ok, 200, _, RespBody} ->
-            try mochijson2:decode(RespBody) of
+            try jiffy:decode(RespBody) of
                 JSon -> json_to_rosteritems(Server, User, JSon)
             catch
                 _:_Error -> {error, {invalid_json, RespBody}}
@@ -72,8 +72,7 @@ get_user_roster(Server, User) ->
             {error, {http_error, {error, Reason}}}
     end.
 
-json_to_rosteritems(LServer, LUser,
-                    {struct, [{<<"roster">>, Roster}]}) ->
+json_to_rosteritems(LServer, LUser, {[{<<"roster">>, Roster}]}) ->
     try lists:map(fun ({struct, Fields}) ->
                           fields_to_roster(LServer, LUser, #roster{}, Fields)
                   end,
