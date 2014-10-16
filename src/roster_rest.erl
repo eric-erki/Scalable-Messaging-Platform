@@ -32,7 +32,7 @@
 -include("mod_roster.hrl").
 
 start(_Host, _Opts) ->
-    http_p1:start(),
+    rest:start(),
     ok.
 
 stop(_Host) ->
@@ -46,28 +46,11 @@ get_jid_info(LServer, LUser, LJID) ->
     end.
 
 get_user_roster(Server, User) ->
-    %URI = build_url(Server, "/roster", [{"username", User}]),
     UID = jlib:jid_to_string(jlib:make_jid(User, Server, <<>>)),
-    URI = build_url(Server, "/roster", [{"jid", UID}]),
-    case http_p1:request(get, URI,
-                         [{"connection", "keep-alive"},
-                          {"content-type", "application/json"},
-                          {"User-Agent", "ejabberd"}],
-                         <<"">>, []) of
-        {ok, 200, _, RespBody} ->
-            try jiffy:decode(RespBody) of
-                JSon -> json_to_rosteritems(Server, User, JSon)
-            catch
-                _:_Error -> {error, {invalid_json, RespBody}}
-            end;
-        {ok, Other, _, RespBody} ->
-            {error, {http_error, Other, RespBody}};
-        {error, Reason} ->
-            ?ERROR_MSG("HTTP request failed:~n"
-                       "** URI = ~s~n"
-                       "** Err = ~p",
-                       [URI, Reason]),
-            {error, {http_error, {error, Reason}}}
+    case rest:get(Server, "/roster", [{"jid", UID}]) of
+        {ok, 200, JSon} -> json_to_rosteritems(Server, User, JSon);
+        {ok, Code, JSon} -> {error, {Code, JSon}};
+        {error, Reason} -> {error, Reason}
     end.
 
 json_to_rosteritems(LServer, LUser, {[{<<"roster">>, Roster}]}) ->
@@ -102,27 +85,3 @@ fields_to_roster(LServer, LUser, Item,
 fields_to_roster(_LServer, _LUser, _Item,
                  [{Field, Value} | _Rest]) ->
     throw({unknown_field, {Field, Value}}).
-
-
-%%%----------------------------------------------------------------------
-%%% HTTP helpers
-%%%----------------------------------------------------------------------
-
-url(Server, Path) ->
-    Base = ejabberd_config:get_option({ext_api_url, Server},
-                                      fun(X) -> iolist_to_binary(X) end,
-                                      <<"http://localhost/api">>),
-    <<Base/binary, (iolist_to_binary(Path))/binary>>.
-
-encode_params(Params) ->
-    [<<$&, ParHead/binary>> | ParTail] =
-        [<<"&", (iolist_to_binary(Key))/binary, "=", (ejabberd_http:url_encode(Value))/binary>>
-            || {Key, Value} <- Params],
-    iolist_to_binary([ParHead | ParTail]).
-
-build_url(Server, Path, []) ->
-    binary_to_list(url(Server, Path));
-build_url(Server, Path, Params) ->
-    Base = url(Server, Path),
-    Pars = encode_params(Params),
-    binary_to_list(<<Base/binary, $?, Pars/binary>>).  %%httpc requires lists

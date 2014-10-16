@@ -45,7 +45,7 @@
 %%% API
 %%%----------------------------------------------------------------------
 start(_Host) ->
-    http_p1:start(),
+    rest:start(),
     ok.
 
 plain_password_required() -> true.
@@ -56,52 +56,17 @@ check_password(_User, _Server, <<>>) ->
     false;
 check_password(User, Server, Password) ->
     UID = jlib:jid_to_string(jlib:make_jid(User, Server, <<>>)),
-    URI = build_url(Server, "/user/auth", [{"jid", UID}, {"password",Password}]),
-    case http_p1:request(get, URI,
-                         [{"connection", "keep-alive"},
-                          {"content-type", "application/json"},
-                          {"User-Agent", "ejabberd"}],
-                         <<"">>, []) of
-        {ok, 200, _, _RespBody} ->
-            true;
-        {ok, 401, _, _RespBody} ->
-            false;
-        {ok, Other, _, RespBody} ->
-            ?ERROR_MSG("The authentication module ~p returned "
-                                       "an error~nwhen checking user ~p password in server "
-                                       "~p~nError message: ~p",
-                                       [?MODULE, User, Server, {Other, RespBody}]),
-            false;
-        {error, Reason} ->
-            ?ERROR_MSG("HTTP request failed:~n"
-                       "** URI = ~s~n"
-                       "** Err = ~p",
-                       [URI, Reason]),
-            false
+    case rest:get(Server, "/user/auth", [{"jid", UID}, {"password",Password}]) of
+        {ok, 200, _} -> true;
+        _ -> false
     end.
 
 is_user_exists(User, Server) ->
     UID = jlib:jid_to_string(jlib:make_jid(User, Server, <<>>)),
-    URI = build_url(Server, "/user", [{"jid", UID}]),
-    case http_p1:request(get, URI,
-                         [{"connection", "keep-alive"},
-                          {"content-type", "application/json"},
-                          {"User-Agent", "ejabberd"}],
-                         <<"">>, []) of
-        {ok, 200, _, _RespBody} ->
-            true;
-        {ok, 401, _, _RespBody} ->
-            false;
-        {ok, Other, _, RespBody} ->
-            {error, {rest_error, {Other, RespBody}}};
-        {error, Reason} ->
-            ?ERROR_MSG("HTTP request failed:~n"
-                       "** URI = ~s~n"
-                       "** Err = ~p",
-                       [URI, Reason]),
-            {error, {rest_error, {error, Reason}}}
+    case rest:get(Server, "/user", [{"jid", UID}]) of
+        {ok, 200, _} -> true;
+        _ -> false
     end.
-
 
 %% Functions not implemented or not relevant for REST authentication
 
@@ -141,26 +106,3 @@ remove_user(_User, _Server) ->
 
 remove_user(_User, _Server, _Password) ->
     false.
-
-%%%----------------------------------------------------------------------
-%%% HTTP helpers
-%%%----------------------------------------------------------------------
-
-url(Server, Path) ->
-    Base = ejabberd_config:get_option({ext_api_url, Server},
-                                      fun(X) -> iolist_to_binary(X) end,
-                                      <<"http://localhost/api">>),
-    <<Base/binary, (iolist_to_binary(Path))/binary>>.
-
-encode_params(Params) ->
-    [<<$&, ParHead/binary>> | ParTail] =
-        [<<"&", (iolist_to_binary(Key))/binary, "=", (ejabberd_http:url_encode(Value))/binary>>
-            || {Key, Value} <- Params],
-    iolist_to_binary([ParHead | ParTail]).
-
-build_url(Server, Path, []) ->
-    binary_to_list(url(Server, Path));
-build_url(Server, Path, Params) ->
-    Base = url(Server, Path),
-    Pars = encode_params(Params),
-    binary_to_list(<<Base/binary, $?, Pars/binary>>).  %%httpc requires lists
