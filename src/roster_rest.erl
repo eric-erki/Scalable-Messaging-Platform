@@ -46,8 +46,7 @@ get_jid_info(LServer, LUser, LJID) ->
     end.
 
 get_user_roster(Server, User) ->
-    UID = jlib:jid_to_string(jlib:make_jid(User, Server, <<>>)),
-    case rest:get(Server, "/roster", [{"jid", UID}]) of
+    case rest:get(Server, "/roster", [{"username", User}]) of
         {ok, 200, JSon} -> json_to_rosteritems(Server, User, JSon);
         {ok, Code, JSon} -> {error, {Code, JSon}};
         {error, Reason} -> {error, Reason}

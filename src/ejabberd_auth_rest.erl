@@ -55,15 +55,13 @@ store_type() -> external.
 check_password(_User, _Server, <<>>) ->
     false;
 check_password(User, Server, Password) ->
-    UID = jlib:jid_to_string(jlib:make_jid(User, Server, <<>>)),
-    case rest:get(Server, "/user/auth", [{"jid", UID}, {"password",Password}]) of
+    case rest:get(Server, "/user/auth", [{"username", User}, {"password",Password}]) of
         {ok, 200, _} -> true;
         _ -> false
     end.
 
 is_user_exists(User, Server) ->
-    UID = jlib:jid_to_string(jlib:make_jid(User, Server, <<>>)),
-    case rest:get(Server, "/user", [{"jid", UID}]) of
+    case rest:get(Server, "/user", [{"username", User}]) of
         {ok, 200, _} -> true;
         _ -> false
     end.
