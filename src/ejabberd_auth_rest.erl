@@ -55,15 +55,42 @@ store_type() -> external.
 check_password(_User, _Server, <<>>) ->
     false;
 check_password(User, Server, Password) ->
-    case rest:get(Server, "/user/auth", [{"username", User}, {"password",Password}]) of
-        {ok, 200, _} -> true;
-        _ -> false
+    Path = path(Server, auth),
+    case rest:get(Server, Path ,
+		  [{"username", User}, {"password",Password}]) of
+	{ok, 200, _RespBody} ->
+            true;
+        {ok, 401, _RespBody} ->
+            false;
+        {ok, Other, RespBody} ->
+            ?ERROR_MSG("The authentication module ~p returned "
+		       "an error~nwhen checking user ~p password "
+		       "in server ~p~nError message: ~p",
+		       [?MODULE, User, Server, {Other, RespBody}]),
+            false;
+        {error, Reason} ->
+            ?ERROR_MSG("HTTP request failed:~n"
+                       "** URI = ~p~n"
+                       "** Err = ~p",
+                       [{Server, Path}, Reason]),
+            false
     end.
 
 is_user_exists(User, Server) ->
-    case rest:get(Server, "/user", [{"username", User}]) of
-        {ok, 200, _} -> true;
-        _ -> false
+    Path = path(Server, user),
+    case rest:get(Server, Path, [{"username", User}]) of
+        {ok, 200, _RespBody} ->
+            true;
+        {ok, 401, _RespBody} ->
+            false;
+        {ok, Other, RespBody} ->
+            {error, {rest_error, {Other, RespBody}}};
+        {error, Reason} ->
+            ?ERROR_MSG("HTTP request failed:~n"
+                       "** URI = ~p~n"
+                       "** Err = ~p",
+                       [{Server, Path}, Reason]),
+            {error, {rest_error, {error, Reason}}}
     end.
 
 %% Functions not implemented or not relevant for REST authentication
@@ -104,3 +131,18 @@ remove_user(_User, _Server) ->
 
 remove_user(_User, _Server, _Password) ->
     false.
+
+%%%----------------------------------------------------------------------
+%%% HTTP helpers
+%%%----------------------------------------------------------------------
+
+path(Server, auth) ->
+    ejabberd_config:get_option({ext_api_path_auth, Server},
+			       fun(X) -> iolist_to_binary(X) end,
+			       <<"/auth">>);
+path(Server, user) ->
+    ejabberd_config:get_option({ext_api_path_user, Server},
+			       fun(X) -> iolist_to_binary(X) end,
+			       <<"/user">>);
+path(_Server, Method) when is_binary(Method) orelse is_list(Method)->
+    Method.

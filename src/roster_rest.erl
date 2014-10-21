@@ -46,7 +46,7 @@ get_jid_info(LServer, LUser, LJID) ->
     end.
 
 get_user_roster(Server, User) ->
-    case rest:get(Server, "/roster", [{"username", User}]) of
+    case rest:get(Server, path(Server), [{"username", User}]) of
         {ok, 200, JSon} -> json_to_rosteritems(Server, User, JSon);
         {ok, Code, JSon} -> {error, {Code, JSon}};
         {error, Reason} -> {error, Reason}
@@ -84,3 +84,13 @@ fields_to_roster(LServer, LUser, Item,
 fields_to_roster(_LServer, _LUser, _Item,
                  [{Field, Value} | _Rest]) ->
     throw({unknown_field, {Field, Value}}).
+
+
+%%%----------------------------------------------------------------------
+%%% HTTP helpers
+%%%----------------------------------------------------------------------
+
+path(Server) ->
+    ejabberd_config:get_option({ext_api_path_roster, Server},
+			       fun(X) -> iolist_to_binary(X) end,
+			       <<"/roster">>).
