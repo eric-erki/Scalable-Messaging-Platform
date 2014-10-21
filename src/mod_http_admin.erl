@@ -115,15 +115,25 @@ process(_Path, Request) ->
 
 % update_roster
 % input:
-%  {"jid": "USER", "add": [{"jid": "CONTACT", "subscription": "both", "nick": "NICK"}, ...], "delete": ["CONTACT", ...]}
+%  {"username": "USER",
+%   "domain": "DOMAIN",  % if ommited, we take the first configured vhost
+%   "add": [{"jid": "CONTACT", "subscription": "both", "nick": "NICK"}, ...],
+%   "delete": ["CONTACT", ...]}
 % output:
 %  The HTTP status code will be 200 if user exists, 401 if not, or 500 codes if there was server errors.
 handle(<<"update_roster">>, {Args}) when is_list(Args) ->
-    [UserJid, Add, Del] = match(Args, [
-                {<<"jid">>, <<>>},
+    [User, Domain, Add, Del] = match(Args, [
+                {<<"username">>, <<>>},
+                {<<"domain">>, <<>>},
                 {<<"add">>, []},
                 {<<"delete">>, []}]),
-    {User, Server, _} = jlib:jid_tolower(jlib:string_to_jid(UserJid)),
+    Server = case Domain of
+        <<>> ->
+            [Default|_] = ejabberd_config:get_myhosts(),
+            Default;
+        _ ->
+            Domain
+    end,
     case ejabberd_auth:is_user_exists(User, Server) of
         true ->
             AddFun = fun({Item}) ->
