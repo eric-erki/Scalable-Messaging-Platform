@@ -127,21 +127,27 @@ handle(<<"update_roster">>, {Args}) when is_list(Args) ->
     case ejabberd_auth:is_user_exists(User, Server) of
         true ->
             AddFun = fun({Item}) ->
-                    [Jid, Nick, Sub] = match(Item, [
-                                {<<"jid">>, <<>>},
+                    [Contact, Nick, Sub] = match(Item, [
+                                {<<"username">>, <<>>},
                                 {<<"nick">>, <<>>},
                                 {<<"subscription">>, <<"both">>}]),
+                    Jid = <<Contact/binary, "@", Server/binary>>,
                     mod_admin_p1:add_rosteritem(User, Server, Jid, <<>>, Nick, Sub)
             end,
             AddRes = [AddFun(I) || I <- Add],
             case lists:all(fun(X) -> X==0 end, AddRes) of
                 true ->
-                    [mod_admin_p1:delete_rosteritem(User, Server, Jid) || Jid <- Del],
+                    DelFun = fun(Contact) ->
+                            Jid = <<Contact/binary, "@", Server/binary>>,
+                            mod_admin_p1:delete_rosteritem(User, Server, Jid)
+                    end,
+                    [DelFun(I) || I <- Del],
                     {200, <<"OK">>};
                 false ->
                     %% try rollback if errors
                     DelFun = fun({Item}) ->
-                            [Jid] = match(Item, [{<<"jid">>, <<>>}]),
+                            [Contact] = match(Item, [{<<"username">>, <<>>}]),
+                            Jid = <<Contact/binary, "@", Server/binary>>,
                             mod_admin_p1:delete_rosteritem(User, Server, Jid)
                     end,
                     [DelFun(I) || I <- Add],
