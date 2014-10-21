@@ -1127,7 +1127,7 @@ start_mass_message(Host, File, Rate) ->
     From = jlib:make_jid(<<>>, Host, <<>>),
     Proc = gen_mod:get_module_proc(Host, ?MASSLOOP),
     Delay = 60000 div Rate,
-    case whereis(Proc) of
+    case global:whereis_name(Proc) of
 	undefined ->
 	    case mass_message_parse_file(File) of
 		{error, _} -> 4;
