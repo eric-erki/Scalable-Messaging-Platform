@@ -8,7 +8,7 @@ var util = require("util");
 var rosterfile_arg = "rosters.json"; //which roster file to use
 var rosters_file = fs.readFileSync(rosterfile_arg);
 var rosters = JSON.parse(rosters_file);
-   
+
 
 
 console.log("Fake API for testing \n");
@@ -18,7 +18,7 @@ var delay = 0;
 
 // regexp is the regular expression to match the url path.
 // fun is the callback invoked to handle such url.
-// fun signature is  (request, response, arg1, arg2, ..argn) where arg1,..argn are 
+// fun signature is  (request, response, arg1, arg2, ..argn) where arg1,..argn are
 // the captured strings from the regexp, if any.  (like in user_roster)
 var handlers = [
 	{regexp : new RegExp("^/api/auth$"), fun : auth},
@@ -70,7 +70,7 @@ function roster(request, response) {
 function auth(request, response) {
   parts = url.parse(request.url, true);
   query = parts.query;
-  console.log("Authenticating user " + query.jid + " with pass " + query.password);
+  console.log("Authenticating user " + query.username + " with pass " + query.password);
 
   request.on('data', function(data) {
   });
@@ -81,6 +81,9 @@ function auth(request, response) {
   });
 }
 function user(request, response) {
+  parts = url.parse(request.url, true);
+  query = parts.query;
+  console.log("Checking user " + query.username);
   request.on('data', function(data) {
   });
   request.on('end', function() {
@@ -103,6 +106,3 @@ for(var i in handlers) {
 	var h  = handlers[i];
 	console.log(h.regexp.source);
 }
-
-
-
