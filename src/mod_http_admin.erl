@@ -137,7 +137,11 @@ handle(<<"update_roster">>, {Args}) when is_list(Args) ->
             AddRes = [AddFun(I) || I <- Add],
             case lists:all(fun(X) -> X==0 end, AddRes) of
                 true ->
-                    [mod_admin_p1:delete_rosteritem(User, Server, Jid) || Jid <- Del],
+                    DelFun = fun(Contact) ->
+                            Jid = <<Contact/binary, "@", Server/binary>>,
+                            mod_admin_p1:delete_rosteritem(User, Server, Jid)
+                    end,
+                    [DelFun(I) || I <- Del],
                     {200, <<"OK">>};
                 false ->
                     %% try rollback if errors
