@@ -22,18 +22,10 @@
          %muc_create, muc_destroy, muc_user_join, muc_user_leave, muc_rooms, muc_users, muc_message,
          %pubsub_create_node, pubsub_delete_node, pubsub_publish_item, pubsub_broadcast_stanza, pubsub_nodes, pubsub_users]).
 %% other maybe interresting hooks
-%%c2s_stream_features
-%%s2s_connect_hook
-%%disco_local_features
-%%disco_local_identity
-%%disco_local_items
-%%disco_sm_features
-%%disco_sm_identity
-%%disco_sm_items
-%%roster_get
-%%roster_get_jid_info
-%%roster_get_subscription_lists
-%%roster_process_item
+%%c2s_stream_features, s2s_connect_hook
+%%disco_local_features, disco_local_identity, disco_local_items
+%%disco_sm_features, disco_sm_identity, disco_sm_items
+%%roster_get, roster_get_jid_info, roster_get_subscription_lists, roster_process_item
 
 % By default all probes are type counter. The ones listed above use another type:
 -define(NO_COUNTER_PROBES,
@@ -65,8 +57,7 @@
          %{muc_users, [{'+', muc_user_join}, {'-', muc_user_leave}]},
          %{pubsub_nodes, [{'+', pubsub_create_node}, {'-', pubsub_delete_node}]},
          {memory, erlang, memory, [total]},
-         {processes, erlang, system_info, [process_count]},
-         {runtime, erlang, statistics, [runtime], fun(X) -> element(1, X) end}
+         {processes, erlang, system_info, [process_count]}
         ]).
 
 % Unit to mesure JABS counter

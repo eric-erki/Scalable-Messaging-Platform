@@ -68,7 +68,7 @@
 -compile({no_auto_import, [get/1]}).
 
 -record(mon, {probe, value}).
--record(state, {host, size_count, active_count, backends, monitors, log, timers=[]}).
+-record(state, {host, active_count, backends, monitors, log, timers=[]}).
 
 %%====================================================================
 %% API
@@ -115,9 +115,6 @@ init([Host, Opts]) ->
     Monitors = gen_mod:get_opt(monitors, Opts,
                                fun(L) when is_list(L) -> L end, [])
                ++ ?DEFAULT_MONITORS,
-    % Size counting is consuming but allows to know size of xmpp messages
-    SizeCount = gen_mod:get_opt(size_count, Opts,
-                                fun(A) when is_atom(A) -> A end, false),
     % Active users counting uses hyperloglog structures
     ActiveCount = gen_mod:get_opt(active_count, Opts,
                                   fun(A) when is_atom(A) -> A end, true)
@@ -126,10 +123,10 @@ init([Host, Opts]) ->
 
     % Statistics backends
     BackendsSpec = gen_mod:get_opt(backends, Opts,
-                                   fun(List) when is_list(List) -> List;
-                                      (Term) -> [Term]
+                                   fun(List) when is_list(List) -> List
                                    end, []),
-    Backends = lists:usort([init_backend(Host, Spec) || Spec <- BackendsSpec]),
+    Backends = lists:usort([init_backend(Host, Spec)
+                            || Spec <- lists:flatten(BackendsSpec)]),
 
     %% Note: we use priority of 20 cause some modules can block execution of hooks
     %% example; mod_offline stops the hook if it stores packets
@@ -147,7 +144,6 @@ init([Host, Opts]) ->
     {ok, T2} = timer:send_interval(?MINUTE, push),
 
     {ok, #state{host = Host,
-                size_count = SizeCount,
                 active_count = ActiveCount,
                 backends = Backends,
                 monitors = Monitors,
@@ -615,10 +611,13 @@ compute_monitor(Probes, {'-', Probe}, Acc) ->
 %% Cache sync
 %%====================================================================
 
-init_backend(Host, {statsd, Ip}) ->
+init_backend(Host, {statsd, Server}) ->
     application:load(statsderl),
     application:set_env(statsderl, base_key, binary_to_list(Host)),
-    application:set_env(statsderl, hostname, Ip),
+    case catch inet:getaddr(binary_to_list(Server), inet) of
+        {ok, Ip} -> application:set_env(statsderl, hostname, Ip);
+        _ -> ?WARNING_MSG("statsd have undefined endpoint: can not resolve ~p", [Server])
+    end,
     application:start(statsderl),
     statsd;
 init_backend(Host, statsd) ->
