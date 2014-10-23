@@ -261,8 +261,8 @@ read_roster_version(LUser, LServer, riak) ->
         {ok, #roster_version{version = V}} -> V;
         _Err -> error
     end;
-read_roster_version(LUser, LServer, rest) ->
-	error.
+read_roster_version(_LUser, _LServer, rest) ->
+    error.
 
 write_roster_version(LUser, LServer) ->
     write_roster_version(LUser, LServer, false).
@@ -1142,8 +1142,8 @@ remove_user(LUser, LServer, p1db) ->
     end;
 remove_user(LUser, LServer, riak) ->
     {atomic, ejabberd_riak:delete_by_index(roster, <<"us">>, {LUser, LServer})};
-remove_user(LUser, LServer, riak) ->
-     error.
+remove_user(_LUser, _LServer, rest) ->
+    error.
 
 send_unsubscription_to_rosteritems(LUser, LServer) ->
     RosterItems = get_user_roster([], {LUser, LServer}),
@@ -1218,7 +1218,7 @@ update_roster_t(LUser, LServer, LJID, Item, p1db) ->
 update_roster_t(LUser, LServer, _LJID, Item, riak) ->
     ejabberd_riak:put(Item, roster_schema(),
                       [{'2i', [{<<"us">>, {LUser, LServer}}]}]);
-update_roster_t(_LUser, _LServer, _LJID, Item, rest) ->
+update_roster_t(_LUser, _LServer, _LJID, _Item, rest) ->
     error.
 
 del_roster_t(LUser, LServer, LJID) ->
