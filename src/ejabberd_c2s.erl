@@ -480,6 +480,9 @@ wait_for_stream({xmlstreamstart, Name, Attrs},
 		      send_header(StateData, Server, <<"1.0">>, DefaultLang),
 		      case StateData#state.authenticated of
 			false ->
+			    TLS = StateData#state.tls,
+			    TLSEnabled = StateData#state.tls_enabled,
+			    TLSRequired = StateData#state.tls_required,
 			    SASLState = cyrsasl:server_new(<<"jabber">>, Server,
 							   <<"">>, [],
 							   fun (U) ->
@@ -498,15 +501,21 @@ wait_for_stream({xmlstreamstart, Name, Attrs},
 														D,
 														DG)
 							   end),
-			    Mechs = lists:map(fun (S) ->
-						      #xmlel{name =
-								 <<"mechanism">>,
-							     attrs = [],
-							     children =
-								 [{xmlcdata,
-								   S}]}
-					      end,
-					      cyrsasl:listmech(Server)),
+			    Mechs =
+				case TLSEnabled or not TLSRequired of
+				    true ->
+					Ms = lists:map(fun (S) ->
+								#xmlel{name = <<"mechanism">>,
+									attrs = [],
+									children = [{xmlcdata, S}]}
+							end,
+							cyrsasl:listmech(Server)),
+					[#xmlel{name = <<"mechanisms">>,
+						attrs = [{<<"xmlns">>, ?NS_SASL}],
+						children = Ms}];
+				    false ->
+					[]
+				end,
 			    SockMod =
 				(StateData#state.sockmod):get_sockmod(StateData#state.socket),
 			    Zlib = StateData#state.zlib,
@@ -531,9 +540,6 @@ wait_for_stream({xmlstreamstart, Name, Attrs},
 									      <<"zlib">>}]}]}];
 						_ -> []
 					      end,
-			    TLS = StateData#state.tls,
-			    TLSEnabled = StateData#state.tls_enabled,
-			    TLSRequired = StateData#state.tls_required,
 			    TLSFeature = case TLS == true andalso
 						TLSEnabled == false andalso
 						  SockMod == gen_tcp
@@ -585,10 +591,7 @@ wait_for_stream({xmlstreamstart, Name, Attrs},
                                   P1PushFeature ++
                                   P1RebindFeature ++
                                   P1AckFeature ++
-                                  [#xmlel{name = <<"mechanisms">>,
-                                          attrs = [{<<"xmlns">>, ?NS_SASL}],
-                                          children = Mechs}]
-                                  ++
+                                  Mechs ++
                                   ejabberd_hooks:run_fold(c2s_stream_features,
                                                           Server,
                                                           [],
