@@ -425,7 +425,10 @@ do_store(Pkt, LUser, LServer, Peer, Type, rest) ->
     SUser = jlib:jid_to_string({LUser, LServer, <<"">>}),
     ID = jlib:integer_to_binary(now_to_usec(Now)),
     XML = xml:element_to_binary(Pkt),
-    case rest:post(LServer2, <<"/archive">>, [],
+    Path = ejabberd_config:get_option({ext_api_path_archive, LServer},
+				      fun(X) -> iolist_to_binary(X) end,
+				      <<"/archive">>),
+    case rest:post(LServer2, Path, [],
 		   {[{<<"user">>, SUser},
 		     {<<"peer">>, SPeer},
 		     {<<"timestamp">>, ID},
@@ -651,8 +654,14 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
 		    []
 	    end,
     Params = User ++ Page ++ After ++ Limit,
-    case {rest:get(LServer, <<"/archive">>, Params),
-	  rest:get(LServer, <<"/archive/size">>, User ++ After)} of
+    ArchivePath = ejabberd_config:get_option({ext_api_path_archive, LServer},
+					     fun(X) -> iolist_to_binary(X) end,
+					     <<"/archive">>),
+    ItemsPath = ejabberd_config:get_option({ext_api_path_items, LServer},
+					     fun(X) -> iolist_to_binary(X) end,
+					     <<"/archive/items">>),
+    case {rest:get(LServer, ArchivePath, Params),
+	  rest:get(LServer, ItemsPath, User ++ After)} of
 	{{ok, 200, {Archive}}, {ok, 200, Count}} when is_integer(Count) ->
 	    ArchiveEls = proplists:get_value(<<"archive">>, Archive, []),
 	    {lists:map(
