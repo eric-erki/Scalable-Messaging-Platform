@@ -94,7 +94,7 @@ value(Host, Probe) when is_binary(Host), is_atom(Probe) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     gen_server:call(Proc, {get, Probe}, ?CALL_TIMEOUT).
 
-set(Host, Probe, Value) when is_binary(Host), is_atom(Probe), is_integer(Value) ->
+set(Host, Probe, Value) when is_binary(Host), is_atom(Probe) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     gen_server:cast(Proc, {set, Probe, Value}).
 
