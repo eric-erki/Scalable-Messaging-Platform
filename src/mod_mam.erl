@@ -92,6 +92,9 @@ init_db(p1db, Host) ->
                                {dec_key, fun ?MODULE:dec_key/1},
                                {enc_val, fun ?MODULE:enc_prefs/2},
                                {dec_val, fun ?MODULE:dec_prefs/2}]}]);
+init_db(rest, _) ->
+    rest:start(),
+    ok;
 init_db(_, _) ->
     ok.
 
@@ -150,6 +153,8 @@ remove_user(LUser, LServer, p1db) ->
         {error, _} = Err ->
             {aborted, Err}
     end;
+remove_user(_LUser, _LServer, rest) ->
+    {atomic, ok};
 remove_user(LUser, LServer, DBType) when DBType==odbc orelse DBType==sharding ->
     SUser = ejabberd_odbc:escape(LUser),
     Key = case DBType of
@@ -413,6 +418,26 @@ do_store(Pkt, LUser, LServer, Peer, Type, p1db) ->
         {error, _} = Err ->
             Err
     end;
+do_store(Pkt, LUser, LServer, Peer, Type, rest) ->
+    Now = now(),
+    LServer2 = case Type of muc -> Peer#jid.lserver; _ -> LServer end,
+    SPeer = jlib:jid_to_string(Peer),
+    SUser = jlib:jid_to_string({LUser, LServer, <<"">>}),
+    ID = jlib:integer_to_binary(now_to_usec(Now)),
+    XML = xml:element_to_binary(Pkt),
+    case rest:post(LServer2, <<"/archive">>, [],
+		   {[{<<"user">>, SUser},
+		     {<<"peer">>, SPeer},
+		     {<<"timestamp">>, ID},
+		     {<<"xml">>, XML}]}) of
+	{ok, 200, _} ->
+	    TSDelay = jlib:now_to_utc_string(Now),
+	    {ok, ID, TSDelay};
+	Err ->
+	    ?ERROR_MSG("failed to store packet for user ~s and peer ~s: ~p",
+		       [SUser, SPeer, Err]),
+	    {error, Err}
+    end;
 do_store(Pkt, LUser, LServer, Peer, _Type, DBType)
   when DBType==odbc orelse DBType==sharding->
     TSinteger = now_to_usec(now()),
@@ -471,6 +496,8 @@ write_prefs(LUser, LServer, Prefs, p1db) ->
     Val = prefs_to_p1db(Prefs),
     USKey = us2key(LUser, LServer),
     p1db:insert(archive_prefs, USKey, Val);
+write_prefs(_LUser, _LServer, _Prefs, rest) ->
+    {error, unsupported_database};
 write_prefs(LUser, _LServer, #archive_prefs{default = Default,
                                            never = Never,
                                            always = Always},
@@ -531,6 +558,9 @@ get_prefs(LUser, LServer, p1db) ->
         {error, _} ->
             error
     end;
+get_prefs(_LUser, _LServer, rest) ->
+    %% Unsupported so far
+    error;
 get_prefs(LUser, LServer, DBType)
   when DBType==odbc orelse DBType==sharding->
     Key = case DBType of
@@ -593,6 +623,58 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
                 jlib:binary_to_integer(Msg#archive_msg.id),
                 msg_to_el(Msg, JidRequestor)}
        end, FilteredMsgs), Count};
+select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
+       Start, _End, With, RSM, rest) ->
+    Peer = case With of
+	       {_, _, _} -> [{<<"peer">>, jlib:jid_to_string(With)}];
+	       _ -> []
+	   end,
+    Page = case RSM of
+	       #rsm_in{index = Index} when is_integer(Index) ->
+		   [{<<"page">>, jlib:integer_to_binary(Index)}];
+	       _ ->
+		   []
+	   end,
+    User = [{<<"user">>, jlib:jid_to_string({LUser, LServer, <<"">>})}],
+    After = case RSM of
+		#rsm_in{direction = aft, id = I} ->
+		    [{<<"after">>, I}];
+		_ when Start /= undefined ->
+		    [{<<"after">>, jlib:integer_to_binary(now_to_usec(Start))}];
+		_ ->
+		    []
+	    end,
+    Limit = case RSM of
+		#rsm_in{max = Max} when is_integer(Max) ->
+		    [{<<"limit">>, jlib:integer_to_binary(Max)}];
+		_ ->
+		    []
+	    end,
+    Params = User ++ Page ++ After ++ Limit,
+    case {rest:get(LServer, <<"/archive">>, Params),
+	  rest:get(LServer, <<"/archive/size">>, User ++ After)} of
+	{{ok, 200, {Archive}}, {ok, 200, Count}} when is_integer(Count) ->
+	    ArchiveEls = proplists:get_value(<<"archive">>, Archive, []),
+	    {lists:map(
+	       fun({Attrs}) ->
+		       #xmlel{} = Pkt =
+			   xml_stream:parse_element(
+			     proplists:get_value(<<"xml">>, Attrs, <<"">>)),
+		       #jid{} = Peer =
+			   jlib:string_to_jid(
+			     proplists:get_value(<<"peer">>, Attrs, <<"">>)),
+		       TS = proplists:get_value(<<"timestamp">>, Attrs, <<"">>),
+		       Now = usec_to_now(jlib:binary_to_integer(TS)),
+		       {jlib:integer_to_binary(TS), TS,
+			msg_to_el(#archive_msg{
+				     timestamp = Now,
+				     peer = Peer,
+				     packet = Pkt}, JidRequestor)}
+	       end, ArchiveEls), Count};
+	Err ->
+	    ?ERROR_MSG("failed to select: ~p", [Err]),
+	    {[], 0}
+    end;
 select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
        Start, End, With, RSM, p1db) ->
     USPrefix = us_prefix(LUser, LServer),
