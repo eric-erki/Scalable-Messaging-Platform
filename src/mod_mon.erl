@@ -486,11 +486,11 @@ pubsub_publish_item(ServerHost, _Node, _Publisher, _From, _ItemId, _Packet) ->
 
 init_log(_Host, false) ->
     undefined;
-init_log(_Host, true) ->
-    case read_logs() of
+init_log(Host, true) ->
+    case read_logs(Host) of
         [] ->
             L = ehyperloglog:new(16),
-            write_logs([{Key, L} || Key <- ?HYPERLOGLOGS]),
+            write_logs(Host, [{Key, L} || Key <- ?HYPERLOGLOGS]),
             [put(Key, 0) || Key <- ?HYPERLOGLOGS],
             L;
         Logs ->
@@ -520,8 +520,8 @@ sync_log(Host) when is_binary(Host) ->
                         Error;
                     ClusterLog ->
                         set(Host, log, ClusterLog),
-                        write_logs([merge_log(Host, Key, Val, ClusterLog)
-                                          || {Key, Val} <- read_logs()])
+                        write_logs(Host, [merge_log(Host, Key, Val, ClusterLog)
+                                          || {Key, Val} <- read_logs(Host)])
                 end
         end).
 
@@ -548,8 +548,8 @@ flush_log(Host, Probe, ClusterLog) when is_binary(Host), is_atom(Probe) ->
                     end,
                     {[NewLog|Acc], Keep}
             end,
-            {[], true}, read_logs()),
-    write_logs(UpdatedLogs).
+            {[], true}, read_logs(Host)),
+    write_logs(Host, UpdatedLogs).
 
 merge_log(Host, Probe, Log, ClusterLog) ->
     Merge = ehyperloglog:merge(ClusterLog, Log),
@@ -560,21 +560,33 @@ reset_log(Host, Probe) ->
     set(Host, Probe, 0),
     {Probe, ehyperloglog:new(16)}.
 
-write_logs(Logs) when is_list(Logs) ->
-    File = filename:join([mnesia:system_info(directory), "hyperloglog.bin"]),
+write_logs(Host, Logs) when is_list(Logs) ->
+    File = logfilename(Host),
+    filelib:ensure_dir(File),
     file:write_file(File, term_to_binary(Logs)).
 
-read_logs() ->
-    File = filename:join([mnesia:system_info(directory), "hyperloglog.bin"]),
+read_logs(Host) ->
+    File = logfilename(Host),
     case file:read_file(File) of
         {ok, Bin} ->
             case catch binary_to_term(Bin) of
-                List when is_list(List) -> List;
-                _ -> []
+                List when is_list(List) ->
+                    % prevent any garbage loading
+                    lists:filter(
+                        fun({Key, _Val}) -> lists:member(Key, ?HYPERLOGLOGS);
+                           (_) -> false
+                        end,
+                        List);
+                _ ->
+                    []
             end;
         _ ->
             []
     end.
+
+logfilename(Host) when is_binary(Host) ->
+    Name = binary:replace(Host, <<".">>, <<"_">>, [global]),
+    filename:join([mnesia:system_info(directory), "hyperloglog", <<Name/binary, ".bin">>]).
 
 %%====================================================================
 %% high level monitors
