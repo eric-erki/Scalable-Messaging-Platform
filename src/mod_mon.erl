@@ -557,7 +557,7 @@ merge_log(Host, Probe, Log, ClusterLog) ->
     {Probe, Merge}.
 
 reset_log(Host, Probe) ->
-    reset(Host, Probe),
+    set(Host, Probe, 0),
     {Probe, ehyperloglog:new(16)}.
 
 write_logs(Logs) when is_list(Logs) ->
