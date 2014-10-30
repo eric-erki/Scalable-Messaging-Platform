@@ -31,6 +31,8 @@
 -export([start/0, stop/0, get/1, get/2, post/2, post/3,
 	 request/3, request/4, request/5]).
 
+-include("logger.hrl").
+
 % -define(USE_INETS, 1).
 -define(USE_LHTTPC, 1).
 % -define(USE_IBROWSE, 1).
@@ -71,9 +73,17 @@ request(Method, URL, Hdrs, Body, Opts) ->
     SockOpt = proplists:get_value(socket_options, Opts, []),
     Options = [{connect_options, SockOpt}
 	       | proplists:delete(timeout, Opts)],
-    case lhttpc:request(URL, Method, Hdrs, Body, TimeOut,
-			Options)
-	of
+    Result = lhttpc:request(URL, Method, Hdrs, Body, TimeOut, Options),
+    ?DEBUG("HTTP request -> response:~n"
+	   "** Method = ~p~n"
+	   "** URI = ~s~n"
+	   "** Body = ~s~n"
+	   "** Hdrs = ~p~n"
+	   "** Timeout = ~p~n"
+	   "** Options = ~p~n"
+	   "** Response = ~p",
+	   [Method, URL, Body, Hdrs, TimeOut, Options, Result]),
+    case Result of
       {ok, {{Status, _Reason}, Headers, Response}} ->
 	  {ok, Status, Headers, (Response)};
       {error, Reason} -> {error, Reason}
