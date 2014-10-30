@@ -679,8 +679,8 @@ push(_Host, Probes, statsd) ->
         fun({Key, Val}) ->
                 Id = <<BaseId/binary, ".", (atom_to_binary(Key, latin1))/binary>>,
                 case proplists:get_value(Key, ?NO_COUNTER_PROBES) of
-                    undefined -> [statsderl:increment(Id, Val, 0.5) || Val > 0];
-                    gauge -> statsderl:gauge(Id, Val, 1.0);
+                    undefined -> statsderl:increment(Id, Val, 1);
+                    gauge -> statsderl:gauge(Id, Val, 1);
                     _ -> ok
                 end
         end, Probes);
