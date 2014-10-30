@@ -421,17 +421,17 @@ do_store(Pkt, LUser, LServer, Peer, Type, p1db) ->
 do_store(Pkt, LUser, LServer, Peer, Type, rest) ->
     Now = now(),
     LServer2 = case Type of muc -> Peer#jid.lserver; _ -> LServer end,
-    SPeer = jlib:jid_to_string(Peer),
-    SUser = jlib:jid_to_string({LUser, LServer, <<"">>}),
+    SPeer = Peer#jid.luser,
+    SUser = LUser,
     ID = jlib:integer_to_binary(now_to_usec(Now)),
     XML = xml:element_to_binary(Pkt),
     Path = ejabberd_config:get_option({ext_api_path_archive, LServer},
 				      fun(X) -> iolist_to_binary(X) end,
 				      <<"/archive">>),
     case rest:post(LServer2, Path, [],
-		   {[{<<"user">>, SUser},
+		   {[{<<"username">>, SUser},
 		     {<<"peer">>, SPeer},
-		     {<<"timestamp">>, ID},
+		     {<<"timestamp">>, now_to_iso(Now)},
 		     {<<"xml">>, XML}]}) of
 	{ok, 200, _} ->
 	    TSDelay = jlib:now_to_utc_string(Now),
@@ -629,7 +629,7 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
 select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
        Start, _End, With, RSM, rest) ->
     Peer = case With of
-	       {_, _, _} -> [{<<"peer">>, jlib:jid_to_string(With)}];
+	       {U, _S, _R} when U /= <<"">> -> [{<<"peer">>, U}];
 	       _ -> []
 	   end,
     Page = case RSM of
@@ -638,12 +638,14 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
 	       _ ->
 		   []
 	   end,
-    User = [{<<"user">>, jlib:jid_to_string({LUser, LServer, <<"">>})}],
+    User = [{<<"username">>, LUser}],
     After = case RSM of
 		#rsm_in{direction = aft, id = I} ->
-		    [{<<"after">>, I}];
+		    [{<<"after">>, now_to_iso(
+				     usec_to_now(
+				       jlib:binary_to_integer(I)))}];
 		_ when Start /= undefined ->
-		    [{<<"after">>, jlib:integer_to_binary(now_to_usec(Start))}];
+		    [{<<"after">>, now_to_iso(Start)}];
 		_ ->
 		    []
 	    end,
@@ -653,33 +655,32 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
 		_ ->
 		    []
 	    end,
-    Params = User ++ Page ++ After ++ Limit,
+    Params = User ++ Peer ++ After,
     ArchivePath = ejabberd_config:get_option({ext_api_path_archive, LServer},
 					     fun(X) -> iolist_to_binary(X) end,
 					     <<"/archive">>),
     ItemsPath = ejabberd_config:get_option({ext_api_path_items, LServer},
 					     fun(X) -> iolist_to_binary(X) end,
 					     <<"/archive/items">>),
-    case {rest:get(LServer, ArchivePath, Params),
-	  rest:get(LServer, ItemsPath, User ++ After)} of
+    case {rest:get(LServer, ArchivePath, Params ++ Page ++ Limit),
+	  rest:get(LServer, ItemsPath, Params)} of
 	{{ok, 200, {Archive}}, {ok, 200, Count}} when is_integer(Count) ->
 	    ArchiveEls = proplists:get_value(<<"archive">>, Archive, []),
-	    {lists:map(
+	    {lists:flatmap(
 	       fun({Attrs}) ->
-		       #xmlel{} = Pkt =
-			   xml_stream:parse_element(
-			     proplists:get_value(<<"xml">>, Attrs, <<"">>)),
-		       #jid{} = Peer =
-			   jlib:string_to_jid(
-			     proplists:get_value(<<"peer">>, Attrs, <<"">>)),
-		       TS = proplists:get_value(<<"timestamp">>, Attrs, <<"">>),
-		       Now = usec_to_now(jlib:binary_to_integer(TS)),
-		       {jlib:integer_to_binary(TS), TS,
-			msg_to_el(#archive_msg{
-				     timestamp = Now,
-				     peer = Peer,
-				     packet = Pkt}, JidRequestor)}
-	       end, ArchiveEls), Count};
+		       try
+			   XML = proplists:get_value(<<"xml">>, Attrs, <<"">>),
+			   #xmlel{} = Pkt = xml_stream:parse_element(XML),
+			   TS = proplists:get_value(<<"timestamp">>, Attrs, <<"">>),
+			   {_, _, _} = Now = jlib:datetime_string_to_timestamp(TS),
+			   ID = now_to_usec(Now),
+			   [{jlib:integer_to_binary(ID), ID,
+			     msg_to_el(#archive_msg{
+					  timestamp = Now,
+					  packet = Pkt}, JidRequestor)}]
+		       catch error:{badmatch, _} ->
+			       []
+		       end end, ArchiveEls), Count};
 	Err ->
 	    ?ERROR_MSG("failed to select: ~p", [Err]),
 	    {[], 0}
@@ -756,6 +757,8 @@ msg_to_el(#archive_msg{timestamp = TS, packet = Pkt1, peer = Peer}, JidRequestor
                        xml:replace_tag_attr(
                          <<"xmlns">>, <<"jabber:client">>, Pkt)]}.
 
+maybe_update_from_to(Pkt, _JIDRequestor, undefined) ->
+    Pkt;
 maybe_update_from_to(Pkt, JidRequestor, Peer) ->
     case xml:get_attr_s(<<"type">>, Pkt#xmlel.attrs) of
 	<<"groupchat">> ->
@@ -949,6 +952,11 @@ usec_to_now(Int) ->
     MSec = Secs div 1000000,
     Sec = Secs rem 1000000,
     {MSec, Sec, USec}.
+
+now_to_iso(Now) ->
+    DateTime = calendar:now_to_universal_time(Now),
+    {ISOTimestamp, Zone} = jlib:timestamp_to_iso(DateTime, utc),
+    <<ISOTimestamp/binary, Zone/binary>>.
 
 get_jids(Els) ->
     lists:flatmap(
