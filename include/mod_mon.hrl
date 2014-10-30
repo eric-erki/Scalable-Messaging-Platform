@@ -33,6 +33,7 @@
          {muc_users, gauge},
          {pubsub_nodes, gauge},
          {pubsub_users, gauge},
+         {sessions, gauge},
          {memory, gauge},
          {processes, gauge},
          {daily_active_users, gauge},
@@ -56,6 +57,7 @@
          %{muc_rooms, [{'+', muc_create}, {'-', muc_destroy}]},
          %{muc_users, [{'+', muc_user_join}, {'-', muc_user_leave}]},
          %{pubsub_nodes, [{'+', pubsub_create_node}, {'-', pubsub_delete_node}]},
+         {sessions, mnesia, table_info, [session, size]},
          {memory, erlang, memory, [total]},
          {processes, erlang, system_info, [process_count]}
         ]).
