@@ -651,7 +651,7 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
 		    [{<<"after">>, now_to_iso(
 				     usec_to_now(
 				       jlib:binary_to_integer(I)))}];
-		_ when Start /= undefined ->
+		_ when Start /= none ->
 		    [{<<"after">>, now_to_iso(Start)}];
 		_ ->
 		    []
