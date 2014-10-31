@@ -512,6 +512,10 @@ restart_module(Module, Host) when is_atom(Module) ->
     List = gen_mod:loaded_modules_with_opts(Host),
     case proplists:get_value(Module, List) of
 	undefined ->
+            % not a running module, force code reload anyway
+            code:purge(Module),
+            code:delete(Module),
+            code:load_file(Module),
 	    1;
 	Opts ->
 	    gen_mod:stop_module(Host, Module),
