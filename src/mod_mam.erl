@@ -174,7 +174,7 @@ user_receive_packet(Pkt, C2SState, JID, Peer, _To) ->
     case should_archive(Pkt) of
         true ->
             NewPkt = strip_my_archived_tag(Pkt, LServer),
-            case store(C2SState, NewPkt, LUser, LServer, Peer, true) of
+            case store(C2SState, NewPkt, LUser, LServer, Peer, true, recv) of
                 {ok, ID, TS} ->
                     Archived = #xmlel{name = <<"archived">>,
                                       attrs = [{<<"by">>, LServer},
@@ -202,12 +202,12 @@ user_send_packet(Pkt, C2SState, JID, Peer) ->
         S when (S==true) ->
             NewPkt = strip_my_archived_tag(Pkt, LServer),
             store0(C2SState, jlib:replace_from_to(JID, Peer, NewPkt),
-                  LUser, LServer, Peer, S),
+                  LUser, LServer, Peer, S, send),
             NewPkt;
         S when (S==muc) ->
             NewPkt = strip_my_archived_tag(Pkt, LServer),
             case store0(C2SState, jlib:replace_from_to(JID, Peer, NewPkt),
-                  LUser, LServer, Peer, S) of
+                  LUser, LServer, Peer, S, send) of
                 {ok, ID, TS} ->
 		    By = jlib:jid_to_string(Peer),
 		    Archived = #xmlel{name = <<"archived">>,
@@ -368,24 +368,24 @@ should_archive_peer(C2SState,
             end
     end.
 
-store0(C2SState, Pkt, LUser, LServer, Peer, Type) ->
+store0(C2SState, Pkt, LUser, LServer, Peer, Type, Dir) ->
     case Type of
 	muc -> store(C2SState, Pkt, Peer#jid.luser, LServer,
-		    jlib:jid_replace_resource(Peer, LUser), Type);
-        true -> store(C2SState, Pkt, LUser, LServer, Peer, Type)
+		    jlib:jid_replace_resource(Peer, LUser), Type, Dir);
+        true -> store(C2SState, Pkt, LUser, LServer, Peer, Type, Dir)
     end.
 
-store(C2SState, Pkt, LUser, LServer, Peer, Type) ->
+store(C2SState, Pkt, LUser, LServer, Peer, Type, Dir) ->
     Prefs = get_prefs(LUser, LServer),
     case should_archive_peer(C2SState, Prefs, Peer) of
         true ->
-            do_store(Pkt, LUser, LServer, Peer, Type,
+            do_store(Pkt, LUser, LServer, Peer, Type, Dir,
                      gen_mod:db_type(LServer, ?MODULE));
         false ->
             pass
     end.
 
-do_store(Pkt, LUser, LServer, Peer, Type, mnesia) ->
+do_store(Pkt, LUser, LServer, Peer, Type, _Dir, mnesia) ->
     LPeer = {PUser, PServer, _} = jlib:jid_tolower(Peer),
     LServer2 = case Type of muc -> Peer#jid.lserver; _ -> LServer end,
     TS = now(),
@@ -403,7 +403,7 @@ do_store(Pkt, LUser, LServer, Peer, Type, mnesia) ->
         Err ->
             Err
     end;
-do_store(Pkt, LUser, LServer, Peer, Type, p1db) ->
+do_store(Pkt, LUser, LServer, Peer, Type, _Dir, p1db) ->
     Now = now(),
     LServer2 = case Type of muc -> Peer#jid.lserver; _ -> LServer end,
     USNKey = usn2key(LUser, LServer2, Now),
@@ -418,21 +418,28 @@ do_store(Pkt, LUser, LServer, Peer, Type, p1db) ->
         {error, _} = Err ->
             Err
     end;
-do_store(Pkt, LUser, LServer, Peer, Type, rest) ->
+do_store(Pkt, LUser, LServer, Peer, Type, Dir, rest) ->
     Now = now(),
     LServer2 = case Type of muc -> Peer#jid.lserver; _ -> LServer end,
     SPeer = Peer#jid.luser,
     SUser = LUser,
     ID = jlib:integer_to_binary(now_to_usec(Now)),
-    XML = xml:element_to_binary(Pkt),
+    T = case gen_mod:get_module_opt(LServer, ?MODULE, store_body_only,
+				    fun(B) when is_boolean(B) -> B end,
+				    false) of
+	    true ->
+		[{<<"direction">>, jlib:atom_to_binary(Dir)},
+		 {<<"body">>, xml:get_subtag_cdata(Pkt, <<"body">>)}];
+	    false ->
+		[{<<"xml">>, xml:element_to_binary(Pkt)}]
+	end,
     Path = ejabberd_config:get_option({ext_api_path_archive, LServer},
 				      fun(X) -> iolist_to_binary(X) end,
 				      <<"/archive">>),
     case rest:post(LServer2, Path, [],
 		   {[{<<"username">>, SUser},
 		     {<<"peer">>, SPeer},
-		     {<<"timestamp">>, now_to_iso(Now)},
-		     {<<"xml">>, XML}]}) of
+		     {<<"timestamp">>, now_to_iso(Now)} | T]}) of
 	{ok, 200, _} ->
 	    TSDelay = jlib:now_to_utc_string(Now),
 	    {ok, ID, TSDelay};
@@ -441,7 +448,7 @@ do_store(Pkt, LUser, LServer, Peer, Type, rest) ->
 		       [SUser, SPeer, Err]),
 	    {error, Err}
     end;
-do_store(Pkt, LUser, LServer, Peer, _Type, DBType)
+do_store(Pkt, LUser, LServer, Peer, _Type, _Dir, DBType)
   when DBType==odbc orelse DBType==sharding->
     TSinteger = now_to_usec(now()),
     ID = TS = jlib:integer_to_binary(TSinteger),
@@ -662,6 +669,9 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
     ItemsPath = ejabberd_config:get_option({ext_api_path_items, LServer},
 					     fun(X) -> iolist_to_binary(X) end,
 					     <<"/archive/items">>),
+    StoreBody = gen_mod:get_module_opt(LServer, ?MODULE, store_body_only,
+				       fun(B) when is_boolean(B) -> B end,
+				       false),
     case {rest:get(LServer, ArchivePath, Params ++ Page ++ Limit),
 	  rest:get(LServer, ItemsPath, Params)} of
 	{{ok, 200, {Archive}}, {ok, 200, Count}} when is_integer(Count) ->
@@ -669,8 +679,7 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
 	    {lists:flatmap(
 	       fun({Attrs}) ->
 		       try
-			   XML = proplists:get_value(<<"xml">>, Attrs, <<"">>),
-			   #xmlel{} = Pkt = xml_stream:parse_element(XML),
+			   Pkt = build_xml_from_json(User, Attrs, StoreBody),
 			   TS = proplists:get_value(<<"timestamp">>, Attrs, <<"">>),
 			   {_, _, _} = Now = jlib:datetime_string_to_timestamp(TS),
 			   ID = now_to_usec(Now),
@@ -744,6 +753,32 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
                end, Res), jlib:binary_to_integer(Count)};
         _ ->
             {[], 0}
+    end.
+
+build_xml_from_json(User, Attrs, StoreBody) ->
+    Body = proplists:get_value(<<"body">>, Attrs, <<"">>),
+    Dir = jlib:binary_to_atom(
+	    proplists:get_value(<<"direction">>, Attrs, <<"">>)),
+    if StoreBody ->
+	    Body = proplists:get_value(<<"body">>, Attrs, <<"">>),
+	    Dir = jlib:binary_to_atom(
+		    proplists:get_value(<<"direction">>, Attrs, <<"">>)),
+	    Peer = proplists:get_value(<<"peer">>, Attrs, <<"">>),
+	    {From, To} = case Dir of
+			     send ->
+				 {jlib:jid_to_string(User), Peer};
+			     recv ->
+				 {Peer, jlib:jid_to_string(User)}
+			 end,
+	    #xmlel{name = <<"message">>,
+		   attrs = [{<<"type">>, <<"chat">>},
+			    {<<"from">>, From},
+			    {<<"to">>, To}],
+		   children = [#xmlel{name = <<"body">>,
+				      children = [{xmlcdata, Body}]}]};
+       true ->
+	    XML = proplists:get_value(<<"xml">>, Attrs, <<"">>),
+	    #xmlel{} = xml_stream:parse_element(XML)
     end.
 
 msg_to_el(#archive_msg{timestamp = TS, packet = Pkt1, peer = Peer}, JidRequestor) ->
