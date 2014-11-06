@@ -196,18 +196,23 @@ handle_sync_event(_Event, _From, StateName, State) ->
     {reply, Reply, StateName, State}.
 
 handle_info({nodedown, Node, InfoList}, connected, State) ->
-    Reason = proplists:get_value(nodedown_reason, InfoList),
-    if Reason == disconnect ->
-            ?WARNING_MSG(
-               "Connection with node ~p is overloaded, "
-               "forcing disconnect. If this message occurs "
-               "too frequently, change '+zdbbl' Erlang emulator flag. "
-               "See erl(1) for details. The current value is ~p.",
-               [Node, erlang:system_info(dist_buf_busy_limit) div 1024]);
-       true ->
-            ok
+    case mnesia:dirty_read(cluster_info, Node) of
+        [] ->
+	    ok;
+	_ ->
+	    Reason = proplists:get_value(nodedown_reason, InfoList),
+	    if Reason == disconnect ->
+		    ?WARNING_MSG(
+		       "Connection with node ~p is overloaded, "
+		       "forcing disconnect. If this message occurs "
+		       "too frequently, change '+zdbbl' Erlang emulator flag. "
+		       "See erl(1) for details. The current value is ~p.",
+		       [Node, erlang:system_info(dist_buf_busy_limit) div 1024]);
+	       true ->
+		    ok
+	    end,
+	    del_node(Node, Reason, State#state.subscribers)
     end,
-    del_node(Node, Reason, State#state.subscribers),
     {next_state, connected, State};
 handle_info({nodeup, Node, _InfoList}, connected, State) ->
     ?DEBUG("got nodeup from net_kernel for node ~p", [Node]),
@@ -238,6 +243,8 @@ handle_info({leave, Node}, connected, State) when Node == node() ->
     lists:foreach(
       fun(N) when N /= node() ->
               mnesia:dirty_delete(cluster_info, N),
+	      ets:delete(?CLUSTER_NODES, N),
+	      del_node_from_ring(N),
               erlang:disconnect_node(N);
          (_) ->
               ok
@@ -245,6 +252,8 @@ handle_info({leave, Node}, connected, State) when Node == node() ->
     {next_state, connected, State};
 handle_info({leave, Node}, connected, State) ->
     mnesia:dirty_delete(cluster_info, Node),
+    ets:delete(?CLUSTER_NODES, Node),
+    del_node_from_ring(Node),
     erlang:disconnect_node(Node),
     {next_state, connected, State};
 handle_info(Info, StateName, State) ->
