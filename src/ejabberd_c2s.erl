@@ -39,7 +39,8 @@
 	 send_element/2, socket_type/0, get_presence/1,
 	 get_aux_field/2, set_aux_field/3, del_aux_field/2,
 	 get_subscription/2, broadcast/4, is_remote_socket/1,
-         get_subscribed/1, transform_listen_option/2]).
+         get_subscribed/1, transform_listen_option/2,
+         send_filtered/5]).
 
 %% API:
 -export([add_rosteritem/3, del_rosteritem/2]).
@@ -232,6 +233,9 @@ get_subscription(LFrom, StateData) ->
        T -> to;
        true -> none
     end.
+
+send_filtered(FsmRef, Feature, From, To, Packet) ->
+    FsmRef ! {send_filtered, Feature, From, To, Packet}.
 
 broadcast(FsmRef, Type, From, Packet) ->
     FsmRef ! {broadcast, Type, From, Packet}.
@@ -2070,6 +2074,26 @@ handle_info({migrate_shutdown, Node, After}, StateName,
       false -> self() ! system_shutdown
     end,
     fsm_next_state(StateName, StateData);
+handle_info({send_filtered, Feature, From, To, Packet}, StateName, StateData) ->
+    Drop = ejabberd_hooks:run_fold(c2s_filter_packet, StateData#state.server,
+				   true, [StateData#state.server, StateData,
+					  Feature, To, Packet]),
+    NewStateData = if Drop ->
+			  ?DEBUG("Dropping packet from ~p to ~p",
+				 [jlib:jid_to_string(From),
+				  jlib:jid_to_string(To)]),
+			  StateData;
+		      true ->
+			  FinalPacket = jlib:replace_from_to(From, To, Packet),
+			  case StateData#state.jid of
+			    To ->
+				send_packet(StateData, FinalPacket);
+			    _ ->
+				ejabberd_router:route(From, To, FinalPacket),
+				StateData
+			  end
+		   end,
+    fsm_next_state(StateName, NewStateData);
 handle_info({broadcast, Type, From, Packet}, StateName,
 	    StateData) ->
     Recipients =

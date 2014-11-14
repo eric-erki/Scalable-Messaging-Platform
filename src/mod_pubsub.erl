@@ -2492,12 +2492,13 @@ send_items(Host, Node, _Nidx, _Type, LJID, _) ->
     Stanza = items_event_stanza(Node, []),
     dispatch_items(Host, LJID, Node, Stanza).
 
-dispatch_items(From, {U, S, R}, Node, Stanza) when is_tuple(From) -> 
+dispatch_items(From, {U, S, R} = To, Node, Stanza) when is_tuple(From) -> 
     case ejabberd_sm:get_session_pid(U, S, R) of
         C2SPid when is_pid(C2SPid) ->
             ejabberd_c2s:broadcast(C2SPid,
-                                    {pep_message, <<((Node))/binary, "+notify">>},
-                                    service_jid(Host), Stanza);
+                                    {pep_message, <<Node/binary, "+notify">>},
+                                    service_jid(Host), jlib:make_jid(To),
+                                    Stanza);
         _ ->
             ok
     end;
