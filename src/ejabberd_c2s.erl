@@ -1958,12 +1958,7 @@ handle_info({route, From, To,
 	   Attrs2 =
 	       jlib:replace_from_to_attrs(jlib:jid_to_string(From),
 					  jlib:jid_to_string(To), NewAttrs),
-           FixedPkt = #xmlel{name = Name, attrs = Attrs2, children = Els},
-	   FixedPacket = ejabberd_hooks:run_fold(
-                           user_receive_packet,
-                           StateData#state.server,
-                           FixedPkt,
-                           [StateData, StateData#state.jid, From, To]),
+           FixedPacket = #xmlel{name = Name, attrs = Attrs2, children = Els},
 	   NewState2 = send_or_enqueue_packet(NewState, From, To, FixedPacket),
 	   ejabberd_hooks:run(c2s_loop_debug,
 			      [{route, From, To, Packet}]),
@@ -2328,8 +2323,13 @@ send_or_enqueue_packet(State, From, To, Packet) ->
     if State#state.reception and
        not (State#state.standby and
             (Name /= <<"message">>)) ->
-            State1 = send_stanza(State, Packet),
-            ack(State1, From, To, Packet);
+	    Packet1 = ejabberd_hooks:run_fold(
+			user_receive_packet,
+			State#state.server,
+			Packet,
+			[State, State#state.jid, From, To]),
+            State1 = send_stanza(State, Packet1),
+            ack(State1, From, To, Packet1);
        true ->
             NewState = send_out_of_reception_message(State, From, To, Packet),
             enqueue(NewState, From, To, Packet)
