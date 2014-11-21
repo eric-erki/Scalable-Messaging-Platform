@@ -63,6 +63,7 @@
     default_host               :: binary(),
     options = []               :: list(),
     trail = <<>>               :: binary(),
+    compression                :: gzip,
     websocket_handlers = []    :: [{[binary()], atom(), list()}]
 }).
 
@@ -267,6 +268,15 @@ process_header(State, Data) ->
        {http_header, _, 'Accept-Language' = Name, _, Langs}} ->
 	  State#state{request_lang = parse_lang(Langs),
 		      request_headers = add_header(Name, Langs, State)};
+      {ok,
+       {http_header, _, 'Accept-Encoding' = Name, _, EncVal}} ->
+	    Encodings = parse_encoding(EncVal),
+	    Compression = case lists:member(<<"gzip">>, Encodings) of
+			      true -> gzip;
+			      false -> undefined
+			  end,
+	    State#state{request_headers = add_header(Name, Encodings, State),
+			compression = Compression};
       {ok, {http_header, _, 'Host' = Name, _, Host}} ->
 	  State#state{request_host = Host,
 		      request_headers = add_header(Name, Host, State)};
@@ -532,13 +542,18 @@ recv_data(State, Len, Acc) ->
     end.
 
 make_xhtml_output(State, Status, Headers, XHTML) ->
-    Data = case lists:member(html, Headers) of
-	     true ->
-		 iolist_to_binary([?HTML_DOCTYPE,
-				   xml:element_to_binary(XHTML)]);
-	     _ ->
-		 iolist_to_binary([?XHTML_DOCTYPE,
-				   xml:element_to_binary(XHTML)])
+    DataRaw = case lists:member(html, Headers) of
+		  true ->
+		      iolist_to_binary([?HTML_DOCTYPE,
+					xml:element_to_binary(XHTML)]);
+		  _ ->
+		      iolist_to_binary([?XHTML_DOCTYPE,
+					xml:element_to_binary(XHTML)])
+	      end,
+    Data = if State#state.compression == gzip ->
+		   zlib:gzip(DataRaw);
+	      true ->
+		   DataRaw
 	   end,
     Headers1 = case lists:keysearch(<<"Content-Type">>, 1,
 				    Headers)
@@ -553,14 +568,20 @@ make_xhtml_output(State, Status, Headers, XHTML) ->
 		       iolist_to_binary(integer_to_list(byte_size(Data)))}
 		      | Headers]
 	       end,
+    Headers2 = case State#state.compression of
+		   gzip when State#state.request_method /= 'HEAD' ->
+		       [{<<"Content-Encoding">>, <<"gzip">>} | Headers1];
+		   _ ->
+		       Headers1
+	       end,
     HeadersOut = case {State#state.request_version,
 		       State#state.request_keepalive}
 		     of
-		   {{1, 1}, true} -> Headers1;
+		   {{1, 1}, true} -> Headers2;
 		   {_, true} ->
-		       [{<<"Connection">>, <<"keep-alive">>} | Headers1];
+		       [{<<"Connection">>, <<"keep-alive">>} | Headers2];
 		   {_, false} ->
-		       [{<<"Connection">>, <<"close">>} | Headers1]
+		       [{<<"Connection">>, <<"close">>} | Headers2]
 		 end,
     Version = case State#state.request_version of
 		{1, 1} -> <<"HTTP/1.1 ">>;
@@ -584,7 +605,12 @@ make_text_output(State, Status, Headers, Text) ->
     make_text_output(State, Status, <<"">>, Headers, Text).
 
 make_text_output(State, Status, Reason, Headers, Text) ->
-    Data = iolist_to_binary(Text),
+    DataRaw = iolist_to_binary(Text),
+    Data = if State#state.compression == gzip ->
+		   zlib:gzip(DataRaw);
+	      true ->
+		   DataRaw
+	   end,
     Headers1 = case lists:keysearch(<<"Content-Type">>, 1,
 				    Headers)
 		   of
@@ -598,14 +624,20 @@ make_text_output(State, Status, Reason, Headers, Text) ->
 		       jlib:integer_to_binary(byte_size(Data))}
 		      | Headers]
 	       end,
+    Headers2 = case State#state.compression of
+		   gzip when State#state.request_method /= 'HEAD' ->
+		       [{<<"Content-Encoding">>, <<"gzip">>} | Headers1];
+		   _ ->
+		       Headers1
+	       end,
     HeadersOut = case {State#state.request_version,
 		       State#state.request_keepalive}
 		     of
-		   {{1, 1}, true} -> Headers1;
+		   {{1, 1}, true} -> Headers2;
 		   {_, true} ->
-		       [{<<"Connection">>, <<"keep-alive">>} | Headers1];
+		       [{<<"Connection">>, <<"keep-alive">>} | Headers2];
 		   {_, false} ->
-		       [{<<"Connection">>, <<"close">>} | Headers1]
+		       [{<<"Connection">>, <<"close">>} | Headers2]
 		 end,
     Version = case State#state.request_version of
 		{1, 1} -> <<"HTTP/1.1 ">>;
@@ -633,6 +665,9 @@ parse_lang(Langs) ->
       [First | _] -> First;
       [] -> <<"en">>
     end.
+
+parse_encoding(Encodings) ->
+    [str:to_lower(Encoding) || Encoding <- str:tokens(Encodings, <<", ">>)].
 
 % Code below is taken (with some modifications) from the yaws webserver, which
 % is distributed under the folowing license:
