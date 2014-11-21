@@ -78,7 +78,11 @@ base_url(Server, Path) ->
     Base = ejabberd_config:get_option({ext_api_url, Server},
                                       fun(X) -> iolist_to_binary(X) end,
                                       <<"http://localhost/api">>),
-    <<Base/binary, (iolist_to_binary(Path))/binary>>.
+    Tail = case iolist_to_binary(Path) of
+        <<$/, Ok/binary>> -> Ok;
+        Ok -> Ok
+    end,
+    <<Base/binary, "/", Tail/binary>>.
 
 url(Server, Path, []) ->
     binary_to_list(base_url(Server, Path));
