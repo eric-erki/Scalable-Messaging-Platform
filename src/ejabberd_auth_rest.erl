@@ -36,7 +36,8 @@
          get_vh_registered_users_number/2, get_password/2,
          get_password_s/2, is_user_exists/2, remove_user/2,
          remove_user/3, store_type/0,
-         plain_password_required/0]).
+         plain_password_required/0,
+         test/2]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -47,6 +48,10 @@
 start(_Host) ->
     rest:start(),
     ok.
+
+test(Host, Pairs) when is_binary(Host), is_list(Pairs) ->
+    [{User, is_user_exists(User, Host), check_password(User, Host, Password)}
+     || {User, Password} <- Pairs].
 
 plain_password_required() -> true.
 
