@@ -112,7 +112,7 @@ CfgDeps = lists:flatmap(
                ({iconv, true}) ->
                     [{p1_iconv, ".*", {git, "git://github.com/processone/eiconv"}}];
                ({http, true}) ->
-                    [{lhttpc, ".*", {git, "git://github.com/esl/lhttpc"}}];
+                    [{lhttpc, ".*", {git, "https://github.com/processone/lhttpc.git"}}];
                ({lager, true}) ->
                     [{lager, ".*", {git, "git://github.com/basho/lager"}}];
                ({lager, false}) ->
