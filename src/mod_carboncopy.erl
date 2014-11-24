@@ -42,6 +42,7 @@
          remove_connection/4,
 	 enc_key/1,
 	 dec_key/1,
+	 enable/5,
          is_carbon_copy/1]).
 
 -include("ejabberd.hrl").
@@ -251,20 +252,24 @@ enable(mnesia, Host, U, R, CC) ->
      end;
 enable(p1db, Host, U, R, CC) ->
     p1db:insert(carboncopy, enc_key(Host, U, R), CC);
-enable(odbc, Host, U, R, CC) ->
-    case ejabberd_odbc:sql_transaction(Host,
-                                       [[<<"DELETE FROM carboncopy WHERE Server='">>,
-                                         ejabberd_odbc:escape(Host), <<"' AND Username='">>, ejabberd_odbc:escape(U),
-                                         <<"' AND Resource='">>, ejabberd_odbc:escape(R), <<"'">>],
-                                        [<<"INSERT INTO carboncopy (Server,Username,Resource,Version) VALUES ('">>,
-                                         ejabberd_odbc:escape(Host), <<"', '">>, ejabberd_odbc:escape(U), <<"', '">>,
-                                         ejabberd_odbc:escape(R), <<"', '">>, ejabberd_odbc:escape(CC), <<"')">>]]) of
-        {atomic, _} ->
-            ok;
-        _ ->
-                {error, <<"Transaction aborted">>}
+enable(odbc, Host, User, Resource, CC) ->
+    S = ejabberd_odbc:escape(Host),
+    U = ejabberd_odbc:escape(User),
+    R = ejabberd_odbc:escape(Resource),
+    F = fun() ->
+		odbc_queries:update_t(
+		  <<"carboncopy">>,
+		  [<<"server">>, <<"username">>, <<"resource">>, <<"version">>],
+		  [S, U, R, ejabberd_odbc:escape(CC)],
+		  [<<"server='">>, S, <<"' and username='">>, U,
+		   <<"' and resource='">>, R, <<"'">>])
+	end,
+    case ejabberd_odbc:sql_transaction(Host, F) of
+	{atomic, _} ->
+	    ok;
+	_ ->
+	    {error, <<"Transaction aborted">>}
     end.
-
 
 disable(Host, U, R) ->
     disable(gen_mod:db_type(Host, ?MODULE), Host, U, R).
