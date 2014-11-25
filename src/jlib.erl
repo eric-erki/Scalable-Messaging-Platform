@@ -45,7 +45,7 @@
 	 get_iq_namespace/1, iq_query_info/1,
 	 iq_query_or_response_info/1, is_iq_request_type/1,
 	 iq_to_xml/1, parse_xdata_submit/1, timestamp_to_iso/1,
-	 timestamp_to_iso/2, timestamp_to_xml/4,
+	 timestamp_to_iso/2, timestamp_to_iso/3, timestamp_to_xml/4,
 	 timestamp_to_xml/1, now_to_utc_string/1,
 	 now_to_local_string/1, datetime_string_to_timestamp/1,
 	 term_to_base64/1, base64_to_term/1,
@@ -589,14 +589,24 @@ rsm_encode_count(Count, Arr) ->
 %% Timezone = utc | {Sign::string(), {Hours, Minutes}} | {Hours, Minutes}
 %% Hours = integer()
 %% Minutes = integer()
--spec timestamp_to_iso(calendar:datetime(), tz()) -> {binary(), binary()}.
+-spec timestamp_to_iso(calendar:datetime(), tz() | non_neg_integer()) -> {binary(), binary()}.
+
+timestamp_to_iso(DateTime, TZ) ->
+    timestamp_to_iso(DateTime, TZ, 0).
 
 timestamp_to_iso({{Year, Month, Day},
                   {Hour, Minute, Second}},
-                 Timezone) ->
+                 Timezone, USec) when USec >= 0, USec < 1000000 ->
     Timestamp_string =
-	lists:flatten(io_lib:format("~4..0w-~2..0w-~2..0wT~2..0w:~2..0w:~2..0w",
-				    [Year, Month, Day, Hour, Minute, Second])),
+	if USec /= 0 ->
+		io_lib:format(
+		  "~4..0w-~2..0w-~2..0wT~2..0w:~2..0w:~2..0w.~6..0w",
+		  [Year, Month, Day, Hour, Minute, Second, USec]);
+	   true ->
+		io_lib:format(
+		  "~4..0w-~2..0w-~2..0wT~2..0w:~2..0w:~2..0w",
+		  [Year, Month, Day, Hour, Minute, Second])
+	end,
     Timezone_string = case Timezone of
 			utc -> "Z";
 			{Sign, {TZh, TZm}} ->

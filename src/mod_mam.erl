@@ -988,9 +988,9 @@ usec_to_now(Int) ->
     Sec = Secs rem 1000000,
     {MSec, Sec, USec}.
 
-now_to_iso(Now) ->
+now_to_iso({_, _, USec} = Now) ->
     DateTime = calendar:now_to_universal_time(Now),
-    {ISOTimestamp, Zone} = jlib:timestamp_to_iso(DateTime, utc),
+    {ISOTimestamp, Zone} = jlib:timestamp_to_iso(DateTime, utc, USec),
     <<ISOTimestamp/binary, Zone/binary>>.
 
 get_jids(Els) ->
