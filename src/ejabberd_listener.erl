@@ -316,6 +316,23 @@ accept(ListenSocket, Module, Opts, Interval) ->
     NewInterval = check_rate_limit(Interval),
     case gen_tcp:accept(ListenSocket) of
 	{ok, Socket} ->
+	    Pid = spawn(fun() -> do_accept(Socket, Module, Opts) end),
+	    case gen_tcp:controlling_process(Socket, Pid) of
+		ok ->
+		    Pid ! become_controller;
+		{error, _Reason} ->
+		    ok
+	    end,
+	    accept(ListenSocket, Module, Opts, NewInterval);
+	{error, Reason} ->
+	    ?ERROR_MSG("(~w) Failed TCP accept: ~w",
+                       [ListenSocket, Reason]),
+	    accept(ListenSocket, Module, Opts, NewInterval)
+    end.
+
+do_accept(Socket, Module, Opts) ->
+    receive
+	become_controller ->
 	    case {inet:sockname(Socket), inet:peername(Socket)} of
 		{{ok, {Addr, Port}}, {ok, {PAddr, PPort}}} ->
 		    ?INFO_MSG("(~w) Accepted connection ~s:~p -> ~s:~p",
@@ -328,12 +345,9 @@ accept(ListenSocket, Module, Opts, Interval) ->
 			  true -> ejabberd_frontend_socket;
 			  false -> ejabberd_socket
 		      end,
-	    CallMod:start(strip_frontend(Module), gen_tcp, Socket, Opts),
-	    accept(ListenSocket, Module, Opts, NewInterval);
-	{error, Reason} ->
-	    ?ERROR_MSG("(~w) Failed TCP accept: ~w",
-                       [ListenSocket, Reason]),
-	    accept(ListenSocket, Module, Opts, NewInterval)
+	    CallMod:start(strip_frontend(Module), gen_tcp, Socket, Opts)
+    after 60000 ->
+	    ok
     end.
 
 udp_recv(Socket, Module, Opts) ->
