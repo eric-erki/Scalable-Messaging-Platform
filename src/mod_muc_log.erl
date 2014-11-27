@@ -34,7 +34,7 @@
 
 %% API
 -export([start_link/2, start/2, stop/1, transform_module_options/1,
-	 check_access_log/2, add_to_log/5]).
+	 check_access_log/2, add_to_log/5, register_listener/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
@@ -118,6 +118,26 @@ transform_module_options(Opts) ->
               Opt
       end, Opts).
 
+
+register_listener(RoomJID, HPid) ->
+    Room = jlib:string_to_jid(RoomJID),
+    Node = Room#jid.luser,
+    Host = Room#jid.lserver,
+    case (get_room_state(Node, Host))#state.server_host of
+        <<"">> ->
+            error;
+        SHost ->
+            Proc = gen_mod:get_module_proc(SHost, ?PROCNAME),
+            ?DEBUG("REGLIS: ~p", [Proc]),
+            case global:whereis_name(Proc) of
+                Pid when is_pid(Pid) ->
+                    ejabberd_cluster:send(
+                      Pid, {register_listener, RoomJID, HPid});
+                _ ->
+                    error
+            end
+    end.
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -125,7 +145,7 @@ init([Host, Opts]) ->
     OutDir = gen_mod:get_opt(outdir, Opts,
                              fun iolist_to_binary/1,
                              <<"www/muc">>),
-    DirType = gen_mod:get_opt(dirtype, Opts, 
+    DirType = gen_mod:get_opt(dirtype, Opts,
                               fun(subdirs) -> subdirs;
                                  (plain) -> plain
                               end, subdirs),
@@ -159,6 +179,7 @@ init([Host, Opts]) ->
              {language, Host},
              fun iolist_to_binary/1,
              ?MYLANG),
+    ets:new(mod_muc_log_listeners, [bag, named_table]),
     {ok,
      #logstate{host = Host, out_dir = OutDir,
 	       dir_type = DirType, dir_name = DirName,
@@ -180,6 +201,13 @@ handle_info({add_to_log, Type, Data, Room, CompactOpts}, State) ->
       {'EXIT', Reason} -> ?ERROR_MSG("~p", [Reason]);
       _ -> ok
     end,
+    {noreply, State};
+handle_info({register_listener, RoomJID, Pid}, State) ->
+    ets:insert(mod_muc_log_listeners, {RoomJID, Pid}),
+    erlang:monitor(process, Pid),
+    {noreply, State};
+handle_info({'DOWN', _Monitor, _Type, Pid, _info}, State) ->
+    ets:match_delete(mod_muc_log_listeners, {'_', Pid}),
     {noreply, State};
 handle_info(_Info, State) -> {noreply, State}.
 
@@ -336,6 +364,11 @@ add_message_to_log(Nick1, Message, RoomJID, Opts,
 					   OutDir, Room#room.jid, DirType,
 					   DirName, FileFormat),
     {Date, Time} = TimeStamp,
+
+    lists:foreach(fun({_, Pid}) ->
+                          Pid ! {muc_message, Message, Nick1, RoomJID, Room}
+                  end, ets:lookup(mod_muc_log_listeners, jlib:jid_to_string(RoomJID))),
+
     case file:read_file_info(Fn) of
       {ok, _} -> {ok, F} = file:open(Fn, [append]);
       {error, enoent} ->
