@@ -2093,6 +2093,10 @@ handle_info({change_socket, Socket}, StateName,
                    update_internal_dict(
 		   StateData#state{socket = NewSocket,
 				   socket_monitor = MRef}));
+handle_info({rebind, _}, StateName, StateData) ->
+    fsm_next_state(StateName, StateData);
+handle_info({timeout, _Timer, _}, StateName, StateData) ->
+    fsm_next_state(StateName, StateData);
 handle_info(Info, StateName, StateData) ->
     ?ERROR_MSG("Unexpected info: ~p", [Info]),
     fsm_next_state(StateName, StateData).
