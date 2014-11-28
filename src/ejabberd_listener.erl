@@ -175,19 +175,19 @@ init_tcp(PortIP, Module, Opts, SockOpts, Port, IPS) ->
     ListenSocket = listen_tcp(PortIP, Module, SockOpts, Port, IPS),
     %% Inform my parent that this port was opened succesfully
     proc_lib:init_ack({ok, self()}),
-    start_accept_pool(Module),
+    start_accept_pool(Module, Port),
     case erlang:function_exported(Module, tcp_init, 2) of
 	false ->
-	    accept(ListenSocket, Module, Opts);
+	    accept(ListenSocket, Module, Port, Opts);
 	true ->
 	    case catch Module:tcp_init(ListenSocket, Opts) of
 		{'EXIT', _} = Err ->
 		    ?ERROR_MSG("failed to process callback function "
 			       "~p:~s(~p, ~p): ~p",
 			       [Module, tcp_init, ListenSocket, Opts, Err]),
-		    accept(ListenSocket, Module, Opts);
+		    accept(ListenSocket, Module, Port, Opts);
 		NewOpts ->
-		    accept(ListenSocket, Module, NewOpts)
+		    accept(ListenSocket, Module, Port, NewOpts)
 	    end
     end.
 
@@ -311,37 +311,37 @@ get_ip_tuple(no_ip_option, inet6) ->
 get_ip_tuple(IPOpt, _IPVOpt) ->
     IPOpt.
 
-acceptor_name(I, Mod) ->
-    list_to_atom("tcp_acceptor_" ++ atom_to_list(Mod) ++ "_" ++ integer_to_list(I)).
+acceptor_name(I, Mod, Port) ->
+    list_to_atom("tcp_acceptor_" ++ atom_to_list(Mod) ++ "_" ++ integer_to_list(Port) ++ "_" ++ integer_to_list(I)).
 
 accept_pool_size() ->
     100.
 
-start_accept_pool(Mod) ->
+start_accept_pool(Mod, Port) ->
     lists:foreach(
       fun(I) ->
-	      register(acceptor_name(I, Mod), spawn_link(fun() -> do_accept() end))
+	      register(acceptor_name(I, Mod, Port), spawn_link(fun() -> do_accept() end))
       end, lists:seq(1, accept_pool_size())).
 
-accept(ListenSocket, Module, Opts) ->
-    accept(ListenSocket, Module, Opts, 0).
-accept(ListenSocket, Module, Opts, Interval) ->
+accept(ListenSocket, Module, Port, Opts) ->
+    accept(ListenSocket, Module, Port, Opts, 0).
+accept(ListenSocket, Module, Port, Opts, Interval) ->
     NewInterval = check_rate_limit(Interval),
     case gen_tcp:accept(ListenSocket) of
 	{ok, Socket} ->
 	    {_, _, USec} = now(),
-	    Acceptor = acceptor_name((USec rem accept_pool_size()) + 1, Module),
+	    Acceptor = acceptor_name((USec rem accept_pool_size()) + 1, Module, Port),
 	    case gen_tcp:controlling_process(Socket, whereis(Acceptor)) of
 		ok ->
 		    Acceptor ! {accept, Acceptor, Socket, Module, Opts};
 		{error, _Reason} ->
 		    ok
 	    end,
-	    accept(ListenSocket, Module, Opts, NewInterval);
+	    accept(ListenSocket, Module, Port, Opts, NewInterval);
 	{error, Reason} ->
 	    ?ERROR_MSG("(~w) Failed TCP accept: ~w",
                        [ListenSocket, Reason]),
-	    accept(ListenSocket, Module, Opts, NewInterval)
+	    accept(ListenSocket, Module, Port, Opts, NewInterval)
     end.
 
 do_accept() ->
