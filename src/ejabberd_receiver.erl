@@ -55,6 +55,19 @@
 
 -define(HIBERNATE_TIMEOUT, 90000).
 
+%% Module start with or without supervisor:
+-ifdef(NO_TRANSIENT_SUPERVISORS).
+
+-define(SUPERVISOR_START,
+	gen_server:start(ejabberd_receiver,
+			 [Socket, SockMod, Shaper, MaxStanzaSize], [])).
+-else.
+
+-define(SUPERVISOR_START,
+	supervisor:start_child(ejabberd_receiver_sup,
+			       [Socket, SockMod, Shaper, MaxStanzaSize])).
+-endif.
+
 -spec start_link(inet:socket(), atom(), shaper:shaper(),
                  non_neg_integer() | infinity) -> ignore |
                                                   {error, any()} |
@@ -73,9 +86,7 @@ start(Socket, SockMod, Shaper) ->
             non_neg_integer() | infinity) -> undefined | pid().
 
 start(Socket, SockMod, Shaper, MaxStanzaSize) ->
-    {ok, Pid} =
-	supervisor:start_child(ejabberd_receiver_sup,
-			       [Socket, SockMod, Shaper, MaxStanzaSize]),
+    {ok, Pid} = ?SUPERVISOR_START,
     Pid.
 
 -spec change_shaper(pid(), shaper:shaper()) -> ok.
