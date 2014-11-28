@@ -175,6 +175,7 @@ init_tcp(PortIP, Module, Opts, SockOpts, Port, IPS) ->
     ListenSocket = listen_tcp(PortIP, Module, SockOpts, Port, IPS),
     %% Inform my parent that this port was opened succesfully
     proc_lib:init_ack({ok, self()}),
+    start_accept_pool(Module),
     case erlang:function_exported(Module, tcp_init, 2) of
 	false ->
 	    accept(ListenSocket, Module, Opts);
@@ -310,16 +311,29 @@ get_ip_tuple(no_ip_option, inet6) ->
 get_ip_tuple(IPOpt, _IPVOpt) ->
     IPOpt.
 
+acceptor_name(I, Mod) ->
+    list_to_atom("tcp_acceptor_" ++ atom_to_list(Mod) ++ "_" ++ integer_to_list(I)).
+
+accept_pool_size() ->
+    100.
+
+start_accept_pool(Mod) ->
+    lists:foreach(
+      fun(I) ->
+	      register(acceptor_name(I, Mod), spawn_link(fun() -> do_accept() end))
+      end, lists:seq(1, accept_pool_size())).
+
 accept(ListenSocket, Module, Opts) ->
     accept(ListenSocket, Module, Opts, 0).
 accept(ListenSocket, Module, Opts, Interval) ->
     NewInterval = check_rate_limit(Interval),
     case gen_tcp:accept(ListenSocket) of
 	{ok, Socket} ->
-	    Pid = spawn(fun() -> do_accept(Socket, Module, Opts) end),
-	    case gen_tcp:controlling_process(Socket, Pid) of
+	    {_, _, USec} = now(),
+	    Acceptor = acceptor_name((USec rem accept_pool_size()) + 1, Module),
+	    case gen_tcp:controlling_process(Socket, whereis(Acceptor)) of
 		ok ->
-		    Pid ! become_controller;
+		    Acceptor ! {accept, Acceptor, Socket, Module, Opts};
 		{error, _Reason} ->
 		    ok
 	    end,
@@ -330,9 +344,9 @@ accept(ListenSocket, Module, Opts, Interval) ->
 	    accept(ListenSocket, Module, Opts, NewInterval)
     end.
 
-do_accept(Socket, Module, Opts) ->
+do_accept() ->
     receive
-	become_controller ->
+	{accept, Name, Socket, Module, Opts} ->
 	    case {inet:sockname(Socket), inet:peername(Socket)} of
 		{{ok, {Addr, Port}}, {ok, {PAddr, PPort}}} ->
 		    ?INFO_MSG("(~w) Accepted connection ~s:~p -> ~s:~p",
@@ -345,8 +359,24 @@ do_accept(Socket, Module, Opts) ->
 			  true -> ejabberd_frontend_socket;
 			  false -> ejabberd_socket
 		      end,
-	    CallMod:start(strip_frontend(Module), gen_tcp, Socket, Opts)
-    after 60000 ->
+	    CallMod:start(strip_frontend(Module), gen_tcp, Socket, Opts),
+	    case process_info(self(), message_queue_len) of
+		{message_queue_len, N} when N >= 5000 ->
+		    ?ERROR_MSG("acceptor ~p is overloaded with "
+			       "~p connections, dropping them...", [Name, N]),
+		    flush_queue();
+		_ ->
+		    ok
+	    end,
+	    do_accept()
+    end.
+
+flush_queue() ->
+    receive
+	{accept, _Name, Socket, _Module, _Opts} ->
+	    catch gen_tcp:close(Socket),
+	    flush_queue()
+    after 0 ->
 	    ok
     end.
 
