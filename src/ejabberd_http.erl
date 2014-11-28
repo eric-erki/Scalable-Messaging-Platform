@@ -373,13 +373,12 @@ process(Handlers, Request, Socket, SockMod, Trail) ->
             %% requested path is "/test/foo/bar", the local path is
             %% ["foo", "bar"]
             LocalPath = lists:nthtail(length(HandlerPathPrefix), Request#request.path),
-            code:ensure_loaded(HandlerModule),
-            R = case erlang:function_exported(HandlerModule, socket_handoff, 6) of
-                    false ->
-                        HandlerModule:process(LocalPath, Request);
-                    _ ->
-                        HandlerModule:socket_handoff(LocalPath, Request, Socket, SockMod, Trail, HandlerOpts)
-                end,
+	    R = try
+		    HandlerModule:socket_handoff(
+		      LocalPath, Request, Socket, SockMod, Trail, HandlerOpts)
+		catch error:undef ->
+			HandlerModule:process(LocalPath, Request)
+		end,
             ejabberd_hooks:run(http_request_debug, [{LocalPath, Request}]),
             R;
         false ->
