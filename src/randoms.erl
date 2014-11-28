@@ -33,7 +33,10 @@
 -export([start/0, init/0]).
 
 start() ->
-    register(random_generator, spawn(randoms, init, [])).
+    lists:foreach(
+      fun(I) ->
+	      register(get_proc(I), spawn(randoms, init, []))
+      end, lists:seq(1, pool_size())).
 
 init() ->
     {A1, A2, A3} = now(), random:seed(A1, A2, A3), loop().
@@ -46,7 +49,15 @@ loop() ->
     end.
 
 get_string() ->
-    random_generator ! {self(), get_random, 65536 * 65536},
+    {_, _, USec} = now(),
+    Proc = get_proc((USec rem pool_size()) + 1),
+    Proc ! {self(), get_random, 65536 * 65536},
     receive
       {random, R} -> jlib:integer_to_binary(R)
     end.
+
+pool_size() ->
+    10.
+
+get_proc(I) ->
+    list_to_atom("random_generator_" ++ integer_to_list(I)).
