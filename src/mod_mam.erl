@@ -440,7 +440,7 @@ do_store(Pkt, LUser, LServer, Peer, Type, Dir, rest) ->
 		   {[{<<"username">>, SUser},
 		     {<<"peer">>, SPeer},
 		     {<<"timestamp">>, now_to_iso(Now)} | T]}) of
-	{ok, 200, _} ->
+	{ok, Code, _} when Code == 200 orelse Code == 201 ->
 	    TSDelay = jlib:now_to_utc_string(Now),
 	    {ok, ID, TSDelay};
 	Err ->
