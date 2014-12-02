@@ -256,19 +256,16 @@ enable(odbc, Host, User, Resource, CC) ->
     S = ejabberd_odbc:escape(Host),
     U = ejabberd_odbc:escape(User),
     R = ejabberd_odbc:escape(Resource),
-    F = fun() ->
-		odbc_queries:update_t(
-		  <<"carboncopy">>,
-		  [<<"server">>, <<"username">>, <<"resource">>, <<"version">>],
-		  [S, U, R, ejabberd_odbc:escape(CC)],
-		  [<<"server='">>, S, <<"' and username='">>, U,
-		   <<"' and resource='">>, R, <<"'">>])
-	end,
-    case ejabberd_odbc:sql_transaction(Host, F) of
-	{atomic, _} ->
+    case odbc_queries:update(
+	   Host, <<"carboncopy">>,
+	   [<<"server">>, <<"username">>, <<"resource">>, <<"version">>],
+	   [S, U, R, ejabberd_odbc:escape(CC)],
+	   [<<"server='">>, S, <<"' and username='">>, U,
+	    <<"' and resource='">>, R, <<"'">>]) of
+	ok ->
 	    ok;
-	_ ->
-	    {error, <<"Transaction aborted">>}
+	Err ->
+	    Err
     end.
 
 disable(Host, U, R) ->
