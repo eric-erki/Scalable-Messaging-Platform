@@ -28,7 +28,8 @@
 
 -author('alexey@process-one.net').
 
--behaviour(gen_server).
+-define(GEN_SERVER, p1_server).
+-behaviour(?GEN_SERVER).
 
 %% API
 -export([start_link/4, start/3, start/4,
@@ -55,14 +56,27 @@
 
 -define(HIBERNATE_TIMEOUT, 90000).
 
+%% Module start with or without supervisor:
+-ifdef(NO_TRANSIENT_SUPERVISORS).
+
+-define(SUPERVISOR_START,
+	?GEN_SERVER:start(ejabberd_receiver,
+			  [Socket, SockMod, Shaper, MaxStanzaSize], [])).
+-else.
+
+-define(SUPERVISOR_START,
+	supervisor:start_child(ejabberd_receiver_sup,
+			       [Socket, SockMod, Shaper, MaxStanzaSize])).
+-endif.
+
 -spec start_link(inet:socket(), atom(), shaper:shaper(),
                  non_neg_integer() | infinity) -> ignore |
                                                   {error, any()} |
                                                   {ok, pid()}.
 
 start_link(Socket, SockMod, Shaper, MaxStanzaSize) ->
-    gen_server:start_link(?MODULE,
-			  [Socket, SockMod, Shaper, MaxStanzaSize], []).
+    ?GEN_SERVER:start_link(?MODULE,
+			   [Socket, SockMod, Shaper, MaxStanzaSize], []).
 
 -spec start(inet:socket(), atom(), shaper:shaper()) -> undefined | pid().
 
@@ -73,15 +87,13 @@ start(Socket, SockMod, Shaper) ->
             non_neg_integer() | infinity) -> undefined | pid().
 
 start(Socket, SockMod, Shaper, MaxStanzaSize) ->
-    {ok, Pid} =
-	supervisor:start_child(ejabberd_receiver_sup,
-			       [Socket, SockMod, Shaper, MaxStanzaSize]),
+    {ok, Pid} = ?SUPERVISOR_START,
     Pid.
 
 -spec change_shaper(pid(), shaper:shaper()) -> ok.
 
 change_shaper(Pid, Shaper) ->
-    gen_server:cast(Pid, {change_shaper, Shaper}).
+    ?GEN_SERVER:cast(Pid, {change_shaper, Shaper}).
 
 -spec reset_stream(pid()) -> ok | {error, any()}.
 
@@ -128,7 +140,7 @@ send(Pid, Data) -> do_call(Pid, {send, Data}).
 
 -spec close(pid()) -> ok.
 
-close(Pid) -> gen_server:cast(Pid, close).
+close(Pid) -> ?GEN_SERVER:cast(Pid, close).
 
 %%====================================================================
 %% gen_server callbacks
@@ -381,7 +393,7 @@ cancel_timer(TRef) when is_reference(TRef) ->
 cancel_timer(_) -> ok.
 
 do_call(Pid, Msg) ->
-    case catch gen_server:call(Pid, Msg) of
+    case catch ?GEN_SERVER:call(Pid, Msg) of
       {'EXIT', Why} -> {error, Why};
       Res -> Res
     end.

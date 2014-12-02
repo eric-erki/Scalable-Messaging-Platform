@@ -28,7 +28,7 @@
 
 -author("mremond@process-one.net").
 
--export([get_db_type/0, update_t/4, sql_transaction/2,
+-export([get_db_type/0, update_t/4, update/5, sql_transaction/2,
 	 get_last/2, set_last_t/4, del_last/2, get_password/2,
 	 set_password_t/3, add_user/3, del_user/2,
 	 del_user_return_password/3, list_users/1, list_users/2,
@@ -93,10 +93,14 @@ update_t(Table, Fields, Vals, Where) ->
 	of
       {updated, 1} -> ok;
       _ ->
-	  ejabberd_odbc:sql_query_t([<<"insert into ">>, Table,
+		Res = ejabberd_odbc:sql_query_t([<<"insert into ">>, Table,
 				     <<"(">>, join(Fields, <<", ">>),
 				     <<") values ('">>, join(Vals, <<"', '">>),
-				     <<"');">>])
+				     <<"');">>]),
+		case Res of
+			{updated,1} -> ok;
+			_ -> Res
+		end
     end.
 
 update(LServer, Table, Fields, Vals, Where) ->
@@ -111,10 +115,14 @@ update(LServer, Table, Fields, Vals, Where) ->
 	of
       {updated, 1} -> ok;
       _ ->
-	  ejabberd_odbc:sql_query(LServer,
+		Res = ejabberd_odbc:sql_query(LServer,
 				  [<<"insert into ">>, Table, <<"(">>,
 				   join(Fields, <<", ">>), <<") values ('">>,
-				   join(Vals, <<"', '">>), <<"');">>])
+				   join(Vals, <<"', '">>), <<"');">>]),
+		case Res of
+			{updated,1} -> ok;
+			_ -> Res
+		end		   
     end.
 
 %% F can be either a fun or a list of queries

@@ -175,18 +175,19 @@ init_tcp(PortIP, Module, Opts, SockOpts, Port, IPS) ->
     ListenSocket = listen_tcp(PortIP, Module, SockOpts, Port, IPS),
     %% Inform my parent that this port was opened succesfully
     proc_lib:init_ack({ok, self()}),
+    start_accept_pool(Module, Port),
     case erlang:function_exported(Module, tcp_init, 2) of
 	false ->
-	    accept(ListenSocket, Module, Opts);
+	    accept(ListenSocket, Module, Port, Opts);
 	true ->
 	    case catch Module:tcp_init(ListenSocket, Opts) of
 		{'EXIT', _} = Err ->
 		    ?ERROR_MSG("failed to process callback function "
 			       "~p:~s(~p, ~p): ~p",
 			       [Module, tcp_init, ListenSocket, Opts, Err]),
-		    accept(ListenSocket, Module, Opts);
+		    accept(ListenSocket, Module, Port, Opts);
 		NewOpts ->
-		    accept(ListenSocket, Module, NewOpts)
+		    accept(ListenSocket, Module, Port, NewOpts)
 	    end
     end.
 
@@ -310,12 +311,42 @@ get_ip_tuple(no_ip_option, inet6) ->
 get_ip_tuple(IPOpt, _IPVOpt) ->
     IPOpt.
 
-accept(ListenSocket, Module, Opts) ->
-    accept(ListenSocket, Module, Opts, 0).
-accept(ListenSocket, Module, Opts, Interval) ->
+acceptor_name(I, Mod, Port) ->
+    list_to_atom("tcp_acceptor_" ++ atom_to_list(Mod) ++ "_" ++ integer_to_list(Port) ++ "_" ++ integer_to_list(I)).
+
+accept_pool_size() ->
+    100.
+
+start_accept_pool(Mod, Port) ->
+    lists:foreach(
+      fun(I) ->
+	      register(acceptor_name(I, Mod, Port), spawn_link(fun() -> do_accept() end))
+      end, lists:seq(1, accept_pool_size())).
+
+accept(ListenSocket, Module, Port, Opts) ->
+    accept(ListenSocket, Module, Port, Opts, 0).
+accept(ListenSocket, Module, Port, Opts, Interval) ->
     NewInterval = check_rate_limit(Interval),
     case gen_tcp:accept(ListenSocket) of
 	{ok, Socket} ->
+	    {_, _, USec} = now(),
+	    Acceptor = acceptor_name((USec rem accept_pool_size()) + 1, Module, Port),
+	    case gen_tcp:controlling_process(Socket, whereis(Acceptor)) of
+		ok ->
+		    Acceptor ! {accept, Acceptor, Socket, Module, Opts};
+		{error, _Reason} ->
+		    ok
+	    end,
+	    accept(ListenSocket, Module, Port, Opts, NewInterval);
+	{error, Reason} ->
+	    ?ERROR_MSG("(~w) Failed TCP accept: ~w",
+                       [ListenSocket, Reason]),
+	    accept(ListenSocket, Module, Port, Opts, NewInterval)
+    end.
+
+do_accept() ->
+    receive
+	{accept, Name, Socket, Module, Opts} ->
 	    case {inet:sockname(Socket), inet:peername(Socket)} of
 		{{ok, {Addr, Port}}, {ok, {PAddr, PPort}}} ->
 		    ?INFO_MSG("(~w) Accepted connection ~s:~p -> ~s:~p",
@@ -329,11 +360,24 @@ accept(ListenSocket, Module, Opts, Interval) ->
 			  false -> ejabberd_socket
 		      end,
 	    CallMod:start(strip_frontend(Module), gen_tcp, Socket, Opts),
-	    accept(ListenSocket, Module, Opts, NewInterval);
-	{error, Reason} ->
-	    ?ERROR_MSG("(~w) Failed TCP accept: ~w",
-                       [ListenSocket, Reason]),
-	    accept(ListenSocket, Module, Opts, NewInterval)
+	    case process_info(self(), message_queue_len) of
+		{message_queue_len, N} when N >= 5000 ->
+		    ?ERROR_MSG("acceptor ~p is overloaded with "
+			       "~p connections, dropping them...", [Name, N]),
+		    flush_queue();
+		_ ->
+		    ok
+	    end,
+	    do_accept()
+    end.
+
+flush_queue() ->
+    receive
+	{accept, _Name, Socket, _Module, _Opts} ->
+	    catch gen_tcp:close(Socket),
+	    flush_queue()
+    after 0 ->
+	    ok
     end.
 
 udp_recv(Socket, Module, Opts) ->
