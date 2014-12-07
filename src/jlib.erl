@@ -44,7 +44,9 @@
 	 jid_remove_resource/1, jid_replace_resource/2,
 	 get_iq_namespace/1, iq_query_info/1,
 	 iq_query_or_response_info/1, is_iq_request_type/1,
-	 iq_to_xml/1, parse_xdata_submit/1, timestamp_to_iso/1,
+	 iq_to_xml/1, parse_xdata_submit/1,
+         add_delay_info/3, add_delay_info/4,
+         timestamp_to_iso/1,
 	 timestamp_to_iso/2, timestamp_to_iso/3, timestamp_to_xml/4,
 	 timestamp_to_xml/1, now_to_utc_string/1,
 	 now_to_local_string/1, datetime_string_to_timestamp/1,
@@ -584,6 +586,78 @@ rsm_encode_count(Count, Arr) ->
     [#xmlel{name = <<"count">>, attrs = [],
 	    children = [{xmlcdata, i2l(Count)}]}
      | Arr].
+
+-spec add_delay_info(xmlel(), erlang:timestamp(), binary()) -> xmlel().
+
+add_delay_info(El, From, Time) ->
+    add_delay_info(El, From, Time, <<"">>).
+
+-spec add_delay_info(xmlel(), erlang:timestamp(), binary(),
+		     binary()) -> xmlel().
+
+add_delay_info(El, From, Time, Desc) ->
+    %% TODO: Remove support for <x/>, XEP-0091 is obsolete.
+    El1 = add_delay_info(El, From, Time, Desc, <<"delay">>, ?NS_DELAY),
+    El2 = add_delay_info(El1, From, Time, Desc, <<"x">>, ?NS_DELAY91),
+    El2.
+
+-spec add_delay_info(xmlel(), erlang:timestamp(), binary(), binary(), binary(),
+		     binary()) -> xmlel().
+
+add_delay_info(El, From, Time, Desc, Name, XMLNS) ->
+    case xml:get_subtag_with_xmlns(El, Name, XMLNS) of
+      false ->
+	  %% Add new tag
+	  DelayTag = create_delay_tag(calendar:now_to_universal_time(Time),
+				      From, Desc, XMLNS),
+	  xml:append_subtags(El, [DelayTag]);
+      DelayTag ->
+	  %% Update existing tag
+	  NewDelayTag =
+	      case {xml:get_tag_cdata(DelayTag), Desc} of
+		{<<"">>, <<"">>} ->
+		    DelayTag;
+		{OldDesc, <<"">>} ->
+		    DelayTag#xmlel{children = [{xmlcdata, OldDesc}]};
+		{<<"">>, NewDesc} ->
+		    DelayTag#xmlel{children = [{xmlcdata, NewDesc}]};
+		{OldDesc, NewDesc} ->
+		    case binary:match(OldDesc, NewDesc) of
+		      nomatch ->
+			  FinalDesc = <<OldDesc/binary, ", ", NewDesc/binary>>,
+			  DelayTag#xmlel{children = [{xmlcdata, FinalDesc}]};
+		      _ ->
+			  DelayTag#xmlel{children = [{xmlcdata, OldDesc}]}
+		    end
+	      end,
+	  NewEl = xml:remove_subtags(El, Name, {<<"xmlns">>, XMLNS}),
+	  xml:append_subtags(NewEl, [NewDelayTag])
+    end.
+
+-spec create_delay_tag(calendar:datetime(), jid() | binary(),
+		       binary(), binary()) -> xmlel() | error.
+
+create_delay_tag(DateTime, FromJID, Desc, XMLNS) when is_tuple(FromJID) ->
+    From = jlib:jid_to_string(FromJID),
+    {Name, Stamp} = case XMLNS of
+		      ?NS_DELAY ->
+			  {T, Tz} = timestamp_to_iso(DateTime, utc),
+			  {<<"delay">>, <<T/binary, Tz/binary>>};
+		      ?NS_DELAY91 ->
+			  {<<"x">>, timestamp_to_iso(DateTime)}
+		    end,
+    Children = case Desc of
+		 <<"">> -> [];
+		 _ -> [{xmlcdata, Desc}]
+	       end,
+    #xmlel{name = Name,
+	   attrs =
+	       [{<<"xmlns">>, XMLNS}, {<<"from">>, From},
+		{<<"stamp">>, Stamp}],
+	   children = Children};
+create_delay_tag(DateTime, Host, Desc, XMLNS) when is_binary(Host) ->
+    FromJID = jlib:make_jid(<<"">>, Host, <<"">>),
+    create_delay_tag(DateTime, FromJID, Desc, XMLNS).
 
 -type tz() :: {binary(), {integer(), integer()}} | {integer(), integer()} | utc.
 

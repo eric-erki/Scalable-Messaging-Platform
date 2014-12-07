@@ -852,7 +852,7 @@ pubsub(Config) ->
                                       node = Node,
                                       jid = my_jid(Config)}}]}),
     ?recv2(
-       #message{sub_els = [#pubsub_event{}, #delay{}]},
+       #message{sub_els = [#pubsub_event{}, #delay{}, #legacy_delay{}]},
        #iq{type = result, id = I1}),
     %% Get subscriptions
     true = lists:member(?PUBSUB("retrieve-subscriptions"), Features),
