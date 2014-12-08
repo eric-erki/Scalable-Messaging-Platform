@@ -17,7 +17,9 @@
          % roster_in_subscription, roster_out_subscription,
          user_available_hook, unset_presence_hook, set_presence_hook,
          user_send_packet, user_receive_packet,
-         s2s_send_packet, s2s_receive_packet]).
+         s2s_send_packet, s2s_receive_packet,
+         backend_api_call, backend_api_response_time,
+         backend_api_timeout, backend_api_error]).
         % TODO those need submodule register
          %muc_create, muc_destroy, muc_user_join, muc_user_leave, muc_rooms, muc_users, muc_message,
          %pubsub_create_node, pubsub_delete_node, pubsub_publish_item, pubsub_broadcast_stanza, pubsub_nodes, pubsub_users]).
@@ -36,6 +38,7 @@
          {sessions, gauge},
          {memory, gauge},
          {processes, gauge},
+         {backend_api_response_time, gauge},
          {daily_active_users, gauge},
          {weekly_active_users, gauge},
          {monthly_active_users, gauge}]).

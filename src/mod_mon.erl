@@ -54,6 +54,10 @@
          s2s_receive_packet/3,
          remove_user/2,
          register_user/2,
+         backend_api_call/3,
+         backend_api_response_time/4,
+         backend_api_timeout/3,
+         backend_api_error/3,
          %muc_create/4,
          %muc_destroy/3,
          %muc_user_join/4,
@@ -435,6 +439,15 @@ s2s_receive_packet(_From, #jid{lserver=LServer},
     Type = xml:get_attr_s(<<"type">>, Attrs),
     Hook = hookid(concat(<<"s2s">>, packet(<<"receive">>, Name, Type))),
     cast(LServer, {inc, Hook}).
+
+backend_api_call(LServer, _Method, _Path) ->
+    cast(LServer, {inc, backend_api_call}).
+backend_api_response_time(LServer, _Method, _Path, Ms) ->
+    cast(LServer, {set, backend_api_response_time, Ms}).
+backend_api_timeout(LServer, _Method, _Path) ->
+    cast(LServer, {inc, backend_api_timeout}).
+backend_api_error(LServer, _Method, _Path) ->
+    cast(LServer, {inc, backend_api_error}).
 
 remove_user(_User, Server) ->
     cast(jlib:nameprep(Server), {inc, remove_user}).

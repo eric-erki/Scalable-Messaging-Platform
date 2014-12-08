@@ -38,7 +38,8 @@ request(Server, Method, Path, Params, Mime, Data) ->
     Hdrs = [{"connection", "keep-alive"},
             {"content-type", Mime},
             {"User-Agent", "ejabberd"}],
-    case catch http_p1:request(Method, URI, Hdrs, Data, Opts) of
+    Begin = os:timestamp(),
+    Result = case catch http_p1:request(Method, URI, Hdrs, Data, Opts) of
         {ok, Code, _, <<>>} ->
             {ok, Code, []};
         {ok, Code, _, <<" ">>} ->
@@ -68,7 +69,21 @@ request(Server, Method, Path, Params, Mime, Data) ->
                        "** Err = ~p",
                        [URI, Reason]),
             {error, {http_error, {error, Reason}}}
-    end.
+    end,
+    ejabberd_hooks:run(backend_api_call, Server, [Server, Method, Path]),
+    case Result of
+        {ok, _, _} ->
+            End = os:timestamp(),
+            Elapsed = timer:now_diff(End, Begin) / 1000, %% time in ms
+            ejabberd_hooks:run(backend_api_response_time, Server, [Server, Method, Path, Elapsed]);
+        {error, {http_error,{error,timeout}}} ->
+            ejabberd_hooks:run(backend_api_timeout, Server, [Server, Method, Path]);
+        {error, {http_error,{error,connect_timeout}}} ->
+            ejabberd_hooks:run(backend_api_timeout, Server, [Server, Method, Path]);
+        {error, _} ->
+            ejabberd_hooks:run(backend_api_error, Server, [Server, Method, Path])
+    end,
+    Result.
 
 %%%----------------------------------------------------------------------
 %%% HTTP helpers
