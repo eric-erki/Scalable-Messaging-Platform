@@ -74,7 +74,7 @@ request(Server, Method, Path, Params, Mime, Data) ->
     case Result of
         {ok, _, _} ->
             End = os:timestamp(),
-            Elapsed = timer:now_diff(End, Begin) / 1000, %% time in ms
+            Elapsed = timer:now_diff(End, Begin) div 1000, %% time in ms
             ejabberd_hooks:run(backend_api_response_time, Server, [Server, Method, Path, Elapsed]);
         {error, {http_error,{error,timeout}}} ->
             ejabberd_hooks:run(backend_api_timeout, Server, [Server, Method, Path]);
