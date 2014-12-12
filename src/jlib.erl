@@ -674,23 +674,23 @@ timestamp_to_iso({{Year, Month, Day},
     Timestamp_string =
 	if USec /= 0 ->
 		io_lib:format(
-		  "~4..0w-~2..0w-~2..0wT~2..0w:~2..0w:~2..0w.~6..0w",
+		  "~4..0B-~2..0B-~2..0BT~2..0B:~2..0B:~2..0B.~6..0B",
 		  [Year, Month, Day, Hour, Minute, Second, USec]);
 	   true ->
 		io_lib:format(
-		  "~4..0w-~2..0w-~2..0wT~2..0w:~2..0w:~2..0w",
+		  "~4..0B-~2..0B-~2..0BT~2..0B:~2..0B:~2..0B",
 		  [Year, Month, Day, Hour, Minute, Second])
 	end,
     Timezone_string = case Timezone of
 			utc -> "Z";
 			{Sign, {TZh, TZm}} ->
-			    io_lib:format("~s~2..0w:~2..0w", [Sign, TZh, TZm]);
+			    io_lib:format("~s~2..0B:~2..0B", [Sign, TZh, TZm]);
 			{TZh, TZm} ->
 			    Sign = case TZh >= 0 of
 				     true -> "+";
 				     false -> "-"
 				   end,
-			    io_lib:format("~s~2..0w:~2..0w",
+			    io_lib:format("~s~2..0B:~2..0B",
 					  [Sign, abs(TZh), TZm])
 		      end,
     {iolist_to_binary(Timestamp_string), iolist_to_binary(Timezone_string)}.
@@ -699,7 +699,7 @@ timestamp_to_iso({{Year, Month, Day},
 
 timestamp_to_iso({{Year, Month, Day},
                   {Hour, Minute, Second}}) ->
-    iolist_to_binary(io_lib:format("~4..0w~2..0w~2..0wT~2..0w:~2..0w:~2..0w",
+    iolist_to_binary(io_lib:format("~4..0B~2..0B~2..0BT~2..0B:~2..0B:~2..0B",
                                    [Year, Month, Day, Hour, Minute, Second])).
 
 -spec timestamp_to_xml(calendar:datetime(), tz(), jid(), binary()) -> xmlel().
@@ -724,7 +724,7 @@ timestamp_to_xml({{Year, Month, Day},
 	   attrs =
 	       [{<<"xmlns">>, ?NS_DELAY91},
 		{<<"stamp">>,
-		 iolist_to_binary(io_lib:format("~4..0w~2..0w~2..0wT~2..0w:~2..0w:~2..0w",
+		 iolist_to_binary(io_lib:format("~4..0B~2..0B~2..0BT~2..0B:~2..0B:~2..0B",
 						[Year, Month, Day, Hour, Minute,
 						 Second]))}],
 	   children = []}.
@@ -741,8 +741,8 @@ now_to_utc_string({MegaSecs, Secs, MicroSecs}, Precision) ->
 	calendar:now_to_universal_time({MegaSecs, Secs,
 					MicroSecs}),
     FracOfSec = round(MicroSecs / math:pow(10, 6 - Precision)),
-    list_to_binary(io_lib:format("~4..0w-~2..0w-~2..0wT~2..0w:~2..0w:~2..0w.~*."
-                                 ".0wZ",
+    list_to_binary(io_lib:format("~4..0B-~2..0B-~2..0BT~2..0B:~2..0B:~2..0B.~*."
+                                 ".0BZ",
                                  [Year, Month, Day, Hour, Minute, Second,
                                   Precision, FracOfSec])).
 
@@ -762,8 +762,8 @@ now_to_local_string({MegaSecs, Secs, MicroSecs}) ->
 			end,
     {{Year, Month, Day}, {Hour, Minute, Second}} =
 	LocalTime,
-    list_to_binary(io_lib:format("~4..0w-~2..0w-~2..0wT~2..0w:~2..0w:~2..0w.~6."
-                                 ".0w~s~2..0w:~2..0w",
+    list_to_binary(io_lib:format("~4..0B-~2..0B-~2..0BT~2..0B:~2..0B:~2..0B.~6."
+                                 ".0B~s~2..0B:~2..0B",
                                  [Year, Month, Day, Hour, Minute, Second,
                                   MicroSecs, Sign, H, M])).
 
