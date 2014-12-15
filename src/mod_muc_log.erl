@@ -34,7 +34,7 @@
 
 %% API
 -export([start_link/2, start/2, stop/1, transform_module_options/1,
-	 check_access_log/2, add_to_log/5, register_listener/2]).
+	 check_access_log/2, add_to_log/5, register_listener/2, whereis_proc/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
@@ -92,9 +92,13 @@ stop(Host) ->
     ?GEN_SERVER:call(Proc, stop),
     supervisor:delete_child(ejabberd_sup, Proc).
 
-add_to_log(Host, Type, Data, Room, Opts) ->
+whereis_proc(Host) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    case global:whereis_name(Proc) of
+    global:whereis_name(Proc).
+
+
+add_to_log(Host, Type, Data, Room, Opts) ->
+    case whereis_proc(Host) of
         Pid when is_pid(Pid) ->
             ejabberd_cluster:send(
               Pid, {add_to_log, Type, Data, Room, Opts});
