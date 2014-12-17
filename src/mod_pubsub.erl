@@ -92,7 +92,7 @@
 -export([send_loop/1]).
 
 -define(PROCNAME, ejabberd_mod_pubsub).
--define(LOOPNAME, ejabberd_mod_pubsub_loop).
+-define(LOOPNAME, "ejabberd_mod_pubsub_loop").
 
 %%====================================================================
 %% API
@@ -312,10 +312,21 @@ init([ServerHost, Opts]) ->
     ejabberd_router:register_route(Host),
     pubsub_migrate:update_node_database(Host, ServerHost),
     pubsub_migrate:update_state_database(Host, ServerHost),
-    {_, State} = init_send_loop(ServerHost),
+    State = init_send_pool(ServerHost),
     {ok, State}.
 
-init_send_loop(ServerHost) ->
+send_pool_size() ->
+     100.
+
+send_pool_name(I, ServerHost) ->
+    list_to_atom(?LOOPNAME ++ "_" ++ binary_to_list(ServerHost)
+		 ++ "_" ++ integer_to_list(I)).
+
+get_proc_by_hash(Term, ServerHost) ->
+    I = erlang:phash2(Term, send_pool_size()) + 1,
+    send_pool_name(I, ServerHost).
+
+init_send_pool(ServerHost) ->
     NodeTree = config(ServerHost, nodetree),
     Plugins = config(ServerHost, plugins),
     LastItemCache = config(ServerHost, last_item_cache),
@@ -331,16 +342,12 @@ init_send_loop(ServerHost) ->
                    last_item_cache = LastItemCache,
                    max_items_node = MaxItemsNode, nodetree = NodeTree,
                    plugins = Plugins, db_type = DBType},
-    Proc = gen_mod:get_module_proc(ServerHost, ?LOOPNAME),
-    Pid = case whereis(Proc) of
-        undefined ->
-            SendLoop = spawn(?MODULE, send_loop, [State]),
-            register(Proc, SendLoop),
-            SendLoop;
-        Loop ->
-            Loop
-    end,
-    {Pid, State}.
+    lists:foreach(
+      fun(I) ->
+	      register(send_pool_name(I, ServerHost),
+		       spawn_link(fun() -> send_loop(State) end))
+      end, lists:seq(1, send_pool_size())),
+    State.
 
 %% @doc Call the init/1 function for each plugin declared in the config file.
 %% The default plugin module is implicit.
@@ -690,10 +697,13 @@ presence_probe(#jid{luser = U, lserver = S, lresource = R}, #jid{lserver = Host}
     presence(Host, {presence, U, S, [R], JID}).
 
 presence(ServerHost, Presence) ->
-    {SendLoop, _} = case whereis(gen_mod:get_module_proc(ServerHost, ?LOOPNAME)) of
-        undefined -> init_send_loop(ServerHost);
-        Pid -> {Pid, undefined}
-    end,
+    {U, S, _} = case Presence of
+		    {presence, JID, _Pid} ->
+			jlib:jid_tolower(JID);
+		    {presence, _U, _S, _Rs, JID} ->
+			jlib:jid_tolower(JID)
+		end,
+    SendLoop = get_proc_by_hash({U, S}, ServerHost),
     SendLoop ! Presence.
 
 %% -------
@@ -889,12 +899,6 @@ terminate(_Reason,
     ejabberd_hooks:delete(anonymous_purge_hook, ServerHost,
                           ?MODULE, remove_user, 50),
     mod_disco:unregister_feature(ServerHost, ?NS_PUBSUB),
-    case whereis(gen_mod:get_module_proc(ServerHost, ?LOOPNAME)) of
-        undefined ->
-            ?ERROR_MSG("~s process is dead, pubsub was broken", [?LOOPNAME]);
-        Pid ->
-            Pid ! stop
-    end,
     terminate_plugins(Host, ServerHost, Plugins, TreePlugin).
 
 %%--------------------------------------------------------------------
