@@ -1588,6 +1588,7 @@ handle_event({del_rosteritem, IJID}, StateName,
 handle_event({xmlstreamcdata, _},
 	     session_established = StateName, StateData) ->
     ?DEBUG("cdata ping", []),
+    send_text(StateData, <<"\r\n\r\n">>),
     NSD1 = change_reception(StateData, true),
     NSD2 = start_keepalive_timer(NSD1),
     fsm_next_state(StateName, NSD2);
