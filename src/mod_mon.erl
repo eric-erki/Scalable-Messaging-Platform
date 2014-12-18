@@ -204,8 +204,9 @@ handle_info(push, State) ->
     Probes = [{Key, Val} || {Key, Val} <- get(),
                             is_integer(Val) and not proplists:is_defined(Key, ?JABS)], %% TODO really not sync JABS ?
     [push(State#state.host, Probes, Backend) || Backend <- State#state.backends],
-    [put(Key, 0) || {Key, _} <- Probes,
-                    not lists:member(Key, ?NO_COUNTER_PROBES)],
+    [put(Key, 0) || {Key, Val} <- Probes,
+                    Val =/= 0,
+                    not proplists:is_defined(Key, ?NO_COUNTER_PROBES)],
     {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
