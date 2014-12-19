@@ -26,16 +26,14 @@
 
 %% module API
 -export([start_link/2, start/2, stop/1]).
--export([value/2, reset/2, set/3, dump/1]).
+-export([value/2, reset/2, set/3, dump/1, info/1]).
 %% sync commands
 -export([flush_log/3, sync_log/1]).
 %% administration commands
 -export([active_counters_command/1, flush_probe_command/2]).
--export([jabs_command/1, reset_jabs_command/1]).
+%-export([jabs_count_command/1, jabs_reset_command/1]).
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
-
--export([info/1]).
 
 %% handled ejabberd hooks
 -export([
@@ -202,7 +200,7 @@ handle_cast(_Msg, State) ->
 handle_info(push, State) ->
     run_monitors(State#state.host, State#state.monitors),
     Probes = [{Key, Val} || {Key, Val} <- get(),
-                            is_integer(Val) and not proplists:is_defined(Key, ?JABS)], %% TODO really not sync JABS ?
+                            is_integer(Val) and not proplists:is_defined(Key, ?JABS)],
     [push(State#state.host, Probes, Backend) || Backend <- State#state.backends],
     [put(Key, 0) || {Key, Val} <- Probes,
                     Val =/= 0,
@@ -245,19 +243,20 @@ commands() ->
                         desc = "Returns last value from probe and resets its historical data. Supported probes so far: daily_active_users, weekly_active_users, monthly_active_users",
                         module = ?MODULE, function = flush_probe_command,
                         args = [{server, binary}, {probe_name, binary}],
-                        result = {probe_value, integer}},
-     #ejabberd_commands{name = jabs,
-                        tags = [stats],
-                        desc = "Returns the current value of jabs counter",
-                        module = ?MODULE, function = jabs_command,
-                        args = [{server, binary}],
-                        result = {probe_value, integer}},
-     #ejabberd_commands{name = reset_jabs,
-                        tags = [stats],
-                        desc = "Reset all jabs counters, should be called every month",
-                        module = ?MODULE, function = reset_jabs_command,
-                        args = [{server, binary}],
                         result = {probe_value, integer}}].
+% jabs temporary put out of mod_mon, see mod_jabs
+%     #ejabberd_commands{name = jabs_count,
+%                        tags = [stats],
+%                        desc = "Returns the current value of jabs counter",
+%                        module = ?MODULE, function = jabs_count_command,
+%                        args = [{server, binary}],
+%                        result = {probe_value, integer}},
+%     #ejabberd_commands{name = jabs_reset,
+%                        tags = [stats],
+%                        desc = "Reset jabs counter",
+%                        module = ?MODULE, function = jabs_reset_command,
+%                        args = [{server, binary}],
+%                        result = {probe_value, integer}}].
 
 active_counters_command(Host) ->
     [{atom_to_binary(Key, latin1), Val}
@@ -270,13 +269,13 @@ flush_probe_command(Host, Probe) ->
         _ -> 0
     end.
 
-jabs_command(Host) ->
-    [{atom_to_binary(Key, latin1), Val}
-     || {Key, Val} <- jabs(Host)].
-
-reset_jabs_command(Host) ->
-    reset_jabs(Host),
-    0.
+%jabs_count_command(Host) ->
+%    [{atom_to_binary(Key, latin1), Val}
+%     || {Key, Val} <- jabs_count(Host)].
+%
+%jabs_reset_command(Host) ->
+%    jabs_reset(Host),
+%    0.
 
 %%====================================================================
 %% Helper functions
@@ -420,8 +419,9 @@ user_send_packet(#xmlel{name=Name, attrs=Attrs} = Packet,
     Type = xml:get_attr_s(<<"type">>, Attrs),
     Hook = hookid(packet(<<"receive">>, Name, Type)), % user send = server receive
     cast(LServer, {inc, Hook}),
-    Size = erlang:external_size(Packet),
-    cast(LServer, {inc, 'XPS', 1+(Size div 6000)}),
+    %possible jabs computation. see mod_jabs
+    %Size = erlang:external_size(Packet),
+    %cast(LServer, {inc, 'XPS', 1+(Size div 6000)}),
     Packet.
 user_receive_packet(#xmlel{name=Name, attrs=Attrs} = Packet,
                     _C2SState, _JID, _From, #jid{lserver=LServer}) ->
@@ -708,24 +708,23 @@ push(_Host, _Probes, none) ->
 % TODO put this on gen_server instead, to avoid need of mnesia
 % or create a dedicated jabs table for persistence cause actually
 % it works only with mnesia backend
-jabs(Host) ->
-    Table = gen_mod:get_module_proc(Host, mon),
-    ets:foldl(fun(Mon, Acc) ->
-                case proplists:get_value(Mon#mon.probe, ?JABS) of
-                    undefined -> Acc;
-                    Weight -> [{Mon#mon.probe, Mon#mon.value*Weight}|Acc]
-                end
-        end, [], Table).
-
-reset_jabs(Host) ->
-    Table = gen_mod:get_module_proc(Host, mon),
-    [mnesia:dirty_write(Table, Mon#mon{value = 0})
-     || Mon <- ets:tab2list(Table),
-        proplists:is_defined(Mon#mon.probe, ?JABS)].
-
+%jabs_count(Host) ->
+%    Table = gen_mod:get_module_proc(Host, mon),
+%    ets:foldl(fun(Mon, Acc) ->
+%                case proplists:get_value(Mon#mon.probe, ?JABS) of
+%                    undefined -> Acc;
+%                    Weight -> [{Mon#mon.probe, Mon#mon.value*Weight}|Acc]
+%                end
+%        end, [], Table).
+%
+%jabs_reset(Host) ->
+%    Table = gen_mod:get_module_proc(Host, mon),
+%    [mnesia:dirty_write(Table, Mon#mon{value = 0})
+%     || Mon <- ets:tab2list(Table),
+%        proplists:is_defined(Mon#mon.probe, ?JABS)].
 
 %%====================================================================
-%% Temporary helper to get clear cluster view ov most important probes
+%% Temporary helper to get clear cluster view of most important probes
 %%====================================================================
 
 merge_sets([L]) -> L;
