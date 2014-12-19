@@ -28,7 +28,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 %% handled ejabberd hooks
--export([sm_register_connection_hook/3, user_send_packet/4]).
+-export([sm_register_connection_hook/3, user_send_packet/3, user_send_packet/4]).
 
 -record(state, {host, jabs, timestamp}).
 
@@ -149,6 +149,8 @@ jabs_reset_command(Host) ->
 sm_register_connection_hook(_SID, #jid{lserver=Host}, _Info) ->
     gen_server:cast(process(Host), {inc, 2}).
 
-user_send_packet(Packet, _C2SState, #jid{lserver=Host}, _To) ->
+user_send_packet(Packet, _C2SState, From, To) ->
+    user_send_packet(From, To, Packet).
+user_send_packet(#jid{lserver=Host}, _To, Packet) ->
     gen_server:cast(process(Host), {inc, 1}),
     Packet.
