@@ -34,7 +34,7 @@
 
 %% API
 -export([start_link/2, start/2, stop/1, transform_module_options/1,
-	 check_access_log/2, add_to_log/5, register_listener/2, whereis_proc/1]).
+	 check_access_log/2, add_to_log/5, register_listener/2, whereis_proc/1, get_proc_name/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,

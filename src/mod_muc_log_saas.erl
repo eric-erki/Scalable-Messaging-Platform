@@ -64,7 +64,10 @@ start_with_retry(Host, Opts, Retries) ->
 
 
 start(Host, Opts) ->
-    mod_muc_log:start(Host, Opts).
+    Proc = mod_muc_log:get_proc_name(Host),
+    ChildSpec = {Proc, {?MODULE, start_link, [Host, Opts]},
+		 transient, 1000, worker, [mod_muc_log]},
+    supervisor:start_child(ejabberd_sup, ChildSpec).
 
 stop(Host) ->
     mod_muc_log:stop(Host).
