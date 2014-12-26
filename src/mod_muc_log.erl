@@ -183,7 +183,7 @@ init([Host, Opts]) ->
              {language, Host},
              fun iolist_to_binary/1,
              ?MYLANG),
-    ets:new(mod_muc_log_listeners, [bag, named_table]),
+    catch ets:new(mod_muc_log_listeners, [bag, named_table]),
     {ok,
      #logstate{host = Host, out_dir = OutDir,
 	       dir_type = DirType, dir_name = DirName,
