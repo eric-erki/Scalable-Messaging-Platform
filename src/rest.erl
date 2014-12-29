@@ -8,7 +8,8 @@
 -define(CONNECT_TIMEOUT, 5000).
 
 start() ->
-    http_p1:start().
+    http_p1:start(),
+    http_p1:set_pool_size(100).
 
 stop() ->
     ok.
