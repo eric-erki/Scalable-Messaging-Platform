@@ -29,7 +29,8 @@
 -author('ebustos@process-one.net').
 
 -export([start/0, stop/0, get/1, get/2, post/2, post/3,
-	 request/3, request/4, request/5]).
+	 request/3, request/4, request/5,
+	 get_pool_size/0, set_pool_size/1]).
 
 -include("logger.hrl").
 
@@ -57,6 +58,12 @@ request(Method, URL, Hdrs, Body, Opts) ->
 	   Response};
       {error, Reason} -> {error, Reason}
     end.
+
+get_pool_size() ->
+    application:get_env(ibrowse, default_max_sessions, 10).
+
+set_pool_size(Size) ->
+    application:set_env(ibrowse, default_max_sessions, Size).
 
 -else.
 
@@ -89,13 +96,20 @@ request(Method, URL, Hdrs, Body, Opts) ->
       {error, Reason} -> {error, Reason}
     end.
 
+get_pool_size() ->
+    Opts = proplists:get_value(lhttpc_manager, lhttpc_manager:list_pools()),
+    proplists:get_value(max_pool_size,Opts).
+
+set_pool_size(Size) ->
+    lhttpc_manager:set_max_pool_size(lhttpc_manager, Size).
+
 -else.
 
 start() ->
     ejabberd:start_app(inets).
 
 stop() ->
-    ejabberd:start_app(inets).
+    application:stop(inets).
 
 to_list(Str) when is_binary(Str) ->
     binary_to_list(Str);
@@ -127,6 +141,13 @@ request(Method, URLRaw, HdrsRaw, Body, Opts) ->
 	  {ok, Status, Headers, Response};
       {error, Reason} -> {error, Reason}
     end.
+
+get_pool_size() ->
+    {ok, Size} = httpc:get_option(max_sessions),
+    Size.
+
+set_pool_size(Size) ->
+    httpc:set_option(max_sessions, Size).
 
 -endif.
 

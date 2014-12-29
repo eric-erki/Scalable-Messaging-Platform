@@ -56,6 +56,8 @@
 -record(bl_c2s, {ip = <<"">> :: binary()}).
 
 start(_Host, _Opts) ->
+    http_p1:start(),
+    %% http_p1:set_pool_size(10), no need to tune
     Pid = spawn(?MODULE, preinit, [self(), #state{}]),
     receive {ok, Pid, PreinitResult} -> PreinitResult end.
 
