@@ -884,7 +884,7 @@ connected_users() ->
 	      SUSRs).
 
 connected_users_number() ->
-    length(dirty_get_sessions_list()).
+    ets:info(session, size).
 
 user_resources(User, Server) ->
     Resources = get_user_resources(User, Server),
