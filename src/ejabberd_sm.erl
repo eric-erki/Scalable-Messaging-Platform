@@ -484,12 +484,17 @@ set_session(SID, User, Server, Resource, Priority, Info) ->
     USR = {LUser, LServer, LResource},
     Session = #session{sid = SID, usr = USR, us = US,
                        priority = Priority, info = Info},
-    lists:foreach(
-      fun(Node) when Node == node() ->
-	      ?GEN_SERVER:call(?MODULE, {write, Session}, ?CALL_TIMEOUT);
-	 (Node) ->
-	      ejabberd_cluster:send({?MODULE, Node}, {write, Session})
-      end, ejabberd_cluster:get_nodes()).
+    case mnesia:dirty_read(session, USR) of
+	[Session] ->
+	    ok;
+	_ ->
+	    lists:foreach(
+	      fun(Node) when Node == node() ->
+		      ?GEN_SERVER:call(?MODULE, {write, Session}, ?CALL_TIMEOUT);
+		 (Node) ->
+		      ejabberd_cluster:send({?MODULE, Node}, {write, Session})
+	      end, ejabberd_cluster:get_nodes())
+    end.
 
 write_session(#session{usr = USR, sid = {T1, P1}} = S1) ->
     case mnesia:dirty_read(session, USR) of
