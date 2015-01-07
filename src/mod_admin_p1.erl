@@ -91,7 +91,8 @@
 	 send_chat/3, send_message/4, send_stanza/3,
 	 local_sessions_number/0, local_muc_rooms_number/0,
 	 p1db_records_number/0,
-	 start_mass_message/3, stop_mass_message/1, mass_message/5]).
+	 start_mass_message/3, stop_mass_message/1, mass_message/5,
+	 iq_handlers_number/0]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -499,6 +500,12 @@ commands() ->
 			desc = "Force stop of current mass message job",
 			module = ?MODULE, function = stop_mass_message,
 			args = [{server, binary}],
+			result = {res, integer}},
+     #ejabberd_commands{name = iq_handlers_number,
+			tags = [internal],
+			desc = "Number of IQ handlers in the node",
+			module = ?MODULE, function = iq_handlers_number,
+			args = [],
 			result = {res, integer}}].
 
 
@@ -1189,6 +1196,13 @@ local_muc_rooms_number() ->
 p1db_records_number() ->
     [{atom_to_list(Table), Count} || Table <- p1db:opened_tables(),
 		       {ok, Count} <- [p1db:count(Table)]].
+
+%%%
+%%% Misc
+%%%
+
+iq_handlers_number() ->
+    ets:info(sm_iqtable, size).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
