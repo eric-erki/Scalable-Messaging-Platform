@@ -150,9 +150,19 @@ set(LogLevel) when is_integer(LogLevel) ->
             ok;
         _ ->
             ConsoleLog = get_log_path(),
+            Dir = filename:dirname(ConsoleLog),
+            ErrorLog = filename:join([Dir, "error.log"]),
+            ErrorLogLevel =
+                case LogLevel of
+                    0 -> none;
+                    1 -> critical;
+                    _ -> error
+                end,
             lists:foreach(
               fun({lager_file_backend, File} = H) when File == ConsoleLog ->
                       lager:set_loglevel(H, LagerLogLevel);
+                 ({lager_file_backend, File} = H) when File == ErrorLog ->
+                      lager:set_loglevel(H, ErrorLogLevel);
                  (lager_console_backend = H) ->
                       lager:set_loglevel(H, LagerLogLevel);
                  (_) ->
