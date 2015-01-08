@@ -147,7 +147,7 @@ jabs_reset_command(Host) ->
 %%====================================================================
 
 sm_register_connection_hook(_SID, #jid{lserver=Host}, _Info) ->
-    gen_server:cast(process(Host), {inc, 2}).
+    gen_server:cast(process(Host), {inc, 5}).
 
 user_send_packet(Packet, _C2SState, From, To) ->
     user_send_packet(From, To, Packet).
