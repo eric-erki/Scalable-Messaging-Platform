@@ -341,7 +341,10 @@ route_check_id(From, To,
 route_check_id(From, To, Packet) ->
     do_route(From, To, Packet).
 
-do_route(OrigFrom, OrigTo, OrigPacket) ->
+do_route(From, To, Packet) ->
+    do_route(From, To, Packet, _IsBounce = false).
+
+do_route(OrigFrom, OrigTo, OrigPacket, IsBounce) ->
     ?DEBUG("route~n\tfrom ~s~n\tto ~s~n\tpacket ~p~n",
 	   [jlib:jid_to_string(OrigFrom),
 	    jlib:jid_to_string(OrigTo),
@@ -350,24 +353,74 @@ do_route(OrigFrom, OrigTo, OrigPacket) ->
 				 {OrigFrom, OrigTo, OrigPacket}, []) of
         {From, To, Packet} ->
             LDstDomain = To#jid.lserver,
+	    LSrcDomain = From#jid.lserver,
             case mnesia:dirty_read(route, LDstDomain) of
                 [] ->
                     ejabberd_s2s:route(From, To, Packet);
                 [#route{pid = [], local_hint = LocalHint}] ->
                     case LocalHint of
                         {apply, Module, Function} ->
-                            Module:Function(From, To, Packet);
+			    case allow_host(LSrcDomain, LDstDomain, IsBounce) of
+				true ->
+				    Module:Function(From, To, Packet);
+				false ->
+				    bounce_packet(From, To, Packet)
+			    end;
                         undefined ->
                             ejabberd_s2s:route(From, To, Packet)
                     end;
                 [#route{pid = [Pid]}] ->
-                    ejabberd_cluster:send(Pid, {route, From, To, Packet});
+		    case allow_host(LSrcDomain, LDstDomain, IsBounce) of
+			true ->
+			    ejabberd_cluster:send(Pid, {route, From, To, Packet});
+			false ->
+			    bounce_packet(From, To, Packet)
+		    end;
                 [#route{pid = Pids}] ->
-                    balancing_route(Pids, From, To, Packet)
+		    case allow_host(LSrcDomain, LDstDomain, IsBounce) of
+			true ->
+			    balancing_route(Pids, From, To, Packet);
+			false ->
+			    bounce_packet(From, To, Packet)
+		    end
             end;
         drop ->
             ?DEBUG("packet dropped~n", []),
             ok
+    end.
+
+allow_host(_FromHost, _ToHost, _IsBounce = true) ->
+    true;
+allow_host(FromHost, ToHost, _IsBounce = false) ->
+    case {mnesia:dirty_read(route, FromHost),
+	  mnesia:dirty_read(route, ToHost)} of
+	{[#route{pid = [], local_hint = {apply, _Mod1, _Fun1}}],
+	 [#route{pid = [], local_hint = {apply, _Mod2, _Fun2}}]} ->
+	    allow_host1(FromHost, ToHost) andalso allow_host1(ToHost, FromHost);
+	{[#route{pid = [], local_hint = {apply, _Mod, _Fun}}], [_|_]} ->
+	    allow_host1(FromHost, ToHost);
+	{[_|_], [#route{pid = [], local_hint = {apply, _Mod, _Fun}}]} ->
+	    allow_host1(ToHost, FromHost);
+	_ ->
+	    true
+    end.
+
+allow_host1(MyHost, VHost) ->
+    Rule = ejabberd_config:get_option(
+	     {host_access, MyHost},
+	     fun(A) when is_atom(A) -> A end,
+	     all),
+    JID = jlib:make_jid(<<"">>, VHost, <<"">>),
+    acl:match_rule(MyHost, Rule, JID) == allow.
+
+bounce_packet(From, To, #xmlel{attrs = Attrs} = Packet) ->
+    Type = xml:get_attr_s(<<"type">>, Attrs),
+    if Type == <<"error">>; Type == <<"result">> ->
+	    ?DEBUG("packet dropped~n", []),
+	    ok;
+       true ->
+	    Err = jlib:make_error_reply(Packet, ?ERR_SERVICE_UNAVAILABLE),
+	    do_route(To, From, Err, true)
     end.
 
 balancing_route(Pids, From, To, Packet) ->
