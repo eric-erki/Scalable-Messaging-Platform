@@ -242,18 +242,16 @@ handle_info({leave, Node}, connected, State) when Node == node() ->
     %% Remove ourselves from the cluster
     lists:foreach(
       fun(N) when N /= node() ->
-              mnesia:dirty_delete(cluster_info, N),
-	      ets:delete(?CLUSTER_NODES, N),
-	      del_node_from_ring(N),
+	      del_node(N, left_cluster, State#state.subscribers),
+	      mnesia:dirty_delete(cluster_info, N),
               erlang:disconnect_node(N);
          (_) ->
               ok
       end, mnesia:dirty_all_keys(cluster_info)),
     {next_state, connected, State};
 handle_info({leave, Node}, connected, State) ->
+    del_node(Node, left_cluster, State#state.subscribers),
     mnesia:dirty_delete(cluster_info, Node),
-    ets:delete(?CLUSTER_NODES, Node),
-    del_node_from_ring(Node),
     erlang:disconnect_node(Node),
     {next_state, connected, State};
 handle_info(Info, StateName, State) ->
