@@ -676,13 +676,14 @@ parse_feedback_buf(Buf, State) ->
 		      [State#state.host, erlang:integer_to_list(DeviceID, 16)]),
 	    case dict:find(DeviceID, State#state.device_cache) of
 		{ok, {_Counter, JID}} ->
+                    BJID = jlib:jid_remove_resource(JID),
                     ?INFO_MSG("(~p) sending feedback for ~s to ~s~n",
                               [State#state.host,
                                erlang:integer_to_list(DeviceID, 16),
-                               jlib:jid_to_string(JID)]),
+                               jlib:jid_to_string(BJID)]),
 		    From = jlib:make_jid(<<"">>, State#state.host, <<"">>),
 		    ejabberd_router:route(
-		      From, JID,
+		      From, BJID,
 		      #xmlel{name = <<"iq">>,
                              attrs = [{<<"id">>, <<"disable">>},
                                       {<<"type">>, <<"set">>}],
