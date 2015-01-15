@@ -102,7 +102,7 @@ socket_handoff(LocalPath, Request, Socket, SockMod, Buf, Opts) ->
 %%% Internal
 
 init([{WsState, _} = WS]) ->
-    Opts = ejabberd_c2s_config:get_c2s_limits(),
+    %% Opts = ejabberd_c2s_config:get_c2s_limits(),
     Socket = {http_ws, self(), ejabberd_ws:get(WS, ip)},
     ?DEBUG("Muc log client connected through websocket ~p",
 	   [[Socket, WsState#ws.local_path]]),
@@ -111,7 +111,7 @@ init([{WsState, _} = WS]) ->
     {ok, loop,
      #state{socket = Socket, ws = WS}}.
 
-handle_event({activate, From}, StateName, StateData) ->
+handle_event({activate, _From}, StateName, StateData) ->
     {next_state, StateName, StateData}.
 
 handle_sync_event(close, _From, _StateName, StateData) ->
