@@ -71,7 +71,7 @@
 -endif.
 
 -record(state, {host = <<"">>          :: binary(),
-                timers = (?DICT):new() :: dict(),
+                timers = (?DICT):new() :: ?TDICT,
                 timeout = ?ACK_TIMEOUT :: non_neg_integer()}).
 
 start_link(Host, Opts) ->

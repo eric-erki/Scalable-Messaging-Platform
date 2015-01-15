@@ -37,11 +37,11 @@
 		certfile = ""             :: string(),
 		certfile_mtime            :: file:date_time(),
 		failure_script            :: string(),
-		queue = {0, queue:new()}  :: {non_neg_integer(), queue()},
+		queue = {0, queue:new()}  :: {non_neg_integer(), ?TQUEUE},
 		soundfile = <<"">>        :: binary(),
 		cmd_id = 0                :: non_neg_integer(),
-		cmd_cache = dict:new()    :: dict(),
-		device_cache = dict:new() :: dict()}).
+		cmd_cache = dict:new()    :: ?TDICT,
+		device_cache = dict:new() :: ?TDICT}).
 
 -define(PROCNAME, ejabberd_mod_applepush_service).
 -define(RECONNECT_TIMEOUT, 5000).

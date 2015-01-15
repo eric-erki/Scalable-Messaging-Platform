@@ -61,6 +61,7 @@
 %% TODO: Remove once XEP-0091 is Obsolete
 %% TODO: Remove once XEP-0091 is Obsolete
 
+-include("ejabberd.hrl").
 -include("jlib.hrl").
 
 -export_type([jid/0]).
@@ -1006,7 +1007,7 @@ string_to_usr_resource_test() ->
 -endif.
 
 
--spec queue_drop_while(fun((term()) -> boolean()), queue()) -> queue().
+-spec queue_drop_while(fun((term()) -> boolean()), ?TQUEUE) -> ?TQUEUE.
 
 queue_drop_while(F, Q) ->
     case queue:peek(Q) of

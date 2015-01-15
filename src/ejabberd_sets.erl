@@ -1,5 +1,6 @@
 -module(ejabberd_sets).
 
+-include("ejabberd.hrl").
 
 %%SET interface, same than gb_sets
 -export([
@@ -12,7 +13,7 @@
 		foldl/3,
 		size/1]).
 
--type ej_set() :: gb_tree().
+-type ej_set() :: ?TGB_TREE.
 -export_type([ej_set/0]).
 
 %% Asumptions:

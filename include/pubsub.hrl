@@ -23,6 +23,8 @@
 %%% This file contains pubsub types definition.
 %%% ====================================================================
 
+-include("ejabberd.hrl").
+
 %% -------------------------------
 %% Pubsub constants
 -define(ERR_EXTENDED(E, C), mod_pubsub:extended_error(E, C)).

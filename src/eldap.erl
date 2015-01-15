@@ -141,8 +141,8 @@
          id = 0                  :: non_neg_integer(),
          bind_timer = make_ref() :: reference(),
          starttls_timer = make_ref() :: reference(),
-	 dict = dict:new()       :: dict(),
-         req_q = queue:new()     :: queue()}).
+	 dict = dict:new()       :: ?TDICT,
+         req_q = queue:new()     :: ?TQUEUE}).
 
 %%%----------------------------------------------------------------------
 %%% API

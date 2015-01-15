@@ -19,6 +19,8 @@
 %%%
 %%%----------------------------------------------------------------------
 
+-include("ejabberd.hrl").
+
 -define(MAX_USERS_DEFAULT, 200).
 
 -define(SETS, gb_sets).
@@ -27,7 +29,7 @@
 
 -record(lqueue,
 {
-    queue :: queue(),
+    queue :: ?TQUEUE,
     len :: integer(),
     max :: integer()
 }).
@@ -61,7 +63,7 @@
     logging                              = false :: boolean(),
     vcard                                = <<"">> :: binary(),
     hibernate_time                       = 0 :: non_neg_integer(),
-    captcha_whitelist                    = (?SETS):empty() :: gb_set()
+    captcha_whitelist                    = (?SETS):empty() :: ?TGB_SET
 }).
 
 -type config() :: #config{}.
@@ -94,11 +96,11 @@
     access                  = {none,none,none,none} :: {atom(), atom(), atom(), atom()},
     jid                     = #jid{} :: jid(),
     config                  = #config{} :: config(),
-    users                   = (?DICT):new() :: dict(),
+    users                   = (?DICT):new() :: ?TDICT,
     last_voice_request_time = treap:empty() :: treap:treap(),
-    robots                  = (?DICT):new() :: dict(),
-    nicks                   = (?DICT):new() :: dict(),
-    affiliations            = (?DICT):new() :: dict(),
+    robots                  = (?DICT):new() :: ?TDICT,
+    nicks                   = (?DICT):new() :: ?TDICT,
+    affiliations            = (?DICT):new() :: ?TDICT,
     history                 :: lqueue(),
     persist_history         = false :: boolean(),
     subject                 = <<"">> :: binary(),
@@ -108,7 +110,7 @@
     hibernate_timer         = make_ref() :: reference(),
     room_shaper             = none :: shaper:shaper(),
     shutdown_reason         :: atom(),
-    room_queue              = queue:new() :: queue()
+    room_queue              = queue:new() :: ?TQUEUE
 }).
 
 -record(muc_online_users, {us = {<<>>, <<>>} :: {binary(), binary()},

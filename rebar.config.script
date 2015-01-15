@@ -34,6 +34,8 @@ Macros = lists:flatmap(
                    Secs = calendar:datetime_to_gregorian_seconds({{Y,M,D},{23,59,00}})-62167219200,
                    Val = ((Secs div 1000000) bsl 1) + ((Secs rem 1000000) bsr 19),
                    [{d, 'VALIDITY', Val}];
+              ({erlang_deprecated_types, true}) ->
+                   [{d, 'ERL_DEPRECATED_TYPES'}];
               (_) ->
                    []
            end, Cfg),

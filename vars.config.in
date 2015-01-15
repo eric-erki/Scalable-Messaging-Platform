@@ -15,6 +15,7 @@
 {db_type, @db_type@}.
 {debug, @debug@}.
 {hipe, @hipe@}.
+{erlang_deprecated_types, @erlang_deprecated_types@}.
 
 %% Ad-hoc directories with source files
 {pubsub_ng, @pubsub_ng@}.

@@ -96,8 +96,8 @@
 -record(state,
 	{host = <<"">>                            :: binary(),
          sid = <<"">>                             :: binary(),
-         el_ibuf = buf_new()                      :: queue(),
-         el_obuf = buf_new()                      :: queue(),
+         el_ibuf = buf_new()                      :: ?TQUEUE,
+         el_obuf = buf_new()                      :: ?TQUEUE,
          shaper_state = none                      :: shaper:shaper(),
          c2s_pid                                  :: pid(),
 	 xmpp_ver = <<"">>                        :: binary(),
@@ -109,9 +109,9 @@
          prev_key = <<"">>                        :: binary(),
          prev_poll                                :: erlang:timestamp(),
          max_concat = unlimited                   :: unlimited | non_neg_integer(),
-	 responses = gb_trees:empty()             :: gb_tree(),
-	 receivers = gb_trees:empty()             :: gb_tree(),
-	 shaped_receivers = queue:new()           :: queue(),
+	 responses = gb_trees:empty()             :: ?TGB_TREE,
+	 receivers = gb_trees:empty()             :: ?TGB_TREE,
+	 shaped_receivers = queue:new()           :: ?TQUEUE,
          ip                                       :: inet:ip_address(),
          max_requests = 1                         :: non_neg_integer()}).
 

@@ -35,7 +35,7 @@
 
 -record(state, {host = <<"">>            :: binary(),
 		gateway = ""             :: string(),
-		queue = {0, queue:new()} :: {non_neg_integer(), queue()},
+		queue = {0, queue:new()} :: {non_neg_integer(), ?TQUEUE},
 		apikey = ""              :: string(),
 		soundfile = <<"">>       :: binary(),
 		mode = ?MODE_ACCEPT      :: accept | enqueue | active,

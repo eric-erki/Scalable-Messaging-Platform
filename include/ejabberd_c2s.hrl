@@ -21,6 +21,7 @@
 
 -ifndef(mod_privacy_hrl).
 
+-include("ejabberd.hrl").
 -include("mod_privacy.hrl").
 
 -endif.
@@ -64,7 +65,7 @@
          fsm_limit_opts = [] :: [{atom(), any()}],
          mgmt_state = disabled :: mgmt_state(),
          mgmt_xmlns = <<"">> :: binary(),
-         mgmt_queue :: queue(),
+         mgmt_queue :: ?TQUEUE,
          mgmt_max_queue = 500 :: pos_integer(),
          mgmt_pending_since :: erlang:timestamp(),
          mgmt_timeout = 0 :: non_neg_integer(),
@@ -77,9 +78,9 @@
 	 flash_connection = false :: boolean(),
          reception = true :: boolean(),
 	 standby = false :: boolean(),
-         queue = queue:new() :: queue(),
+         queue = queue:new() :: ?TQUEUE,
          queue_len = 0 :: integer(),
-	 pres_queue = gb_trees:empty() :: gb_tree(),
+	 pres_queue = gb_trees:empty() :: ?TGB_TREE,
          keepalive_timer :: reference(),
 	 keepalive_timeout :: timeout(),
          oor_timeout :: timeout(),
@@ -96,7 +97,7 @@
 	 oor_offline = false :: boolean(),
          ack_enabled = false :: boolean(),
 	 ack_counter = 0 :: integer(),
-         ack_queue = queue:new() :: queue(),
+         ack_queue = queue:new() :: ?TQUEUE,
          ack_timer :: reference()}).
 
 -type c2s_state() :: #state{}.
