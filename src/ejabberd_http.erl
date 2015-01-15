@@ -310,15 +310,18 @@ process_header(State, Data) ->
 	  case State2#state.request_keepalive of
 	    true ->
                   #state{sockmod = SockMod, socket = Socket,
+                         options = State#state.options,
                          request_handlers = State#state.request_handlers,
                          websocket_handlers = State#state.websocket_handlers};
 	    _ ->
                   #state{end_of_request = true,
+                         options = State#state.options,
                          request_handlers = State#state.request_handlers,
                          websocket_handlers = State#state.websocket_handlers}
 	  end;
       _ ->
             #state{end_of_request = true,
+                   options = State#state.options,
                    request_handlers = State#state.request_handlers,
                    websocket_handlers = State#state.websocket_handlers}
     end.
