@@ -54,10 +54,10 @@ stop(Host) ->
     supervisor:terminate_child(ejabberd_sup, Proc),
     supervisor:delete_child(ejabberd_sup, Proc).
 
-value(Host) when is_binary(Host) ->
+value(Host) ->
     gen_server:call(process(Host), value, ?CALL_TIMEOUT).
 
-reset(Host) when is_binary(Host) ->
+reset(Host) ->
     gen_server:cast(process(Host), reset).
 
 %%====================================================================
@@ -67,7 +67,7 @@ reset(Host) when is_binary(Host) ->
 init([Host, _Opts]) ->
     [ejabberd_hooks:add(Hook, Host, ?MODULE, Hook, 20)
      || Hook <- ?SUPPORTED_HOOKS],
-    ejabberd_commands:register_commands(commands()),
+    ejabberd_commands:register_commands(commands(Host)),
     {ok, #state{host = Host, jabs = 0, timestamp = now()}}.
 
 handle_call(value, _From, State) ->
@@ -92,7 +92,7 @@ terminate(_Reason, State) ->
     Host = State#state.host,
     [ejabberd_hooks:delete(Hook, Host, ?MODULE, Hook, 20)
      || Hook <- ?SUPPORTED_HOOKS],
-    ejabberd_commands:unregister_commands(commands()).
+    ejabberd_commands:unregister_commands(commands(Host)).
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
@@ -108,24 +108,29 @@ process(Host) ->
 %% ejabberd commands
 %%====================================================================
 
-commands() -> [
+commands(Host) when is_binary(Host) ->
+    commands2(binary);
+commands(Host) when is_list(Host) ->
+    commands2(string).
+
+commands2(ArgType) -> [
      #ejabberd_commands{name = jabs_count,
                         tags = [stats],
                         desc = "Returns the current value of jabs counter",
                         module = ?MODULE, function = jabs_count_command,
-                        args = [{server, binary}],
+                        args = [{server, ArgType}],
                         result = {count, integer}},
      #ejabberd_commands{name = jabs_since,
                         tags = [stats],
                         desc = "Returns start date of jabs counter",
                         module = ?MODULE, function = jabs_since_command,
-                        args = [{server, binary}],
+                        args = [{server, ArgType}],
                         result = {since, string}},
      #ejabberd_commands{name = jabs_reset,
                         tags = [stats],
                         desc = "Reset jabs counter",
                         module = ?MODULE, function = jabs_reset_command,
-                        args = [{server, binary}],
+                        args = [{server, ArgType}],
                         result = {result, string}}].
 
 jabs_count_command(Host) ->
@@ -135,12 +140,11 @@ jabs_count_command(Host) ->
 jabs_since_command(Host) ->
     {_, Timestamp} = value(Host),
     {{Y,M,D},{HH,MM,SS}} = calendar:now_to_datetime(Timestamp),
-    Result = io_lib:format("~4..0B-~2..0B-~2..0B ~2..0B:~2..0B:~2..0B",
-                           [Y, M, D, HH, MM, SS]),
-    list_to_binary(Result).
+    io_lib:format("~4..0B-~2..0B-~2..0B ~2..0B:~2..0B:~2..0B",
+                           [Y, M, D, HH, MM, SS]).
 
 jabs_reset_command(Host) ->
-    atom_to_binary(reset(Host), latin1).
+    atom_to_list(reset(Host)).
 
 %%====================================================================
 %% Hooks handlers
