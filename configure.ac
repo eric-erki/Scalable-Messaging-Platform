@@ -115,12 +115,12 @@ AC_ARG_ENABLE(flash_hack,
 esac],[flash_hack=false])
 
 AC_ARG_ENABLE(transient_supervisors,
-[AC_HELP_STRING([--enable-transient_supervisors], [use Erlang supervision for transient process (default: no)])],
+[AC_HELP_STRING([--disable-transient-supervisors], [disable Erlang supervision for transient processes (default: no)])],
 [case "${enableval}" in
   yes) transient_supervisors=true ;;
   no)  transient_supervisors=false ;;
   *) AC_MSG_ERROR(bad value ${enableval} for --enable-transient_supervisors) ;;
-esac],[transient_supervisors=false])
+esac],[transient_supervisors=true])
 
 AC_ARG_ENABLE(full_xml,
 [AC_HELP_STRING([--enable-full-xml], [use XML features in XMPP stream (ex: CDATA) (default: no, requires XML compliant clients)])],
