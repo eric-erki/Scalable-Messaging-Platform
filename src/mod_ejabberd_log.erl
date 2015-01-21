@@ -4,7 +4,7 @@
 %%% Purpose : Generate generic log file for analysis
 %%% Created : 10 Nov 2012 by Mickael Remond <mremond@process-one.net>
 %%%
-%%% ejabberd, Copyright (C) 2002-2012   Process-one
+%%% ejabberd, Copyright (C) 2002-2015   Process-one
 %%%
 %%% Starting module manually:
 %%%  mod_admin_p1:restart_module("mod_ejabberd_log", "localhost").
