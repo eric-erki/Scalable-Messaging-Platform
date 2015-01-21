@@ -33,6 +33,7 @@
          stop_migrate/1, migrate/1,
 	 stop_kindly/2, send_service_message_all_mucs/2,
 	 registered_vhosts/0,
+	 reload_config/0,
 	 %% Cluster
 	 join_cluster/1, leave_cluster/1, list_cluster/0,
 	 %% P1DB
@@ -154,6 +155,11 @@ commands() ->
 			module = ?MODULE, function = registered_vhosts,
 			args = [],
 			result = {vhosts, {list, {vhost, string}}}},
+     #ejabberd_commands{name = reload_config, tags = [server],
+			desc = "Reload ejabberd configuration file into memory",
+			module = ?MODULE, function = reload_config,
+			args = [],
+			result = {res, rescode}},
 
      #ejabberd_commands{name = join_cluster, tags = [cluster],
 			desc = "Join this node into the cluster handled by Node",
@@ -491,6 +497,11 @@ registered_users(Host) ->
 
 registered_vhosts() ->
 	?MYHOSTS.
+
+reload_config() ->
+    ejabberd_config:reload_file(),
+    acl:start(),
+    shaper:start().
 
 %%%
 %%% Cluster management
