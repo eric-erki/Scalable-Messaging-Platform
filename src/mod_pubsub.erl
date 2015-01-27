@@ -2483,30 +2483,26 @@ send_items(Host, Node, Nidx, Type, LJID, last) ->
             ok;
         LastItem ->
             Stanza = items_event_stanza(Node, [LastItem]),
-            send_items_stanza(Host, Node, LJID, Stanza)
+            dispatch_items(Host, LJID, Node, Stanza)
     end;
 send_items(Host, Node, Nidx, Type, LJID, Number) when Number > 0 ->
     Stanza = items_event_stanza(Node, get_last_items(Host, Type, Nidx, Number, LJID)),
-    send_items_stanza(Host, Node, LJID, Stanza);
+    dispatch_items(Host, LJID, Node, Stanza);
 send_items(Host, Node, _Nidx, _Type, LJID, _) ->
     Stanza = items_event_stanza(Node, []),
-    send_items_stanza(Host, Node, LJID, Stanza).
+    dispatch_items(Host, LJID, Node, Stanza).
 
-send_items_stanza(Host, Node, {U, S, R} = LJID, Stanza) ->
-    case is_tuple(Host) of
-        false ->
-            ejabberd_router:route(service_jid(Host), jlib:make_jid(LJID), Stanza);
-        true ->
-            case ejabberd_sm:get_session_pid(U, S, R) of
-                C2SPid when is_pid(C2SPid) ->
-                    ejabberd_c2s:broadcast(C2SPid,
-                                           {pep_message, <<((Node))/binary, "+notify">>},
-                                           _Sender = service_jid(Host),
-                                           Stanza);
-                _ ->
-                    ok
-            end
-    end.
+dispatch_items(From, {U, S, R}, Node, Stanza) when is_tuple(From) -> 
+    case ejabberd_sm:get_session_pid(U, S, R) of
+        C2SPid when is_pid(C2SPid) ->
+            ejabberd_c2s:broadcast(C2SPid,
+                                    {pep_message, <<((Node))/binary, "+notify">>},
+                                    service_jid(Host), Stanza);
+        _ ->
+            ok
+    end;
+dispatch_items(From, To, _Node, Stanza) ->
+    ejabberd_router:route(service_jid(From), jlib:make_jid(To), Stanza).
 
 %% @doc <p>Return the list of affiliations as an XMPP response.</p>
 -spec(get_affiliations/4 ::
