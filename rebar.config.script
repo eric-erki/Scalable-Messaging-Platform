@@ -65,6 +65,7 @@ SrcDirs = lists:foldl(
 
 Deps = [{p1_cache_tab, ".*", {git, "git://github.com/processone/cache_tab"}},
         {p1_tls, ".*", {git, "git://github.com/processone/tls"}},
+        %{p1_tls, ".*", {git, "ssh://git@git.process-one.net:7999/ebe/p1_tls.git"}},  NIF TLS
         {p1_stringprep, ".*", {git, "git://github.com/processone/stringprep"}},
         {p1_xml, ".*", {git, "ssh://git@git.process-one.net:7999/ebe/xml_priv.git"}},
 	{esip, ".*", {git, "git://github.com/processone/p1_sip"}},
@@ -122,7 +123,7 @@ CfgDeps = lists:flatmap(
                ({airbrake, true}) ->
                     [{erlbrake, ".*", {git, "git://github.com/kenpratt/erlbrake"}}];
                ({p1db, true}) ->
-                    [{p1db, ".*", {git, "git@github.com:processone/p1db"}}];
+                    [{p1db, ".*", {git, "ssh://git@git.process-one.net:7999/ebe/p1db.git"}}];
                (_) ->
                     []
             end, Cfg),
