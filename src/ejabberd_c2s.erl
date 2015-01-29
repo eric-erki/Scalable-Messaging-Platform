@@ -3423,33 +3423,68 @@ process_push_iq(From, To,
 							   [{elem, <<"body">>},
 							    {attr,
 							     <<"send">>}]),
-				SendBody = case SSendBody of
-					     <<"all">> -> all;
-					     <<"first-per-user">> ->
-						 first_per_user;
-					     <<"first">> -> first;
-					     <<"none">> -> none;
-					     _ -> none
-					   end,
-				SendGroupchat = xml:get_path_s(El,
+				SendBody =
+                                      case SSendBody of
+                                          <<"all">> -> all;
+                                          <<"first-per-user">> ->
+                                              first_per_user;
+                                          <<"first">> -> first;
+                                          <<"none">> -> none;
+                                          _ ->
+                                              gen_mod:get_module_opt(
+                                                StateData#state.server,
+                                                mod_applepush,
+                                                send_body_default,
+                                                fun(all) -> all;
+                                                   (first_per_user) -> first_per_user;
+                                                   (first) -> first;
+                                                   (none) -> none
+                                                end,
+                                                none)
+                                      end,
+				SSendGroupchat = xml:get_path_s(El,
 							       [{elem,
 								 <<"body">>},
 								{attr,
-								 <<"groupchat">>}])
-						  == <<"true">>,
-				SendFrom = send_from(El),
+								 <<"groupchat">>}]),
+                                SendGroupchat =
+                                      case SSendGroupchat of
+                                          <<"true">> -> true;
+                                          <<"false">> -> false;
+                                          _ ->
+                                              gen_mod:get_module_opt(
+                                                StateData#state.server,
+                                                mod_applepush,
+                                                send_groupchat_default,
+                                                fun(true) -> true;
+                                                   (false) -> false
+                                                end,
+                                                none)
+                                      end,
+				SendFrom = send_from(StateData, El),
 				AppID = xml:get_path_s(El,
 						       [{elem, <<"appid">>},
 							cdata]),
-				{Offline, Keep} = case xml:get_path_s(El,
-								      [{elem,
-									<<"offline">>},
-								       cdata])
-						      of
-						    <<"true">> -> {true, false};
-						    <<"keep">> -> {false, true};
-						    _ -> {false, false}
-						  end,
+				{Offline, Keep} =
+                                      case xml:get_path_s(El,
+                                                          [{elem,
+                                                            <<"offline">>},
+                                                           cdata]) of
+                                          <<"true">> -> {true, false};
+                                          <<"keep">> -> {false, true};
+                                          <<"false">> -> {false, false};
+                                          _ ->
+                                              Off =
+                                                  gen_mod:get_module_opt(
+                                                    StateData#state.server,
+                                                    mod_applepush,
+                                                    offline_default,
+                                                    fun(true) -> true;
+                                                       (false) -> false
+                                                    end,
+                                                    false),
+                                              {Off, false}
+                                      end,
 				Notification1 = xml:get_path_s(El,
 							       [{elem,
 								 <<"notification">>}]),
@@ -3618,13 +3653,13 @@ maybe_add_delay(#xmlel{children = Els} = El, TZ, From,
        true -> El1
     end.
 
-send_from(El) ->
+send_from(StateData, El) ->
     case xml:get_path_s(El,
 			[{elem, <<"body">>}, {attr, <<"jid">>}])
 	of
       <<"false">> -> none;
       <<"true">> -> jid;
-      <<"">> ->
+      _ ->
 	  case xml:get_path_s(El,
 			      [{elem, <<"body">>}, {attr, <<"from">>}])
 	      of
@@ -3632,7 +3667,17 @@ send_from(El) ->
 	    <<"username">> -> username;
 	    <<"name">> -> name;
 	    <<"none">> -> none;
-	    _ -> jid
+	    _ ->
+                  gen_mod:get_module_opt(
+                    StateData#state.server,
+                    mod_applepush,
+                    send_from_default,
+                    fun(jid) -> jid;
+                       (username) -> username;
+                       (name) -> name;
+                       (none) -> none
+                    end,
+                    jid)
 	  end
     end.
 
