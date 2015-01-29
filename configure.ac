@@ -139,10 +139,10 @@ AC_ARG_ENABLE(mssql,
 esac],[db_type=generic])
 
 AC_ARG_ENABLE(all,
-[AC_HELP_STRING([--enable-all], [same as --enable-nif --enable-odbc --enable-mysql --enable-pgsql --enable-pam --enable-zlib --enable-riak --enable-json --enable-iconv --enable-debug --enable-http --enable-lager --enable-tools --enable-p1db (useful for Dialyzer checks, default: no)])],
+[AC_HELP_STRING([--enable-all], [same as --enable-nif --enable-odbc --enable-mysql --enable-pgsql --enable-pam --enable-zlib --enable-riak --enable-json --enable-elixir --enable-iconv --enable-debug --enable-http --enable-lager --enable-tools --enable-p1db (useful for Dialyzer checks, default: no)])],
 [case "${enableval}" in
-  yes) nif=true odbc=true mysql=true pgsql=true pam=true zlib=true riak=true json=true iconv=true debug=true http=true lager=true tools=true p1db=true ;;
-  no) nif=false odbc=false mysql=false pgsql=false pam=false zlib=false riak=false json=false iconv=false debug=false http=false lager=false tools=false p1db=false ;;
+  yes) nif=true odbc=true mysql=true pgsql=true pam=true zlib=true riak=true json=true elixir=true iconv=true debug=true http=true lager=true tools=true p1db=true ;;
+  no) nif=false odbc=false mysql=false pgsql=false pam=false zlib=false riak=false json=false elixir=false iconv=false debug=false http=false lager=false tools=false p1db=false ;;
   *) AC_MSG_ERROR(bad value ${enableval} for --enable-all) ;;
 esac],[])
 
@@ -225,6 +225,14 @@ AC_ARG_ENABLE(json,
   no)  json=false ;;
   *) AC_MSG_ERROR(bad value ${enableval} for --enable-json) ;;
 esac],[if test "x$json" = "x"; then json=false; fi])
+
+AC_ARG_ENABLE(elixir,
+[AC_HELP_STRING([--enable-elixir], [enable Elixir support (default: no)])],
+[case "${enableval}" in
+  yes) elixir=true ;;
+  no)  elixir=false ;;
+  *) AC_MSG_ERROR(bad value ${enableval} for --enable-elixir) ;;
+esac],[if test "x$elixir" = "x"; then elixir=false; fi])
 
 AC_ARG_ENABLE(iconv,
 [AC_HELP_STRING([--enable-iconv], [enable iconv support (default: yes)])],
@@ -309,6 +317,7 @@ AC_SUBST(zlib)
 AC_SUBST(riak)
 AC_SUBST(p1db)
 AC_SUBST(json)
+AC_SUBST(elixir)
 AC_SUBST(iconv)
 AC_SUBST(debug)
 AC_SUBST(pubsub_ng)

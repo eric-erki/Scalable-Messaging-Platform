@@ -30,6 +30,7 @@
 {riak, @riak@}.
 {json, @json@}.
 {http, @http@}.
+{elixir, @elixir@}.
 {lager, @lager@}.
 {iconv, @iconv@}.
 {airbrake, @airbrake@}.

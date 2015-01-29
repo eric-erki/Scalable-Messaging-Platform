@@ -112,6 +112,9 @@ CfgDeps = lists:flatmap(
 		       {tag, "1.4.2"}}}];
                ({json, true}) ->
                     [{jiffy, ".*", {git, "git://github.com/davisp/jiffy"}}];
+               ({elixir, true}) ->
+                    [{rebar_elixir_plugin, ".*", {git, "git://github.com/yrashk/rebar_elixir_plugin"}},
+                     {elixir, "1.1.*", {git, "git://github.com/elixir-lang/elixir"}}];
                ({iconv, true}) ->
                     [{p1_iconv, ".*", {git, "git://github.com/processone/eiconv"}}];
                ({http, true}) ->
@@ -167,6 +170,13 @@ CfgXrefs = lists:flatmap(
 		     []
             end, Cfg),
 
+ElixirConfig = case lists:keysearch(elixir, 1, Cfg) of
+                   {value, {elixir, true}} ->
+                       [{plugins, [rebar_elixir_compiler, rebar_exunit] },
+                        {lib_dirs, ["deps/elixir/lib"]}];
+                   _ ->
+                       []
+               end,
 
 {ok, Cwd} = file:get_cwd(),
 
@@ -196,7 +206,7 @@ Config = [{erl_opts, Macros ++ HiPE ++ DebugInfo ++
           {post_hooks, PostHooks ++ CfgPostHooks},
           {port_env, [{"CFLAGS", "-g -O2 -Wall"}]},
           {port_specs, [{"priv/lib/jlib.so", ["c_src/jlib.c"]}]},
-          {deps, Deps ++ CfgDeps}],
+          {deps, Deps ++ CfgDeps}] ++ ElixirConfig,
 %io:format("ejabberd configuration:~n  ~p~n", [Config]),
 Config.
 
