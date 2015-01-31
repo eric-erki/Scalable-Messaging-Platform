@@ -63,6 +63,7 @@
 -include("mod_privacy.hrl").
 
 -define(NS_P1_PUSH, <<"p1:push">>).
+-define(NS_P1_PUSH_GCM, <<"p1:push:gcm">>).
 -define(NS_P1_PUSHED, <<"p1:pushed">>).
 -define(NS_P1_ATTACHMENT, <<"http://process-one.net/attachement">>).
 
@@ -88,7 +89,7 @@ start(Host, Opts) ->
             IQDisc = gen_mod:get_opt(
                        iqdisc, Opts, fun gen_iq_handler:check_type/1,
                        one_queue),
-            gen_iq_handler:add_iq_handler(ejabberd_sm, Host, ?NS_P1_PUSH,
+            gen_iq_handler:add_iq_handler(ejabberd_sm, Host, ?NS_P1_PUSH_GCM,
                                           ?MODULE, process_sm_iq, IQDisc);
 	false ->
 	    ?ERROR_MSG("Cannot start ~s on host ~s. 

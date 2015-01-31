@@ -70,6 +70,7 @@
 -define(MAX_PAYLOAD_SIZE, 255).
 
 -define(NS_P1_PUSH, <<"p1:push">>).
+-define(NS_P1_PUSH_APPLEPUSH, <<"p1:push:applepush">>).
 
 %%====================================================================
 %% API
@@ -707,7 +708,7 @@ parse_feedback_buf(Buf, State) ->
                              children =
                              [#xmlel{name = <<"disable">>,
                                      attrs =
-                                     [{<<"xmlns">>, ?NS_P1_PUSH},
+                                     [{<<"xmlns">>, ?NS_P1_PUSH_APPLEPUSH},
                                       {<<"status">>, <<"feedback">>},
                                       {<<"ts">>, jlib:integer_to_binary(TimeStamp)},
                                       {<<"id">>, jlib:integer_to_binary(DeviceID, 16)}],
