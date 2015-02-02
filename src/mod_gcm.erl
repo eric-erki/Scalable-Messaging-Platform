@@ -430,6 +430,25 @@ process_sm_iq(From, To, #iq{type = Type, sub_el = SubEl} = IQ) ->
                                   sub_el = [SubEl, ?ERR_NOT_ALLOWED]}
                     end
             end;
+	{set, #xmlel{name = <<"update">>}} ->
+	    Host = To#jid.lserver,
+	    OldDeviceID = xml:get_tag_attr_s(<<"oldid">>, SubEl),
+            NewDeviceID = xml:get_tag_attr_s(<<"id">>, SubEl),
+            case lookup_cache(To, OldDeviceID) of
+		[{_ID, AppID, _SendBody, _SendFrom, _LocalBadge}] ->
+		    PushService = get_push_service(Host, To, AppID),
+		    ServiceJID = jlib:make_jid(<<"">>, PushService, <<"">>),
+		    if
+			From#jid.lserver == ServiceJID#jid.lserver ->
+			    update_cache(To, OldDeviceID, NewDeviceID),
+			    IQ#iq{type = result, sub_el = []};
+			true ->
+			    IQ#iq{type = error,
+				  sub_el = [SubEl, ?ERR_NOT_ALLOWED]}
+		    end;
+		_ ->
+		    IQ#iq{type = error, sub_el = [SubEl, ?ERR_NOT_ALLOWED]}
+	    end;
         {set, _} ->
 	    IQ#iq{type = error, sub_el = [SubEl, ?ERR_NOT_ALLOWED]};
         {get, _} ->
@@ -762,6 +781,16 @@ store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom) ->
                 end
         end,
         {atomic, _} = odbc_queries:sql_transaction(LServer, F).
+
+update_cache(JID, OldDeviceID, NewDeviceID) ->
+    case lookup_cache(JID, OldDeviceID) of
+	[{_ID, AppID, SendBody, SendFrom, _LocalBadge}] ->
+	    delete_cache(JID, OldDeviceID),
+	    {MegaSecs, Secs, _MicroSecs} = now(),
+	    TimeStamp = MegaSecs * 1000000 + Secs,
+	    store_cache(JID, NewDeviceID, AppID, SendBody, SendFrom, TimeStamp);
+	_ -> ok
+    end.
 
 delete_cache(JID, DeviceID) ->
     case gen_mod:db_type(JID#jid.lserver, ?MODULE) of

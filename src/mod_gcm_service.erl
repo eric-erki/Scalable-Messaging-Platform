@@ -393,11 +393,11 @@ process_message_result(Result, From, _To, _Packet,
     case CannonId of
       undefined -> ok;
       NewId ->
-	  updateDeviceId(From, DeviceID, NewId, State)
+	  update_device_id(From, DeviceID, NewId, State)
     end,
     active(State).
 
-updateDeviceId(JID, OldDeviceID, CanonicalID, State) ->
+update_device_id(JID, OldDeviceID, CanonicalID, State) ->
     ?INFO_MSG("(~p) refreshing ID: old: ~s -> new: "
 	      "~s to ~s~n",
 	      [State#state.host, OldDeviceID, CanonicalID,
