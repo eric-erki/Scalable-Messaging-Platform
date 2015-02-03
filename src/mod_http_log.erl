@@ -1,21 +1,23 @@
 %%%----------------------------------------------------------------------
-%%% File    : mod_log_http.erl
+%%% File    : mod_http_log.erl
 %%% Author  : Alexey Shchepin <alexey@process-one.net>
 %%% Purpose : Log XMPP packets over HTTP
 %%% Created : 18 Mar 2014 by Alexey Shchepin <alexey@process-one.net>
 %%%----------------------------------------------------------------------
 
 %% Example config:
+%%  as child of ejabberd_http listener:
+%%      request_handlers:
+%%        "/log": mod_http_log
 %%
-%%  {5280, ejabberd_http, [{request_handlers,
-%%                          [{["log"], mod_log_http}]}, ...
-%%
-%%  {mod_log_http, [{access, admin}]},
+%%  in the module section:
+%%      mod_http_log:
+%%        access: admin
 %%
 %% Then to get logs for test@localhost use the following URL:
 %% http://localhost:5280/log/test@localhost
 
--module(mod_log_http).
+-module(mod_http_log).
 
 -author('alexey@process-one.net').
 
