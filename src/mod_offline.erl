@@ -37,7 +37,7 @@
 -export([start/2,
          start_link/2,
          stop/1, store_packet/3, get_offline_els/2,
-	 resend_offline_messages/2, pop_offline_messages/3,
+	 pop_offline_messages/3,
 	 remove_expired_messages/1, remove_old_messages/2,
 	 remove_user/2, get_queue_length/2, webadmin_page/3, webadmin_user/4,
 	 webadmin_user_parse_query/5, count_offline_messages/3,
@@ -414,32 +414,6 @@ find_x_expire(TimeStamp, [El | Els]) ->
 	    _ -> never
 	  end;
       _ -> find_x_expire(TimeStamp, Els)
-    end.
-
-resend_offline_messages(User, Server) ->
-    LUser = jlib:nodeprep(User),
-    LServer = jlib:nameprep(Server),
-    US = {LUser, LServer},
-    F = fun () ->
-		Rs = mnesia:wread({offline_msg, US}),
-		mnesia:delete({offline_msg, US}),
-		Rs
-	end,
-    case mnesia:transaction(F) of
-      {atomic, Rs} ->
-	  lists:foreach(fun (R) ->
-				#xmlel{name = Name, attrs = Attrs,
-				       children = Els} =
-				    R#offline_msg.packet,
-				ejabberd_sm !
-				  {route, R#offline_msg.from, R#offline_msg.to,
-				   #xmlel{name = Name, attrs = Attrs,
-					  children =
-					      Els ++
-						[jlib:timestamp_to_xml(calendar:now_to_universal_time(R#offline_msg.timestamp))]}}
-			end,
-			lists:keysort(#offline_msg.timestamp, Rs));
-      _ -> ok
     end.
 
 pop_offline_messages(Ls, User, Server) ->
