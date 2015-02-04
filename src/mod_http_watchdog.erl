@@ -27,11 +27,11 @@
 %% Configuration:
 %%
 %%  request_handlers,
-%%    "status": c2s_watchdog_handler
+%%    "status": mod_http_watchdog
 %%
 %%  modules:
 %%    ...
-%%    c2s_watchdog_handler:
+%%    mod_http_watchdog:
 %%       test_domain: "localhost"
 %%       test_user: "watchdog"
 %%       test_pass: "1234"
