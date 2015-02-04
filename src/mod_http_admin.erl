@@ -1,16 +1,38 @@
 %%%----------------------------------------------------------------------
 %%% File    : mod_http_admin.erl
-%%% Author  : Christophe romain <cromain@process-one.net>
+%%% Author  : Christophe romain <christophe.romain@process-one.net>
 %%% Purpose : Provide admin REST API using JSON data
-%%% Created : 15 Sep 2014 by Christophe Romain <cromain@process-one.net>
+%%% Created : 15 Sep 2014 by Christophe Romain <christophe.romain@process-one.net>
+%%%
+%%%
+%%% ejabberd, Copyright (C) 2002-2015   ProcessOne
+%%%
+%%% This program is free software; you can redistribute it and/or
+%%% modify it under the terms of the GNU General Public License as
+%%% published by the Free Software Foundation; either version 2 of the
+%%% License, or (at your option) any later version.
+%%%
+%%% This program is distributed in the hope that it will be useful,
+%%% but WITHOUT ANY WARRANTY; without even the implied warranty of
+%%% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+%%% General Public License for more details.
+%%%
+%%% You should have received a copy of the GNU General Public License
+%%% along with this program; if not, write to the Free Software
+%%% Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
+%%% 02111-1307 USA
+%%%
 %%%----------------------------------------------------------------------
 
 %% Example config:
 %%
-%%  {5280, ejabberd_http, [{request_handlers,
-%%                          [{["api"], mod_http_admin}]}, ...
+%%  in ejabberd_http listener
+%%    request_handlers:
+%%      "api": mod_http_admin
 %%
-%%  {mod_http_admin, [{access, admin}]},
+%%  in module section
+%%    mod_http_admin:
+%%      access: admin
 %%
 %% Then to perform an action, send a POST request to the following URL:
 %% http://localhost:5280/api/<call_name>

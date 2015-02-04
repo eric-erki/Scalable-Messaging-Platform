@@ -1,3 +1,42 @@
+%%%----------------------------------------------------------------------
+%%% File    : mod_http_watchdog.erl
+%%% Author  : Christophe Romain <christophe.romain@process-one.net>
+%%% Purpose : Simple watchdog
+%%% Created : 2 Sep 2013 by Christophe Romain <christophe.romain@process-one.net>
+%%%
+%%%
+%%% ejabberd, Copyright (C) 2002-2015   ProcessOne
+%%%
+%%% This program is free software; you can redistribute it and/or
+%%% modify it under the terms of the GNU General Public License as
+%%% published by the Free Software Foundation; either version 2 of the
+%%% License, or (at your option) any later version.
+%%%
+%%% This program is distributed in the hope that it will be useful,
+%%% but WITHOUT ANY WARRANTY; without even the implied warranty of
+%%% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+%%% General Public License for more details.
+%%%
+%%% You should have received a copy of the GNU General Public License
+%%% along with this program; if not, write to the Free Software
+%%% Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
+%%% 02111-1307 USA
+%%%
+%%%----------------------------------------------------------------------
+
+%% Configuration:
+%%
+%%  request_handlers,
+%%    "status": c2s_watchdog_handler
+%%
+%%  modules:
+%%    ...
+%%    c2s_watchdog_handler:
+%%       test_domain: "localhost"
+%%       test_user: "watchdog"
+%%       test_pass: "1234"
+%%    ..
+
 -module(mod_http_watchdog).
 
 -export([process/2]).
@@ -13,23 +52,6 @@
 -define(CONNECT_TIMEOUT, 5000).
 
 -define(MAX_RESPONSE_BUFFER, 300).
-
-%% Simple Watchdog.
-%% Configuration:
-%%
-%%  {request_handlers,
-%%      [
-%%        {["status"], c2s_watchdog_handler}
-%%      ]},
-%%
-%%  Modules:
-%%  {modules, [
-%%   {c2s_watchdog_handler, [
-%%        {test_domain, "localhost"},
-%%        {test_user, "watchdog"},
-%%        {test_pass, "1234"}]},
-%%   ..
-%%   ]}
 
 process([<<"check">>], Request) ->
     case lists:keyfind(<<"action">>, 1, Request#request.q)
