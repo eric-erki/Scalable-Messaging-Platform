@@ -17,6 +17,14 @@
 
 -define(EJABBERD_CT_URI, <<"http://www.process-one.net/en/ejabberd_ct/">>).
 
+-define(recv1(P1),
+        (fun() ->
+                 case recv() of
+                     P1 -> P1;
+                     V1 -> suite:match_failure([V1], [P1]);
+                 end
+         end)()).
+
 -define(recv2(P1, P2),
         (fun() ->
                  case {R1 = recv(), R2 = recv()} of
@@ -24,7 +32,9 @@
                      {P2, P1} -> {R2, R1};
                      {P1, V1} -> suite:match_failure([V1], [P2]);
                      {P2, V2} -> suite:match_failure([V2], [P1]);
-                     {V3, V4} -> suite:match_failure([V3, V4], [P1, P2])
+                     {V3, P1} -> suite:match_failure([V3], [P2]);
+                     {V4, P2} -> suite:match_failure([V4], [P1]);
+                     {V5, V6} -> suite:match_failure([V5, V6], [P1, P2])
                  end
          end)()).
 
