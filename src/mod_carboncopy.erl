@@ -123,10 +123,12 @@ iq_handler(_From, _To, IQ, _CC)->
     IQ#iq{type=error, sub_el = [?ERR_NOT_ALLOWED]}.
 
 user_send_packet(Packet, _C2SState, From, To) ->
-    check_and_forward(From, To, Packet, sent).
+    check_and_forward(From, To, Packet, sent),
+    Packet.
 
 user_receive_packet(Packet, _C2SState, JID, _From, To) ->
-    check_and_forward(JID, To, Packet, received).
+    check_and_forward(JID, To, Packet, received),
+    Packet.
 
 % Modified from original version:
 %    - registered to the user_send_packet hook, to be called only once even for multicast
@@ -137,21 +139,19 @@ check_and_forward(JID, To, Packet, Direction)->
 	     xml:get_subtag(Packet, <<"private">>) == false andalso
 		 xml:get_subtag(Packet, <<"no-copy">>) == false of
 	true ->
-	    % TODO check ca999375 for forwarded test
 	    case is_carbon_copy(Packet) of
 		false ->
-		    send_copies(JID, To, Packet, Direction),
-		    Packet;
+		    send_copies(JID, To, Packet, Direction);
 		true ->
 		    %% stop the hook chain, we don't want mod_logdb to register
 		    %% this message (duplicate)
-		    stop
+		    stop  % this will never be applyed as we bypass this value
 	    end;
         _ ->
-	    Packet
+	    ok
     end;
 check_and_forward(_JID, _To, Packet, _)->
-    Packet.
+    ok.
 
 remove_connection(User, Server, Resource, _Status)->
     disable(Server, User, Resource),

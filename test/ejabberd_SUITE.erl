@@ -1496,14 +1496,7 @@ carbons_master(Config) ->
     MyJID = my_jid(Config),
     MyBareJID = jlib:jid_remove_resource(MyJID),
     Peer = ?config(slave, Config),
-    Txt1 = #text{data = <<"body1">>},
-    Txt2 = #text{data = <<"body2">>},
-    Txt3 = #text{data = <<"body3">>},
-    Txt4 = #text{data = <<"body4">>},
-    Txt5 = #text{data = <<"body5">>},
-    Txt6 = #text{data = <<"body6">>},
-    Txt7 = #text{data = <<"body7">>},
-    Txt8 = #text{data = <<"body8">>},
+    Txt = #text{data = <<"body">>},
     true = is_feature_advertised(Config, ?NS_CARBONS_2),
     send(Config, #presence{priority = 10}),
     #presence{from = MyJID} = recv(),
@@ -1515,21 +1508,21 @@ carbons_master(Config) ->
 		  #iq{type = set,
 		      sub_els = [#carbons_enable{}]}),
     %% Send a message to bare and full JID
-    send(Config, #message{id= <<"1">>, to = MyBareJID, type = chat, body = [Txt1]}),
-    send(Config, #message{id= <<"2">>, to = MyJID, type = chat, body = [Txt2]}),
-    send(Config, #message{id= <<"3">>, to = MyBareJID, type = chat, body = [Txt3],
+    send(Config, #message{to = MyBareJID, type = chat, body = [Txt]}),
+    send(Config, #message{to = MyJID, type = chat, body = [Txt]}),
+    send(Config, #message{to = MyBareJID, type = chat, body = [Txt],
 			  sub_els = [#carbons_private{}]}),
-    send(Config, #message{id= <<"4">>, to = MyJID, type = chat, body = [Txt4],
+    send(Config, #message{to = MyJID, type = chat, body = [Txt],
 			  sub_els = [#carbons_private{}]}),
     %% Receive the messages back
-    ?recv4(#message{id= <<"1">>, from = MyJID, to = MyBareJID, type = chat,
-		    body = [Txt1], sub_els = []},
-	   #message{id= <<"2">>, from = MyJID, to = MyJID, type = chat,
-		    body = [Txt2], sub_els = []},
-	   #message{id= <<"3">>, from = MyJID, to = MyBareJID, type = chat,
-		    body = [Txt3], sub_els = [#carbons_private{}]},
-	   #message{id= <<"4">>, from = MyJID, to = MyJID, type = chat,
-		    body = [Txt4], sub_els = [#carbons_private{}]}),
+    ?recv4(#message{from = MyJID, to = MyBareJID, type = chat,
+		    body = [Txt], sub_els = []},
+	   #message{from = MyJID, to = MyJID, type = chat,
+		    body = [Txt], sub_els = []},
+	   #message{from = MyJID, to = MyBareJID, type = chat,
+		    body = [Txt], sub_els = [#carbons_private{}]},
+	   #message{from = MyJID, to = MyJID, type = chat,
+		    body = [Txt], sub_els = [#carbons_private{}]}),
     %% Disable carbons
     #iq{type = result, sub_els = []} =
 	send_recv(Config,
@@ -1537,34 +1530,27 @@ carbons_master(Config) ->
 		      sub_els = [#carbons_disable{}]}),
     wait_for_slave(Config),
     %% Repeat the same and leave
-    send(Config, #message{to = MyBareJID, type = chat, body = [Txt5]}),
-    send(Config, #message{to = MyJID, type = chat, body = [Txt6]}),
-    send(Config, #message{to = MyBareJID, type = chat, body = [Txt7],
+    send(Config, #message{to = MyBareJID, type = chat, body = [Txt]}),
+    send(Config, #message{to = MyJID, type = chat, body = [Txt]}),
+    send(Config, #message{to = MyBareJID, type = chat, body = [Txt],
 			  sub_els = [#carbons_private{}]}),
-    send(Config, #message{to = MyJID, type = chat, body = [Txt8],
+    send(Config, #message{to = MyJID, type = chat, body = [Txt],
 			  sub_els = [#carbons_private{}]}),
     ?recv4(#message{from = MyJID, to = MyBareJID, type = chat,
-		    body = [Txt5], sub_els = []},
+		    body = [Txt], sub_els = []},
 	   #message{from = MyJID, to = MyJID, type = chat,
-		    body = [Txt6], sub_els = []},
+		    body = [Txt], sub_els = []},
 	   #message{from = MyJID, to = MyBareJID, type = chat,
-		    body = [Txt7], sub_els = [#carbons_private{}]},
+		    body = [Txt], sub_els = [#carbons_private{}]},
 	   #message{from = MyJID, to = MyJID, type = chat,
-		    body = [Txt8], sub_els = [#carbons_private{}]}),
+		    body = [Txt], sub_els = [#carbons_private{}]}),
     disconnect(Config).
 
 carbons_slave(Config) ->
     MyJID = my_jid(Config),
     MyBareJID = jlib:jid_remove_resource(MyJID),
     Peer = ?config(master, Config),
-    Txt1 = #text{data = <<"body1">>},
-    Txt2 = #text{data = <<"body2">>},
-    Txt3 = #text{data = <<"body3">>},
-    Txt4 = #text{data = <<"body4">>},
-    Txt5 = #text{data = <<"body5">>},
-    Txt6 = #text{data = <<"body6">>},
-    Txt7 = #text{data = <<"body7">>},
-    Txt8 = #text{data = <<"body8">>},
+    Txt = #text{data = <<"body">>},
     wait_for_master(Config),
     send(Config, #presence{priority = 5}),
     ?recv2(#presence{from = MyJID}, #presence{from = Peer}),
@@ -1574,43 +1560,34 @@ carbons_slave(Config) ->
 		  #iq{type = set,
 		      sub_els = [#carbons_enable{}]}),
     %% Receive messages sent by the peer
-    ?recv4(
+    ?recv3(
        #message{from = MyBareJID, to = MyJID, type = chat,
 		sub_els =
 		    [#carbons_sent{
 			forwarded = #forwarded{
 				       sub_els =
-					   [#message{id= <<"1">>, from = Peer,
+					   [#message{from = Peer,
 						     to = MyBareJID,
 						     type = chat,
-						     body = [Txt1]}]}}]},
+						     body = [Txt]}]}}]},
        #message{from = MyBareJID, to = MyJID, type = chat,
 		sub_els =
 		    [#carbons_sent{
 			forwarded = #forwarded{
 				       sub_els =
-					   [#message{id= <<"2">>, from = Peer,
+					   [#message{from = Peer,
 						     to = Peer,
 						     type = chat,
-						     body = [Txt2]}]}}]},
+						     body = [Txt]}]}}]},
        #message{from = MyBareJID, to = MyJID, type = chat,
 		sub_els =
 		    [#carbons_received{
 			forwarded = #forwarded{
 				       sub_els =
-					   [#message{id= <<"1">>, from = Peer,
-						     to = MyBareJID,
-						     type = chat,
-						     body = [Txt1]}]}}]},
-       #message{from = MyBareJID, to = MyJID, type = chat,
-		sub_els =
-		    [#carbons_received{
-			forwarded = #forwarded{
-				       sub_els =
-					   [#message{id= <<"2">>, from = Peer,
+					   [#message{from = Peer,
 						     to = Peer,
 						     type = chat,
-						     body = [Txt2]}]}}]}),
+						     body = [Txt]}]}}]}),
     %% Disable carbons
     #iq{type = result, sub_els = []} =
 	send_recv(Config,
