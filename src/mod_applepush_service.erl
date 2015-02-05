@@ -67,7 +67,7 @@
 -define(SSL_TIMEOUT, 5000).
 -define(MAX_QUEUE_SIZE, 1000).
 -define(CACHE_SIZE, 4096).
--define(MAX_PAYLOAD_SIZE, 255).
+-define(MAX_PAYLOAD_SIZE, 2048).
 
 -define(NS_P1_PUSH, <<"p1:push">>).
 -define(NS_P1_PUSH_APPLEPUSH, <<"p1:push:applepush">>).
@@ -468,9 +468,11 @@ make_payload(State, Msg, Badge, Sound, Sender, CustomFields) ->
 		<<"\"sound\":\"", (json_escape(SoundFile))/binary, "\"">>;
 	    _ -> <<"">>
 	end,
+    ContentAvailablePayload = <<"\"content-available\":1">>,
+
     Payloads = lists:filter(
                  fun(S) -> S /= <<"">> end,
-                 [AlertPayload, BadgePayload, SoundPayload]),
+                 [AlertPayload, BadgePayload, SoundPayload, ContentAvailablePayload]),
 
     CustomPayloadFields =
         [<<"\"", (json_escape(Name))/binary, "\":\"",
