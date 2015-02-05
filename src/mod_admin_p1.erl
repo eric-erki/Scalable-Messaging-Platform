@@ -37,75 +37,45 @@
 %%% to call any ejabberd command. However using ejabberdctl not all commands
 %%% can be called.
 
-%%%  Changelog:
-%%%
-%%%   0.8 - 26 September 2008 - badlop
-%%%	 - added patch for parameter 'Push'
-%%%
-%%%   0.7 - 20 August 2008 - badlop
-%%%	 - module converted to ejabberd commands
-%%%
-%%%   0.6 - 02 June 2008 - cromain
-%%%	 - add user existance checking
-%%%	 - improve parameter checking
-%%%	 - allow orderless parameter
-%%%
-%%%   0.5 - 17 March 2008 - cromain
-%%%	 - add user changing and higher level methods
-%%%
-%%%   0.4 - 18 February 2008 - cromain
-%%%	 - add roster handling
-%%%	 - add message sending
-%%%	 - code and api clean-up
-%%%
-%%%   0.3 - 18 October 2007 - cromain
-%%%	 - presence improvement
-%%%	 - add new functionality
-%%%
-%%%   0.2 - 4 March 2006 - mremond
-%%%	 - Code clean-up
-%%%	 - Made it compatible with current ejabberd SVN version
-%%%
-%%%   0.1.2 - 28 December 2005
-%%%	 - Now compatible with ejabberd 1.0.0
-%%%	 - The XMLRPC server is started only once, not once for every virtual host
-%%%	 - Added comments for handlers. Every available handler must be explained
-%%%
-
 -module(mod_admin_p1).
 
 -author('ProcessOne').
 
--export([start/2, stop/1, restart_module/2,
-	 create_account/3, delete_account/2, change_password/3,
-	 check_account/2, check_password/3,
-	 rename_account/4, check_users_registration/1,
-	 get_presence/2, get_resources/2, set_nickname/3,
+-export([start/2, stop/1,
+	% module
+	 restart_module/2,
+	% users
+	 create_account/3, delete_account/2, check_account/2, rename_account/4,
+	 check_password/3, change_password/3, check_users_registration/1,
+	% sessions
+	 get_presence/2, get_resources/2, user_info/2,
+	% roster
 	 add_rosteritem/6, delete_rosteritem/3,
-	 add_rosteritem_groups/5, del_rosteritem_groups/5,
-	 modify_rosteritem_groups/6, link_contacts/6,
-	 unlink_contacts/2, link_contacts/7, unlink_contacts/3,
+	 add_rosteritem_groups/5, del_rosteritem_groups/5, modify_rosteritem_groups/6,
+	 link_contacts/6, unlink_contacts/2, link_contacts/7, unlink_contacts/3,
 	 get_roster/2, get_roster_with_presence/2,
-	 add_contacts/3, remove_contacts/3, transport_register/5,
-	 set_rosternick/3,
+	 add_contacts/3, remove_contacts/3, set_rosternick/3,
+	 transport_register/5,
+	% vcard
+	 set_nickname/3,
+	% router
 	 send_chat/3, send_message/4, send_stanza/3,
+	% stats
 	 local_sessions_number/0, local_muc_rooms_number/0,
-	 p1db_records_number/0,
-	 start_mass_message/3, stop_mass_message/1, mass_message/5,
-	 iq_handlers_number/0]).
+	 p1db_records_number/0, iq_handlers_number/0,
+	 server_info/0,
+	% mass notification
+	 start_mass_message/3, stop_mass_message/1, mass_message/5]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
-
 -include("ejabberd_commands.hrl").
-
 -include("mod_roster.hrl").
-
 -include("jlib.hrl").
 
 -define(MASSLOOP, massloop).
 
--record(session, {usr, us, sid, priority, info}).
+-record(session, {usr, us, sid, priority, info}).  % keep in sync with ejabberd_sm.erl
 
 -record(muc_online_room,
         {name_host = {<<"">>, <<"">>} :: {binary(), binary()} | {'_', '$1'} | '$1' | '_',
@@ -651,6 +621,32 @@ get_resources(U, S) ->
     case ejabberd_auth:is_user_exists(U, S) of
       true -> get_resources2(U, S);
       false -> 404
+    end.
+
+user_info(U, S) ->
+    case ejabberd_auth:is_user_exists(U, S) of
+	true ->
+	    case get_sessions(U, S) of
+		[] ->
+		    Status = case catch mod_last:get_last_info(U, S) of
+			{ok, T1, Reason} ->
+			    T2 = now_to_seconds(os:timestamp()),
+			    LastDateTime = calendar:now_to_local_time(seconds_to_now(T1)),
+			    {Days, {H, M, _S}} = calendar:seconds_to_daystime(T2-T1),
+			    [{last, jlib:timestamp_to_iso(LastDateTime)},
+			     {days, Days},
+			     {hours, Days*24+H},
+			     {minutes, (Days*24+H)*60+M},
+			     {reason, Reason}];
+			_ ->
+			    []
+		    end,
+		    {<<"offline">>, Status};
+		Ss ->
+		    {<<"online">>, [session_info(Session) || Session <- Ss]}
+	    end;
+	false ->
+	    {<<"not registered">>, []}
     end.
 
 %%%
@@ -1204,6 +1200,45 @@ p1db_records_number() ->
 iq_handlers_number() ->
     ets:info(sm_iqtable, size).
 
+server_info() ->
+    Hosts = ejabberd_config:get_myhosts(),
+    {ok, Version} = application:get_key(ejabberd, vsn),
+    Memory = erlang:memory(total),
+    Processes = erlang:system_info(process_count),
+    IqHandlers = iq_handlers_number(),
+    Nodes = ejabberd_cluster:get_nodes(),
+    {LocalSessions, LocalFailed} = ejabberd_cluster:multicall(Nodes, ?MODULE, local_sessions_number, []),
+    Sessions = ets:info(session, size),
+    OdbcPoolSize = lists:sum(
+	    [workers_number(gen_mod:get_module_proc(Host, ejabberd_odbc_sup))
+		|| Host <- Hosts]),
+    HttpPoolSize = case catch http_p1:get_pool_size() of
+	{'EXIT', _} -> 0;
+	Size -> Size
+    end,
+    Jabs = lists:sum([ejabberd_command(jabs_count, [Host], 0)
+		|| Host <- Hosts]),
+    DefaultActive = [{<<"daily_active_users">>, 0},
+		     {<<"weekly_active_users">>, 0},
+		     {<<"monthly_active_users">>, 0}],
+    [FirstActive | OtherActive] =
+	[lists:sort(ejabberd_command(active_counters, [Host], DefaultActive))
+		|| Host <- Hosts],
+    ActiveAll = lists:foldl(
+	fun(Counters, Acc) ->
+	    lists:zipwith(
+		fun({Key, A}, {Key, B}) -> {Key, A+B} end,
+		Acc, lists:sort(Counters))
+	end, FirstActive, OtherActive),
+    [{version, Version},
+     {memory, Memory},
+     {sessions, [{total, Sessions}|lists:zip(Nodes--LocalFailed, LocalSessions)]},
+     {processes, Processes},
+     {iq_handlers, IqHandlers},
+     {odbc_pool_size, OdbcPoolSize},
+     {http_pool_size, HttpPoolSize},
+     {jabs, Jabs}]
+    ++ [{binary_to_atom(Key, latin1), Val} || {Key, Val} <- ActiveAll].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Internal functions
@@ -1494,10 +1529,7 @@ get_resources2(User, Server) ->
 	      get_sessions(User, Server)).
 
 get_sessions(User, Server) ->
-    LUser = jlib:nodeprep(User),
-    LServer = jlib:nameprep(Server),
-    US = {LUser, LServer},
-    Result = mnesia:dirty_index_read(session, US, #session.us),
+    Result = ejabberd_sm:get_user_sessions(User, Server),
     lists:reverse(lists:keysort(#session.priority,
 				clean_session_list(Result))).
 
@@ -1587,3 +1619,37 @@ user_action(User, Server, Fun, OK) ->
 	  end;
       false -> 404
     end.
+
+session_info(#session{info = Info, sid = {Sid, Pid}}) ->
+    Node = node(Pid),
+    {_User, Resource, Show, _Status} = ejabberd_c2s:get_presence(Pid),
+    {IP, Port} = proplists:get_value(ip, Info),
+    IpString = jlib:ip_to_list({IP, Port}), %% this just convert IP
+    PortString = integer_to_binary(Port),
+    ConnMod = proplists:get_value(conn, Info),
+    ConnDateTime = calendar:now_to_local_time(Sid),
+    [{resource, Resource},
+     {presence, Show},
+     {since, jlib:timestamp_to_iso(ConnDateTime)},
+     {node, Node},
+     {ip, <<IpString/binary, ":", PortString/binary>>},
+     {conn, ConnMod}].
+
+ejabberd_command(Cmd, Args, Default) ->
+    case catch ejabberd_commands:execute_command(Cmd, Args) of
+	{'EXIT', _} -> Default;
+	{error, _} -> Default;
+	Result -> Result
+    end.
+
+workers_number(Supervisor) ->
+    case whereis(Supervisor) of
+	undefined -> 0;
+	_ -> proplists:get_value(active, supervisor:count_children(Supervisor))
+    end.
+
+now_to_seconds({MegaSecs, Secs, _MicroSecs}) ->
+    MegaSecs * 1000000 + Secs.
+
+seconds_to_now(Secs) ->
+    {Secs div 1000000, Secs rem 1000000, 0}.
