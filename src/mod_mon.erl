@@ -71,6 +71,7 @@
          backend_api_response_time/4,
          backend_api_timeout/3,
          backend_api_error/3,
+         backend_api_badauth/3,
          %muc_create/4,
          %muc_destroy/3,
          %muc_user_join/4,
@@ -464,6 +465,8 @@ backend_api_timeout(LServer, _Method, _Path) ->
     cast(LServer, {inc, backend_api_timeout}).
 backend_api_error(LServer, _Method, _Path) ->
     cast(LServer, {inc, backend_api_error}).
+backend_api_badauth(LServer, _Method, _Path) ->
+    cast(LServer, {inc, backend_api_badauth}).
 
 remove_user(_User, Server) ->
     cast(jlib:nameprep(Server), {inc, remove_user}).

@@ -66,6 +66,7 @@ check_password(User, Server, Password) ->
 	{ok, 200, _RespBody} ->
             true;
         {ok, 401, _RespBody} ->
+            ejabberd_hooks:run(backend_api_badauth, Server, [Server, get, Path]),
             false;
         {ok, Other, RespBody} ->
             ?ERROR_MSG("The authentication module ~p returned "
