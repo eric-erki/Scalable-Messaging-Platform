@@ -108,34 +108,45 @@ stop(_Host) ->
 
 process(_, #request{method = 'POST', data = <<>>}) ->
     ?DEBUG("Bad Request: no data", []),
-    {400, [],
-     #xmlel{name = <<"h1">>, attrs = [],
-            children = [{xmlcdata, <<"400 Bad Request">>}]}};
+    http_response(400, <<"400 Bad Request">>);
 process([Call], #request{method = 'POST', data = Data, ip = IP}) ->
-    ?DEBUG("Admin call ~s from ~p with data: ~s", [Call, IP, Data]),
     try
-        {Code, Result} = handle(Call, jiffy:decode(Data)),
-        Reply = jiffy:encode(Result),
-        {Code, [],
-         #xmlel{name = <<"h1">>, attrs = [],
-                children = [{xmlcdata, Reply}]}}
+        Args = case jiffy:decode(Data) of
+            Raw when is_list(Raw) -> Raw;
+            {Object} when is_list(Object) -> [Arg || {_, Arg} <- Object];
+            Other -> [Other]
+        end,
+        log(Call, Args, IP),
+        {Code, Result} = handle(Call, Args),
+        http_response(Code, jiffy:encode(Result))
     catch Error ->
         ?DEBUG("Bad Request: ~p", [element(2, Error)]),
-        {400, [],
-         #xmlel{name = <<"h1">>, attrs = [],
-                children = [{xmlcdata, <<"400 Bad Request">>}]}}
+        http_response(400, <<"400 Bad Request">>)
+    end;
+process([Call], #request{method = 'GET', q = Data, ip = IP}) ->
+    try
+        Args = case Data of
+            [{nokey, <<>>}] -> [];
+            _ -> [Arg || {_, Arg} <- Data]
+        end,
+        log(Call, Args, IP),
+        {Code, Result} = handle(Call, Args),
+        http_response(Code, jiffy:encode(Result))
+    catch Error ->
+        ?DEBUG("Bad Request: ~p", [element(2, Error)]),
+        http_response(400, <<"400 Bad Request">>)
     end;
 process(_Path, Request) ->
     ?DEBUG("Bad Request: no handler ~p", [Request]),
-    {400, [],
-     #xmlel{name = <<"h1">>, attrs = [],
-            children = [{xmlcdata, <<"400 Bad Request">>}]}}.
+    http_response(400, <<"400 Bad Request">>).
 
 %% ----------------
 %% command handlers
 %% ----------------
 
-% update_roster
+% ejabberd SaaS command update_roster
+% this command is only available through REST API  (TODO: move to mod_admin_p1 ?)
+%
 % input:
 %  {"username": "USER",
 %   "domain": "DOMAIN",  % if ommited, we take the first configured vhost
@@ -189,21 +200,75 @@ handle(<<"update_roster">>, {Args}) when is_list(Args) ->
             {401, <<"Invalid User">>}
     end;
 
-handle(Call, Args) ->
+% generic ejabberd command handler
+handle(Call, Args) when is_list(Args) ->
     Fun = binary_to_atom(Call, latin1),
-    case erlang:function_exported(mod_admin_p1, Fun, length(Args)) of
-        true ->
-            case apply(mod_admin_p1, Fun, Args) of
-                0 -> {200, <<"OK">>};
-                1 -> {500, <<"500 Internal server error">>};
-                Other -> {200, Other}
-            end;
-        false ->
-            {400, <<"400 Bad Request">>}
+    case ejabberd_command(Fun, Args, 400) of
+        0 -> {200, <<"OK">>};
+        1 -> {500, <<"500 Internal server error">>};
+        400 -> {400, <<"400 Bad Request">>};
+        Res -> {200, format_command_result(Fun, Res)}
     end.
 
-%% -----------------
-%% parameter matcher
-%% -----------------
+%% ----------------
+%% internal helpers
+%% ----------------
+
 match(Args, Spec) ->
     [proplists:get_value(Key, Args, Default) || {Key, Default} <- Spec].
+
+ejabberd_command(Cmd, Args, Default) ->
+    case catch ejabberd_commands:execute_command(Cmd, Args) of
+        {'EXIT', _} -> Default;
+        {error, _} -> Default;
+        Result -> Result
+    end.
+
+format_command_result(Cmd, Result) ->
+    {_, ResultFormat} = ejabberd_commands:get_command_format(Cmd),
+    case format_result(Result, ResultFormat) of
+        {res, Object} when is_list(Object) -> {Object};
+        {res, Object} -> Object;
+        Object when is_list(Object) -> {Object};
+        Object -> Object
+    end.
+
+format_result(Atom, {Name, atom}) ->
+    {Name, Atom};
+
+format_result(Int, {Name, integer}) ->
+    {Name, Int};
+
+format_result(String, {Name, string}) ->
+    {Name, String};
+
+format_result(Code, {_Name, rescode}) ->
+    Code;
+
+format_result({Code, Text}, {_Name, restuple}) ->
+    {Text, Code};
+
+format_result(Els, {Name, {list, Def}}) ->
+    {Name, {[format_result(El, Def) || El <- Els]}};
+
+format_result({Key, Val}, {_Name, {tuple, [{_, atom}, {_, integer}]}})
+        when is_atom(Key), is_integer(Val) ->
+    {Key, Val};
+format_result({Key, Val}, {_Name, {tuple, [{_, atom}, {_, string}]}})
+        when is_atom(Key), is_binary(Val) ->
+    {Key, Val};
+format_result(Tuple, {Name, {tuple, Def}}) ->
+    Els = lists:zip(tuple_to_list(Tuple), Def),
+    {Name, [format_result(El, ElDef) || {El, ElDef} <- Els]};
+
+format_result(404, {_Name, _}) ->
+    "not_found".
+
+http_response(Code, Body) ->
+    {Code, [],
+     #xmlel{name = <<"h1">>, attrs = [],
+            children = [{xmlcdata, Body}]}}.
+
+log(Call, Args, {Addr, Port}) ->
+    AddrS = jlib:ip_to_list({Addr, Port}),
+    ?INFO_MSG("Admin call ~s ~p from ~s:~p", [Call, Args, AddrS, Port]).

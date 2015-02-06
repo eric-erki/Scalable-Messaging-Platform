@@ -155,7 +155,8 @@ commands() ->
 			    [{user, binary}, {server, binary},
 			     {password, binary}],
 			result = {res, integer}},
-     #ejabberd_commands{name = set_nickname, tags = [vcard],
+     #ejabberd_commands{name = set_nickname,
+			tags = [vcard],
 			desc = "Define user nickname",
 			longdesc =
 			    "Set/updated nickname in the user Vcard. "
@@ -278,7 +279,8 @@ commands() ->
 			module = ?MODULE, function = unlink_contacts,
 			args = [{jid1, binary}, {jid2, binary}],
 			result = {res, integer}},
-     #ejabberd_commands{name = add_contacts, tags = [roster],
+     #ejabberd_commands{name = add_contacts,
+			tags = [roster],
 			desc =
 			    "Call add_rosteritem with subscription "
 			    "\"both\" for a given list of contacts",
@@ -316,7 +318,8 @@ commands() ->
 			       {tuple,
 				[{user, string}, {server, string},
 				 {status, integer}]}}}}},
-     #ejabberd_commands{name = get_roster, tags = [roster],
+     #ejabberd_commands{name = get_roster,
+			tags = [roster],
 			desc = "Retrieve the roster for a given user",
 			longdesc =
 			    "Returns a list of the contacts in a "
@@ -419,19 +422,22 @@ commands() ->
 			     {jidstring, binary}, {username, binary},
 			     {password, binary}],
 			result = {res, string}},
-     #ejabberd_commands{name = send_chat, tags = [stanza],
+     #ejabberd_commands{name = send_chat,
+			tags = [stanza],
 			desc = "Send chat message to a given user",
 			module = ?MODULE, function = send_chat,
 			args = [{from, binary}, {to, binary}, {body, binary}],
 			result = {res, integer}},
-     #ejabberd_commands{name = send_message, tags = [stanza],
+     #ejabberd_commands{name = send_message,
+			tags = [stanza],
 			desc = "Send normal message to a given user",
 			module = ?MODULE, function = send_message,
 			args =
 			    [{from, binary}, {to, binary}, {subject, binary},
 			     {body, binary}],
 			result = {res, integer}},
-     #ejabberd_commands{name = send_stanza, tags = [stanza],
+     #ejabberd_commands{name = send_stanza,
+			tags = [stanza],
 			desc = "Send stanza to a given user",
 			longdesc =
 			    "If Stanza contains a \"from\" field, "
@@ -443,17 +449,20 @@ commands() ->
 			    [{user, binary}, {server, binary},
 			     {stanza, binary}],
 			result = {res, integer}},
-     #ejabberd_commands{name = local_sessions_number, tags = [stats],
+     #ejabberd_commands{name = local_sessions_number,
+			tags = [stats],
 			desc = "Number of sessions in local node",
 			module = ?MODULE, function = local_sessions_number,
 			args = [],
 			result = {res, integer}},
-     #ejabberd_commands{name = local_muc_rooms_number, tags = [stats],
+     #ejabberd_commands{name = local_muc_rooms_number,
+			tags = [stats],
 			desc = "Number of MUC rooms in local node",
 			module = ?MODULE, function = local_muc_rooms_number,
 			args = [],
 			result = {res, integer}},
-     #ejabberd_commands{name = p1db_records_number, tags = [stats],
+     #ejabberd_commands{name = p1db_records_number,
+			tags = [stats],
 			desc = "Number of records in p1db tables",
 			module = ?MODULE, function = p1db_records_number,
 			args = [],
@@ -476,7 +485,25 @@ commands() ->
 			desc = "Number of IQ handlers in the node",
 			module = ?MODULE, function = iq_handlers_number,
 			args = [],
-			result = {res, integer}}].
+			result = {res, integer}},
+     #ejabberd_commands{name = server_info,
+			tags = [stats],
+			desc = "Big picture of server use and status",
+			module = ?MODULE, function = server_info,
+			args = [],
+			result = {res, {list,
+			    {probe, {tuple, [{name, atom}, {value, integer}]}}}}},
+     #ejabberd_commands{name = user_info,
+			tags = [session],
+			desc = "Number of IQ handlers in the node",
+			module = ?MODULE, function = user_info,
+			args = [{user, binary}, {server, binary}],
+			result = {res, {tuple, [
+				    {status, string},
+				    {sessions, {list,
+					{session, {list,
+					    {info, {tuple, [{name, atom}, {value, string}]}}}}}}]}}}
+	].
 
 
 %%%
@@ -627,26 +654,11 @@ user_info(U, S) ->
     case ejabberd_auth:is_user_exists(U, S) of
 	true ->
 	    case get_sessions(U, S) of
-		[] ->
-		    Status = case catch mod_last:get_last_info(U, S) of
-			{ok, T1, Reason} ->
-			    T2 = now_to_seconds(os:timestamp()),
-			    LastDateTime = calendar:now_to_local_time(seconds_to_now(T1)),
-			    {Days, {H, M, _S}} = calendar:seconds_to_daystime(T2-T1),
-			    [{last, jlib:timestamp_to_iso(LastDateTime)},
-			     {days, Days},
-			     {hours, Days*24+H},
-			     {minutes, (Days*24+H)*60+M},
-			     {reason, Reason}];
-			_ ->
-			    []
-		    end,
-		    {<<"offline">>, Status};
-		Ss ->
-		    {<<"online">>, [session_info(Session) || Session <- Ss]}
+		[] -> {<<"offline">>, [last_info(U, S)]};
+		Ss -> {<<"online">>, [session_info(Session) || Session <- Ss]}
 	    end;
 	false ->
-	    {<<"not registered">>, []}
+	    {<<"unregistered">>, [[]]}
     end.
 
 %%%
@@ -1202,7 +1214,6 @@ iq_handlers_number() ->
 
 server_info() ->
     Hosts = ejabberd_config:get_myhosts(),
-    {ok, Version} = application:get_key(ejabberd, vsn),
     Memory = erlang:memory(total),
     Processes = erlang:system_info(process_count),
     IqHandlers = iq_handlers_number(),
@@ -1230,15 +1241,15 @@ server_info() ->
 		fun({Key, A}, {Key, B}) -> {Key, A+B} end,
 		Acc, lists:sort(Counters))
 	end, FirstActive, OtherActive),
-    [{version, Version},
-     {memory, Memory},
-     {sessions, [{total, Sessions}|lists:zip(Nodes--LocalFailed, LocalSessions)]},
-     {processes, Processes},
-     {iq_handlers, IqHandlers},
-     {odbc_pool_size, OdbcPoolSize},
-     {http_pool_size, HttpPoolSize},
-     {jabs, Jabs}]
-    ++ [{binary_to_atom(Key, latin1), Val} || {Key, Val} <- ActiveAll].
+    lists:flatten([
+	[{online, Sessions} | lists:zip(Nodes--LocalFailed, LocalSessions)],
+	[{jabs, Jabs} | [{binary_to_atom(Key, latin1), Val} || {Key, Val} <- ActiveAll]],
+	{memory, Memory},
+	{processes, Processes},
+	{iq_handlers, IqHandlers},
+	{odbc_pool_size, OdbcPoolSize},
+	{http_pool_size, HttpPoolSize}
+	]).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Internal functions
@@ -1631,9 +1642,21 @@ session_info(#session{info = Info, sid = {Sid, Pid}}) ->
     [{resource, Resource},
      {presence, Show},
      {since, jlib:timestamp_to_iso(ConnDateTime)},
-     {node, Node},
+     {node, jlib:atom_to_binary(Node)},
      {ip, <<IpString/binary, ":", PortString/binary>>},
-     {conn, ConnMod}].
+     {conn, jlib:atom_to_binary(ConnMod)}].
+
+last_info(U, S) ->
+    case catch mod_last:get_last_info(U, S) of
+	{ok, T1, Reason} ->
+	    LastDateTime = calendar:now_to_local_time(seconds_to_now(T1)),
+	    %T2 = now_to_seconds(os:timestamp()),
+	    %{Days, {H, M, _S}} = calendar:seconds_to_daystime(T2-T1),
+	    [{last, jlib:timestamp_to_iso(LastDateTime)},
+	     {reason, Reason}];
+	_ ->
+	    []
+    end.
 
 ejabberd_command(Cmd, Args, Default) ->
     case catch ejabberd_commands:execute_command(Cmd, Args) of
@@ -1648,8 +1671,8 @@ workers_number(Supervisor) ->
 	_ -> proplists:get_value(active, supervisor:count_children(Supervisor))
     end.
 
-now_to_seconds({MegaSecs, Secs, _MicroSecs}) ->
-    MegaSecs * 1000000 + Secs.
+%now_to_seconds({MegaSecs, Secs, _MicroSecs}) ->
+%    MegaSecs * 1000000 + Secs.
 
 seconds_to_now(Secs) ->
     {Secs div 1000000, Secs rem 1000000, 0}.
