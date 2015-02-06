@@ -148,9 +148,7 @@ check_and_forward(JID, To, Packet, Direction)->
 	    end;
         _ ->
 	    Packet
-    end;
-check_and_forward(_JID, _To, Packet, _)->
-    Packet.
+    end.
 
 remove_connection(User, Server, Resource, _Status)->
     disable(Server, User, Resource),
