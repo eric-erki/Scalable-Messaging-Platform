@@ -265,9 +265,7 @@ format_result(404, {_Name, _}) ->
     "not_found".
 
 http_response(Code, Body) ->
-    {Code, [],
-     #xmlel{name = <<"h1">>, attrs = [],
-            children = [{xmlcdata, Body}]}}.
+    {Code, [{<<"content-type">>,<<"application/json">>}], Body}.
 
 log(Call, Args, {Addr, Port}) ->
     AddrS = jlib:ip_to_list({Addr, Port}),
