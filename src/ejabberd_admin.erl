@@ -235,7 +235,7 @@ commands() ->
 			desc = "Delete offline messages older than DAYS",
 			module = ?MODULE, function = delete_old_messages,
 			args = [{days, integer}], result = {res, rescode}},
-	 
+
      #ejabberd_commands{name = backup_p1db, tags = [p1db],
 			desc = "Backup the P1DB database",
 			module = ?MODULE, function = backup_p1db,
@@ -307,7 +307,7 @@ moderate_room_history(Room, Nick) ->
 
 persist_recent_messages() ->
 	Saved = [ {Host, mod_muc:persist_recent_messages(Host)} || Host <- ?MYHOSTS],
-	R = lists:map(fun({Host, {RoomsPersisted, Messages}}) -> 
+	R = lists:map(fun({Host, {RoomsPersisted, Messages}}) ->
 				io_lib:format("Host '~s' , ~p messages persisted in ~p rooms\n", [Host, Messages, RoomsPersisted])
 	       	end, Saved),
 	{ok,io_lib:format("~s", [R])}.
@@ -500,8 +500,8 @@ registered_vhosts() ->
 
 reload_config() ->
     ejabberd_config:reload_file(),
-    acl:start(),
-    shaper:start().
+    acl:load_from_config(),
+    shaper:load_from_config().
 
 %%%
 %%% Cluster management
@@ -647,7 +647,7 @@ restore_mnesia(Path) ->
 
 %% Mnesia database restore
 %% This function is called from ejabberd_ctl, ejabberd_web_admin and
-%% mod_configure/adhoc 
+%% mod_configure/adhoc
 restore(Path) ->
     mnesia:restore(Path, [{keep_tables,keep_tables()},
 			  {default_op, skip_tables}]).
@@ -662,7 +662,7 @@ keep_tables() ->
 
 %% Returns the list of modules tables in use, according to the list of actually
 %% loaded modules
-keep_modules_tables() ->		      
+keep_modules_tables() ->
     lists:map(fun(Module) -> module_tables(Module) end,
 	      gen_mod:loaded_modules(?MYNAME)).
 
