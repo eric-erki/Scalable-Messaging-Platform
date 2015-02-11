@@ -243,11 +243,11 @@ AC_ARG_ENABLE(iconv,
 esac],[if test "x$iconv" = "x"; then iconv=true; fi])
 
 AC_ARG_ENABLE(debug,
-[AC_HELP_STRING([--enable-debug], [enable debug information (default: yes)])],
+[AS_HELP_STRING([--enable-debug[[[[=INFOKEY]]]]], [enable debug information with optional encrypt key (default: yes)])],
 [case "${enableval}" in
   yes) debug=true ;;
   no)  debug=false ;;
-  *) AC_MSG_ERROR(bad value ${enableval} for --enable-debug) ;;
+  *)   debug="\"$enableval\"" ;;
 esac],[if test "x$debug" = "x"; then debug=true; fi])
 
 AC_ARG_ENABLE(pubsub_ng,
