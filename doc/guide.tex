@@ -80,6 +80,10 @@
 \newcommand{\modfailban}{\module{mod\_fail2ban}}
 \newcommand{\modhttpbind}{\module{mod\_http\_bind}}
 \newcommand{\modhttpfileserver}{\module{mod\_http\_fileserver}}
+\newcommand{\modhttplog}{\module{mod\_http\_log}}
+\newcommand{\modhttpnotify}{\module{mod\_http\_notify}}
+\newcommand{\modhttpadmin}{\module{mod\_http\_admin}}
+\newcommand{\modhttpwatchdog}{\module{mod\_http\_watchdog}}
 \newcommand{\modirc}{\module{mod\_irc}}
 \newcommand{\modlast}{\module{mod\_last}}
 \newcommand{\modmuc}{\module{mod\_muc}}
@@ -419,6 +423,8 @@ Some options that you may be interested in modifying:
 
         \titem{--enable-debug}
         Compile with \term{+debug\_info} enabled.
+        If you provided the configure option \term{--enable-debug=KEY} then KEY will be used
+        as an encryption key and beam files will be compiled with \term{debug\_info\_key} enabled.
 
 	\titem{--enable-full-xml}
 	Enable the use of XML based optimisations.
@@ -2840,6 +2846,10 @@ The following table lists all modules included in \ejabberd{}.
     \hline \ahrefloc{modfail2ban}{\modfailban{}} & Bans IPs that show the malicious signs & \\
     \hline \ahrefloc{modhttpbind}{\modhttpbind{}} & XMPP over Bosh service (HTTP Binding) &  \\
     \hline \ahrefloc{modhttpfileserver}{\modhttpfileserver{}} & Small HTTP file server &  \\
+    \hline \ahrefloc{modhttplog}{\modhttplog{}} & Log XMPP packets over HTTP &  \\
+    \hline \ahrefloc{modhttpnotify}{\modhttpnotify{}} & Send HTTP notifications about some events &  \\
+    \hline \ahrefloc{modhttpadmin}{\modhttpadmin{}} & Admin REST API &  \\
+    \hline \ahrefloc{modhttpwatchdog}{\modhttpwatchdog{}} & Simple watchdog through REST call &  \\
     \hline \ahrefloc{modirc}{\modirc{}} & IRC transport &  \\
     \hline \ahrefloc{modlast}{\modlast{}} & Last Activity (\xepref{0012}) &  \\
     \hline \ahrefloc{modmuc}{\modmuc{}} & Multi-User Chat (\xepref{0045}) &  \\
@@ -3484,6 +3494,169 @@ listen:
   ...
 \end{verbatim}
 
+\makesubsection{modhttplog}{\modhttplog{}}
+\ind{modules!\modhttplog{}}\ind{modhttplog}
+
+This module logs XMPP packets of a given session over HTTP.
+
+To use this feature, enable the module:
+\begin{verbatim}
+modules:
+  ...
+  mod_http_log: {}
+  ...
+\end{verbatim}
+And define it as a handler in the HTTP service:
+\begin{verbatim}
+listen:
+  ...
+  - 
+    port: 5280
+    module: ejabberd_http
+    request_handlers:
+      ...
+      "log": mod_http_log
+      ...
+  ...
+\end{verbatim}
+This page is designed to be used by web browsers, or raw terminal clients like curl.
+Example, you can get XMPP logs with curl at following url \verb|http://example.org:5280/log/user@example.org|
+
+If you share this module with other public use (like BOSH), it's best to consider put this module in a dedicated
+http listener on a private port.
+
+Options:
+\begin{description}
+  \titem{access: AccessName} \ind{options!access}This option can be used to specify who
+  may use this feature. (default value: \term{all}).
+\begin{verbatim}
+modules:
+  ...
+  mod_http_log:
+    access: admin
+  ...
+\end{verbatim}
+\end{description}
+
+\makesubsection{modhttpnotify}{\modhttpnotify{}}
+\ind{modules!\modhttpnotify{}}\ind{modhttpnotify}
+
+This module sends HTTP notifications to an external service on some events.
+Actual implementation logs presence available, unavailable, change, and offline packets.
+Information is encoded as application/x-www-form-urlencoded.
+
+To enable this feature, enable the module:
+\begin{verbatim}
+modules:
+  ...
+  mod_http_notify:
+    url: "http://example.org/path"
+    auth_token: "secret"
+  ...
+\end{verbatim}
+
+Options:
+\begin{description}
+  \titem{url: Url} \ind{options!url}This option must be used to specify server to notify.
+  \titem{auth\_token: Secret} \ind{options!auth\_token}This option must be used to define secret token
+  to authenticate the query.
+\end{description}
+
+\makesubsection{modhttpadmin}{\modhttpadmin{}}
+\ind{modules!\modhttpadmin{}}\ind{modhttpadmin}
+
+This module provides administration commands through REST API using JSON for data and result.
+The set of available commands is the same which is available through \term{ejabberdctl}\ind{ejabberdctl} command.
+
+To enable administration REST API, enable the admin modules:
+\begin{verbatim}
+modules:
+  ...
+  mod_http_admin: {}
+  mod_admin_p1: {}
+  ...
+\end{verbatim}
+And define it as a handler in the HTTP service:
+\begin{verbatim}
+listen:
+  ...
+  - 
+    port: 5280
+    module: ejabberd_http
+    request_handlers:
+      ...
+      "api": mod_http_admin
+      ...
+  ...
+\end{verbatim}
+This page is designed to be used by REST library, but can also be used by web browsers, or raw terminal clients like curl.
+Example, you can get server status with curl at following url \verb|http://example.org:5280/api/server_info|
+
+If you share this module with other public use (like BOSH), it's best to consider put this module in a dedicated
+http listener on a private port.
+
+Command parameters can be passed as json data or as url encoded parameter.
+Example:
+\begin{description}
+\begin{verbatim}
+curl -X POST --data '["test1","example.org"]' http://example.org:5280/api/user_info
+curl -X POST --data '{"user":"test1","server":"example.org"}' http://example.org:5280/api/user_info
+curl "http://example.org:5280/api/user_info?user=test1&server=example.org"
+\end{verbatim}
+\end{description}
+
+Options:
+\begin{description}
+  \titem{access: AccessName} \ind{options!access}This option can be used to specify who
+  may use this feature. (default value: \term{all}).
+\begin{verbatim}
+modules:
+  ...
+  mod_http_admin:
+    access: admin
+  ...
+\end{verbatim}
+\end{description}
+
+\makesubsection{modhttpwatchdog}{\modhttpwatchdog{}}
+\ind{modules!\modhttpwatchdog{}}\ind{modhttpwatchdog}
+
+This module implements a simple watchdog user can trigger with a REST call. The module does two tests:
+connection to listener, and full XMPP authentication.
+
+To enable this feature, enable the module:
+\begin{verbatim}
+modules:
+  ...
+  mod_http_watchdog:
+    test_domain: "example.org"
+    test_user: "watchdog"
+    test_pass: "1234"
+  ...
+\end{verbatim}
+And define it as a handler in the HTTP service:
+\begin{verbatim}
+listen:
+  ...
+  - 
+    port: 5280
+    module: ejabberd_http
+    request_handlers:
+      ...
+      "status": mod_http_watchdog
+      ...
+  ...
+\end{verbatim}
+You can trigger the watchdog at following url \verb|http://example.org:5280/status|
+
+Options:
+\begin{description}
+  \titem{test\_domain: TestDomain} \ind{options!test\_domain}This option defines the XMPP domain to connect, this
+   is usually the xmpp vhost that runs this module.
+  \titem{test\_user: TestUser} \ind{options!test\_user}This option defines the login of the test user.
+  \titem{test\_pass: TestPass} \ind{options!test\_pass}This option defines the password of the test user.
+\end{description}
+
 \makesubsection{modirc}{\modirc{}}
 \ind{modules!\modirc{}}\ind{IRC}
 
@@ -4036,10 +4209,12 @@ Example configuration:
 \ind{modules!\modoffline{}}
 
 This module implements offline message storage (\xepref{0160}).
-This means that all messages
-sent to an offline user will be stored on the server until that user comes
-online again. Thus it is very similar to how email works. Note that
-\term{ejabberdctl}\ind{ejabberdctl} has a command to delete expired messages
+This means that all messages sent to an offline user will be stored on the server until
+hat user comes online again. Message is delivered by the server at user reconnection.
+Thus it is very similar to how email works.
+Message can also include an expiration attribute (\xepref{0023}) to prevent server to deliver
+outdated message at user reconnection.
+Note that \term{ejabberdctl}\ind{ejabberdctl} has a command to delete expired messages
 (see section~\ref{ejabberdctl}).
 
 \begin{description}
