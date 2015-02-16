@@ -63,7 +63,7 @@
 	% stats
 	 local_sessions_number/0, local_muc_rooms_number/0,
 	 p1db_records_number/0, iq_handlers_number/0,
-	 server_info/0,
+	 server_info/0, server_version/0,
 	% mass notification
 	 start_mass_message/3, stop_mass_message/1, mass_message/5]).
 
@@ -493,6 +493,13 @@ commands() ->
 			args = [],
 			result = {res, {list,
 			    {probe, {tuple, [{name, atom}, {value, integer}]}}}}},
+     #ejabberd_commands{name = server_version,
+			tags = [],
+                        desc = "Build version of running server",
+			module = ?MODULE, function = server_version,
+			args = [],
+			result = {res, {list,
+			    {probe, {tuple, [{name, atom}, {value, string}]}}}}},
      #ejabberd_commands{name = user_info,
 			tags = [session],
 			desc = "Number of IQ handlers in the node",
@@ -1251,6 +1258,14 @@ server_info() ->
 	{http_pool_size, HttpPoolSize}
 	]).
 
+server_version() ->
+    {ok, Version} = application:get_key(ejabberd, vsn),
+    {ok, Modules} = application:get_key(ejabberd, modules),
+    [{Build,Secs}|Stamps] = lists:usort([build_stamp(M) || M<-Modules]),
+    [{Patch, Last}|_] = lists:reverse(Stamps),
+    [{version, list_to_binary(Version)}, {build, Build} | [{patch, Patch} || Last-Secs > 120]].
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Internal functions
 
@@ -1678,3 +1693,8 @@ workers_number(Supervisor) ->
 
 seconds_to_now(Secs) ->
     {Secs div 1000000, Secs rem 1000000, 0}.
+
+build_stamp(Module) ->
+    {Y,M,D,HH,MM,SS} = proplists:get_value(time, Module:module_info(compile)),
+    DateTime = {{Y,M,D},{HH,MM,SS}},
+    {jlib:timestamp_to_iso(DateTime), calendar:datetime_to_gregorian_seconds(DateTime)}.

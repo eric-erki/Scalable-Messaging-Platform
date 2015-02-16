@@ -219,6 +219,8 @@ db_tests(p1db) ->
       [mam_master, mam_slave]},
      {test_carbons, [parallel],
       [carbons_master, carbons_slave]},
+     {test_client_state, [parallel],
+      [client_state_master, client_state_slave]},
      {test_muc, [parallel],
       [muc_master, muc_slave]},
      {test_announce, [sequence],
@@ -284,6 +286,8 @@ db_tests(_) ->
       [mam_master, mam_slave]},
      {test_carbons, [parallel],
       [carbons_master, carbons_slave]},
+     {test_client_state, [parallel],
+      [client_state_master, client_state_slave]},
      {test_muc, [parallel],
       [muc_master, muc_slave]},
      {test_announce, [sequence],
@@ -852,7 +856,7 @@ pubsub(Config) ->
                                       node = Node,
                                       jid = my_jid(Config)}}]}),
     ?recv2(
-       #message{sub_els = [#pubsub_event{}, #delay{}]},
+       #message{sub_els = [#pubsub_event{}, #delay{}, #legacy_delay{}]},
        #iq{type = result, id = I1}),
     %% Get subscriptions
     true = lists:member(?PUBSUB("retrieve-subscriptions"), Features),
@@ -1811,6 +1815,42 @@ mam_query_rsm(Config) ->
         send_recv(Config,
                   #iq{type = get,
                       sub_els = [#mam_query{rsm = #rsm_set{max = 0}}]}).
+
+client_state_master(Config) ->
+    Peer = ?config(slave, Config),
+    Presence = #presence{to = Peer},
+    Message = #message{to = Peer, thread = <<"1">>,
+		       sub_els = [#chatstate{type = active}]},
+    wait_for_slave(Config),
+    %% Should be queued (but see below):
+    send(Config, Presence),
+    %% Should be sent immediately, together with the previous presence:
+    send(Config, Message#message{body = [#text{data = <<"body">>}]}),
+    %% Should be dropped:
+    send(Config, Message),
+    %% Should be queued (but see below):
+    send(Config, Presence),
+    %% Should replace the previous presence in the queue:
+    send(Config, Presence#presence{type = unavailable}),
+    wait_for_slave(Config),
+    %% Should be sent immediately, as the client is active again.
+    send(Config, Message),
+    disconnect(Config).
+
+client_state_slave(Config) ->
+    true = ?config(csi, Config),
+    Peer = ?config(master, Config),
+    send(Config, #csi{type = inactive}),
+    wait_for_master(Config),
+    #presence{from = Peer, sub_els = [#vcard_xupdate{}|_]} = recv(),
+    #message{from = Peer, thread = <<"1">>, sub_els = [#chatstate{type = active}],
+	     body = [#text{data = <<"body">>}]} = recv(),
+    wait_for_master(Config),
+    send(Config, #csi{type = active}),
+    ?recv2(#presence{from = Peer, type = unavailable, sub_els = [#delay{}]},
+	   #message{from = Peer, thread = <<"1">>,
+		    sub_els = [#chatstate{type = active}]}),
+    disconnect(Config).
 
 %%%===================================================================
 %%% Aux functions

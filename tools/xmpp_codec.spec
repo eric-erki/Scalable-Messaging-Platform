@@ -1835,6 +1835,33 @@
            result = {shim, '$headers'},
            refs = [#ref{name = shim_header, label = '$headers'}]}).
 
+-record(chatstate, {type :: active | composing | gone | inactive | paused}).
+
+-xml(chatstate_active,
+     #elem{name = <<"active">>,
+           xmlns = <<"http://jabber.org/protocol/chatstates">>,
+           result = {chatstate, active}}).
+
+-xml(chatstate_composing,
+     #elem{name = <<"composing">>,
+           xmlns = <<"http://jabber.org/protocol/chatstates">>,
+           result = {chatstate, composing}}).
+
+-xml(chatstate_gone,
+     #elem{name = <<"gone">>,
+           xmlns = <<"http://jabber.org/protocol/chatstates">>,
+           result = {chatstate, gone}}).
+
+-xml(chatstate_inactive,
+     #elem{name = <<"inactive">>,
+           xmlns = <<"http://jabber.org/protocol/chatstates">>,
+           result = {chatstate, inactive}}).
+
+-xml(chatstate_paused,
+     #elem{name = <<"paused">>,
+           xmlns = <<"http://jabber.org/protocol/chatstates">>,
+           result = {chatstate, paused}}).
+
 -xml(delay,
      #elem{name = <<"delay">>,
            xmlns = <<"urn:xmpp:delay">>,
@@ -2285,6 +2312,24 @@
 	   result = {carbons_sent, '$forwarded'},
 	   refs = [#ref{name = forwarded, min = 1,
                         max = 1, label = '$forwarded'}]}).
+
+-xml(feature_csi,
+     #elem{name = <<"csi">>,
+	   xmlns = <<"urn:xmpp:csi:0">>,
+	   result = {feature_csi, '$xmlns'},
+	   attrs = [#attr{name = <<"xmlns">>}]}).
+
+-record(csi, {type :: active | inactive}).
+
+-xml(csi_active,
+     #elem{name = <<"active">>,
+	   xmlns = <<"urn:xmpp:csi:0">>,
+	   result = {csi, active}}).
+
+-xml(csi_inactive,
+     #elem{name = <<"inactive">>,
+	   xmlns = <<"urn:xmpp:csi:0">>,
+	   result = {csi, inactive}}).
 
 -xml(feature_sm,
      #elem{name = <<"sm">>,

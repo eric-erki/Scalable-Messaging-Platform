@@ -191,7 +191,7 @@ consult(File) ->
                 {ok, []} ->
                     {ok, []};
                 {ok, [Document|_]} ->
-                    {ok, Document};
+                    {ok, parserl(Document)};
                 {error, Err} ->
                     {error, p1_yaml:format_error(Err)}
             end;
@@ -205,6 +205,17 @@ consult(File) ->
                     {error, describe_config_problem(File, Reason)}
             end
     end.
+
+parserl(<<"> ", Term/binary>>) ->
+    {ok, A2, _} = erl_scan:string(binary_to_list(Term)),
+    {ok, A3} = erl_parse:parse_term(A2),
+    A3;
+parserl({A, B}) ->
+    {parserl(A), parserl(B)};
+parserl([El|Tail]) ->
+    [parserl(El) | parserl(Tail)];
+parserl(Other) ->
+    Other.
 
 %% @doc Convert configuration filename to absolute path.
 %% Input is an absolute or relative path to an ejabberd configuration file.
@@ -695,7 +706,11 @@ replace_module(mod_shared_roster_odbc) -> {mod_shared_roster, odbc};
 replace_module(mod_vcard_odbc) -> {mod_vcard, odbc};
 replace_module(mod_vcard_xupdate_odbc) -> {mod_vcard_xupdate, odbc};
 replace_module(mod_pubsub_odbc) -> {mod_pubsub, odbc};
-replace_module(Module) -> Module.
+replace_module(Module) ->
+    case is_elixir_module(Module) of
+        true  -> expand_elixir_module(Module);
+        false -> Module
+    end.
 
 replace_modules(Modules) ->
     lists:map(
@@ -715,6 +730,26 @@ replace_modules(Modules) ->
                       {NewModule, transform_module_options(Module, Opts)}
               end
       end, Modules).
+
+%% Elixir module naming
+%% ====================
+
+%% If module name start with uppercase letter, this is an Elixir module:
+is_elixir_module(Module) ->
+    case atom_to_list(Module) of
+        [H|_] when H >= 65, H =< 90 -> true;
+        _ ->false
+    end.
+
+%% We assume we know this is an elixir module
+expand_elixir_module(Module) ->
+    case atom_to_list(Module) of
+        %% Module name already specified as an Elixir from Erlang module name
+        "Elixir." ++ _ -> Module;
+        %% if start with uppercase letter, this is an Elixir module: Append 'Elixir.' to module name.
+        ModuleString ->
+            list_to_atom("Elixir." ++ ModuleString)
+    end.
 
 strings_to_binary([]) ->
     [];
@@ -998,5 +1033,10 @@ emit_deprecation_warning(Module, NewModule, DBType) ->
                  " instead", [Module, NewModule, DBType]).
 
 emit_deprecation_warning(Module, NewModule) ->
-    ?WARNING_MSG("Module ~s is deprecated, use ~s instead",
-                 [Module, NewModule]).
+    case is_elixir_module(NewModule) of
+        %% Do not emit deprecation warning for Elixir
+        true -> ok;
+        false ->
+            ?WARNING_MSG("Module ~s is deprecated, use ~s instead",
+                         [Module, NewModule])
+    end.

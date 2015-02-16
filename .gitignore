@@ -37,3 +37,6 @@
 /vars.config
 /priv/lib
 /c_src/*.o
+/dialyzer/
+/test/*.beam
+/logs/

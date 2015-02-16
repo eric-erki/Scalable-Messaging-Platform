@@ -1,28 +1,33 @@
-%%% ====================================================================
-%%% This software is copyright 2006-2012, ProcessOne.
+%%%-------------------------------------------------------------------
+%%% File    : mod_filter.erl
+%%% Author  : Christophe Romain <christophe.romain@process-one.net>
+%%% Purpose : allow message filtering using regexp on message body
+%%% Created : 
 %%%
-%%% mod_filter
-%%% allow message filtering using regexp on message body
-%%% THIS MODULE NEEDS A PATCHED ERLANG VM AGAINST
-%%% THE PCRE PATCH AND NEEDS LIBPCRE INSTALLED
-%%% ejabberd MUST USE THAT PATCHED ERLANG VM
-%%% BUT, if patch is not available, mod_filter uses re.beam module
-%%% instead, with speed degradation.
 %%%
-%%% @copyright 2006-2012 ProcessOne
-%%% @author Christophe Romain <christophe.romain@process-one.net>
-%%%   [http://www.process-one.net/]
-%%% @version {@vsn}, {@date} {@time}
-%%% @end
-%%% ====================================================================
+%%% ejabberd, Copyright (C) 2002-2015   ProcessOne
+%%%
+%%% This program is free software; you can redistribute it and/or
+%%% modify it under the terms of the GNU General Public License as
+%%% published by the Free Software Foundation; either version 2 of the
+%%% License, or (at your option) any later version.
+%%%
+%%% This program is distributed in the hope that it will be useful,
+%%% but WITHOUT ANY WARRANTY; without even the implied warranty of
+%%% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+%%% General Public License for more details.
+%%%
+%%% You should have received a copy of the GNU General Public License
+%%% along with this program; if not, write to the Free Software
+%%% Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
+%%% 02111-1307 USA
+%%%
+%%%-------------------------------------------------------------------
 
 -module(mod_filter).
+-behaviour(gen_mod).
 
 -author('christophe.romain@process-one.net').
-
--vsn('$Id: mod_filter.erl 972 2010-10-14 21:53:56Z jpcarlino $').
-
--behaviour(gen_mod).
 
 % module functions
 -export([start/2, stop/1, init/2, update/2, is_loaded/0,

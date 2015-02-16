@@ -586,7 +586,7 @@ do_route1(From, To, {broadcast, _} = Packet, Hops) ->
             USR = jlib:jid_tolower(To),
             case mnesia:dirty_read(session, USR) of
                 [] ->
-                    ?DEBUG("packet droped~n", []);
+                    ?DEBUG("packet dropped~n", []);
                 Ss ->
                     Session = lists:max(Ss),
                     Pid = element(2, Session#session.sid),
@@ -686,7 +686,7 @@ do_route1(From, To, Packet, Hops) ->
 							?ERR_SERVICE_UNAVAILABLE),
 			    ejabberd_router:route(To, From, Err)
 		      end;
-		  _ -> ?DEBUG("packet droped~n", [])
+		  _ -> ?DEBUG("packet dropped~n", [])
 		end;
 	    Ss ->
 

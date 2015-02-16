@@ -336,13 +336,18 @@ init([{SockMod, Socket}, Opts, FSMLimitOpts]) ->
 		      end,
     MaxAckQueue = case proplists:get_value(max_ack_queue, Opts) of
 		    Limit when is_integer(Limit), Limit > 0 -> Limit;
+		    infinity -> infinity;
 		    _ -> 500
 		  end,
     ResumeTimeout = case proplists:get_value(resume_timeout, Opts) of
 		      Timeout when is_integer(Timeout), Timeout >= 0 -> Timeout;
 		      _ -> 300
 		    end,
-    ResendOnTimeout = proplists:get_bool(resend_on_timeout, Opts),
+    ResendOnTimeout = case proplists:get_value(resend_on_timeout, Opts) of
+			Resend when is_boolean(Resend) -> Resend;
+			if_offline -> if_offline;
+			_ -> false
+		      end,
     IP = case lists:keysearch(frontend_ip, 1, Opts) of
 	   {value, {_, IP1}} -> IP1;
 	   _ -> peerip(SockMod, Socket)
@@ -475,6 +480,9 @@ wait_for_stream({xmlstreamstart, Name, Attrs},
 		      send_header(StateData, Server, <<"1.0">>, DefaultLang),
 		      case StateData#state.authenticated of
 			false ->
+			    TLS = StateData#state.tls,
+			    TLSEnabled = StateData#state.tls_enabled,
+			    TLSRequired = StateData#state.tls_required,
 			    SASLState = cyrsasl:server_new(<<"jabber">>, Server,
 							   <<"">>, [],
 							   fun (U) ->
@@ -493,15 +501,21 @@ wait_for_stream({xmlstreamstart, Name, Attrs},
 														D,
 														DG)
 							   end),
-			    Mechs = lists:map(fun (S) ->
-						      #xmlel{name =
-								 <<"mechanism">>,
-							     attrs = [],
-							     children =
-								 [{xmlcdata,
-								   S}]}
-					      end,
-					      cyrsasl:listmech(Server)),
+			    Mechs =
+				case TLSEnabled or not TLSRequired of
+				    true ->
+					Ms = lists:map(fun (S) ->
+								#xmlel{name = <<"mechanism">>,
+									attrs = [],
+									children = [{xmlcdata, S}]}
+							end,
+							cyrsasl:listmech(Server)),
+					[#xmlel{name = <<"mechanisms">>,
+						attrs = [{<<"xmlns">>, ?NS_SASL}],
+						children = Ms}];
+				    false ->
+					[]
+				end,
 			    SockMod =
 				(StateData#state.sockmod):get_sockmod(StateData#state.socket),
 			    Zlib = StateData#state.zlib,
@@ -526,9 +540,6 @@ wait_for_stream({xmlstreamstart, Name, Attrs},
 									      <<"zlib">>}]}]}];
 						_ -> []
 					      end,
-			    TLS = StateData#state.tls,
-			    TLSEnabled = StateData#state.tls_enabled,
-			    TLSRequired = StateData#state.tls_required,
 			    TLSFeature = case TLS == true andalso
 						TLSEnabled == false andalso
 						  SockMod == gen_tcp
@@ -580,10 +591,7 @@ wait_for_stream({xmlstreamstart, Name, Attrs},
                                   P1PushFeature ++
                                   P1RebindFeature ++
                                   P1AckFeature ++
-                                  [#xmlel{name = <<"mechanisms">>,
-                                          attrs = [{<<"xmlns">>, ?NS_SASL}],
-                                          children = Mechs}]
-                                  ++
+                                  Mechs ++
                                   ejabberd_hooks:run_fold(c2s_stream_features,
                                                           Server,
                                                           [],
@@ -635,6 +643,8 @@ wait_for_stream({xmlstreamstart, Name, Attrs},
 						     ++
 						     RosterVersioningFeature ++
                                                      StreamManagementFeature ++
+                                                     ejabberd_hooks:run_fold(c2s_post_auth_features,
+                                                                             Server, [], [Server]) ++
 						       ejabberd_hooks:run_fold(c2s_stream_features,
 									       Server,
 									       [],
@@ -1400,6 +1410,17 @@ wait_for_session(stop_or_detach, _From, StateData) ->
 session_established({xmlstreamelement, #xmlel{name = Name} = El}, StateData)
     when ?IS_STREAM_MGMT_TAG(Name) ->
     fsm_next_state(session_established, dispatch_stream_mgmt(El, StateData));
+session_established({xmlstreamelement,
+		     #xmlel{name = <<"active">>,
+			    attrs = [{<<"xmlns">>, ?NS_CLIENT_STATE}]}},
+		    StateData) ->
+    NewStateData = csi_queue_flush(StateData),
+    fsm_next_state(session_established, NewStateData#state{csi_state = active});
+session_established({xmlstreamelement,
+		     #xmlel{name = <<"inactive">>,
+			    attrs = [{<<"xmlns">>, ?NS_CLIENT_STATE}]}},
+		    StateData) ->
+    fsm_next_state(session_established, StateData#state{csi_state = inactive});
 session_established({xmlstreamelement, El},
 		    StateData) ->
     FromJID = StateData#state.jid,
@@ -1433,12 +1454,8 @@ session_established({xmlstreamerror, _}, StateData) ->
     send_element(StateData, ?INVALID_XML_ERR),
     send_trailer(StateData),
     {stop, normal, StateData};
-session_established(closed, StateData)
-    when StateData#state.mgmt_timeout > 0,
-	 StateData#state.mgmt_state == active orelse
-	 StateData#state.mgmt_state == pending ->
-    log_pending_state(StateData),
-    fsm_next_state(wait_for_resume, StateData#state{mgmt_state = pending});
+session_established(closed, #state{mgmt_state = active} = StateData) ->
+    fsm_next_state(wait_for_resume, StateData);
 session_established(closed, StateData) ->
     if not StateData#state.reception ->
 	   fsm_next_state(session_established, StateData);
@@ -1491,13 +1508,7 @@ session_established2(El, StateData) ->
 		       _ ->
 			   Err = jlib:make_error_reply(NewEl,
 						       ?ERR_JID_MALFORMED),
-			   case is_stanza(Err) of
-			     true ->
-				 send_stanza(NewStateData, Err);
-			     false ->
-				 send_element(NewStateData, Err),
-				 NewStateData
-			   end
+			   send_packet(NewStateData, Err)
 		     end;
 		 _ ->
 		     case Name of
@@ -1580,6 +1591,12 @@ wait_for_resume(Event, StateData) ->
 %    Reply = ok,
 %    {reply, Reply, state_name, StateData}.
 
+%%----------------------------------------------------------------------
+%% Func: handle_event/3
+%% Returns: {next_state, NextStateName, NextStateData}          |
+%%          {next_state, NextStateName, NextStateData, Timeout} |
+%%          {stop, Reason, NewStateData}
+%%----------------------------------------------------------------------
 handle_event({add_rosteritem, IJID, ISubscription},
 	     StateName, StateData) ->
     NewStateData = roster_change(IJID, ISubscription,
@@ -1612,8 +1629,8 @@ handle_sync_event(get_subscribed, _From, StateName,
 		  StateData) ->
     Subscribed = (?SETS):to_list(StateData#state.pres_f),
     {reply, Subscribed, StateName, StateData};
-handle_sync_event(resume_session, _From, _StateName,
-		  StateData) ->
+handle_sync_event({resume_session, Time}, _From, _StateName,
+		  StateData) when element(1, StateData#state.sid) == Time ->
     %% The old session should be closed before the new one is opened, so we do
     %% this here instead of leaving it to the terminate callback
     ejabberd_sm:close_session(StateData#state.sid,
@@ -1621,6 +1638,9 @@ handle_sync_event(resume_session, _From, _StateName,
 			      StateData#state.server,
 			      StateData#state.resource),
     {stop, normal, {ok, StateData}, StateData#state{mgmt_state = resumed}};
+handle_sync_event({resume_session, _Time}, _From, StateName,
+		  StateData) ->
+    {reply, {error, <<"Previous session not found">>}, StateName, StateData};
 handle_sync_event(_Event, _From, StateName,
 		  StateData) ->
     Reply = ok, fsm_reply(Reply, StateName, StateData).
@@ -2021,12 +2041,9 @@ handle_info({'DOWN', Monitor, _Type, _Object, _Info},
 	   NewState = start_keepalive_timer(NewState1),
 	   fsm_next_state(StateName, NewState);
        true ->
-            if StateData#state.mgmt_timeout > 0,
-               StateData#state.mgmt_state == active orelse
+            if StateData#state.mgmt_state == active;
                StateData#state.mgmt_state == pending ->
-                    log_pending_state(StateData),
-                    fsm_next_state(wait_for_resume,
-                                   StateData#state{mgmt_state = pending});
+                    fsm_next_state(wait_for_resume, StateData);
                true ->
                     {stop, normal, StateData}
             end
@@ -2266,6 +2283,15 @@ send_text(StateData, Text)
     ?DEBUG("Send Text on stream = ~p", [Text]),
     (StateData#state.sockmod):send_xml(StateData#state.socket,
 				       {xmlstreamraw, Text});
+send_text(StateData, Text) when StateData#state.mgmt_state == active ->
+    ?DEBUG("Send XML on stream = ~p", [Text]),
+    case catch (StateData#state.sockmod):send(StateData#state.socket, Text) of
+      {'EXIT', _} ->
+	  (StateData#state.sockmod):close(StateData#state.socket),
+	  error;
+      _ ->
+	  ok
+    end;
 send_text(StateData, Text) ->
     ?DEBUG("Send XML on stream = ~p", [Text]),
     Text1 = if StateData#state.flash_hack and
@@ -2295,14 +2321,30 @@ send_element(StateData, El) ->
 			StateData#state.pres_last, El]),
     send_text(StateData, xml:element_to_binary(El)).
 
+send_stanza(StateData, Stanza) when StateData#state.csi_state == inactive ->
+    csi_filter_stanza(StateData, Stanza);
 send_stanza(StateData, Stanza) when StateData#state.mgmt_state == pending ->
     mgmt_queue_add(StateData, Stanza);
 send_stanza(StateData, Stanza) when StateData#state.mgmt_state == active ->
-    send_stanza_and_ack_req(StateData, Stanza),
-    mgmt_queue_add(StateData, Stanza);
+    NewStateData = case send_stanza_and_ack_req(StateData, Stanza) of
+		     ok ->
+			 StateData;
+		     error ->
+			 StateData#state{mgmt_state = pending}
+		   end,
+    mgmt_queue_add(NewStateData, Stanza);
 send_stanza(StateData, Stanza) ->
     send_element(StateData, Stanza),
     StateData.
+
+send_packet(StateData, Packet) ->
+    case is_stanza(Packet) of
+      true ->
+	  send_stanza(StateData, Packet);
+      false ->
+	  send_element(StateData, Packet),
+	  StateData
+    end.
 
 send_header(StateData, Server, Version, Lang)
     when StateData#state.flash_connection ->
@@ -2363,7 +2405,7 @@ send_or_enqueue_packet(State, From, To, Packet) ->
 			State#state.server,
 			Packet,
 			[State, State#state.jid, From, To]),
-            State1 = send_stanza(State, Packet1),
+            State1 = send_packet(State, Packet1),
             ack(State1, From, To, Packet1);
        true ->
             NewState = send_out_of_reception_message(State, From, To, Packet),
@@ -2504,12 +2546,11 @@ presence_update(From, Packet, StateData) ->
 			  OldPresence -> get_priority_from_presence(OldPresence)
 			end,
 	  NewPriority = get_priority_from_presence(Packet),
-	  Timestamp = calendar:now_to_universal_time(now()),
 	  update_priority(NewPriority, Packet, StateData),
 	  FromUnavail = (StateData#state.pres_last == undefined),
 	  ?DEBUG("from unavail = ~p~n", [FromUnavail]),
 	  NewStateData = StateData#state{pres_last = Packet,
-					 pres_timestamp = Timestamp},
+					 pres_timestamp = now()},
 	  NewState = if FromUnavail ->
 			    ejabberd_hooks:run(user_available_hook,
 					       NewStateData#state.server,
@@ -2819,7 +2860,7 @@ resend_subscription_requests(#state{user = User,
 	ejabberd_hooks:run_fold(resend_subscription_requests_hook,
 				Server, [], [User, Server]),
     lists:foldl(fun (XMLPacket, AccStateData) ->
-			send_stanza(AccStateData, XMLPacket)
+			send_packet(AccStateData, XMLPacket)
 		end,
 		StateData,
 		PendingSubscriptions).
@@ -2909,13 +2950,30 @@ open_session(StateName, StateData) ->
         erlang:halt()
     end.
 
+%% fsm_next_state: Generate the next_state FSM tuple with different
+%% timeout, depending on the future state
+fsm_next_state(session_established, #state{mgmt_max_queue = exceeded} =
+	       StateData) ->
+    ?WARNING_MSG("ACK queue too long, terminating session for ~s",
+		 [jlib:jid_to_string(StateData#state.jid)]),
+    Err = ?SERRT_POLICY_VIOLATION(StateData#state.lang,
+				  <<"Too many unacked stanzas">>),
+    send_element(StateData, Err),
+    send_trailer(StateData),
+    {stop, normal, StateData#state{mgmt_resend = false}};
+fsm_next_state(session_established, #state{mgmt_state = pending} = StateData) ->
+    fsm_next_state(wait_for_resume, StateData);
 fsm_next_state(session_established, StateData) ->
     {next_state, session_established, StateData,
      ?C2S_HIBERNATE_TIMEOUT};
+fsm_next_state(wait_for_resume, #state{mgmt_timeout = 0} = StateData) ->
+    {stop, normal, StateData};
 fsm_next_state(wait_for_resume, #state{mgmt_pending_since = undefined} =
 	       StateData) ->
+    ?INFO_MSG("Waiting for resumption of stream for ~s",
+	      [jlib:jid_to_string(StateData#state.jid)]),
     {next_state, wait_for_resume,
-     StateData#state{mgmt_pending_since = os:timestamp()},
+     StateData#state{mgmt_state = pending, mgmt_pending_since = os:timestamp()},
      StateData#state.mgmt_timeout};
 fsm_next_state(wait_for_resume, StateData) ->
     Diff = timer:now_diff(os:timestamp(), StateData#state.mgmt_pending_since),
@@ -2932,11 +2990,6 @@ fsm_migrate(StateName, StateData, Node, Timeout) ->
 fsm_reply(Reply, session_established, StateData) ->
     {reply, Reply, session_established, StateData,
      ?C2S_HIBERNATE_TIMEOUT};
-fsm_reply(Reply, wait_for_resume, #state{mgmt_pending_since = undefined} =
-	  StateData) ->
-    {reply, Reply, wait_for_resume,
-     StateData#state{mgmt_pending_since = os:timestamp()},
-     StateData#state.mgmt_timeout};
 fsm_reply(Reply, wait_for_resume, StateData) ->
     Diff = timer:now_diff(os:timestamp(), StateData#state.mgmt_pending_since),
     Timeout = max(StateData#state.mgmt_timeout - Diff div 1000, 1),
@@ -3625,6 +3678,9 @@ maybe_add_delay(El, TZ, From, Desc) ->
     maybe_add_delay(El, TZ, From, Desc,
 		    calendar:now_to_universal_time(now())).
 
+maybe_add_delay(El, TZ, From, Desc, {_, _, _} = TimeStamp) ->
+    maybe_add_delay(El, TZ, From, Desc,
+                    calendar:now_to_universal_time(TimeStamp));
 maybe_add_delay(#xmlel{children = Els} = El, TZ, From,
 		Desc, TimeStamp) ->
     HasOldTS = lists:any(fun (#xmlel{name = <<"x">>,
@@ -3912,15 +3968,20 @@ handle_resume(StateData, Attrs) ->
 				       {<<"h">>, AttrH},
 				       {<<"previd">>, AttrId}],
 			      children = []}),
-	  SendFun = fun(_F, _T, El) -> send_element(NewState, El) end,
+	  SendFun = fun(_F, _T, El, Time) ->
+			    NewEl = add_resent_delay_info(NewState, El, Time),
+			    send_element(NewState, NewEl)
+		    end,
 	  handle_unacked_stanzas(NewState, SendFun),
 	  send_element(NewState,
 		       #xmlel{name = <<"r">>,
 			      attrs = [{<<"xmlns">>, AttrXmlns}],
 			      children = []}),
+	  FlushedState = csi_queue_flush(NewState),
+	  NewStateData = FlushedState#state{csi_state = active},
 	  ?INFO_MSG("Resumed session for ~s",
-		    [jlib:jid_to_string(NewState#state.jid)]),
-	  {ok, NewState};
+		    [jlib:jid_to_string(NewStateData#state.jid)]),
+	  {ok, NewStateData};
       {error, El, Msg} ->
 	  send_element(StateData, El),
 	  ?INFO_MSG("Cannot resume session for ~s@~s: ~s",
@@ -3966,36 +4027,28 @@ mgmt_queue_add(StateData, El) ->
 	       Num ->
 		   Num + 1
 	     end,
-    NewState = limit_queue_length(StateData),
-    NewQueue = queue:in({NewNum, El}, NewState#state.mgmt_queue),
-    NewState#state{mgmt_queue = NewQueue, mgmt_stanzas_out = NewNum}.
+    NewQueue = queue:in({NewNum, now(), El}, StateData#state.mgmt_queue),
+    NewState = StateData#state{mgmt_queue = NewQueue,
+			       mgmt_stanzas_out = NewNum},
+    check_queue_length(NewState).
 
 mgmt_queue_drop(StateData, NumHandled) ->
-    NewQueue = jlib:queue_drop_while(fun({N, _Stanza}) -> N =< NumHandled end,
+    NewQueue = jlib:queue_drop_while(fun({N, _T, _E}) -> N =< NumHandled end,
 				     StateData#state.mgmt_queue),
     StateData#state{mgmt_queue = NewQueue}.
 
-limit_queue_length(#state{mgmt_max_queue = Limit} = StateData)
+check_queue_length(#state{mgmt_max_queue = Limit} = StateData)
     when Limit == infinity;
-	 Limit == unlimited ->
+	 Limit == exceeded ->
     StateData;
-limit_queue_length(#state{jid = JID,
-			  mgmt_queue = Queue,
+check_queue_length(#state{mgmt_queue = Queue,
 			  mgmt_max_queue = Limit} = StateData) ->
-    case queue:len(Queue) >= Limit of
+    case queue:len(Queue) > Limit of
       true ->
-	  ?WARNING_MSG("Dropping stanza from too long ACK queue for ~s",
-		       [jlib:jid_to_string(JID)]),
-	  limit_queue_length(StateData#state{mgmt_queue = queue:drop(Queue)});
+	  StateData#state{mgmt_max_queue = exceeded};
       false ->
 	  StateData
     end.
-
-log_pending_state(StateData) when StateData#state.mgmt_state /= pending ->
-    ?INFO_MSG("Waiting for resumption of stream for ~s",
-	      [jlib:jid_to_string(StateData#state.jid)]);
-log_pending_state(_StateData) ->
-    ok.
 
 handle_unacked_stanzas(StateData, F)
     when StateData#state.mgmt_state == active;
@@ -4008,12 +4061,12 @@ handle_unacked_stanzas(StateData, F)
 	  ?INFO_MSG("~B stanzas were not acknowledged by ~s",
 		    [N, jlib:jid_to_string(StateData#state.jid)]),
 	  lists:foreach(
-	    fun({_, #xmlel{attrs = Attrs} = El}) ->
+	    fun({_, Time, #xmlel{attrs = Attrs} = El}) ->
 		    From_s = xml:get_attr_s(<<"from">>, Attrs),
 		    From = jlib:string_to_jid(From_s),
 		    To_s = xml:get_attr_s(<<"to">>, Attrs),
 		    To = jlib:string_to_jid(To_s),
-		    F(From, To, El)
+		    F(From, To, El, Time)
 	    end, queue:to_list(Queue))
     end;
 handle_unacked_stanzas(_StateData, _F) ->
@@ -4022,18 +4075,29 @@ handle_unacked_stanzas(_StateData, _F) ->
 handle_unacked_stanzas(StateData)
     when StateData#state.mgmt_state == active;
 	 StateData#state.mgmt_state == pending ->
-    ReRoute = case StateData#state.mgmt_resend of
+    ResendOnTimeout =
+	case StateData#state.mgmt_resend of
+	  Resend when is_boolean(Resend) ->
+	      Resend;
+	  if_offline ->
+	      ejabberd_sm:get_user_resources(StateData#state.user,
+					     StateData#state.server) == []
+	end,
+    ReRoute = case ResendOnTimeout of
 		true ->
-		    fun ejabberd_router:route/3;
+		    fun(From, To, El, Time) ->
+			    NewEl = add_resent_delay_info(StateData, El, Time),
+			    ejabberd_router:route(From, To, NewEl)
+		    end;
 		false ->
-		    fun(From, To, El) ->
+		    fun(From, To, El, _Time) ->
 			    Err =
 				jlib:make_error_reply(El,
 						      ?ERR_SERVICE_UNAVAILABLE),
 			    ejabberd_router:route(To, From, Err)
 		    end
 	      end,
-    F = fun(From, To, El) ->
+    F = fun(From, To, El, Time) ->
 		%% We'll drop the stanza if it was <forwarded/> by some
 		%% encapsulating protocol as per XEP-0297.  One such protocol is
 		%% XEP-0280, which says: "When a receiving server attempts to
@@ -4046,7 +4110,7 @@ handle_unacked_stanzas(StateData)
 		      ?DEBUG("Dropping forwarded stanza from ~s",
 			     [xml:get_attr_s(<<"from">>, El#xmlel.attrs)]);
 		  false ->
-		      ReRoute(From, To, El)
+		      ReRoute(From, To, El, Time)
 		end
 	end,
     handle_unacked_stanzas(StateData, F);
@@ -4087,8 +4151,8 @@ inherit_session_state(#state{user = U, server = S} = StateData, ResumeID) ->
 		{error, <<"Previous session PID not found">>};
 	    OldPID ->
 		OldSID = {Time, OldPID},
-		case catch resume_session(OldPID) of
-		  {ok, #state{sid = OldSID} = OldStateData} ->
+		case catch resume_session(OldSID) of
+		  {ok, OldStateData} ->
 		      NewSID = {Time, self()}, % Old time, new PID
 		      Priority = case OldStateData#state.pres_last of
 				   undefined ->
@@ -4101,7 +4165,8 @@ inherit_session_state(#state{user = U, server = S} = StateData, ResumeID) ->
 			      {auth_module, StateData#state.auth_module}],
 		      ejabberd_sm:open_session(NewSID, U, S, R,
 					       Priority, Info),
-		      {ok, StateData#state{sid = NewSID,
+		      {ok, StateData#state{conn = Conn,
+					   sid = NewSID,
 					   jid = OldStateData#state.jid,
 					   resource = OldStateData#state.resource,
 					   pres_t = OldStateData#state.pres_t,
@@ -4111,12 +4176,16 @@ inherit_session_state(#state{user = U, server = S} = StateData, ResumeID) ->
 					   pres_timestamp = OldStateData#state.pres_timestamp,
 					   privacy_list = OldStateData#state.privacy_list,
 					   aux_fields = OldStateData#state.aux_fields,
+					   csi_state = OldStateData#state.csi_state,
+					   csi_queue = OldStateData#state.csi_queue,
 					   mgmt_xmlns = OldStateData#state.mgmt_xmlns,
 					   mgmt_queue = OldStateData#state.mgmt_queue,
 					   mgmt_timeout = OldStateData#state.mgmt_timeout,
 					   mgmt_stanzas_in = OldStateData#state.mgmt_stanzas_in,
 					   mgmt_stanzas_out = OldStateData#state.mgmt_stanzas_out,
 					   mgmt_state = active}};
+		  {error, Msg} ->
+		      {error, Msg};
 		  _ ->
 		      {error, <<"Cannot grab session state">>}
 		end
@@ -4125,8 +4194,8 @@ inherit_session_state(#state{user = U, server = S} = StateData, ResumeID) ->
 	  {error, <<"Invalid 'previd' value">>}
     end.
 
-resume_session(FsmRef) ->
-    (?GEN_FSM):sync_send_all_state_event(FsmRef, resume_session, 3000).
+resume_session({Time, PID}) ->
+    (?GEN_FSM):sync_send_all_state_event(PID, {resume_session, Time}, 3000).
 
 make_resume_id(StateData) ->
     {Time, _} = StateData#state.sid,
@@ -4136,6 +4205,73 @@ fix_packet(StateData, FromJID, ToJID, El) ->
     ejabberd_hooks:run_fold(
       user_send_packet, StateData#state.server,
       El, [StateData, FromJID, ToJID]).
+
+add_resent_delay_info(#state{server = From}, El, Time) ->
+    jlib:add_delay_info(El, From, Time, <<"Resent">>).
+
+%%%----------------------------------------------------------------------
+%%% XEP-0352
+%%%----------------------------------------------------------------------
+
+csi_filter_stanza(#state{csi_state = CsiState, jid = JID} = StateData,
+		  Stanza) ->
+    Action = ejabberd_hooks:run_fold(csi_filter_stanza,
+				     StateData#state.server,
+				     send, [Stanza]),
+    ?DEBUG("Going to ~p stanza for inactive client ~p",
+	   [Action, jlib:jid_to_string(JID)]),
+    case Action of
+      queue -> csi_queue_add(StateData, Stanza);
+      drop -> StateData;
+      send ->
+	  From = xml:get_tag_attr_s(<<"from">>, Stanza),
+	  StateData1 = csi_queue_send(StateData, From),
+	  StateData2 = send_stanza(StateData1#state{csi_state = active},
+				   Stanza),
+	  StateData2#state{csi_state = CsiState}
+    end.
+
+csi_queue_add(#state{csi_queue = Queue} = StateData, Stanza) ->
+    case length(StateData#state.csi_queue) >= csi_max_queue(StateData) of
+      true -> csi_queue_add(csi_queue_flush(StateData), Stanza);
+      false ->
+	  From = xml:get_tag_attr_s(<<"from">>, Stanza),
+	  NewQueue = lists:keystore(From, 1, Queue, {From, now(), Stanza}),
+	  StateData#state{csi_queue = NewQueue}
+    end.
+
+csi_queue_send(#state{csi_queue = Queue, csi_state = CsiState, server = Host} =
+	       StateData, From) ->
+    case lists:keytake(From, 1, Queue) of
+      {value, {From, Time, Stanza}, NewQueue} ->
+	  NewStanza = jlib:add_delay_info(Stanza, Host, Time,
+					  <<"Client Inactive">>),
+	  NewStateData = send_stanza(StateData#state{csi_state = active},
+				     NewStanza),
+	  NewStateData#state{csi_queue = NewQueue, csi_state = CsiState};
+      false -> StateData
+    end.
+
+csi_queue_flush(#state{csi_queue = Queue, csi_state = CsiState, jid = JID,
+		       server = Host} = StateData) ->
+    ?DEBUG("Flushing CSI queue for ~s", [jlib:jid_to_string(JID)]),
+    NewStateData =
+	lists:foldl(fun({_From, Time, Stanza}, AccState) ->
+			    NewStanza =
+				jlib:add_delay_info(Stanza, Host, Time,
+						    <<"Client Inactive">>),
+			    send_stanza(AccState, NewStanza)
+		    end, StateData#state{csi_state = active}, Queue),
+    NewStateData#state{csi_queue = [], csi_state = CsiState}.
+
+%% Make sure we won't push too many messages to the XEP-0198 queue when the
+%% client becomes 'active' again.  Otherwise, the client might not manage to
+%% acknowledge the message flood in time.  Also, don't let the queue grow to
+%% more than 100 stanzas.
+csi_max_queue(#state{mgmt_max_queue = infinity}) -> 100;
+csi_max_queue(#state{mgmt_max_queue = Max}) when Max > 200 -> 100;
+csi_max_queue(#state{mgmt_max_queue = Max}) when Max < 2 -> 1;
+csi_max_queue(#state{mgmt_max_queue = Max}) -> Max div 2.
 
 %%%----------------------------------------------------------------------
 %%% JID Set memory footprint reduction code

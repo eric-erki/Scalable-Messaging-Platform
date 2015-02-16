@@ -1,6 +1,10 @@
 %% Created automatically by XML generator (xml_gen.erl)
 %% Source: xmpp_codec.spec
 
+-record(chatstate, {type :: active | composing | gone | inactive | paused}).
+
+-record(csi, {type :: active | inactive}).
+
 -record(feature_register, {}).
 
 -record(sasl_success, {text :: any()}).
@@ -65,6 +69,7 @@
                     xmlns :: binary()}).
 
 -record(p1_rebind_failure, {reason :: binary()}).
+-record(chatstate_gone, {}).
 
 -record(starttls_failure, {}).
 
@@ -137,6 +142,8 @@
 
 -record(sasl_auth, {mechanism :: binary(),
                     text :: any()}).
+
+-record(feature_csi, {xmlns :: binary()}).
 
 -record(legacy_delay, {stamp :: binary(),
                        from :: any()}).

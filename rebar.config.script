@@ -43,6 +43,8 @@ Macros = lists:flatmap(
 DebugInfo = case lists:keysearch(debug, 1, Cfg) of
                 {value, {debug, true}} ->
                     [];
+                {value, {debug, Key}} ->
+                    [{debug_info_key, Key}];
                 _ ->
                     [no_debug_info]
             end,
@@ -68,8 +70,8 @@ Deps = [{p1_cache_tab, ".*", {git, "git://github.com/processone/cache_tab"}},
         %{p1_tls, ".*", {git, "ssh://git@git.process-one.net:7999/ebe/p1_tls.git"}},  NIF TLS
         {p1_stringprep, ".*", {git, "git://github.com/processone/stringprep"}},
         {p1_xml, ".*", {git, "ssh://git@git.process-one.net:7999/ebe/xml_priv.git"}},
-	{esip, ".*", {git, "git://github.com/processone/p1_sip"}},
-	{p1_stun, ".*", {git, "git://github.com/processone/stun"}},
+        {esip, ".*", {git, "git://github.com/processone/p1_sip"}},
+        {p1_stun, ".*", {git, "git://github.com/processone/stun"}},
         {p1_yaml, ".*", {git, "git://github.com/processone/p1_yaml"}},
         {ehyperloglog, ".*", {git, "https://github.com/vaxelfel/eHyperLogLog.git"}},
         {statsderl, ".*", {git, "https://github.com/lpgauth/statsderl.git"}},
@@ -94,7 +96,7 @@ XMLFlags = lists:foldl(
 PostHooks = [ConfigureCmd("p1_tls", ""),
              ConfigureCmd("p1_stringprep", ""),
              ConfigureCmd("p1_yaml", ""),
-	     ConfigureCmd("esip", ""),
+             ConfigureCmd("esip", ""),
              ConfigureCmd("p1_xml", XMLFlags)],
 
 CfgDeps = lists:flatmap(
@@ -107,11 +109,12 @@ CfgDeps = lists:flatmap(
                ({zlib, true}) ->
                     [{p1_zlib, ".*", {git, "git://github.com/processone/zlib"}}];
                ({riak, true}) ->
-                    [{riakc, ".*",
-		      {git, "git://github.com/basho/riak-erlang-client",
-		       {tag, "1.4.2"}}}];
+                    [{riakc, ".*", {git, "git://github.com/basho/riak-erlang-client", {tag, "1.4.2"}}}];
                ({json, true}) ->
                     [{jiffy, ".*", {git, "git://github.com/davisp/jiffy"}}];
+               ({elixir, true}) ->
+                    [{rebar_elixir_plugin, ".*", {git, "git://github.com/yrashk/rebar_elixir_plugin"}},
+                     {elixir, "1.1.*", {git, "git://github.com/elixir-lang/elixir"}}];
                ({iconv, true}) ->
                     [{p1_iconv, ".*", {git, "git://github.com/processone/eiconv"}}];
                ({http, true}) ->
@@ -140,33 +143,40 @@ CfgPostHooks = lists:flatmap(
                  end, Cfg),
 
 CfgXrefs = lists:flatmap(
-	     fun({mysql, false}) ->
-		     ["(\".*mysql.*\":_/_)"];
-		({pgsql, false}) ->
-		     ["(\".*pgsql.*\":_/_)"];
-		({pam, false}) ->
-		     ["(\"epam\":_/_)"];
-		({riak, false}) ->
-		     ["(\"riak.*\":_/_)"];
-		({riak, true}) ->
-		     % used in map-reduce function called from riak vm
-		     ["(\"riak_object\":_/_)"];
-		({json, false}) ->
-		    ["(\"jiffy\":_/_)"];
-		({p1db, false}) ->
-		     ["(\"p1db.*\":_/_)"];
-		({zlib, false}) ->
-		     ["(\"ezlib\":_/_)"];
-		({http, false}) ->
-		     ["(\"lhttpc\":_/_)"];
-		({iconv, false}) ->
-		     ["(\"iconv\":_/_)"];
-		({odbc, false}) ->
-		     ["(\"odbc\":_/_)"];
-		(_) ->
-		     []
+             fun({mysql, false}) ->
+                     ["(\".*mysql.*\":_/_)"];
+                ({pgsql, false}) ->
+                     ["(\".*pgsql.*\":_/_)"];
+                ({pam, false}) ->
+                     ["(\"epam\":_/_)"];
+                ({riak, false}) ->
+                     ["(\"riak.*\":_/_)"];
+                ({riak, true}) ->
+                     % used in map-reduce function called from riak vm
+                     ["(\"riak_object\":_/_)"];
+                ({json, false}) ->
+                    ["(\"jiffy\":_/_)"];
+                ({p1db, false}) ->
+                     ["(\"p1db.*\":_/_)"];
+                ({zlib, false}) ->
+                     ["(\"ezlib\":_/_)"];
+                ({http, false}) ->
+                     ["(\"lhttpc\":_/_)"];
+                ({iconv, false}) ->
+                     ["(\"iconv\":_/_)"];
+                ({odbc, false}) ->
+                     ["(\"odbc\":_/_)"];
+                (_) ->
+                     []
             end, Cfg),
 
+ElixirConfig = case lists:keysearch(elixir, 1, Cfg) of
+                   {value, {elixir, true}} ->
+                       [{plugins, [rebar_elixir_compiler, rebar_exunit] },
+                        {lib_dirs, ["deps/elixir/lib"]}];
+                   _ ->
+                       []
+               end,
 
 {ok, Cwd} = file:get_cwd(),
 
@@ -186,17 +196,17 @@ Config = [{erl_opts, Macros ++ HiPE ++ DebugInfo ++
            ++ TestConfig
            ++ "-include "
            ++ filename:join([Cwd, "tools"])},
-	  {xref_warnings, false},
+          {xref_warnings, false},
           {xref_checks, []},
-	  {xref_queries,
-	   [{"(XC - UC) || (XU - X - B - "
-	     ++ string:join(["(\"gen_transport\":_/_) - (\"eprof\":_/_)"]
-			    ++ CfgXrefs, " - ") ++ ")", []}]},
+          {xref_queries,
+           [{"(XC - UC) || (XU - X - B - "
+             ++ string:join(["(\"gen_transport\":_/_) - (\"eprof\":_/_)"]
+                            ++ CfgXrefs, " - ") ++ ")", []}]},
           {eunit_compile_opts, [{i, "tools"}]},
           {post_hooks, PostHooks ++ CfgPostHooks},
           {port_env, [{"CFLAGS", "-g -O2 -Wall"}]},
           {port_specs, [{"priv/lib/jlib.so", ["c_src/jlib.c"]}]},
-          {deps, Deps ++ CfgDeps}],
+          {deps, Deps ++ CfgDeps}] ++ ElixirConfig,
 %io:format("ejabberd configuration:~n  ~p~n", [Config]),
 Config.
 

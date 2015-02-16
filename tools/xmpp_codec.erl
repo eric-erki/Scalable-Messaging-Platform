@@ -47,6 +47,14 @@ decode({xmlel, _name, _attrs, _} = _el, Opts) ->
 	  decode_feature_sm(<<"urn:xmpp:sm:2">>, IgnoreEls, _el);
       {<<"sm">>, <<"urn:xmpp:sm:3">>} ->
 	  decode_feature_sm(<<"urn:xmpp:sm:3">>, IgnoreEls, _el);
+      {<<"inactive">>, <<"urn:xmpp:csi:0">>} ->
+	  decode_csi_inactive(<<"urn:xmpp:csi:0">>, IgnoreEls,
+			      _el);
+      {<<"active">>, <<"urn:xmpp:csi:0">>} ->
+	  decode_csi_active(<<"urn:xmpp:csi:0">>, IgnoreEls, _el);
+      {<<"csi">>, <<"urn:xmpp:csi:0">>} ->
+	  decode_feature_csi(<<"urn:xmpp:csi:0">>, IgnoreEls,
+			     _el);
       {<<"sent">>, <<"urn:xmpp:carbons:2">>} ->
 	  decode_carbons_sent(<<"urn:xmpp:carbons:2">>, IgnoreEls,
 			      _el);
@@ -214,6 +222,26 @@ decode({xmlel, _name, _attrs, _} = _el, Opts) ->
 			      _el);
       {<<"delay">>, <<"urn:xmpp:delay">>} ->
 	  decode_delay(<<"urn:xmpp:delay">>, IgnoreEls, _el);
+      {<<"paused">>,
+       <<"http://jabber.org/protocol/chatstates">>} ->
+	  decode_chatstate_paused(<<"http://jabber.org/protocol/chatstates">>,
+				  IgnoreEls, _el);
+      {<<"inactive">>,
+       <<"http://jabber.org/protocol/chatstates">>} ->
+	  decode_chatstate_inactive(<<"http://jabber.org/protocol/chatstates">>,
+				    IgnoreEls, _el);
+      {<<"gone">>,
+       <<"http://jabber.org/protocol/chatstates">>} ->
+	  decode_chatstate_gone(<<"http://jabber.org/protocol/chatstates">>,
+				IgnoreEls, _el);
+      {<<"composing">>,
+       <<"http://jabber.org/protocol/chatstates">>} ->
+	  decode_chatstate_composing(<<"http://jabber.org/protocol/chatstates">>,
+				     IgnoreEls, _el);
+      {<<"active">>,
+       <<"http://jabber.org/protocol/chatstates">>} ->
+	  decode_chatstate_active(<<"http://jabber.org/protocol/chatstates">>,
+				  IgnoreEls, _el);
       {<<"headers">>,
        <<"http://jabber.org/protocol/shim">>} ->
 	  decode_shim_headers(<<"http://jabber.org/protocol/shim">>,
@@ -1070,6 +1098,9 @@ is_known_tag({xmlel, _name, _attrs, _} = _el) ->
       {<<"enable">>, <<"urn:xmpp:sm:3">>} -> true;
       {<<"sm">>, <<"urn:xmpp:sm:2">>} -> true;
       {<<"sm">>, <<"urn:xmpp:sm:3">>} -> true;
+      {<<"inactive">>, <<"urn:xmpp:csi:0">>} -> true;
+      {<<"active">>, <<"urn:xmpp:csi:0">>} -> true;
+      {<<"csi">>, <<"urn:xmpp:csi:0">>} -> true;
       {<<"sent">>, <<"urn:xmpp:carbons:2">>} -> true;
       {<<"received">>, <<"urn:xmpp:carbons:2">>} -> true;
       {<<"private">>, <<"urn:xmpp:carbons:2">>} -> true;
@@ -1172,6 +1203,21 @@ is_known_tag({xmlel, _name, _attrs, _} = _el) ->
 	  true;
       {<<"x">>, <<"jabber:x:delay">>} -> true;
       {<<"delay">>, <<"urn:xmpp:delay">>} -> true;
+      {<<"paused">>,
+       <<"http://jabber.org/protocol/chatstates">>} ->
+	  true;
+      {<<"inactive">>,
+       <<"http://jabber.org/protocol/chatstates">>} ->
+	  true;
+      {<<"gone">>,
+       <<"http://jabber.org/protocol/chatstates">>} ->
+	  true;
+      {<<"composing">>,
+       <<"http://jabber.org/protocol/chatstates">>} ->
+	  true;
+      {<<"active">>,
+       <<"http://jabber.org/protocol/chatstates">>} ->
+	  true;
       {<<"headers">>,
        <<"http://jabber.org/protocol/shim">>} ->
 	  true;
@@ -1975,6 +2021,26 @@ encode({pubsub, _, _, _, _, _, _, _, _} = Pubsub) ->
 encode({shim, _} = Headers) ->
     encode_shim_headers(Headers,
 			[{<<"xmlns">>, <<"http://jabber.org/protocol/shim">>}]);
+encode({chatstate, active} = Active) ->
+    encode_chatstate_active(Active,
+			    [{<<"xmlns">>,
+			      <<"http://jabber.org/protocol/chatstates">>}]);
+encode({chatstate, composing} = Composing) ->
+    encode_chatstate_composing(Composing,
+			       [{<<"xmlns">>,
+				 <<"http://jabber.org/protocol/chatstates">>}]);
+encode({chatstate, gone} = Gone) ->
+    encode_chatstate_gone(Gone,
+			  [{<<"xmlns">>,
+			    <<"http://jabber.org/protocol/chatstates">>}]);
+encode({chatstate, inactive} = Inactive) ->
+    encode_chatstate_inactive(Inactive,
+			      [{<<"xmlns">>,
+				<<"http://jabber.org/protocol/chatstates">>}]);
+encode({chatstate, paused} = Paused) ->
+    encode_chatstate_paused(Paused,
+			    [{<<"xmlns">>,
+			      <<"http://jabber.org/protocol/chatstates">>}]);
 encode({delay, _, _} = Delay) ->
     encode_delay(Delay,
 		 [{<<"xmlns">>, <<"urn:xmpp:delay">>}]);
@@ -2063,6 +2129,14 @@ encode({carbons_received, _} = Received) ->
 encode({carbons_sent, _} = Sent) ->
     encode_carbons_sent(Sent,
 			[{<<"xmlns">>, <<"urn:xmpp:carbons:2">>}]);
+encode({feature_csi, _} = Csi) ->
+    encode_feature_csi(Csi, []);
+encode({csi, active} = Active) ->
+    encode_csi_active(Active,
+		      [{<<"xmlns">>, <<"urn:xmpp:csi:0">>}]);
+encode({csi, inactive} = Inactive) ->
+    encode_csi_inactive(Inactive,
+			[{<<"xmlns">>, <<"urn:xmpp:csi:0">>}]);
 encode({feature_sm, _} = Sm) ->
     encode_feature_sm(Sm, []);
 encode({sm_enable, _, _, _} = Enable) ->
@@ -2225,6 +2299,16 @@ get_ns({pubsub, _, _, _, _, _, _, _, _}) ->
     <<"http://jabber.org/protocol/pubsub">>;
 get_ns({shim, _}) ->
     <<"http://jabber.org/protocol/shim">>;
+get_ns({chatstate, active}) ->
+    <<"http://jabber.org/protocol/chatstates">>;
+get_ns({chatstate, composing}) ->
+    <<"http://jabber.org/protocol/chatstates">>;
+get_ns({chatstate, gone}) ->
+    <<"http://jabber.org/protocol/chatstates">>;
+get_ns({chatstate, inactive}) ->
+    <<"http://jabber.org/protocol/chatstates">>;
+get_ns({chatstate, paused}) ->
+    <<"http://jabber.org/protocol/chatstates">>;
 get_ns({delay, _, _}) -> <<"urn:xmpp:delay">>;
 get_ns({legacy_delay, _, _}) -> <<"jabber:x:delay">>;
 get_ns({streamhost, _, _, _}) ->
@@ -2265,6 +2349,9 @@ get_ns({carbons_private}) -> <<"urn:xmpp:carbons:2">>;
 get_ns({carbons_received, _}) ->
     <<"urn:xmpp:carbons:2">>;
 get_ns({carbons_sent, _}) -> <<"urn:xmpp:carbons:2">>;
+get_ns({feature_csi, _}) -> <<"urn:xmpp:csi:0">>;
+get_ns({csi, active}) -> <<"urn:xmpp:csi:0">>;
+get_ns({csi, inactive}) -> <<"urn:xmpp:csi:0">>;
 get_ns(_) -> <<>>.
 
 dec_int(Val) -> dec_int(Val, infinity, infinity).
@@ -2426,6 +2513,7 @@ pp(pubsub, 8) ->
     [subscriptions, affiliations, publish, subscribe,
      unsubscribe, options, items, retract];
 pp(shim, 1) -> [headers];
+pp(chatstate, 1) -> [type];
 pp(delay, 2) -> [stamp, from];
 pp(legacy_delay, 2) -> [stamp, from];
 pp(streamhost, 3) -> [jid, host, port];
@@ -2459,6 +2547,8 @@ pp(carbons_enable, 0) -> [];
 pp(carbons_private, 0) -> [];
 pp(carbons_received, 1) -> [forwarded];
 pp(carbons_sent, 1) -> [forwarded];
+pp(feature_csi, 1) -> [xmlns];
+pp(csi, 1) -> [type];
 pp(feature_sm, 1) -> [xmlns];
 pp(sm_enable, 3) -> [max, resume, xmlns];
 pp(sm_enabled, 5) -> [id, location, max, resume, xmlns];
@@ -3427,6 +3517,54 @@ decode_feature_sm_attr_xmlns(__TopXMLNS, _val) -> _val.
 
 encode_feature_sm_attr_xmlns(undefined, _acc) -> _acc;
 encode_feature_sm_attr_xmlns(_val, _acc) ->
+    [{<<"xmlns">>, _val} | _acc].
+
+decode_csi_inactive(__TopXMLNS, __IgnoreEls,
+		    {xmlel, <<"inactive">>, _attrs, _els}) ->
+    {csi, inactive}.
+
+encode_csi_inactive({csi, inactive}, _xmlns_attrs) ->
+    _els = [],
+    _attrs = _xmlns_attrs,
+    {xmlel, <<"inactive">>, _attrs, _els}.
+
+decode_csi_active(__TopXMLNS, __IgnoreEls,
+		  {xmlel, <<"active">>, _attrs, _els}) ->
+    {csi, active}.
+
+encode_csi_active({csi, active}, _xmlns_attrs) ->
+    _els = [],
+    _attrs = _xmlns_attrs,
+    {xmlel, <<"active">>, _attrs, _els}.
+
+decode_feature_csi(__TopXMLNS, __IgnoreEls,
+		   {xmlel, <<"csi">>, _attrs, _els}) ->
+    Xmlns = decode_feature_csi_attrs(__TopXMLNS, _attrs,
+				     undefined),
+    {feature_csi, Xmlns}.
+
+decode_feature_csi_attrs(__TopXMLNS,
+			 [{<<"xmlns">>, _val} | _attrs], _Xmlns) ->
+    decode_feature_csi_attrs(__TopXMLNS, _attrs, _val);
+decode_feature_csi_attrs(__TopXMLNS, [_ | _attrs],
+			 Xmlns) ->
+    decode_feature_csi_attrs(__TopXMLNS, _attrs, Xmlns);
+decode_feature_csi_attrs(__TopXMLNS, [], Xmlns) ->
+    decode_feature_csi_attr_xmlns(__TopXMLNS, Xmlns).
+
+encode_feature_csi({feature_csi, Xmlns},
+		   _xmlns_attrs) ->
+    _els = [],
+    _attrs = encode_feature_csi_attr_xmlns(Xmlns,
+					   _xmlns_attrs),
+    {xmlel, <<"csi">>, _attrs, _els}.
+
+decode_feature_csi_attr_xmlns(__TopXMLNS, undefined) ->
+    undefined;
+decode_feature_csi_attr_xmlns(__TopXMLNS, _val) -> _val.
+
+encode_feature_csi_attr_xmlns(undefined, _acc) -> _acc;
+encode_feature_csi_attr_xmlns(_val, _acc) ->
     [{<<"xmlns">>, _val} | _acc].
 
 decode_carbons_sent(__TopXMLNS, __IgnoreEls,
@@ -6460,6 +6598,56 @@ decode_delay_attr_from(__TopXMLNS, _val) ->
 encode_delay_attr_from(undefined, _acc) -> _acc;
 encode_delay_attr_from(_val, _acc) ->
     [{<<"from">>, enc_jid(_val)} | _acc].
+
+decode_chatstate_paused(__TopXMLNS, __IgnoreEls,
+			{xmlel, <<"paused">>, _attrs, _els}) ->
+    {chatstate, paused}.
+
+encode_chatstate_paused({chatstate, paused},
+			_xmlns_attrs) ->
+    _els = [],
+    _attrs = _xmlns_attrs,
+    {xmlel, <<"paused">>, _attrs, _els}.
+
+decode_chatstate_inactive(__TopXMLNS, __IgnoreEls,
+			  {xmlel, <<"inactive">>, _attrs, _els}) ->
+    {chatstate, inactive}.
+
+encode_chatstate_inactive({chatstate, inactive},
+			  _xmlns_attrs) ->
+    _els = [],
+    _attrs = _xmlns_attrs,
+    {xmlel, <<"inactive">>, _attrs, _els}.
+
+decode_chatstate_gone(__TopXMLNS, __IgnoreEls,
+		      {xmlel, <<"gone">>, _attrs, _els}) ->
+    {chatstate, gone}.
+
+encode_chatstate_gone({chatstate, gone},
+		      _xmlns_attrs) ->
+    _els = [],
+    _attrs = _xmlns_attrs,
+    {xmlel, <<"gone">>, _attrs, _els}.
+
+decode_chatstate_composing(__TopXMLNS, __IgnoreEls,
+			   {xmlel, <<"composing">>, _attrs, _els}) ->
+    {chatstate, composing}.
+
+encode_chatstate_composing({chatstate, composing},
+			   _xmlns_attrs) ->
+    _els = [],
+    _attrs = _xmlns_attrs,
+    {xmlel, <<"composing">>, _attrs, _els}.
+
+decode_chatstate_active(__TopXMLNS, __IgnoreEls,
+			{xmlel, <<"active">>, _attrs, _els}) ->
+    {chatstate, active}.
+
+encode_chatstate_active({chatstate, active},
+			_xmlns_attrs) ->
+    _els = [],
+    _attrs = _xmlns_attrs,
+    {xmlel, <<"active">>, _attrs, _els}.
 
 decode_shim_headers(__TopXMLNS, __IgnoreEls,
 		    {xmlel, <<"headers">>, _attrs, _els}) ->
