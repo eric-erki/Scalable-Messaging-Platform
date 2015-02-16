@@ -1276,7 +1276,7 @@ add_rosteritem2(User, Server, JID, Nick, Group,
 		     ask = none,
 		     subscription = jlib:binary_to_atom(Subscription),
 		     groups = Groups},
-    Result = case roster_backend(Server) of
+    Result = case gen_mod:db_type(Server, mod_roster) of
 	       mnesia ->
 		   mnesia:transaction(fun () ->
 					      case mnesia:read({roster,
@@ -1320,11 +1320,13 @@ add_rosteritem2(User, Server, JID, Nick, Group,
 							      end
 						      end)
 		       of
-		     {atomic, already_added} -> {atomic, already_added};
-		     {atomic, _} -> {atomic, ok};
-		     Error -> Error
+		       {atomic, already_added} -> {atomic, already_added};
+		       {atomic, _} -> {atomic, ok};
+		       Error -> Error
 		   end;
-	       none -> {atomic, ok}
+		 rest -> {atomic, ok};
+		 _Other -> ?ERROR_MSG("This command is not supported with roster backend ~p", [_Other]),
+			   error
 	     end,
     case {Result, Push} of
       {{atomic, already_added}, _} ->
