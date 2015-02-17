@@ -1842,7 +1842,7 @@ client_state_slave(Config) ->
 	     body = [#text{data = <<"body">>}]}),
     wait_for_master(Config),
     send(Config, #csi{type = active}),
-    ?recv2(#presence{from = Peer, type = unavailable, sub_els = [#delay{}]},
+    ?recv2(#presence{from = Peer, type = unavailable, sub_els = [#delay{}, #legacy_delay{}]},
 	   #message{from = Peer, thread = <<"1">>,
 		    sub_els = [#chatstate{type = active}]}),
     disconnect(Config).
