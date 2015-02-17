@@ -18,10 +18,11 @@
 -define(EJABBERD_CT_URI, <<"http://www.process-one.net/en/ejabberd_ct/">>).
 
 -define(recv1(P1),
-        (fun() ->
-                 case recv() of
-                     P1 -> P1;
-                     V1 -> suite:match_failure([V1], [P1]);
+        P1 = (fun() ->
+                 V = recv(),
+                 case V of
+                     P1 -> V;
+                     _ -> suite:match_failure([V], [??P1])
                  end
          end)()).
 
