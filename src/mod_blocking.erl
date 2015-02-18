@@ -152,7 +152,9 @@ process_blocklist_block(LUser, LServer, JIDs) ->
 	  broadcast_blocklist_event(LUser, LServer,
 				    {block, JIDs}),
 	  {result, [], UserList};
-      _ -> {error, ?ERR_INTERNAL_SERVER_ERROR}
+      _Err ->
+	    ?ERROR_MSG("Error processing ~p: ~p", [{LUser, LServer, JIDs}, _Err]),
+	    {error, ?ERR_INTERNAL_SERVER_ERROR}
     end.
 
 process_blocklist_block(LUser, LServer, Filter,
@@ -299,7 +301,9 @@ process_blocklist_unblock_all(LUser, LServer) ->
 				UserList),
 	  broadcast_blocklist_event(LUser, LServer, unblock_all),
 	  {result, [], UserList};
-      _ -> {error, ?ERR_INTERNAL_SERVER_ERROR}
+      _Err ->
+	    ?ERROR_MSG("Error processing ~p: ~p", [{LUser, LServer}, _Err]),
+	    {error, ?ERR_INTERNAL_SERVER_ERROR}
     end.
 
 process_blocklist_unblock(LUser, LServer, JIDs) ->
@@ -321,7 +325,9 @@ process_blocklist_unblock(LUser, LServer, JIDs) ->
 	  broadcast_blocklist_event(LUser, LServer,
 				    {unblock, JIDs}),
 	  {result, [], UserList};
-      _ -> {error, ?ERR_INTERNAL_SERVER_ERROR}
+      _Err ->
+	    ?ERROR_MSG("Error processing ~p: ~p", [{LUser, LServer, JIDs}, _Err]),
+	    {error, ?ERR_INTERNAL_SERVER_ERROR}
     end.
 
 unblock_by_filter(LUser, LServer, Filter, mnesia) ->
