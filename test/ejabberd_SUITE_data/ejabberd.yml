@@ -48,9 +48,6 @@ host_config:
         db_type: odbc
       mod_carboncopy:
         db_type: odbc
-      mod_client_state:
-        drop_chat_states: true
-        queue_presence: true
       mod_adhoc: []
       mod_configure: []
       mod_disco: []
@@ -113,9 +110,6 @@ Welcome to this XMPP server."
         db_type: odbc
       mod_carboncopy:
         db_type: odbc
-      mod_client_state:
-        drop_chat_states: true
-        queue_presence: true
       mod_adhoc: []
       mod_configure: []
       mod_disco: []
@@ -162,9 +156,6 @@ Welcome to this XMPP server."
         db_type: p1db
       mod_carboncopy:
         db_type: p1db
-      mod_client_state:
-        drop_chat_states: true
-        queue_presence: true
       mod_adhoc: []
       mod_configure: []
       mod_disco: []
@@ -219,9 +210,6 @@ Welcome to this XMPP server."
         db_type: internal
       mod_carboncopy:
         db_type: internal
-      mod_client_state:
-        drop_chat_states: true
-        queue_presence: true
       mod_adhoc: []
       mod_configure: []
       mod_disco: []
@@ -382,6 +370,9 @@ Welcome to this XMPP server."
   mod_stats: []
   mod_time: []
   mod_version: []
+  mod_client_state:
+    drop_chat_states: true
+    queue_presence: true
 registration_timeout: infinity
 shaper: 
   fast: 50000

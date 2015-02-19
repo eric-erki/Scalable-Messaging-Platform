@@ -192,7 +192,9 @@ no_db_tests() ->
        p1_rebind_reconnect,
        disco]},
      {test_proxy65, [parallel],
-      [proxy65_master, proxy65_slave]}].
+      [proxy65_master, proxy65_slave]},
+     {test_client_state, [parallel],
+      [client_state_master, client_state_slave]}].
 
 db_tests(p1db) ->
     %% No support for mod_pubsub so far
@@ -219,8 +221,6 @@ db_tests(p1db) ->
       [mam_master, mam_slave]},
      {test_carbons, [parallel],
       [carbons_master, carbons_slave]},
-     {test_client_state, [parallel],
-      [client_state_master, client_state_slave]},
      {test_muc, [parallel],
       [muc_master, muc_slave]},
      {test_announce, [sequence],
@@ -286,8 +286,6 @@ db_tests(_) ->
       [mam_master, mam_slave]},
      {test_carbons, [parallel],
       [carbons_master, carbons_slave]},
-     {test_client_state, [parallel],
-      [client_state_master, client_state_slave]},
      {test_muc, [parallel],
       [muc_master, muc_slave]},
      {test_announce, [sequence],
@@ -1837,7 +1835,7 @@ client_state_slave(Config) ->
     Peer = ?config(master, Config),
     send(Config, #csi{type = inactive}),
     wait_for_master(Config),
-    ?recv1(#presence{from = Peer, sub_els = [#vcard_xupdate{}|_]}),
+    ?recv1(#presence{from = Peer, sub_els = [#delay{}, #legacy_delay{}]}),
     ?recv1(#message{from = Peer, thread = <<"1">>, sub_els = [#chatstate{type = active}],
 	     body = [#text{data = <<"body">>}]}),
     wait_for_master(Config),
