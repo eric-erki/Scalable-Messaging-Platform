@@ -35,7 +35,7 @@
 	 register_route/2, register_routes/1, unregister_route/1,
 	 unregister_routes/1, dirty_get_all_routes/0,
 	 dirty_get_all_domains/0, make_id/0, get_domain_balancing/1,
-         check_consistency/0, merge_pids/3]).
+         check_consistency/0]).
 
 -export([start_link/0]).
 
@@ -105,33 +105,13 @@ register_route(Domain, LocalHint) ->
             mnesia:dirty_write(#route{domain = LDomain,
                                       local_hint = LocalHint});
         LDomain ->
-            case mnesia:dirty_read(route, LDomain) of
-                [#route{pid = Pids, clock = V1} = R] ->
-                    V2 = vclock:increment(node(), V1),
-                    NewPids = add_pid(self(), Pids, LDomain),
-		    NewR = R#route{clock = V2, pid = NewPids},
-		    lists:foreach(
-		      fun(Node) when Node == node() ->
-			      gen_server:call(?MODULE, {write, NewR});
-			 (Node) ->
-			      ejabberd_cluster:send(
-				{?MODULE, Node}, {write, NewR})
-		      end, ejabberd_cluster:get_nodes());
-                [] ->
-		    NewR = #route{clock = vclock:increment(
-					    node(), vclock:fresh()),
-				  pid = add_pid(self(), [], LDomain),
-				  domain = LDomain},
-		    lists:foreach(
-		      fun(Node) when Node == node() ->
-			      gen_server:call(?MODULE, {write, NewR});
-			 (Node) ->
-			      ejabberd_cluster:send(
-				{?MODULE, Node}, {write, NewR})
-		      end, ejabberd_cluster:get_nodes());
-                _ ->
-                    ok
-            end
+	    Msg = {register_route, self(), LDomain},
+	    lists:foreach(
+	      fun(Node) when Node == node() ->
+		      gen_server:call(?MODULE, Msg);
+		 (Node) ->
+		      ejabberd_cluster:send({?MODULE, Node}, Msg)
+	      end, ejabberd_cluster:get_nodes())
     end.
 
 -spec register_routes([binary()]) -> ok.
@@ -151,36 +131,39 @@ unregister_route(Domain) ->
             case mnesia:dirty_read(route, LDomain) of
                 [#route{local_hint = LHint}] when LHint /= undefined ->
                     mnesia:dirty_delete(route, LDomain);
-                [#route{pid = Pids, clock = V} = R] ->
-                    NewPids = del_pid(self(), Pids, LDomain),
-		    NewR = R#route{clock = vclock:increment(node(), V),
-				   pid = NewPids},
+                [_] ->
+		    Msg = {unregister_route, node(), LDomain},
 		    lists:foreach(
 		      fun(Node) when Node == node() ->
-			      gen_server:call(?MODULE, {write, NewR});
+			      gen_server:call(?MODULE, Msg);
 			 (Node) ->
-			      ejabberd_cluster:send({?MODULE, Node},
-						    {write, NewR})
+			      ejabberd_cluster:send({?MODULE, Node}, Msg)
 		      end, ejabberd_cluster:get_nodes());
-                [] ->
+		[] ->
                     ok
             end
     end.
 
-write_route(#route{pid = Pids1, clock = V1, domain = Domain} = R1) ->
-    case mnesia:dirty_read(route, Domain) of
-	[#route{pid = Pids2, clock = V2} = R2] ->
-	    case vclock:merge([V1, V2]) of
-		V1 ->
-		    mnesia:dirty_write(R1);
-		V2 ->
-		    mnesia:dirty_write(R2);
-		V ->
-		    Pids = merge_pids(Pids1, Pids2, Domain),
-		    mnesia:dirty_write(R1#route{pid = Pids, clock = V})
+add_route(Pid, LDomain) ->
+    case mnesia:dirty_read(route, LDomain) of
+	[R] ->
+	    Pids = lists:usort([Pid|R#route.pid]),
+	    mnesia:dirty_write(R#route{pid = Pids});
+	[] ->
+	    mnesia:dirty_write(#route{pid = [Pid], domain = LDomain})
+    end.
+
+del_route(Node, LDomain) ->
+    case mnesia:dirty_read(route, LDomain) of
+	[R] ->
+	    case lists:filter(fun(P) -> node(P) /= Node end, R#route.pid) of
+		[] ->
+		    mnesia:dirty_delete(route, LDomain);
+		Pids ->
+		    mnesia:dirty_write(R#route{pid = Pids})
 	    end;
 	[] ->
-	    mnesia:dirty_write(R1)
+	    ok
     end.
 
 -spec unregister_routes([binary()]) -> ok.
@@ -236,8 +219,11 @@ init([]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
-handle_call({write, Route}, _From, State) ->
-    Res = write_route(Route),
+handle_call({register_route, Pid, LDomain}, _From, State) ->
+    Res = add_route(Pid, LDomain),
+    {reply, Res, State};
+handle_call({unregister_route, Node, LDomain}, _From, State) ->
+    Res = del_route(Node, LDomain),
     {reply, Res, State};
 handle_call(_Request, _From, State) ->
     Reply = ok, {reply, Reply, State}.
@@ -264,32 +250,31 @@ handle_info({route, From, To, Packet}, State) ->
       _ -> ok
     end,
     {noreply, State};
-handle_info({write, Route}, State) ->
-    write_route(Route),
+handle_info({register_route, Pid, LDomain}, State) ->
+    add_route(Pid, LDomain),
+    {noreply, State};
+handle_info({unregister_route, Node, LDomain}, State) ->
+    del_route(Node, LDomain),
     {noreply, State};
 handle_info({node_up, Node}, State) ->
     lists:foreach(
-      fun(#route{pid = Pids} = R) ->
-	      case lists:any(
-		     fun(Pid) ->
-			     node(Pid) == node()
-		     end, Pids) of
-		  true ->
-		      ejabberd_cluster:send({?MODULE, Node}, {write, R});
-		  false ->
-		      ok
-	      end
+      fun(#route{local_hint = undefined} = R) ->
+	      Pids = lists:filter(fun(P) -> node(P) == node() end, R#route.pid),
+	      lists:foreach(
+		fun(P) ->
+			Msg = {register_route, P, R#route.domain},
+			ejabberd_cluster:send({?MODULE, Node}, Msg)
+		end, Pids);
+	 (_) ->
+	      ok
       end, ets:tab2list(route)),
     {noreply, State};
 handle_info({node_down, Node}, State) ->
     lists:foreach(
-      fun(#route{pid = []}) ->
-              ok;
-         (#route{pid = Pids, clock = V, domain = Domain} = R) ->
-              NewV = vclock:increment(node(), V),
-              NewPids = del_pid_by_node(Node, Pids, Domain),
-              mnesia:dirty_write(
-                R#route{pid = NewPids, clock = NewV})
+      fun(#route{local_hint = undefined} = R) ->
+	      del_route(Node, R#route.domain);
+	 (_) ->
+	      ok
       end, ets:tab2list(route)),
     {noreply, State};
 handle_info(_Info, State) ->
@@ -486,66 +471,6 @@ get_domain_balancing(LDomain) ->
          (bare_destination) -> bare_destination;
          (broadcast) -> broadcast
       end, bare_destination).
-
-merge_pids(Pids1, Pids2, Domain) ->
-    case get_component_number(Domain) of
-        undefined ->
-            lists:usort(Pids1 ++ Pids2);
-        _N ->
-            %% TODO: This is totally wrong and should be rewritten
-            D1 = to_orddict(Pids1),
-            D2 = to_orddict(Pids2),
-            D = orddict:merge(
-                  fun(_, Pid, undefined) -> Pid;
-                     (_, undefined, Pid) -> Pid;
-                     (_, Pid, Pid) -> Pid;
-                     (_Node, _Pid1, _Pid2) -> undefined
-                  end, D1, D2),
-            from_orddict(D)
-    end.
-
-to_orddict(Pids) ->
-    lists:map(
-      fun(Pid) when is_pid(Pid) ->
-              {node(Pid), Pid};
-         (Node) ->
-              {Node, undefined}
-      end, Pids).
-
-from_orddict(NodePids) ->
-    lists:map(
-      fun({Node, undefined}) -> Node;
-         ({_, Pid}) -> Pid
-      end, NodePids).
-
-add_pid(Pid, Pids, Domain) ->
-    merge_pids([Pid], Pids, Domain).
-
-del_pid(Pid, Pids, Domain) ->
-    case get_component_number(Domain) of
-        undefined ->
-            lists:delete(Pid, Pids);
-        _ ->
-            lists:map(
-              fun(P) when P == Pid ->
-                      node(P);
-                 (P) ->
-                      P
-              end, Pids)
-    end.
-
-del_pid_by_node(Node, Pids, Domain) ->
-    case get_component_number(Domain) of
-        undefined ->
-            lists:filter(fun(P) -> node(P) /= Node end, Pids);
-        _ ->
-            lists:map(
-              fun(P) when node(P) == Node ->
-                      Node;
-                 (P) ->
-                      P
-              end, Pids)
-    end.
 
 check_consistency() ->
     Rs = lists:flatmap(
