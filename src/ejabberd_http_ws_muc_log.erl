@@ -47,7 +47,7 @@
 
 -record(state,
 	{socket                       :: ws_socket(),
-         ws                           :: ejabberd_ws:ws_ref()}).
+         ws                           :: {#ws{}, pid()}}).
 
 %-define(DBGFSM, true).
 

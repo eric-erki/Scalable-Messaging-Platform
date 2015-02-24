@@ -38,10 +38,7 @@
 -record(ws,
 	{socket                  :: inet:socket() | p1_tls:tls_socket(),
 	 sockmod = gen_tcp       :: gen_tcp | p1_tls,
-	 ws_autoexit = false     :: boolean(),
 	 ip                      :: {inet:ip_address(), inet:port_number()},
-	 vsn                     :: vsn(),
-	 origin = <<"">>         :: binary(),
 	 host = <<"">>           :: binary(),
 	 port = 5280             :: inet:port_number(),
 	 path = []               :: [binary()],
@@ -53,4 +50,3 @@
 -type method() :: 'GET' | 'HEAD' | 'DELETE' | 'OPTIONS' | 'PUT' | 'POST' | 'TRACE'.
 -type protocol() :: http | https.
 -type http_request() :: #request{}.
--type vsn() :: {'draft-hybi' | 'draft-hixie', non_neg_integer()}.
