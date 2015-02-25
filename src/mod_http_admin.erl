@@ -50,6 +50,36 @@
 -include("logger.hrl").
 -include("ejabberd_http.hrl").
 
+-define(CT_PLAIN,
+        {<<"Content-Type">>, <<"text/plain">>}).
+
+-define(CT_XML,
+        {<<"Content-Type">>, <<"text/xml; charset=utf-8">>}).
+
+-define(CT_JSON,
+        {<<"Content-Type">>, <<"application/json">>}).
+
+-define(AC_ALLOW_ORIGIN,
+        {<<"Access-Control-Allow-Origin">>, <<"*">>}).
+
+-define(AC_ALLOW_METHODS,
+        {<<"Access-Control-Allow-Methods">>,
+         <<"GET, POST, OPTIONS">>}).
+
+-define(AC_ALLOW_HEADERS,
+        {<<"Access-Control-Allow-Headers">>,
+         <<"Content-Type">>}).
+
+-define(AC_MAX_AGE,
+        {<<"Access-Control-Max-Age">>, <<"86400">>}).
+
+-define(OPTIONS_HEADER,
+        [?CT_PLAIN, ?AC_ALLOW_ORIGIN, ?AC_ALLOW_METHODS,
+         ?AC_ALLOW_HEADERS, ?AC_MAX_AGE]).
+
+-define(HEADER(CType),
+        [CType, ?AC_ALLOW_ORIGIN, ?AC_ALLOW_HEADERS]).
+
 %% -------------------
 %% Module control
 %% -------------------
@@ -108,7 +138,7 @@ stop(_Host) ->
 
 process(_, #request{method = 'POST', data = <<>>}) ->
     ?DEBUG("Bad Request: no data", []),
-    http_response(400, <<"400 Bad Request">>);
+    badrequest_response();
 process([Call], #request{method = 'POST', data = Data, ip = IP}) ->
     try
         Args = case jiffy:decode(Data) of
@@ -118,10 +148,10 @@ process([Call], #request{method = 'POST', data = Data, ip = IP}) ->
         end,
         log(Call, Args, IP),
         {Code, Result} = handle(Call, Args),
-        http_response(Code, jiffy:encode(Result))
+        json_response(Code, jiffy:encode(Result))
     catch Error ->
         ?DEBUG("Bad Request: ~p", [element(2, Error)]),
-        http_response(400, <<"400 Bad Request">>)
+        badrequest_response()
     end;
 process([Call], #request{method = 'GET', q = Data, ip = IP}) ->
     try
@@ -131,14 +161,16 @@ process([Call], #request{method = 'GET', q = Data, ip = IP}) ->
         end,
         log(Call, Args, IP),
         {Code, Result} = handle(Call, Args),
-        http_response(Code, jiffy:encode(Result))
+        json_response(Code, jiffy:encode(Result))
     catch Error ->
         ?DEBUG("Bad Request: ~p", [element(2, Error)]),
-        http_response(400, <<"400 Bad Request">>)
+        badrequest_response()
     end;
+process([], #request{method = 'OPTIONS', data = <<>>}) ->
+    {200, ?OPTIONS_HEADER, []};
 process(_Path, Request) ->
     ?DEBUG("Bad Request: no handler ~p", [Request]),
-    http_response(400, <<"400 Bad Request">>).
+    badrequest_response().
 
 %% ----------------
 %% command handlers
@@ -264,8 +296,12 @@ format_result(Tuple, {Name, {tuple, Def}}) ->
 format_result(404, {_Name, _}) ->
     "not_found".
 
-http_response(Code, Body) ->
-    {Code, [{<<"content-type">>,<<"application/json">>}], Body}.
+badrequest_response() ->
+    {400, ?HEADER(?CT_XML),
+     #xmlel{name = <<"h1">>, attrs = [],
+            children = [{xmlcdata, <<"400 Bad Request">>}]}}.
+json_response(Code, Body) ->
+    {Code, ?HEADER(?CT_JSON), Body}.
 
 log(Call, Args, {Addr, Port}) ->
     AddrS = jlib:ip_to_list({Addr, Port}),
