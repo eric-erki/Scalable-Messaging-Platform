@@ -272,20 +272,17 @@ unmask_int(3, <<_:24, M:8>> = Mask,
     unmask_int(0, Mask, Rest,
 		      <<Acc/binary, (M bxor N):8>>).
 
-unmask(#frame_info{mask = none} = State,
-	      Data) ->
+unmask(#frame_info{mask = none} = State, Data) ->
     {State, Data};
-unmask(#frame_info{mask = Mask,
-			    offset = Offset} =
-		  State,
-	      Data) ->
+unmask(#frame_info{mask = Mask, offset = Offset} = State, Data) ->
     {Unmasked, NewOffset} = unmask_int(Offset, Mask,
 					      Data, <<>>),
     {State#frame_info{offset = NewOffset}, Unmasked}.
 
 process_frame(none, Data) ->
     process_frame(#frame_info{}, Data);
-process_frame(FrameInfo, <<>>) -> {FrameInfo, [], []};
+process_frame(#frame_info{left = Left} = FrameInfo, <<>>) when Left > 0 ->
+    {FrameInfo, [], []};
 process_frame(#frame_info{unprocessed = none,
 			     unmasked = UnmaskedPre, left = Left} =
 		   State,
@@ -353,7 +350,7 @@ process_frame(#frame_info{unprocessed = <<>>} =
             {FrameInfo#frame_info{unprocessed = Data}, [], []};
         {Len, Final, Opcode, Mask, Rest} ->
             process_frame(FrameInfo#frame_info{mask = Mask,
-                                             final_frame = Final == 1,
+                                               final_frame = Final == 1,
                                                left = Len, opcode = Opcode,
                                                unprocessed = none},
                           Rest)
