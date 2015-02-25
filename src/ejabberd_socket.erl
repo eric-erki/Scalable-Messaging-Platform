@@ -40,7 +40,7 @@
 -include("logger.hrl").
 -include("jlib.hrl").
 
--type sockmod() :: ejabberd_http_poll | ejabberd_bosh |
+-type sockmod() :: ejabberd_bosh |
                    ejabberd_http_bind | ejabberd_http_bindjson |
                    ejabberd_http_ws | ejabberd_http_wsjson |
                    gen_tcp | p1_tls | ezlib.
@@ -49,8 +49,7 @@
                   p1_tls:tls_socket() |
                   ezlib:zlib_socket() |
                   ejabberd_bosh:bosh_socket() |
-                  ejabberd_http_ws:ws_socket() |
-                  ejabberd_http_poll:poll_socket().
+                  ejabberd_http_ws:ws_socket().
 
 -record(socket_state, {sockmod = gen_tcp :: sockmod(),
                        socket = self() :: socket(),
@@ -266,7 +265,6 @@ get_conn_type(#socket_state{sockmod = SockMod, socket = Socket}) ->
                 gen_tcp -> c2s_compressed;
                 p1_tls -> c2s_compressed_tls
             end;
-        ejabberd_http_poll -> http_poll;
         ejabberd_http_ws -> http_ws;
         ejabberd_http_bind -> http_bind;
         ejabberd_bosh -> http_bind;

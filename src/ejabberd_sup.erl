@@ -166,14 +166,6 @@ init([]) ->
 	 infinity,
 	 supervisor,
 	 [ejabberd_tmp_sup]},
-    HTTPPollSupervisor =
-	{ejabberd_http_poll_sup,
-	 {ejabberd_tmp_sup, start_link,
-	  [ejabberd_http_poll_sup, ejabberd_http_poll]},
-	 permanent,
-	 infinity,
-	 supervisor,
-	 [ejabberd_tmp_sup]},
     FrontendSocketSupervisor =
 	{ejabberd_frontend_socket_sup,
 	 {ejabberd_tmp_sup, start_link,
@@ -215,7 +207,6 @@ init([]) ->
 	   S2SOutSupervisor,
 	   ServiceSupervisor,
 	   HTTPSupervisor,
-	   HTTPPollSupervisor,
 	   IQSupervisor,
 	   FrontendSocketSupervisor,
 	   Listener]}}.

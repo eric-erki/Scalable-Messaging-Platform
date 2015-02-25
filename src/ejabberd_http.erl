@@ -122,10 +122,6 @@ init({SockMod, Socket}, Opts) ->
              true -> [{[<<"http-bind">>], mod_http_bind}];
              false -> []
            end,
-    Poll = case proplists:get_bool(http_poll, Opts) of
-             true -> [{[<<"http-poll">>], ejabberd_http_poll}];
-             false -> []
-           end,
     XMLRPC = case proplists:get_bool(xmlrpc, Opts) of
 		 true -> [{[], ejabberd_xmlrpc}];
 		 false -> []
@@ -138,7 +134,7 @@ init({SockMod, Socket}, Opts) ->
                                   Mod} || {Path, Mod} <- Hs]
                         end, []),
     RequestHandlers = DefinedHandlers ++ Captcha ++ Register ++
-        Admin ++ Bind ++ Poll ++ XMLRPC,
+        Admin ++ Bind ++ XMLRPC,
     ?DEBUG("S: ~p~n", [RequestHandlers]),
     WebSocketHandlers = gen_mod:get_opt(
                           websocket_handlers, Opts,
@@ -903,8 +899,6 @@ transform_listen_option(web_admin, Opts) ->
     [{web_admin, true}|Opts];
 transform_listen_option(http_bind, Opts) ->
     [{http_bind, true}|Opts];
-transform_listen_option(http_poll, Opts) ->
-    [{http_poll, true}|Opts];
 transform_listen_option({request_handlers, Hs}, Opts) ->
     Hs1 = lists:map(
             fun({PList, Mod}) when is_list(PList) ->
