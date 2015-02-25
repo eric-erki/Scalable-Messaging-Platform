@@ -43,10 +43,14 @@
 
 -include("ejabberd_http.hrl").
 
+-define(PING_INTERVAL, 60).
 -define(WEBSOCKET_TIMEOUT, 300).
 
 -record(state,
         {socket                       :: ws_socket(),
+         ping_interval = ?PING_INTERVAL :: pos_integer(),
+         ping_timer = make_ref()      :: reference(),
+         pong_expected                :: boolean(),
          timeout = ?WEBSOCKET_TIMEOUT :: pos_integer(),
          timer = make_ref()           :: reference(),
          input = []                   :: list(),
@@ -109,6 +113,10 @@ socket_handoff(LocalPath, Request, Socket, SockMod, Buf, Opts) ->
 
 init([{#ws{ip = IP}, _} = WS]) ->
     Opts = [{xml_socket, true} | ejabberd_c2s_config:get_c2s_limits()],
+    PingInterval = ejabberd_config:get_option(
+                     {websocket_ping_interval, ?MYNAME},
+                     fun(I) when is_integer(I), I>=0 -> I end,
+                     ?PING_INTERVAL) * 1000,
     WSTimeout = ejabberd_config:get_option(
                   {websocket_timeout, ?MYNAME},
                   fun(I) when is_integer(I), I>0 -> I end,
@@ -121,7 +129,8 @@ init([{#ws{ip = IP}, _} = WS]) ->
     Timer = erlang:start_timer(WSTimeout, self(), []),
     {ok, loop,
      #state{socket = Socket, timeout = WSTimeout,
-            timer = Timer, ws = WS}}.
+            timer = Timer, ws = WS,
+            ping_interval = PingInterval}}.
 
 handle_event({activate, From}, StateName, StateData) ->
     case StateData#state.input of
@@ -187,22 +196,37 @@ handle_info(closed, _StateName, StateData) ->
     {stop, normal, StateData};
 handle_info({received, Packet}, StateName, StateDataI) ->
     {StateData, Parsed} = parse(StateDataI, Packet),
-    NewState = case StateData#state.waiting_input of
-                   false ->
-                       Input = StateData#state.input ++ Parsed,
-                       StateData#state{input = Input};
-                   Receiver ->
-                       Receiver ! {tcp, StateData#state.socket, Parsed},
-                       cancel_timer(StateData#state.timer),
-                       Timer = erlang:start_timer(StateData#state.timeout,
-						self(), []),
-                       StateData#state{waiting_input = false,
-                                       last_receiver = Receiver, timer = Timer}
-	       end,
-    {next_state, StateName, NewState};
+    SD = case StateData#state.waiting_input of
+             false ->
+                 Input = StateData#state.input ++ Parsed,
+                 StateData#state{input = Input};
+             Receiver ->
+                 Receiver ! {tcp, StateData#state.socket, Parsed},
+                 setup_timers(StateData#state{waiting_input = false,
+                                              last_receiver = Receiver})
+         end,
+    {next_state, StateName, SD};
+handle_info(PingPong, StateName, StateData) when PingPong == ping orelse
+                                                 PingPong == pong ->
+    StateData2 = setup_timers(StateData),
+    {next_state, StateName,
+     StateData2#state{pong_expected = false}};
 handle_info({timeout, Timer, _}, _StateName,
 	    #state{timer = Timer} = StateData) ->
     {stop, normal, StateData};
+handle_info({timeout, Timer, _}, StateName,
+	    #state{ping_timer = Timer, ws = {_, WsPid}} = StateData) ->
+    case StateData#state.pong_expected of
+        false ->
+            cancel_timer(StateData#state.ping_timer),
+            PingTimer = erlang:start_timer(StateData#state.ping_interval,
+                                           self(), []),
+            WsPid ! {ping, <<>>},
+            {next_state, StateName,
+             StateData#state{ping_timer = PingTimer, pong_expected = true}};
+        true ->
+            {stop, normal, StateData}
+    end;
 handle_info(_, StateName, StateData) ->
     {next_state, StateName, StateData}.
 
@@ -217,6 +241,19 @@ terminate(_Reason, _StateName, StateData) ->
 	  Receiver ! {tcp_closed, StateData#state.socket}
     end,
     ok.
+
+setup_timers(StateData) ->
+    cancel_timer(StateData#state.timer),
+    Timer = erlang:start_timer(StateData#state.timeout,
+                               self(), []),
+    cancel_timer(StateData#state.ping_timer),
+    PingTimer = case {StateData#state.ping_interval, StateData#state.rfc_compilant} of
+                    {0, _} -> StateData#state.ping_timer;
+                    {_, false} -> StateData#state.ping_timer;
+                    {V, _} -> erlang:start_timer(V, self(), [])
+                end,
+     StateData#state{timer = Timer, ping_timer = PingTimer,
+                     pong_expected = false}.
 
 cancel_timer(Timer) ->
     erlang:cancel_timer(Timer),

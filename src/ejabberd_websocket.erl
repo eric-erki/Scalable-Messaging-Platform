@@ -200,6 +200,10 @@ ws_loop(FrameInfo, Socket, WsHandleLoopPid, SocketMode) ->
             SocketMode:send(Socket, encode_frame(Data, 1)),
             ws_loop(FrameInfo, Socket, WsHandleLoopPid,
                     SocketMode);
+        {ping, Data} ->
+            SocketMode:send(Socket, encode_frame(Data, 9)),
+            ws_loop(FrameInfo, Socket, WsHandleLoopPid,
+                    SocketMode);
         shutdown ->
 	  ?DEBUG("shutdown request received, closing websocket "
 		 "with pid ~p",
@@ -312,8 +316,10 @@ process_frame(#frame_info{unprocessed = none,
                      Send};
                 9 -> % Ping
                     Frame = encode_frame(Unprocessed, 10),
-                    {FrameInfo3#frame_info{unmasked_msg = UnmaskedMsg}, Recv,
+                    {FrameInfo3#frame_info{unmasked_msg = UnmaskedMsg}, [ping | Recv],
                      [Frame | Send]};
+                10 -> % Pong
+                    {FrameInfo3, [pong | Recv], Send};
                 8 -> % Close
                     CloseCode = case Unmasked of
                                     <<Code:16/integer-big, Message/binary>> ->
@@ -375,7 +381,14 @@ handle_data(_, FrameInfo, Data, Socket, WsHandleLoopPid, SockMod) ->
 handle_data_int(FrameInfo, Data, _Socket, WsHandleLoopPid, _SocketMode) ->
     {NewFrameInfo, Recv, Send} = process_frame(FrameInfo, Data),
     lists:foreach(fun (El) ->
-			  WsHandleLoopPid ! {received, El}
+                          case El of
+                              pong ->
+                                  WsHandleLoopPid ! pong;
+                              ping ->
+                                  WsHandleLoopPid ! ping;
+                              _ ->
+                                  WsHandleLoopPid ! {received, El}
+                          end
 		  end,
 		  Recv),
     {NewFrameInfo, Send}.
