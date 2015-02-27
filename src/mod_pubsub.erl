@@ -73,7 +73,7 @@
 %% exports for console debug manual use
 -export([create_node/5, create_node/7, delete_node/3,
          subscribe_node/5, unsubscribe_node/5, publish_item/6,
-         delete_item/4, send_items/6, get_items/2, get_item/3,
+         delete_item/4, send_items/7, get_items/2, get_item/3,
          get_cached_item/2, get_configure/5, set_configure/5,
          tree_action/3, node_action/4, node_call/4]).
 
@@ -407,7 +407,8 @@ send_loop(State) ->
                             fun({NodeRec, _, _, SubJID}) ->
                                     {_, Node} = NodeRec#pubsub_node.nodeid,
                                     Nidx = NodeRec#pubsub_node.id,
-                                    send_items(Host, Node, Nidx, PType, SubJID, last)
+                                    Options = NodeRec#pubsub_node.options,
+                                    send_items(Host, Node, Nidx, PType, Options, SubJID, last)
                             end,
                             lists:usort(Subs))
                 end,
@@ -457,7 +458,7 @@ send_loop(State) ->
                                                     {OU, OS, _} = Owner,
                                                     element(2, get_roster_info(OU, OS, LJID, Grps))
                                             end,
-                                        if Subscribed -> send_items(Owner, Node, Nidx, Type, LJID, last);
+                                        if Subscribed -> send_items(Owner, Node, Nidx, Type, Options, LJID, last);
                                         true -> ok
                                         end
                                     end,
@@ -2040,7 +2041,8 @@ subscribe_node(Host, Node, From, JID, Configuration) ->
         {result, {TNode, {Result, subscribed, SubId, send_last}}} ->
             Nidx = TNode#pubsub_node.id,
             Type = TNode#pubsub_node.type,
-            send_items(Host, Node, Nidx, Type, Subscriber, last),
+            Options = TNode#pubsub_node.options,
+            send_items(Host, Node, Nidx, Type, Options, Subscriber, last),
             case Result of
                 default -> {result, Reply({subscribed, SubId})};
                 _ -> {result, Result}
@@ -2481,23 +2483,33 @@ get_last_items(_Host, _Type, _Nidx, _LJID, _Number, _) ->
 
 %% @doc <p>Resend the items of a node to the user.</p>
 %% @todo use cache-last-item feature
-send_items(Host, Node, Nidx, Type, LJID, last) ->
+send_items(Host, Node, Nidx, Type, Options, LJID, last) ->
     case get_last_item(Host, Type, Nidx, LJID) of
         undefined ->
             ok;
         LastItem ->
             Stanza = items_event_stanza(Node, [LastItem]),
-            dispatch_items(Host, LJID, Node, Stanza)
+            dispatch_items(Host, LJID, Node, Options, Stanza)
     end;
-send_items(Host, Node, Nidx, Type, LJID, Number) when Number > 0 ->
+send_items(Host, Node, Nidx, Type, Options, LJID, Number) when Number > 0 ->
     Stanza = items_event_stanza(Node, get_last_items(Host, Type, Nidx, Number, LJID)),
-    dispatch_items(Host, LJID, Node, Stanza);
-send_items(Host, Node, _Nidx, _Type, LJID, _) ->
+    dispatch_items(Host, LJID, Node, Options, Stanza);
+send_items(Host, Node, _Nidx, _Type, Options, LJID, _) ->
     Stanza = items_event_stanza(Node, []),
-    dispatch_items(Host, LJID, Node, Stanza).
+    dispatch_items(Host, LJID, Node, Options, Stanza).
+
+-spec(dispatch_items/5 ::
+(
+  From    :: mod_pubsub:host(),
+  To      :: jid(),
+  Node    :: mod_pubsub:nodeId(),
+  Options :: mod_pubsub:nodeOptions(),
+  Stanza  :: xmlel() | undefined)
+    -> any()
+).
 
 dispatch_items({FromU, FromS, FromR} = From, {ToU, ToS, ToR} = To, Node,
-	       Stanza) ->
+	       Options, Stanza) ->
     C2SPid = case ejabberd_sm:get_session_pid(ToU, ToS, ToR) of
 	       ToPid when is_pid(ToPid) -> ToPid;
 	       _ ->
@@ -2509,13 +2521,17 @@ dispatch_items({FromU, FromS, FromR} = From, {ToU, ToS, ToR} = To, Node,
 	     end,
     if C2SPid == undefined -> ok;
        true ->
+	   NotificationType = get_option(Options, notification_type, headline),
+	   Message = add_message_type(Stanza, NotificationType),
 	   ejabberd_c2s:send_filtered(C2SPid,
 				      {pep_message, <<Node/binary, "+notify">>},
 				      service_jid(From), jlib:make_jid(To),
-				      Stanza)
+				      Message)
     end;
-dispatch_items(From, To, _Node, Stanza) ->
-    ejabberd_router:route(service_jid(From), jlib:make_jid(To), Stanza).
+dispatch_items(From, To, _Node, Options, Stanza) ->
+    NotificationType = get_option(Options, notification_type, headline),
+    Message = add_message_type(Stanza, NotificationType),
+    ejabberd_router:route(service_jid(From), jlib:make_jid(To), Message).
 
 %% @doc <p>Return the list of affiliations as an XMPP response.</p>
 -spec(get_affiliations/4 ::
