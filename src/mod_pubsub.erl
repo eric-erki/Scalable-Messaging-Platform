@@ -3342,11 +3342,8 @@ broadcast({U, S, R}, Node, Nidx, Type, NodeOptions, Subs, Stanza, SHIM) ->
     case ejabberd_sm:get_session_pid(U, S, user_resource(U, S, R)) of
         C2SPid when is_pid(C2SPid) ->
             Event = {pep_message, <<((Node))/binary, "+notify">>},
-            Message = case get_option(NodeOptions, notification_type, headline)
-            of
-                normal -> Stanza;
-                MsgType -> add_message_type(Stanza, atom_to_binary(MsgType, latin1))
-            end,
+            NotificationType = get_option(NodeOptions, notification_type, headline),
+            Message = add_message_type(Stanza, NotificationType),
             ejabberd_c2s:broadcast(C2SPid, Event, jlib:make_jid(U, S, <<>>), Message),
             true;
         _ ->
@@ -3357,10 +3354,8 @@ broadcast(_Host, _Node, _Nidx, _Type, _NodeOptions, [], _Stanza, _SHIM) ->
     false;
 broadcast(Host, _Node, _Nidx, _Type, NodeOptions, Subs, Stanza, SHIM) ->
     From = service_jid(Host),
-    Message = case get_option(NodeOptions, notification_type, headline) of
-        normal -> Stanza;
-        MsgType -> add_message_type(Stanza, atom_to_binary(MsgType, latin1))
-    end,
+    NotificationType = get_option(NodeOptions, notification_type, headline),
+    Message = add_message_type(Stanza, NotificationType),
     lists:foreach(fun ({LJID, _NodeId, SubIds}) ->
                 Send = case {SHIM, SubIds} of
                     {false, _} -> Message;
@@ -4175,9 +4170,18 @@ itemsEls(Items) ->
     [#xmlel{name = <<"item">>, attrs = itemAttr(ItemId), children = Payload}
      || #pubsub_item{itemid = {ItemId, _}, payload = Payload} <- Items].
 
+-spec(add_message_type/2 ::
+(
+  Message :: xmlel(),
+  Type    :: atom())
+    -> xmlel()
+).
+
+add_message_type(Message, normal) -> Message;
 add_message_type(#xmlel{name = <<"message">>, attrs = Attrs, children = Els}, Type) ->
     #xmlel{name = <<"message">>,
-           attrs = [{<<"type">>, Type} | Attrs], children = Els};
+           attrs = [{<<"type">>, jlib:atom_to_binary(Type)} | Attrs],
+           children = Els};
 add_message_type(XmlEl, _Type) ->
     XmlEl.
 
