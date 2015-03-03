@@ -143,7 +143,12 @@ starttls(SocketData, TLSOpts, Data) ->
         {ok, TLSSocket} ->
             {ok, SocketData#socket_state{socket = TLSSocket,
                                          sockmod = p1_tls}};
-        {error, _Why} = Err ->
+        {error, Why} = Err ->
+	    if is_binary(Why) ->
+		    ?ERROR_MSG("starttls error = ~s", [Why]);
+	       true ->
+		    ok
+	    end,
             Err
     end.
 
@@ -200,6 +205,9 @@ send(SocketData, Data) ->
 	  ?INFO_MSG("Timeout on ~p:send",
 		    [SocketData#socket_state.sockmod]),
 	  exit(normal);
+      {error, Reason} when is_binary(Reason) ->
+	  ?ERROR_MSG("send error = ~s", [Reason]),
+	  {error, Reason};
       Error ->
 	  ?DEBUG("Error in ~p:send: ~p",
 		 [SocketData#socket_state.sockmod, Error]),
