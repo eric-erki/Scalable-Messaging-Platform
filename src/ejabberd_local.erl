@@ -38,7 +38,7 @@
 	 register_iq_handler/5, register_iq_response_handler/4,
 	 register_iq_response_handler/5, unregister_iq_handler/2,
 	 unregister_iq_response_handler/2, refresh_iq_handlers/0,
-	 bounce_resource_packet/3]).
+	 bounce_resource_packet/3, add_host/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
@@ -180,17 +180,18 @@ bounce_resource_packet(From, To, Packet) ->
     ejabberd_router:route(To, From, Err),
     stop.
 
+add_host(Host) ->
+    ejabberd_router:register_route(Host, {apply, ?MODULE, route}),
+    ejabberd_hooks:add(local_send_to_resource_hook, Host,
+		       ?MODULE, bounce_resource_packet, 100).
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
 
 init([]) ->
-    lists:foreach(
-      fun(Host) ->
-	      ejabberd_router:register_route(Host, {apply, ?MODULE, route}),
-	      ejabberd_hooks:add(local_send_to_resource_hook, Host,
-				 ?MODULE, bounce_resource_packet, 100)
-      end, ?MYHOSTS),
+    lists:foreach(fun add_host/1, ?MYHOSTS),
+    ejabberd_hooks:add(add_host, ?MODULE, add_host, 100),
     catch ets:new(?IQTABLE, [named_table, public, bag]),
     mnesia:delete_table(iq_response),
     catch ets:new(iq_response,

@@ -31,7 +31,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, process_command/3,
+-export([start_link/0, process_command/3, register_hook/1,
 	 process_remote_command/1]).
 
 %% gen_server callbacks
@@ -85,6 +85,10 @@ process_command(From, To, Packet) ->
       _ -> ok
     end.
 
+register_hook(Host) ->
+    ejabberd_hooks:add(local_send_to_resource_hook, Host,
+		       ?MODULE, process_command, 50).
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -100,11 +104,8 @@ init(Opts) ->
     LH = proplists:get_value(large_heap, Opts),
     process_flag(priority, high),
     erlang:system_monitor(self(), [{large_heap, LH}]),
-    lists:foreach(fun (Host) ->
-			  ejabberd_hooks:add(local_send_to_resource_hook, Host,
-					     ?MODULE, process_command, 50)
-		  end,
-		  ?MYHOSTS),
+    ejabberd_hooks:add(add_host, ?MODULE, register_hook, 100),
+    lists:foreach(fun register_hook/1, ?MYHOSTS),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------

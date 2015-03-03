@@ -36,7 +36,8 @@
          get_version/0, get_myhosts/0, get_mylang/0,
          prepare_opt_val/4, convert_table_to_binary/5,
          transform_options/1, collect_options/1,
-         convert_to_yaml/1, convert_to_yaml/2]).
+         convert_to_yaml/1, convert_to_yaml/2,
+	 add_host/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -51,6 +52,7 @@
 
 %% @type macro_value() = term().
 
+-record(ejabberd_hosts, {host, opaque}).
 
 start() ->
     case catch mnesia:table_info(local_config, storage_type) of
@@ -260,8 +262,17 @@ add_hosts_to_option(Hosts, State) ->
     PrepHosts = normalize_hosts(Hosts),
     set_option({hosts, global}, PrepHosts, State#state{hosts = PrepHosts}).
 
-normalize_hosts(Hosts) ->
+normalize_hosts(DBType) when is_atom(DBType) ->
+    case create_hosts_table(DBType) of
+	ok ->
+	    DBType;
+	Err ->
+	    ?CRITICAL_MSG("failed to create hosts config of type ~p: ~p",
+			  [DBType, Err])
+    end;
+normalize_hosts(Hosts) when is_list(Hosts) ->
     normalize_hosts(Hosts,[]).
+
 normalize_hosts([], PrepHosts) ->
     lists:reverse(PrepHosts);
 normalize_hosts([Host|Hosts], PrepHosts) ->
@@ -676,13 +687,91 @@ is_file_readable(Path) ->
 	    false
     end.
 
+add_host(Host) ->
+    Res = case get_option(hosts, fun(V) -> V end) of
+	      Hosts when is_list(Hosts) ->
+		  {error, static_config};
+	      p1db ->
+		  case p1db:get(ejabberd_hosts, Host) of
+		      {ok, _Host, _VClock} ->
+			  {error, alread_loaded};
+		      {error, _} ->
+			  p1db:insert(ejabberd_hosts, Host, <<"">>)
+		  end;
+	      mnesia ->
+		  case mnesia:dirty_read(ejabberd_hosts, Host) of
+		      [] ->
+			  mnesia:dirty_write(#ejabberd_hosts{host = Host});
+		      [_|_] ->
+			  {error, already_loaded}
+		  end
+	  end,
+    case Res of
+	{error, _} = Err ->
+	    Err;
+	ok ->
+	    ejabberd_hooks:run(add_host, [Host]),
+	    gen_mod:start_modules(Host),
+	    ok
+    end.
+
 get_version() ->
     list_to_binary(element(2, application:get_key(ejabberd, vsn))).
 
 -spec get_myhosts() -> [binary()].
 
 get_myhosts() ->
-    get_option(hosts, fun(V) -> V end).
+    case get_option(hosts, fun(V) -> V end) of
+	Hosts when is_list(Hosts) ->
+	    Hosts;
+	p1db ->
+	    get_myhosts(p1db);
+	DBType when DBType == mnesia; DBType == internal; DBType == undefined ->
+	    get_myhosts(mnesia);
+	DBType ->
+	    ?CRITICAL_MSG("unsupported DB type for hosts config: ~p", [DBType])
+    end.
+
+get_myhosts(p1db) ->
+    case p1db:get(ejabberd_hosts) of
+	{ok, L} ->
+	    [Key ||  {Key, _Val, _VClock} <- L];
+	{error, _} = Err ->
+	    Err
+    end;
+get_myhosts(mnesia) ->
+    case catch mnesia:dirty_all_keys(ejabberd_hosts) of
+	Hosts when is_list(Hosts) ->
+	    Hosts;
+	Err ->
+	    {error, Err}
+    end.
+
+create_hosts_table(p1db) ->
+    p1db:open_table(ejabberd_hosts);
+create_hosts_table(mnesia) ->
+    R = mnesia:create_table(ejabberd_hosts,
+			    [{disc_copies, [node()]},
+			     {attributes,
+			      record_info(fields, ejabberd_hosts)}]),
+    case transform_mnesia_response(R) of
+	ok ->
+	    transform_mnesia_response(
+	      mnesia:add_table_copy(local_config, node(), disc_copies));
+	{error, _} = Err ->
+	    Err
+    end;
+create_hosts_table(undefined) ->
+    create_hosts_table(mnesia);
+create_hosts_table(internal) ->
+    create_hosts_table(mnesia);
+create_hosts_table(DBType) ->
+    {error, {unsupported_db_type, DBType}}.
+
+transform_mnesia_response({atomic, ok}) -> ok;
+transform_mnesia_response({aborted, {already_exists, _}}) -> ok;
+transform_mnesia_response({aborted, {already_exists, _, _}}) -> ok;
+transform_mnesia_response({aborted, Reason}) -> {error, Reason}.
 
 -spec get_mylang() -> binary().
 

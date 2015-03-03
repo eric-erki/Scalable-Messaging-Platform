@@ -31,7 +31,7 @@
 -author('alexey@process-one.net').
 
 %% External exports
--export([start/0, set_password/3, check_password/3,
+-export([start/0, start/1, set_password/3, check_password/3,
 	 check_password/5, check_password_with_authmodule/3,
 	 check_password_with_authmodule/5, try_register/3,
 	 dirty_get_registered_users/0, get_vh_registered_users/1,
@@ -82,12 +82,12 @@
 -callback get_password_s(binary(), binary()) -> binary().    
 
 start() ->
-%% This is only executed by ejabberd_c2s for non-SASL auth client
-    lists:foreach(fun (Host) ->
-			  lists:foreach(fun (M) -> M:start(Host) end,
-					auth_modules(Host))
-		  end,
-		  ?MYHOSTS).
+    %% This is only executed by ejabberd_c2s for non-SASL auth client
+    ejabberd_hooks:add(add_host, ?MODULE, start, 100),
+    lists:foreach(fun start/1, ?MYHOSTS).
+
+start(Host) ->
+    lists:foreach(fun (M) -> M:start(Host) end, auth_modules(Host)).
 
 plain_password_required(Server) ->
     lists:any(fun (M) -> M:plain_password_required() end,

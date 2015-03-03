@@ -351,6 +351,16 @@ register_iq_handler(Host, XMLNS, Module, Fun, Opts) ->
 unregister_iq_handler(Host, XMLNS) ->
     ?MODULE ! {unregister_iq_handler, Host, XMLNS}.
 
+register_hooks(Host) ->
+    ejabberd_hooks:add(roster_in_subscription, Host,
+		       ejabberd_sm, check_in_subscription,
+		       20),
+    ejabberd_hooks:add(offline_message_hook, Host,
+		       ejabberd_sm,
+		       bounce_offline_message, 100),
+    ejabberd_hooks:add(remove_user, Host, ejabberd_sm,
+		       disconnect_removed_user, 100).
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -363,17 +373,7 @@ init([]) ->
     mnesia:add_table_index(session, us),
     mnesia:add_table_copy(session, node(), ram_copies),
     ets:new(sm_iqtable, [named_table, bag]),
-    lists:foreach(fun (Host) ->
-			  ejabberd_hooks:add(roster_in_subscription, Host,
-					     ejabberd_sm, check_in_subscription,
-					     20),
-			  ejabberd_hooks:add(offline_message_hook, Host,
-					     ejabberd_sm,
-					     bounce_offline_message, 100),
-			  ejabberd_hooks:add(remove_user, Host, ejabberd_sm,
-					     disconnect_removed_user, 100)
-		  end,
-		  ?MYHOSTS),
+    lists:foreach(fun register_hooks/1, ?MYHOSTS),
     ejabberd_commands:register_commands(commands()),
     ejabberd_cluster:subscribe(),
     start_handlers(),

@@ -33,7 +33,7 @@
 	 get_opt_host/3, db_type/1, db_type/2, get_module_opt/5,
 	 get_module_opt_host/3, loaded_modules/1,
 	 loaded_modules_with_opts/1, get_hosts/2,
-	 get_module_proc/2, is_loaded/2]).
+	 get_module_proc/2, is_loaded/2, start_modules/1]).
 
 %%-export([behaviour_info/1]).
 
@@ -61,6 +61,17 @@ start() ->
 	    [named_table, public,
 	     {keypos, #ejabberd_module.module_host}]),
     ok.
+
+-spec start_modules(binary()) -> any().
+
+start_modules(Host) ->
+    Modules = ejabberd_config:get_option(
+		{modules, Host},
+		fun(L) when is_list(L) -> L end, []),
+    lists:foreach(
+      fun({Module, Opts}) ->
+	      start_module(Host, Module, Opts)
+      end, Modules).
 
 -spec start_module(binary(), atom()) -> any().
 
