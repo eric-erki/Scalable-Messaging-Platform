@@ -193,16 +193,12 @@ user_receive_packet(Pkt, C2SState, JID, Peer, _To) ->
         true ->
             NewPkt = strip_my_archived_tag(Pkt, LServer),
             case store(C2SState, NewPkt, LUser, LServer, Peer, true, recv) of
-                {ok, ID, TS} ->
+                {ok, ID} ->
                     Archived = #xmlel{name = <<"archived">>,
                                       attrs = [{<<"by">>, LServer},
                                                {<<"xmlns">>, ?NS_MAM},
                                                {<<"id">>, ID}]},
-                    Delay = TS,
-                    DelayEl = #xmlel{name = <<"delay">>,
-                                   attrs = [{<<"xmlns">>, ?NS_DELAY},
-                                            {<<"stamp">>, Delay}]},
-                    NewEls = [Archived, DelayEl|NewPkt#xmlel.children],
+                    NewEls = [Archived|NewPkt#xmlel.children],
                     NewPkt#xmlel{children = NewEls};
                 _ ->
                     NewPkt
@@ -226,16 +222,12 @@ user_send_packet(Pkt, C2SState, JID, Peer) ->
             NewPkt = strip_my_archived_tag(Pkt, LServer),
             case store0(C2SState, jlib:replace_from_to(JID, Peer, NewPkt),
                   LUser, LServer, Peer, S, send) of
-                {ok, ID, TS} ->
+                {ok, ID} ->
 		    By = jlib:jid_to_string(Peer),
 		    Archived = #xmlel{name = <<"archived">>,
 			    attrs = [{<<"by">>, By}, {<<"xmlns">>, ?NS_MAM},
 			    {<<"id">>, ID}]},
-		    Delay = TS,
-		    DelayEl = #xmlel{name = <<"delay">>,
-                                   attrs = [{<<"xmlns">>, ?NS_DELAY},
-                                            {<<"stamp">>, Delay}]},
-		    NewEls = [Archived, DelayEl|NewPkt#xmlel.children],
+		    NewEls = [Archived|NewPkt#xmlel.children],
 		    NewPkt#xmlel{children = NewEls};
                 _ ->
                     NewPkt
@@ -416,8 +408,7 @@ do_store(Pkt, LUser, LServer, Peer, Type, _Dir, mnesia) ->
                         bare_peer = {PUser, PServer, <<>>},
                         packet = Pkt}) of
         ok ->
-	    TS2 = jlib:now_to_utc_string(TS),
-            {ok, ID, TS2};
+            {ok, ID};
         Err ->
             Err
     end;
@@ -431,8 +422,7 @@ do_store(Pkt, LUser, LServer, Peer, Type, _Dir, p1db) ->
     case p1db:insert(archive_msg, USNKey, Val) of
         ok ->
             ID = jlib:integer_to_binary(now_to_usec(Now)),
-            TSDelay = jlib:now_to_utc_string(Now),
-            {ok, ID, TSDelay};
+            {ok, ID};
         {error, _} = Err ->
             Err
     end;
@@ -459,8 +449,7 @@ do_store(Pkt, LUser, LServer, Peer, Type, Dir, rest) ->
 		     {<<"peer">>, SPeer},
 		     {<<"timestamp">>, now_to_iso(Now)} | T]}) of
 	{ok, Code, _} when Code == 200 orelse Code == 201 ->
-	    TSDelay = jlib:now_to_utc_string(Now),
-	    {ok, ID, TSDelay};
+	    {ok, ID};
 	Err ->
 	    ?ERROR_MSG("failed to store packet for user ~s and peer ~s: ~p",
 		       [SUser, SPeer, Err]),
@@ -492,8 +481,7 @@ do_store(Pkt, LUser, LServer, Peer, _Type, _Dir, DBType)
             <<"'">>, ejabberd_odbc:escape(XML), <<"', ">>,
             <<"'">>, ejabberd_odbc:escape(Body), <<"');">>]) of
         {updated, _} ->
-            TSDelay = jlib:now_to_utc_string(usec_to_now(TSinteger)),
-            {ok, ID, TSDelay};
+            {ok, ID};
         Err ->
             Err
     end.
