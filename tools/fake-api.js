@@ -24,6 +24,7 @@ var handlers = [
 	{regexp : new RegExp("^/api/auth$"), fun : auth},
 	{regexp : new RegExp("^/api/user$"), fun : user},
 	{regexp : new RegExp("^/api/roster$"), fun : roster},
+	{regexp : new RegExp("^/api/notify$"), fun : notify},
 	];
 
 
@@ -91,6 +92,38 @@ function user(request, response) {
       response.write(JSON.stringify({}));
       response.end();
   });
+}
+
+
+function notify(request, response) {
+    if (request.method == 'POST') {
+        var body = '';
+	request.on('data', function(data) {
+	    body += data;
+	    // Too much POST data, kill the connection!
+            if (body.length > 1e6)
+                request.connection.destroy();
+	});
+
+	request.on('end', function() {
+	    parts = url.parse(request.url, true);
+	    query = parts.query;
+	    body = JSON.stringify(JSON.parse(body));
+	    console.log("Received notification from " + query.from +
+			" with payload:\n" + body);
+	    response.writeHead(200, {"Content-Type": "application/json"});
+	    response.write(body);
+	    response.end();
+	})
+    } else {
+	request.on('data', function(data) {
+	});
+	request.on('end', function() {
+	    response.writeHead(500, {"Content-Type": "application/json"});
+	    response.write(JSON.stringify({"error": "bad method"}));
+	    response.end();
+	})
+    }
 }
 
 
