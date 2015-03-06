@@ -66,6 +66,7 @@ check_password(User, Server, Password) ->
 	{ok, 200, _RespBody} ->
             true;
         {ok, 401, _RespBody} ->
+            ?WARNING_MSG("API rejected authentication for user ~p (~p) password ~p, resp: ~p" ,[User, Server, Password, _RespBody]),
             ejabberd_hooks:run(backend_api_badauth, Server, [Server, get, Path]),
             false;
         {ok, Other, RespBody} ->
