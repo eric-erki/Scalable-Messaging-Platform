@@ -1681,8 +1681,7 @@ mam_slave(Config) ->
       fun(N) ->
               Text = #text{data = jlib:integer_to_binary(N)},
               ?recv1(#message{from = Peer, body = [Text],
-                       sub_els = [#mam_archived{by = ServerJID},
-				  #delay{}]})
+			      sub_els = [#mam_archived{by = ServerJID}]})
       end, lists:seq(1, 5)),
     #iq{type = result, sub_els = []} =
         send_recv(Config, #iq{type = set,
