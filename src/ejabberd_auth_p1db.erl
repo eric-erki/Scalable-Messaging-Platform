@@ -40,10 +40,13 @@
 	 get_password_s/2, is_user_exists/2, remove_user/2,
 	 remove_user/3, store_type/0, export/1,
 	 enc_key/1, dec_key/1,
+         dec_val/2,
 	 import/2, plain_password_required/0]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
+
+-define(SALT_LENGTH, 16).
 
 %%%----------------------------------------------------------------------
 %%% API
@@ -60,11 +63,20 @@ init_db(Host) ->
                      {schema, [{keys, [server, user]},
                                {vals, [password]},
                                {enc_key, fun ?MODULE:enc_key/1},
-                               {dec_key, fun ?MODULE:dec_key/1}]}]).
+                               {dec_key, fun ?MODULE:dec_key/1},
+                               {dec_val, fun ?MODULE:dec_val/2}]}]).
 
-plain_password_required() -> false.
+plain_password_required() ->
+    case is_scrammed() of
+      false -> false;
+      true -> true
+    end.
 
-store_type() -> plain.
+store_type() ->
+    case is_scrammed() of
+      false -> plain; %% allows: PLAIN DIGEST-MD5 SCRAM
+      true -> scram %% allows: PLAIN SCRAM
+    end.
 
 us2key(LUser, LServer) ->
     <<LServer/binary, 0, LUser/binary>>.
@@ -85,6 +97,13 @@ check_password(User, Server, Password) ->
     if LUser /= error, LServer /= error ->
             US = us2key(LUser, LServer),
             case p1db:get(passwd, US) of
+                {ok, <<0, BScram/binary>>, _VClock} ->
+                    case catch binary_to_term(BScram) of
+                        Scram when is_record(Scram, scram) ->
+                            is_password_scram_valid(Password, Scram);
+                        _ ->
+                            false
+                    end;
                 {ok, Passwd, _VClock} ->
                     Passwd == Password;
                 {error, _} ->
@@ -100,6 +119,8 @@ check_password(User, Server, Password, Digest, DigestGen) ->
     if LUser /= error, LServer /= error ->
             US = us2key(LUser, LServer),
             case p1db:get(passwd, US) of
+                {ok, <<0, _BScram/binary>>, _VClock} ->
+                    false;
                 {ok, Passwd, _VClock} ->
                     DigRes = if Digest /= <<"">> ->
                                      Digest == DigestGen(Passwd);
@@ -123,7 +144,14 @@ set_password(User, Server, Password) ->
             {error, invalid_jid};
        true ->
             US = us2key(LUser, LServer),
-            p1db:insert(passwd, US, Password)
+            Password2 =
+                case is_scrammed() of
+                    true ->
+                        Scram = password_to_scram(Password),
+                        <<0, (term_to_binary(Scram))/binary>>;
+                    false -> Password
+                end,
+            p1db:insert(passwd, US, Password2)
     end.
 
 %% @spec (User, Server, Password) -> {atomic, ok} | {atomic, exists} | {error, invalid_jid} | {aborted, Reason}
@@ -139,7 +167,14 @@ try_register(User, Server, PasswordList) ->
                 {ok, _, _} ->
                     {atomic, exists};
                 {error, notfound} ->
-                    case p1db:insert(passwd, US, Password) of
+                    Password2 =
+                        case is_scrammed() of
+                            true ->
+                                Scram = password_to_scram(Password),
+                                <<0, (term_to_binary(Scram))/binary>>;
+                            false -> Password
+                        end,
+                    case p1db:insert(passwd, US, Password2) of
                         ok ->
                             {atomic, ok};
                         Err ->
@@ -186,6 +221,16 @@ get_password(User, Server) ->
     if LUser /= error, LServer /= error ->
             US = us2key(LUser, LServer),
             case p1db:get(passwd, US) of
+                {ok, <<0, BScram/binary>>, _VClock} ->
+                    case catch binary_to_term(BScram) of
+                        Scram when is_record(Scram, scram) ->
+                            {jlib:decode_base64(Scram#scram.storedkey),
+                             jlib:decode_base64(Scram#scram.serverkey),
+                             jlib:decode_base64(Scram#scram.salt),
+                             Scram#scram.iterationcount};
+                        _ ->
+                            false
+                    end;
                 {ok, Passwd, _VClock} -> Passwd;
                 {error, _} -> false
             end;
@@ -199,6 +244,7 @@ get_password_s(User, Server) ->
     if LUser /= error, LServer /= error ->
             US = us2key(LUser, LServer),
             case p1db:get(passwd, US) of
+                {ok, <<0, _BScram/binary>>, _VClock} -> <<"">>;
                 {ok, Passwd, _VClock} -> Passwd;
                 {error, _} -> <<"">>
             end;
@@ -243,6 +289,18 @@ remove_user(User, Server, Password) ->
     if LUser /= error, LServer /= error ->
             US = us2key(LUser, LServer),
             case p1db:get(passwd, US) of
+                {ok, <<0, BScram/binary>>, _VClock} ->
+                    case catch binary_to_term(BScram) of
+                        Scram when is_record(Scram, scram) ->
+                            case is_password_scram_valid(Password, Scram) of
+                                true ->
+                                    p1db:delete(passwd, US),
+                                    ok;
+                                false -> not_allowed
+                            end;
+                        _ ->
+                            false
+                    end;
                 {ok, Password, _VClock} ->
                     p1db:delete(passwd, US),
                     ok;
@@ -268,6 +326,13 @@ dec_key(Key) ->
     <<Server:Len/binary, 0, User/binary>> = Key,
     [Server, User].
 
+dec_val(_, <<0, BScram/binary>>) ->
+    Scram = binary_to_term(BScram),
+    S = io_lib:format("~1000p", [Scram]),
+    [iolist_to_binary(S)];
+dec_val(_, Password) ->
+    [Password].
+
 %% Export/Import
 export(_Server) ->
     [{passwd,
@@ -289,3 +354,38 @@ export(_Server) ->
 import(LServer, [LUser, Password, _TimeStamp]) ->
     US = us2key(LUser, LServer),
     p1db:async_insert(passwd, US, Password).
+
+
+%%%
+%%% SCRAM
+%%%
+
+is_scrammed() ->
+    scram ==
+      ejabberd_config:get_option({auth_password_format, ?MYNAME},
+                                       fun(V) -> V end).
+
+password_to_scram(Password) ->
+    password_to_scram(Password,
+		      ?SCRAM_DEFAULT_ITERATION_COUNT).
+
+password_to_scram(Password, IterationCount) ->
+    Salt = crypto:rand_bytes(?SALT_LENGTH),
+    SaltedPassword = scram:salted_password(Password, Salt,
+					   IterationCount),
+    StoredKey =
+	scram:stored_key(scram:client_key(SaltedPassword)),
+    ServerKey = scram:server_key(SaltedPassword),
+    #scram{storedkey = jlib:encode_base64(StoredKey),
+	   serverkey = jlib:encode_base64(ServerKey),
+	   salt = jlib:encode_base64(Salt),
+	   iterationcount = IterationCount}.
+
+is_password_scram_valid(Password, Scram) ->
+    IterationCount = Scram#scram.iterationcount,
+    Salt = jlib:decode_base64(Scram#scram.salt),
+    SaltedPassword = scram:salted_password(Password, Salt,
+					   IterationCount),
+    StoredKey =
+	scram:stored_key(scram:client_key(SaltedPassword)),
+    jlib:decode_base64(Scram#scram.storedkey) == StoredKey.
