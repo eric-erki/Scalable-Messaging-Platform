@@ -307,17 +307,20 @@ process_header(State, Data) ->
 	    true ->
                   #state{sockmod = SockMod, socket = Socket,
                          options = State#state.options,
+                         default_host = State#state.default_host,
                          request_handlers = State#state.request_handlers,
                          websocket_handlers = State#state.websocket_handlers};
 	    _ ->
                   #state{end_of_request = true,
                          options = State#state.options,
+                         default_host = State#state.default_host,
                          request_handlers = State#state.request_handlers,
                          websocket_handlers = State#state.websocket_handlers}
 	  end;
       _ ->
             #state{end_of_request = true,
                    options = State#state.options,
+                   default_host = State#state.default_host,
                    request_handlers = State#state.request_handlers,
                    websocket_handlers = State#state.websocket_handlers}
     end.
