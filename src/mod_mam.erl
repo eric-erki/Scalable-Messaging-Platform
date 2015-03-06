@@ -697,7 +697,7 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
 			       []
 		       end end, ArchiveEls), Count};
 	Err ->
-	    ?ERROR_MSG("failed to select: ~p", [Err]),
+	    ?ERROR_MSG("failed to select: ~p for user: ~p peer: ~p", [Err, JidRequestor, With]),
 	    {[], 0}
     end;
 select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
