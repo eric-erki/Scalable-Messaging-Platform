@@ -3529,6 +3529,7 @@ Options:
 \begin{description}
   \titem{access: AccessName} \ind{options!access}This option can be used to specify who
   may use this feature. (default value: \term{all}).
+\end{description}
 \begin{verbatim}
 modules:
   ...
@@ -3536,14 +3537,13 @@ modules:
     access: admin
   ...
 \end{verbatim}
-\end{description}
 
 \makesubsection{modhttpnotify}{\modhttpnotify{}}
 \ind{modules!\modhttpnotify{}}\ind{modhttpnotify}
 
 This module sends HTTP notifications to an external service on some events.
 Actual implementation logs presence available, unavailable, change, and offline packets.
-Information is encoded as application/x-www-form-urlencoded.
+Information is encoded as \verb|application/x-www-form-urlencoded|.
 
 To enable this feature, enable the module:
 \begin{verbatim}
@@ -3597,18 +3597,17 @@ http listener on a private port.
 
 Command parameters can be passed as json data or as url encoded parameter.
 Example:
-\begin{description}
 \begin{verbatim}
 curl -X POST --data '["test1","example.org"]' http://example.org:5280/api/user_info
 curl -X POST --data '{"user":"test1","server":"example.org"}' http://example.org:5280/api/user_info
 curl "http://example.org:5280/api/user_info?user=test1&server=example.org"
 \end{verbatim}
-\end{description}
 
 Options:
 \begin{description}
   \titem{access: AccessName} \ind{options!access}This option can be used to specify who
   may use this feature. (default value: \term{all}).
+\end{description}
 \begin{verbatim}
 modules:
   ...
@@ -3616,7 +3615,6 @@ modules:
     access: admin
   ...
 \end{verbatim}
-\end{description}
 
 \makesubsection{modhttpwatchdog}{\modhttpwatchdog{}}
 \ind{modules!\modhttpwatchdog{}}\ind{modhttpwatchdog}
