@@ -400,15 +400,14 @@ resend_offline_messages_hook(Ls, _User, Server) ->
     cast(jlib:nameprep(Server), {inc, resend_offline_messages}),
     Ls.
 
-sm_register_connection_hook(_SID, #jid{luser=LUser,lserver=LServer,lresource=LResource}, Info) ->
+sm_register_connection_hook(_SID, #jid{luser=LUser,lserver=LServer}, Info) ->
     Post = case proplists:get_value(conn, Info) of
         undefined -> <<>>;
         Atom -> atom_to_binary(Atom, latin1)
     end,
     Hook = hookid(concat(<<"sm_register_connection">>, Post)),
     cast(LServer, {inc, Hook}),
-    Item = <<LUser/binary, LResource/binary>>,
-    cast(LServer, {active, Item}).
+    cast(LServer, {active, LUser}).
 sm_remove_connection_hook(_SID, #jid{lserver=LServer}, Info) ->
     Post = case proplists:get_value(conn, Info) of
         undefined -> <<>>;
