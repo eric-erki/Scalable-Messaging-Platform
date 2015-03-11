@@ -1,0 +1,100 @@
+%%%-------------------------------------------------------------------
+%%% @author Pablo Polvorin <pablo.polvorin@process-one.net>
+%%%   From splitted from mod_offline
+%%% @doc
+%%%
+%%% @end
+%%%
+%%%
+%%% ejabberd, Copyright (C) 2012-2015   ProcessOne
+%%%
+%%% This program is free software; you can redistribute it and/or
+%%% modify it under the terms of the GNU General Public License as
+%%% published by the Free Software Foundation; either version 2 of the
+%%% License, or (at your option) any later version.
+%%%
+%%% This program is distributed in the hope that it will be useful,
+%%% but WITHOUT ANY WARRANTY; without even the implied warranty of
+%%% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+%%% General Public License for more details.
+%%%
+%%% You should have received a copy of the GNU General Public License
+%%% along with this program; if not, write to the Free Software
+%%% Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
+%%% 02111-1307 USA
+%%%
+%%%-------------------------------------------------------------------
+-module(mod_offline_worker).
+
+-define(GEN_SERVER, p1_server).
+-behaviour(?GEN_SERVER).
+
+-export([start_link/2]).
+
+%% gen_server callbacks
+-export([init/1, handle_call/3, handle_cast/2,
+	 handle_info/2, terminate/2, code_change/3]).
+
+-include("ejabberd.hrl").
+-include("logger.hrl").
+
+-include("jlib.hrl").
+
+-include("ejabberd_http.hrl").
+
+-include("mod_offline.hrl").
+
+receive_all(US, Msgs, DBType) ->
+    receive
+      #offline_msg{us = US} = Msg ->
+	  receive_all(US, [Msg | Msgs], DBType)
+      after 0 ->
+		case DBType of
+		  mnesia -> Msgs;
+		  odbc -> lists:reverse(Msgs);
+                  p1db -> Msgs;
+		  riak -> Msgs
+		end
+    end.
+
+start_link(MyName, [Host, Opts]) ->
+    ?GEN_SERVER:start_link({local, MyName}, ?MODULE, [Host, Opts], []).
+
+init([Host, Opts]) ->
+    AccessMaxOfflineMsgs =
+	gen_mod:get_opt(access_max_user_messages, Opts,
+                        fun(A) when is_atom(A) -> A end,
+			max_user_offline_messages),
+    {ok,
+     #state{host = Host,
+            access_max_offline_messages = AccessMaxOfflineMsgs}}.
+
+
+handle_cast(_Msg, State) -> {noreply, State}.
+
+
+handle_info(#offline_msg{us = UserServer} = Msg, State) ->
+    #state{host = Host,
+           access_max_offline_messages = AccessMaxOfflineMsgs} = State,
+    DBType = gen_mod:db_type(Host, ?MODULE),
+    Msgs = receive_all(UserServer, [Msg], DBType),  %%This is useless.. p1_server already consume the process queue
+    Len = length(Msgs),
+    MaxOfflineMsgs = mod_offline:get_max_user_messages(AccessMaxOfflineMsgs,
+                                           UserServer, Host),
+    mod_offline:store_offline_msg(Host, UserServer, Msgs, Len, MaxOfflineMsgs, DBType),
+    {noreply, State};
+
+handle_info(_Info, State) ->
+    ?ERROR_MSG("got unexpected info: ~p", [_Info]),
+    {noreply, State}.
+
+handle_call(_Call,_From, State) ->
+    ?ERROR_MSG("got unexpected call: ~p", [_Call]),
+    {reply, ok,  State}.
+
+terminate(_Reason, State) ->
+    ok.
+
+
+code_change(_OldVsn, State, _Extra) -> {ok, State}.
+

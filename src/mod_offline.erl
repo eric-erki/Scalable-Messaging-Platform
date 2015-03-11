@@ -44,6 +44,10 @@
 	 enc_key/1, dec_key/1, enc_val/2, dec_val/2,
          export/1, import_info/0, import/5, import_start/2]).
 
+
+%% Called from mod_offline_worker
+-export([store_offline_msg/6, discard_warn_sender/1]).
+
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
 	 handle_info/2, terminate/2, code_change/3]).
@@ -57,17 +61,7 @@
 
 -include("ejabberd_web_admin.hrl").
 
--record(offline_msg,
-	{us = {<<"">>, <<"">>} :: {binary(), binary()},
-         timestamp = now()     :: erlang:timestamp() | '_',
-         expire = now()        :: erlang:timestamp() | never | '_',
-         from = #jid{}         :: jid() | '_',
-         to = #jid{}           :: jid() | '_',
-         packet = #xmlel{}     :: xmlel() | '_'}).
-
--record(state,
-	{host = <<"">> :: binary(),
-         access_max_offline_messages}).
+-include("mod_offline.hrl").
 
 -define(PROCNAME, ejabberd_offline).
 
@@ -81,16 +75,12 @@ start_link(Host, Opts) ->
                            [Host, Opts], []).
 
 start(Host, Opts) ->
-    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    ChildSpec = {Proc, {?MODULE, start_link, [Host, Opts]},
-		 transient, 1000, worker, [?MODULE]},
-    supervisor:start_child(ejabberd_sup, ChildSpec).
+    mod_offline_sup:start(Host, Opts).
 
 stop(Host) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    ?GEN_SERVER:call(Proc, stop),
-    supervisor:delete_child(ejabberd_sup, Proc),
-    ok.
+    ?GEN_SERVER:call(Proc, stop), %%To ensure the terminate() callback is triggered
+    mod_offline_sup:stop(Host).
 
 
 %%====================================================================
@@ -130,17 +120,6 @@ handle_call(stop, _From, State) ->
 
 handle_cast(_Msg, State) -> {noreply, State}.
 
-
-handle_info(#offline_msg{us = UserServer} = Msg, State) ->
-    #state{host = Host,
-           access_max_offline_messages = AccessMaxOfflineMsgs} = State,
-    DBType = gen_mod:db_type(Host, ?MODULE),
-    Msgs = receive_all(UserServer, [Msg], DBType),
-    Len = length(Msgs),
-    MaxOfflineMsgs = get_max_user_messages(AccessMaxOfflineMsgs,
-                                           UserServer, Host),
-    store_offline_msg(Host, UserServer, Msgs, Len, MaxOfflineMsgs, DBType),
-    {noreply, State};
 
 handle_info(_Info, State) ->
     ?ERROR_MSG("got unexpected info: ~p", [_Info]),
@@ -284,18 +263,6 @@ get_max_user_messages(AccessRule, {User, Server}, Host) ->
       _ -> ?MAX_USER_MESSAGES
     end.
 
-receive_all(US, Msgs, DBType) ->
-    receive
-      #offline_msg{us = US} = Msg ->
-	  receive_all(US, [Msg | Msgs], DBType)
-      after 0 ->
-		case DBType of
-		  mnesia -> Msgs;
-		  odbc -> lists:reverse(Msgs);
-                  p1db -> Msgs;
-		  riak -> Msgs
-		end
-    end.
 
 need_to_store(LServer, Packet) ->
     Type = xml:get_tag_attr_s(<<"type">>, Packet),
@@ -323,7 +290,8 @@ store_packet(From, To, Packet) ->
 		 TimeStamp = now(),
 		 #xmlel{children = Els} = Packet,
 		 Expire = find_x_expire(TimeStamp, Els),
-		 gen_mod:get_module_proc(To#jid.lserver, ?PROCNAME) !
+                 Worker = mod_offline_sup:get_worker_for(To#jid.lserver, To#jid.luser),
+		 Worker !
 		   #offline_msg{us = {LUser, LServer},
 				timestamp = TimeStamp, expire = Expire,
 				from = From, to = To, packet = Packet},
