@@ -383,7 +383,6 @@ build_fault_response(Code, ParseString, ParseArgs) ->
 do_command(AccessCommands, Auth, Command, AttrL, ArgsF,
 	   ResultF) ->
     ArgsFormatted = format_args(AttrL, ArgsF),
-    AuthBin = make_auth_bin(Auth),
     Result =
 	ejabberd_commands:execute_command(AccessCommands, Auth,
 					  Command, ArgsFormatted),
