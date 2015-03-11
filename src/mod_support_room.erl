@@ -3473,15 +3473,16 @@ process_iq_owner(From, get, Lang, SubEl, StateData) ->
     end.
 
 is_allowed_log_change(XEl, StateData, From) ->
-    case lists:keymember(<<"support#roomconfig_enablelogging">>,
-			 1, jlib:parse_xdata_submit(XEl))
-	of
-      false -> true;
-      true ->
-	  allow ==
-	    mod_support_log:check_access_log(StateData#state.server_host,
-					 From)
-    end.
+    true.
+%    case lists:keymember(<<"support#roomconfig_enablelogging">>,
+%			 1, jlib:parse_xdata_submit(XEl))
+%	of
+%      false -> true;
+%      true ->
+%	  allow ==
+%	    mod_support_log:check_access_log(StateData#state.server_host,
+%					 From)
+%    end.
 
 is_allowed_persistent_change(XEl, StateData, From) ->
     case
@@ -3839,16 +3840,16 @@ get_config(Lang, StateData, From) ->
 				   <<"support#roomconfig_captcha_whitelist">>,
 				   ((?SETS):to_list(Config#config.captcha_whitelist)))]
 		    ++
-		    case
-		      mod_support_log:check_access_log(StateData#state.server_host,
-						   From)
-			of
-		      allow ->
+%		    case
+%		      mod_support_log:check_access_log(StateData#state.server_host,
+%						   From)
+%			of
+%		      allow ->
 			  [?BOOLXFIELD(<<"Enable logging">>,
 				       <<"support#roomconfig_enablelogging">>,
-				       (Config#config.logging))];
-		      _ -> []
-		    end,
+				       (Config#config.logging))],
+%		      _ -> []
+%		    end,
     {result,
      [#xmlel{name = <<"instructions">>, attrs = [],
 	     children =
@@ -4544,19 +4545,20 @@ get_supportroom_disco_items(StateData) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Logging
 
-add_to_log(Type, Data, StateData)
-    when false andalso Type == roomconfig_change_disabledlogging ->
-    mod_support_log:add_to_log(StateData#state.server_host,
-			   roomconfig_change, Data, StateData#state.jid,
-			   make_opts(StateData));
 add_to_log(Type, Data, StateData) ->
-    case false andalso (StateData#state.config)#config.logging of
-      true ->
-	  mod_support_log:add_to_log(StateData#state.server_host,
-				 Type, Data, StateData#state.jid,
-				 make_opts(StateData));
-      false -> ok
-    end.
+    ok.
+%    when false andalso Type == roomconfig_change_disabledlogging ->
+%    mod_support_log:add_to_log(StateData#state.server_host,
+%			   roomconfig_change, Data, StateData#state.jid,
+%			   make_opts(StateData));
+%add_to_log(Type, Data, StateData) ->
+%    case false andalso (StateData#state.config)#config.logging of
+%      true ->
+%	  mod_support_log:add_to_log(StateData#state.server_host,
+%				 Type, Data, StateData#state.jid,
+%				 make_opts(StateData));
+%      false -> ok
+%    end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Users number checking
