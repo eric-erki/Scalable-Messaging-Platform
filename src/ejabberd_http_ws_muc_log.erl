@@ -46,7 +46,7 @@
 -define(WEBSOCKET_TIMEOUT, 300).
 
 -record(state,
-	{socket                       :: ws_socket(),
+        {socket                       :: ws_socket(),
          ws                           :: {#ws{}, pid()}}).
 
 %-define(DBGFSM, true).
@@ -97,13 +97,32 @@ close({http_ws, FsmRef, _IP}) ->
 
 socket_handoff(LocalPath, Request, Socket, SockMod, Buf, Opts) ->
     ejabberd_websocket:socket_handoff(LocalPath, Request, Socket, SockMod,
-                                      Buf, Opts, ?MODULE).
+                                      Buf, Opts, ?MODULE, fun get_human_html_xmlel/0).
 
 %%% Internal
 
+get_human_html_xmlel() ->
+    Heading = <<"ejabberd ", (jlib:atom_to_binary(?MODULE))/binary>>,
+    #xmlel{name = <<"html">>,
+           attrs =
+               [{<<"xmlns">>, <<"http://www.w3.org/1999/xhtml">>}],
+           children =
+               [#xmlel{name = <<"head">>, attrs = [],
+                       children =
+                           [#xmlel{name = <<"title">>, attrs = [],
+                                   children = [{xmlcdata, Heading}]}]},
+                #xmlel{name = <<"body">>, attrs = [],
+                       children =
+                           [#xmlel{name = <<"h1">>, attrs = [],
+                                   children = [{xmlcdata, Heading}]},
+                            #xmlel{name = <<"p">>, attrs = [],
+                                   children =
+                                       [{xmlcdata, <<"Access point for getting your muc logs over WebSocket connection">>}]
+                                  }]}]}.
+
 init([{WsState, _} = WS]) ->
     %% Opts = ejabberd_c2s_config:get_c2s_limits(),
-    Socket = {http_ws, self(), ejabberd_ws:get(WS, ip)},
+    Socket = {http_ws, self(), WsState#ws.ip},
     ?DEBUG("Muc log client connected through websocket ~p",
 	   [[Socket, WsState#ws.local_path]]),
     mod_muc_log:register_listener(hd(WsState#ws.local_path), self()),
@@ -122,7 +141,7 @@ handle_info(closed, _StateName, StateData) ->
 handle_info({browser, _Packet}, StateName, StateData) ->
     {next_state, StateName, StateData};
 handle_info({muc_message, Msg, Nick, _RoomJid, _RoomInfo}, StateName,
-            #state{ws = WS} = StateData) ->
+            #state{ws = {_, WsPid}} = StateData) ->
     JSON = case Msg of
                join ->
                    [{<<"type">>, <<"user_join">>}, {<<"nick">>, Nick}];
@@ -154,7 +173,7 @@ handle_info({muc_message, Msg, Nick, _RoomJid, _RoomInfo}, StateName,
                    []
            end,
     Packet = jiffy:encode({JSON}),
-    ejabberd_ws:send(WS, Packet),
+    WsPid ! {send, Packet},
     {next_state, StateName, StateData};
 handle_info(_, StateName, StateData) ->
     {next_state, StateName, StateData}.
