@@ -67,5 +67,5 @@ get_proc_name(WorkerName, I) ->
 			    (iolist_to_binary(integer_to_list(I)))/binary>>).
 
 get_proc_by_hash(WorkerName, PoolSize, Term) ->
-    N = erlang:phash2(Term, PoolSize +1),
+    N = erlang:phash2(Term, PoolSize) +1,
     get_proc_name(WorkerName, N).
