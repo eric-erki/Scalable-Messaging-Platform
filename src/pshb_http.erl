@@ -225,7 +225,7 @@ out(Module, _Args, 'DELETE', [_Domain, Node] = Uri,
     Jid = jlib:make_jid({User, UDomain, <<"">>}),
     case Module:delete_node(Host, Node, Jid) of
       {error, Error} -> error(Error);
-      {result, []} -> {200, [], []}
+      {result, _} -> {200, [], []}
     end;
 out(Module, Args, 'GET', [Domain, Node, _Item] = URI,
     _) ->

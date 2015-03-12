@@ -1149,7 +1149,8 @@ send_stanza(FromJID, ToJID, StanzaStr) ->
 	  0
     end.
 
-start_mass_message(Host, File, Rate) ->
+start_mass_message(Host, File, Rate)
+        when is_binary(Host), is_binary(File), is_integer(Rate) ->
     From = jlib:make_jid(<<>>, Host, <<>>),
     Proc = gen_mod:get_module_proc(Host, ?MASSLOOP),
     Delay = 60000 div Rate,
@@ -1250,7 +1251,7 @@ server_info() ->
 	end, FirstActive, OtherActive),
     lists:flatten([
 	[{online, Sessions} | lists:zip(Nodes--LocalFailed, LocalSessions)],
-	[{jabs, Jabs} | [{binary_to_atom(Key, latin1), Val} || {Key, Val} <- ActiveAll]],
+	[{jabs, Jabs} | [{jlib:binary_to_atom(Key), Val} || {Key, Val} <- ActiveAll]],
 	{memory, Memory},
 	{processes, Processes},
 	{iq_handlers, IqHandlers},
@@ -1576,16 +1577,16 @@ clean_session_list([S1, S2 | Rest], Res) ->
     end.
 
 mass_message_parse_file(File) ->
-    case file:open(File, read) of
+    case file:open(File, [read]) of
 	{ok, IoDevice} ->
 	    case mass_message_parse_body(IoDevice) of
-		Header when is_binary(Header) ->
+		{ok, Header} when is_binary(Header) ->
 		    Packet = case xml_stream:parse_element(Header) of
 			    {error, _} -> Header;  % Header is message Body
 			    Stanza -> Stanza       % Header is xmpp stanza
 			end,
 		    Uids = case mass_message_parse_uids(IoDevice) of
-			    List when is_list(List) -> List;
+			    {ok, List} when is_list(List) -> List;
 			    _ -> []
 			end,
 		    file:close(IoDevice),
@@ -1600,12 +1601,12 @@ mass_message_parse_file(File) ->
 
 mass_message_parse_body(IoDevice) ->
     mass_message_parse_body(IoDevice, file:read_line(IoDevice), <<>>).
-mass_message_parse_body(_IoDevice, {ok, "\n"}, Acc) -> Acc;
+mass_message_parse_body(_IoDevice, {ok, "\n"}, Acc) -> {ok, Acc};
 mass_message_parse_body(IoDevice, {ok, Data}, Acc) ->
     [Line|_] = binary:split(list_to_binary(Data), <<"\n">>),
     NextLine = file:read_line(IoDevice),
     mass_message_parse_body(IoDevice, NextLine, <<Acc/binary, Line/binary>>);
-mass_message_parse_body(_IoDevice, eof, Acc) -> Acc;
+mass_message_parse_body(_IoDevice, eof, Acc) -> {ok, Acc};
 mass_message_parse_body(_IoDevice, Error, _) -> Error.
 
 mass_message_parse_uids(IoDevice) ->
@@ -1614,7 +1615,7 @@ mass_message_parse_uids(IoDevice, {ok, Data}, Acc) ->
     [Uid|_] = binary:split(list_to_binary(Data), <<"\n">>),
     NextLine = file:read_line(IoDevice),
     mass_message_parse_uids(IoDevice, NextLine, [Uid|Acc]);
-mass_message_parse_uids(_IoDevice, eof, Acc) -> lists:reverse(Acc);
+mass_message_parse_uids(_IoDevice, eof, Acc) -> {ok, lists:reverse(Acc)};
 mass_message_parse_uids(_IoDevice, Error, _) -> Error.
 
 mass_message(_Host, _Delay, _Stanza, _From, []) -> done;

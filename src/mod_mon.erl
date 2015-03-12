@@ -275,7 +275,7 @@ commands() ->
 %                        result = {probe_value, integer}}].
 
 active_counters_command(Host) ->
-    [{atom_to_binary(Key, latin1), Val}
+    [{jlib:atom_to_binary(Key), Val}
      || {Key, Val} <- dump(Host),
         lists:member(Key, ?HYPERLOGLOGS)].
 
@@ -286,7 +286,7 @@ flush_probe_command(Host, Probe) ->
     end.
 
 %jabs_count_command(Host) ->
-%    [{atom_to_binary(Key, latin1), Val}
+%    [{jlib:atom_to_binary(Key), Val}
 %     || {Key, Val} <- jabs_count(Host)].
 %
 %jabs_reset_command(Host) ->
@@ -297,8 +297,7 @@ flush_probe_command(Host, Probe) ->
 %% Helper functions
 %%====================================================================
 
-hookid(Name) when is_binary(Name) -> binary_to_atom(Name, latin1);
-hookid(Name) when is_atom(Name) -> Name.
+hookid(Name) when is_binary(Name) -> jlib:binary_to_atom(Name).
 
 packet(Main, Name, <<>>) -> <<Name/binary, "_", Main/binary, "_packet">>;
 packet(Main, _Name, Type) -> <<Type/binary, "_", Main/binary, "_packet">>.
@@ -403,7 +402,7 @@ resend_offline_messages_hook(Ls, _User, Server) ->
 sm_register_connection_hook(_SID, #jid{luser=LUser,lserver=LServer}, Info) ->
     Post = case proplists:get_value(conn, Info) of
         undefined -> <<>>;
-        Atom -> atom_to_binary(Atom, latin1)
+        Atom -> jlib:atom_to_binary(Atom)
     end,
     Hook = hookid(concat(<<"sm_register_connection">>, Post)),
     cast(LServer, {inc, Hook}),
@@ -411,7 +410,7 @@ sm_register_connection_hook(_SID, #jid{luser=LUser,lserver=LServer}, Info) ->
 sm_remove_connection_hook(_SID, #jid{lserver=LServer}, Info) ->
     Post = case proplists:get_value(conn, Info) of
         undefined -> <<>>;
-        Atom -> atom_to_binary(Atom, latin1)
+        Atom -> jlib:atom_to_binary(Atom)
     end,
     Hook = hookid(concat(<<"sm_remove_connection">>, Post)),
     cast(LServer, {inc, Hook}).
@@ -531,13 +530,13 @@ init_log(Host, true) ->
 
 cluster_log(Host, Nodes) ->
     case rpc:multicall(Nodes, ?MODULE, value, [Host, log], 8000) of
+        {[], _} ->
+            undefined;
         {Success, _Fail} ->
             [Log|Logs] = [L || L <- Success, L =/= error],
             lists:foldl(fun(Remote, Acc) when is_atom(Remote) -> Acc;
                            (Remote, Acc) -> ehyperloglog:merge(Acc, Remote)
-                        end, Log, Logs);
-        _ ->
-            undefined
+                        end, Log, Logs)
     end.
 
 sync_log(Host) when is_binary(Host) ->
@@ -551,7 +550,7 @@ sync_log(Host) when is_binary(Host) ->
                         Error;
                     ClusterLog ->
                         set(Host, log, ClusterLog),
-                        write_logs(Host, [merge_log(Host, Key, Val, ClusterLog)
+                        write_logs(Host, [{Key, merge_log(Host, Key, Val, ClusterLog)}
                                           || {Key, Val} <- read_logs(Host)])
                 end
         end).
@@ -577,7 +576,7 @@ flush_log(Host, Probe, ClusterLog) when is_binary(Host), is_atom(Probe) ->
                         true -> merge_log(Host, Key, Val, ClusterLog);
                         false -> reset_log(Host, Key)
                     end,
-                    {[NewLog|Acc], Keep}
+                    {[{Key, NewLog}|Acc], Keep}
             end,
             {[], true}, read_logs(Host)),
     write_logs(Host, UpdatedLogs).
@@ -585,11 +584,11 @@ flush_log(Host, Probe, ClusterLog) when is_binary(Host), is_atom(Probe) ->
 merge_log(Host, Probe, Log, ClusterLog) ->
     Merge = ehyperloglog:merge(ClusterLog, Log),
     set(Host, Probe, round(ehyperloglog:cardinality(Merge))),
-    {Probe, Merge}.
+    Merge.
 
 reset_log(Host, Probe) ->
     set(Host, Probe, 0),
-    {Probe, ehyperloglog:new(16)}.
+    ehyperloglog:new(16).
 
 write_logs(Host, Logs) when is_list(Logs) ->
     File = logfilename(Host),
@@ -603,11 +602,15 @@ read_logs(Host) ->
             case catch binary_to_term(Bin) of
                 List when is_list(List) ->
                     % prevent any garbage loading
-                    lists:filter(
-                        fun({Key, _Val}) -> lists:member(Key, ?HYPERLOGLOGS);
-                           (_) -> false
-                        end,
-                        List);
+                    lists:foldr(
+                        fun ({Key, Val}, Acc) ->
+                                case lists:member(Key, ?HYPERLOGLOGS) of
+                                    true -> [{Key, Val}|Acc];
+                                    false -> Acc
+                                end;
+                            (_, Acc) ->
+                                Acc
+                        end, [], List);
                 _ ->
                     []
             end;
@@ -703,12 +706,12 @@ push(_Host, Probes, statsd) ->
     % Librato metrics are name first with service name (to group the metrics from a service),
     % then type of service (xmpp, etc) and then name of the data itself
     % example => process-one.net.xmpp.xmpp-1.chat_receive_packet
-    [_, NodeId] = str:tokens(atom_to_binary(node(), latin1), <<"@">>),
+    [_, NodeId] = str:tokens(jlib:atom_to_binary(node()), <<"@">>),
     [Node | _] = str:tokens(NodeId, <<".">>),
     BaseId = <<"xmpp.", Node/binary>>,
     lists:foreach(
         fun({Key, Val}) ->
-                Id = <<BaseId/binary, ".", (atom_to_binary(Key, latin1))/binary>>,
+                Id = <<BaseId/binary, ".", (jlib:atom_to_binary(Key))/binary>>,
                 case proplists:get_value(Key, ?NO_COUNTER_PROBES) of
                     undefined -> statsderl:increment(Id, Val, 1);
                     gauge -> statsderl:gauge(Id, Val, 1);

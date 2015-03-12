@@ -4256,10 +4256,9 @@ make_opts(StateData) ->
                                true -> (?SETS):to_list(DefV);
                                false -> DefV
                            end,
-                  if Val == DefVal ->
-                          {Pos+1, L};
-                     true ->
-                          {Pos+1, [{Field, Val}|L]}
+                  case Val of
+                        DefVal -> {Pos+1, L};
+                        _ -> {Pos+1, [{Field, Val}|L]}
                   end
           end, {2, []}, Fields),
     Opts2 = lists:reverse(Opts1),

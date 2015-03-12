@@ -685,7 +685,7 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
 	    {lists:flatmap(
 	       fun({Attrs}) ->
 		       try
-			   Pkt = build_xml_from_json(User, Attrs, StoreBody),
+			   Pkt = build_xml_from_json(JidRequestor, Attrs, StoreBody),
 			   TS = proplists:get_value(<<"timestamp">>, Attrs, <<"">>),
 			   {_, _, _} = Now = jlib:datetime_string_to_timestamp(TS),
 			   ID = now_to_usec(Now),
