@@ -124,8 +124,12 @@ load_rules(Host) ->
 
 init(Host, Opts) ->
     Rules = load_rules(Host),
-    Scope = gen_mod:get_opt(scope, Opts, message),
-    Pattern = gen_mod:get_opt(pattern, Opts, <<"">>),
+    Scope = gen_mod:get_opt(scope, Opts,
+                            fun(A) when is_atom(A) -> A end,
+                            message),
+    Pattern = gen_mod:get_opt(pattern, Opts,
+                              fun(A) when is_binary(A) -> A end,
+                              <<"">>),
     (?MODULE):loop(Host, Opts, Rules, Scope, Pattern).
 
 init_all_hosts_handler() ->
@@ -276,7 +280,7 @@ rules() ->
 				type = Type, regexp = Regexp}) ->
 		      {VH, Label, Type, Regexp}
 	      end,
-	      mnesia:dirty_match_object(#filter_rule{_ = '_'})).
+	      ets:tab2list(filter_rule)).
 
 logged() ->
     lists:reverse(lists:map(fun (#filter_log{date = Date,
@@ -285,21 +289,17 @@ logged() ->
 				    {Date, jlib:jid_to_string(From),
 				     jlib:jid_to_string(To), Msg}
 			    end,
-			    mnesia:dirty_match_object(#filter_log{_ = '_'}))).
+			    ets:tab2list(filter_log))).
 
-logged(Limit) ->
-    List = mnesia:dirty_match_object(#filter_log{_ = '_'}),
-    Len = str:len(List),
+logged(Limit) when is_integer(Limit) ->
+    List = ets:tab2list(filter_log),
+    Len = length(List),
     FinalList = if Len < Limit -> List;
 		   true -> lists:nthtail(Len - Limit, List)
 		end,
-    lists:reverse(lists:map(fun (#filter_log{date = Date,
-					     from = From, to = To,
-					     message = Msg}) ->
-				    {Date, jlib:jid_to_string(From),
-				     jlib:jid_to_string(To), Msg}
-			    end,
-			    FinalList)).
+    [{Date, jlib:jid_to_string(From), jlib:jid_to_string(To), Msg}
+	|| #filter_log{date=Date, from=From, to=To, message=Msg}
+	    <- lists:reverse(FinalList)].
 
 filter_packet(drop) -> drop;
 filter_packet({From, To, Packet}) ->

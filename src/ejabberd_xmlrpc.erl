@@ -389,11 +389,6 @@ do_command(AccessCommands, Auth, Command, AttrL, ArgsF,
     ResultFormatted = format_result(Result, ResultF),
     {command_result, ResultFormatted}.
 
-make_auth_bin(noauth) ->
-    noauth;
-make_auth_bin({UserT, ServerT, PasswordT}) ->
-    {iolist_to_binary(UserT), iolist_to_binary(ServerT), iolist_to_binary(PasswordT)}.
-
 %%-----------------------------
 %% Format arguments
 %%-----------------------------

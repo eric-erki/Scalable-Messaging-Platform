@@ -716,12 +716,12 @@ db_opts(Host, ShardNumber) ->
             [odbc, Server];
         _ ->
             Port = case lists:keyfind(odbc_port, 1, Shard) of
-		       false ->
+		       {_, P} when is_integer(P), P > 0, P < 65536 -> P;
+		       _ ->
 			   case Type of
 			       mysql -> ?MYSQL_PORT;
 			       pgsql -> ?PGSQL_PORT
-			   end;
-		       P when is_integer(P), P > 0, P < 65536 -> P
+			   end
 		   end,
 
 	    DB = case lists:keyfind(odbc_database, 1, Shard) of

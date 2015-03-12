@@ -2498,16 +2498,6 @@ send_items(Host, Node, _Nidx, _Type, Options, LJID, _) ->
     Stanza = items_event_stanza(Node, []),
     dispatch_items(Host, LJID, Node, Options, Stanza).
 
--spec(dispatch_items/5 ::
-(
-  From    :: mod_pubsub:host(),
-  To      :: jid(),
-  Node    :: mod_pubsub:nodeId(),
-  Options :: mod_pubsub:nodeOptions(),
-  Stanza  :: xmlel() | undefined)
-    -> any()
-).
-
 dispatch_items({FromU, FromS, FromR} = From, {ToU, ToS, ToR} = To, Node,
 	       Options, Stanza) ->
     C2SPid = case ejabberd_sm:get_session_pid(ToU, ToS, ToR) of

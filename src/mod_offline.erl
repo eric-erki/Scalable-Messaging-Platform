@@ -75,14 +75,14 @@
 start_link(Host, Opts) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     ?GEN_SERVER:start_link({local, Proc}, ?MODULE,
-                           [Host, Opts], []).
+                           [Host, Opts], [{max_queue, 5000}]).
 
 start(Host, Opts) ->
     mod_offline_sup:start(Host, Opts).
 
 stop(Host) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    ?GEN_SERVER:call(Proc, stop), %%To ensure the terminate() callback is triggered
+    catch ?GEN_SERVER:call(Proc, stop), %%To ensure the terminate() callback is triggered
     mod_offline_sup:stop(Host).
 
 status(Host) ->
@@ -1205,14 +1205,10 @@ export(_Server) ->
                              packet = Packet})
             when LServer == Host ->
               Username = ejabberd_odbc:escape(LUser),
-              Packet1 =
-                  jlib:replace_from_to(jlib:jid_to_string(From),
-                                       jlib:jid_to_string(To), Packet),
-              Packet2 =
-                  jlib:add_delay_info(Packet1, LServer, TimeStamp,
-                                      <<"Offline Storage">>),
-              XML =
-                  ejabberd_odbc:escape(xml:element_to_binary(Packet2)),
+              Packet1 = jlib:replace_from_to(From, To, Packet),
+              Packet2 = jlib:add_delay_info(Packet1, LServer, TimeStamp,
+                                            <<"Offline Storage">>),
+              XML = ejabberd_odbc:escape(xml:element_to_binary(Packet2)),
               [[<<"delete from spool where username='">>, Username, <<"';">>],
                [<<"insert into spool(username, xml) values ('">>,
                 Username, <<"', '">>, XML, <<"');">>]];

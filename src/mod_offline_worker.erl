@@ -58,7 +58,7 @@ receive_all(US, Msgs, DBType) ->
     end.
 
 start_link(MyName, [Host, Opts]) ->
-    ?GEN_SERVER:start_link({local, MyName}, ?MODULE, [Host, Opts], []).
+    ?GEN_SERVER:start_link({local, MyName}, ?MODULE, [Host, Opts], [{max_queue,5000}]).
 
 init([Host, Opts]) ->
     AccessMaxOfflineMsgs =
@@ -92,7 +92,7 @@ handle_call(_Call,_From, State) ->
     ?ERROR_MSG("got unexpected call: ~p", [_Call]),
     {reply, ok,  State}.
 
-terminate(_Reason, State) ->
+terminate(_Reason, _State) ->
     ok.
 
 
