@@ -28,7 +28,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start/2, stop/1, get_worker_for/2]).
+-export([start/2, stop/1, get_worker_for/2, status/1]).
 
 %% Supervisor callbacks
 -export([start_link/2, init/1]).
@@ -50,6 +50,17 @@ stop(Host) ->
     supervisor:terminate_child(ejabberd_sup, Proc),
     supervisor:delete_child(ejabberd_sup, Proc),
     ok.
+
+status(Host) ->
+    PoolName = gen_mod:get_module_proc(Host, mod_offline_pool),
+    Workers = supervisor:which_children(PoolName),
+    lists:map(fun({Id, Pid, worker, _}) ->
+                      {Id,
+                       Pid,
+                       element(2,erlang:process_info(Pid, message_queue_len)),
+                       proplists:get_value('$internal_queue_len',element(2,erlang:process_info(Pid, dictionary)),0)}
+              end , Workers).
+
 
 %%%===================================================================
 %%% API functions

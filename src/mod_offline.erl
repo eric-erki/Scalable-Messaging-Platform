@@ -48,6 +48,9 @@
 %% Called from mod_offline_worker
 -export([store_offline_msg/6, discard_warn_sender/1, get_max_user_messages/3]).
 
+%% For debuging
+-export([status/1]).
+
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
 	 handle_info/2, terminate/2, code_change/3]).
@@ -82,6 +85,8 @@ stop(Host) ->
     ?GEN_SERVER:call(Proc, stop), %%To ensure the terminate() callback is triggered
     mod_offline_sup:stop(Host).
 
+status(Host) ->
+    mod_offline_sup:status(Host).
 
 %%====================================================================
 %% gen_server callbacks
