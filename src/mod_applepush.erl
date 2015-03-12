@@ -55,6 +55,7 @@
 
 %% Debug commands
 -export([get_tokens_by_jid/1]).
+-export([odbc_to_p1db/2]).
 
 
 -include("ejabberd.hrl").
@@ -1094,6 +1095,64 @@ export(_Server) ->
       end
      }].
 
+
+odbc_to_p1db(LServer, Limit) ->
+    init_db(p1db, LServer),
+    odbc_to_p1db(LServer, Limit, 0).
+
+odbc_to_p1db(LServer, Limit, Offset) ->
+    case ejabberd_odbc:sql_query(
+	   LServer, [<<"select username, device_id, app_id, "
+		       "send_body, send_from, local_badge from applepush_cache "
+		       "limit ">>, integer_to_list(Limit),
+		     <<" offset ">>, integer_to_list(Offset)]) of
+	{selected, _, []} ->
+	    done;
+	{selected, _, Rows} ->
+	    Res = lists:foldl(
+		    fun(Row, ok) ->
+			    row_to_p1db(LServer, Row);
+		       (_Row, Err) ->
+			    Err
+		    end, ok, Rows),
+	    case Res of
+		ok ->
+		    odbc_to_p1db(LServer, Limit, Offset+Limit);
+		Err ->
+		    Err
+	    end;
+	Err ->
+	    Err
+    end.
+
+row_to_p1db(LServer,
+	    [LUser, SDeviceID, AppID, SSendBody, SSendFrom, LocalBadgeStr]) ->
+    DeviceID = jlib:binary_to_integer(SDeviceID, 16),
+    SendBody = case SSendBody of
+		   <<"A">> -> all;
+		   <<"U">> -> first_per_user;
+		   <<"F">> -> first;
+		   _ -> none
+	       end,
+    SendFrom = case SSendFrom of
+		   <<"J">> -> jid;
+		   <<"U">> -> username;
+		   <<"N">> -> name;
+		   _ -> none
+	       end,
+    LocalBadge = if is_binary(LocalBadgeStr) ->
+			 jlib:binary_to_integer(LocalBadgeStr);
+		    true ->
+			 0
+		 end,
+    Options = [{app_id, AppID},
+	       {send_body, SendBody},
+	       {send_from, SendFrom},
+	       {local_badge, LocalBadge},
+	       {timestamp, 0}],
+    Key = usd2key(LUser, LServer, DeviceID),
+    Val = opts_to_p1db(Options),
+    p1db:async_insert(applepush_cache, Key, Val).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Internal module protection
