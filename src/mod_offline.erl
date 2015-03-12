@@ -46,7 +46,7 @@
 
 
 %% Called from mod_offline_worker
--export([store_offline_msg/6, discard_warn_sender/1]).
+-export([store_offline_msg/6, discard_warn_sender/1, get_max_user_messages/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
