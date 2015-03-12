@@ -86,6 +86,22 @@ start(Host, Opts) ->
                                ?MODULE, remove_user, 50),
 	    ejabberd_hooks:add(offline_message_hook, Host,
 			       ?MODULE, receive_offline_packet, 35),
+            MultipleAccs =
+                gen_mod:get_opt(
+                  multiple_accounts_per_device, Opts,
+                  fun(true) -> true;
+                     (false) -> false
+                  end,
+                  false),
+            case {gen_mod:db_type(Opts), MultipleAccs} of
+                {odbc, _} -> ok;
+                {DBType, false} ->
+                    ?WARNING_MSG(
+                       "Option 'multiple_accounts_per_device' is forced "
+                       "to 'true' with db_type=~w in ~w", [DBType, ?MODULE]),
+                    ok;
+                _ -> ok
+            end,
             IQDisc = gen_mod:get_opt(
                        iqdisc, Opts, fun gen_iq_handler:check_type/1,
                        one_queue),
@@ -749,7 +765,23 @@ store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom) ->
             name -> <<"N">>;
             _ -> <<"-">>
         end,
+    MultipleAccs =
+	gen_mod:get_module_opt(
+	  LServer, ?MODULE,
+	  multiple_accounts_per_device,
+          fun(true) -> true;
+             (false) -> false
+          end,
+          false),
     F = fun() ->
+                if
+                    MultipleAccs -> ok;
+                    true ->
+                        ejabberd_odbc:sql_query_t(
+                          [<<"delete from applepush_cache ">>,
+                           <<"where username<>'">>, Username, <<"' and ">>,
+                           <<"device_id='">>, SDeviceID, <<"';">>])
+                end,
                 %% We must keep the previous local_badge if it exists.
                 case ejabberd_odbc:sql_query_t(
                   [<<"select app_id, send_body, send_from from applepush_cache "
