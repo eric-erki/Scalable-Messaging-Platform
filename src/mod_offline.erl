@@ -78,7 +78,7 @@
 start_link(Host, Opts) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     ?GEN_SERVER:start_link({local, Proc}, ?MODULE,
-                           [Host, Opts], []).
+                           [Host, Opts], [{max_queue, 5000}]).
 
 start(Host, Opts) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),

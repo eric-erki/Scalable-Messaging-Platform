@@ -54,7 +54,7 @@
 %% Description: Starts the server
 %%--------------------------------------------------------------------
 start_link(Name) ->
-    ?GEN_SERVER:start_link({local, Name}, ?MODULE, [], []).
+    ?GEN_SERVER:start_link({local, Name}, ?MODULE, [], [{max_queue, 5000}]).
 
 start(Name) ->
     Spec = {Name,
