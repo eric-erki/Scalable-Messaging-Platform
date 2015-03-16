@@ -903,7 +903,7 @@ user_resources(User, Server) ->
     lists:sort(Resources).
 
 get_proc_num() ->
-    64.
+    1000.
 
 get_proc_by_hash(Term) ->
     N = erlang:phash2(Term, get_proc_num()) + 1,

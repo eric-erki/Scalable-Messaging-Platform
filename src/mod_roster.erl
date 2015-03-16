@@ -114,6 +114,7 @@ init_db(p1db, Host) ->
 		{p1db_group, Host}, fun(G) when is_atom(G) -> G end)),
     p1db:open_table(roster,
 		    [{group, Group},
+		     {nosync, true},
                      {schema, [{keys, [server, user, jid]},
                                {vals, [name, subscription,
                                        ask, groups, askmessage,
