@@ -139,10 +139,10 @@ AC_ARG_ENABLE(mssql,
 esac],[db_type=generic])
 
 AC_ARG_ENABLE(all,
-[AC_HELP_STRING([--enable-all], [same as --enable-nif --enable-odbc --enable-mysql --enable-pgsql --enable-pam --enable-zlib --enable-riak --enable-json --enable-elixir --enable-iconv --enable-debug --enable-http --enable-lager --enable-tools --enable-p1db (useful for Dialyzer checks, default: no)])],
+[AC_HELP_STRING([--enable-all], [same as --enable-nif --enable-odbc --enable-mysql --enable-pgsql --enable-sqlite --enable-pam --enable-zlib --enable-riak --enable-json --enable-elixir --enable-iconv --enable-debug --enable-http --enable-lager --enable-tools --enable-p1db (useful for Dialyzer checks, default: no)])],
 [case "${enableval}" in
-  yes) nif=true odbc=true mysql=true pgsql=true pam=true zlib=true riak=true json=true elixir=true iconv=true debug=true http=true lager=true tools=true p1db=true ;;
-  no) nif=false odbc=false mysql=false pgsql=false pam=false zlib=false riak=false json=false elixir=false iconv=false debug=false http=false lager=false tools=false p1db=false ;;
+  yes) nif=true odbc=true mysql=true pgsql=true sqlite=true pam=true zlib=true riak=true json=true elixir=true iconv=true debug=true http=true lager=true tools=true p1db=true ;;
+  no) nif=false odbc=false mysql=false pgsql=false sqlite=false pam=false zlib=false riak=false json=false elixir=false iconv=false debug=false http=false lager=false tools=false p1db=false ;;
   *) AC_MSG_ERROR(bad value ${enableval} for --enable-all) ;;
 esac],[])
 
@@ -185,6 +185,14 @@ AC_ARG_ENABLE(pgsql,
   no)  pgsql=false ;;
   *) AC_MSG_ERROR(bad value ${enableval} for --enable-pgsql) ;;
 esac],[if test "x$pgsql" = "x"; then pgsql=false; fi])
+
+AC_ARG_ENABLE(sqlite,
+[AC_HELP_STRING([--enable-sqlite], [enable SQLite support (default: no)])],
+[case "${enableval}" in
+  yes) sqlite=true ;;
+  no)  sqlite=false ;;
+  *) AC_MSG_ERROR(bad value ${enableval} for --enable-sqlite) ;;
+esac],[if test "x$sqlite" = "x"; then sqlite=false; fi])
 
 AC_ARG_ENABLE(pam,
 [AC_HELP_STRING([--enable-pam], [enable PAM support (default: no)])],
@@ -312,6 +320,7 @@ AC_SUBST(db_type)
 AC_SUBST(odbc)
 AC_SUBST(mysql)
 AC_SUBST(pgsql)
+AC_SUBST(sqlite)
 AC_SUBST(pam)
 AC_SUBST(zlib)
 AC_SUBST(riak)

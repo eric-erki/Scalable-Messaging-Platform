@@ -76,6 +76,7 @@
 -define(MNESIA_VHOST, <<"mnesia.localhost">>).
 -define(MYSQL_VHOST, <<"mysql.localhost">>).
 -define(PGSQL_VHOST, <<"pgsql.localhost">>).
+-define(SQLITE_VHOST, <<"sqlite.localhost">>).
 -define(LDAP_VHOST, <<"ldap.localhost">>).
 -define(EXTAUTH_VHOST, <<"extauth.localhost">>).
 -define(P1DB_VHOST, <<"p1db.localhost">>).
