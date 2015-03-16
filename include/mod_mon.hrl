@@ -80,6 +80,10 @@
          %{muc_rooms, [{'+', muc_create}, {'-', muc_destroy}]},
          %{muc_users, [{'+', muc_user_join}, {'-', muc_user_leave}]},
          %{pubsub_nodes, [{'+', pubsub_create_node}, {'-', pubsub_delete_node}]},
+         {queues, mod_mon, process_queues, []},
+         {iq_queues, mod_mon, worker_queues, [ejabberd_iq_sup]},
+         {sm_queues, mod_mon, worker_queues, [ejabberd_sm_sup]},
+         {c2s_queues, mod_mon, worker_queues, [ejabberd_c2s_sup]},
          {sessions, mnesia, table_info, [session, size]},
          {memory, erlang, memory, [total]},
          {processes, erlang, system_info, [process_count]}

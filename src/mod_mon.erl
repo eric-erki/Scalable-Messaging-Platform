@@ -47,6 +47,8 @@
 %% administration commands
 -export([active_counters_command/1, flush_probe_command/2]).
 %-export([jabs_count_command/1, jabs_reset_command/1]).
+%% monitors
+-export([process_queues/0, worker_queues/1]).
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
@@ -744,6 +746,27 @@ push(_Host, _Probes, none) ->
 %        proplists:is_defined(Mon#mon.probe, ?JABS)].
 
 %%====================================================================
+%% Monitors helpers
+%%====================================================================
+
+process_queues() ->
+    queues([erlang:process_info(Pid, message_queue_len)
+            || Pid <- processes()]).
+
+worker_queues(Sup) ->
+    case catch supervisor:which_children(Sup) of
+        {'EXIT', _} -> 0;
+        Workers -> queues([erlang:process_info(Pid, message_queue_len)
+                            || {_,Pid,_,_} <- Workers])
+    end.
+
+queues(Data) ->
+    lists:foldl(
+        fun ({message_queue_len, I}, Acc) -> Acc+I;
+            (_,Acc) -> Acc
+        end, 0, Data).
+
+%%====================================================================
 %% Temporary helper to get clear cluster view of most important probes
 %%====================================================================
 
@@ -768,3 +791,4 @@ info(Host) when is_binary(Host) ->
     Probes = merge_sets([tab2set(rpc:call(Node, ets, tab2list, [Table])) || Node <- ejabberd_cluster:get_nodes()]),
     [{Key, Val} || {Key, Val} <- Probes,
                    lists:member(Key, [c2s_receive, c2s_send, s2s_receive, s2s_send])].
+
