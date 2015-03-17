@@ -8,4 +8,5 @@
 
 -record(state,
 	{host = <<"">> :: binary(),
-         access_max_offline_messages}).
+         access_max_offline_messages,
+         dbtype :: atom()}).

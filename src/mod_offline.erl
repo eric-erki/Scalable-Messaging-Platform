@@ -116,7 +116,8 @@ init([Host, Opts]) ->
 			max_user_offline_messages),
     {ok,
      #state{host = Host,
-            access_max_offline_messages = AccessMaxOfflineMsgs}}.
+            access_max_offline_messages = AccessMaxOfflineMsgs,
+            dbtype = gen_mod:db_type(Opts)}}.
 
 
 handle_call(stop, _From, State) ->

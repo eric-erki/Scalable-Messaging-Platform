@@ -67,7 +67,8 @@ init([Host, Opts]) ->
 			max_user_offline_messages),
     {ok,
      #state{host = Host,
-            access_max_offline_messages = AccessMaxOfflineMsgs}}.
+            access_max_offline_messages = AccessMaxOfflineMsgs,
+            dbtype = gen_mod:db_type(Opts)}}.
 
 
 handle_cast(_Msg, State) -> {noreply, State}.
@@ -75,8 +76,8 @@ handle_cast(_Msg, State) -> {noreply, State}.
 
 handle_info(#offline_msg{us = UserServer} = Msg, State) ->
     #state{host = Host,
-           access_max_offline_messages = AccessMaxOfflineMsgs} = State,
-    DBType = gen_mod:db_type(Host, mod_offline), %%TODO: this can be held in state
+           access_max_offline_messages = AccessMaxOfflineMsgs,
+           dbtype = DBType} = State,
     Msgs = receive_all(UserServer, [Msg], DBType),  %%This is useless.. p1_server already consume the process queue
     Len = length(Msgs),
     MaxOfflineMsgs = mod_offline:get_max_user_messages(AccessMaxOfflineMsgs,
