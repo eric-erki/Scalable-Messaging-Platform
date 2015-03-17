@@ -84,6 +84,7 @@ CREATE TABLE spool (
 ) ENGINE=InnoDB CHARACTER SET utf8;
 
 CREATE INDEX i_despool USING BTREE ON spool(username);
+CREATE INDEX i_spool_created_at USING BTREE ON spool(created_at);
 
 CREATE TABLE archive (
     username varchar(250) NOT NULL,

@@ -43,6 +43,8 @@
 start() ->
     case is_contrib_allowed() of
         true ->
+            [code:add_patha(module_ebin_dir(Module))
+             || {Module, _} <- installed()],
             application:start(inets),
             ejabberd_commands:register_commands(commands());
         false ->
@@ -53,14 +55,14 @@ stop() ->
     ejabberd_commands:unregister_commands(commands()).
 
 commands() ->
-    [#ejabberd_commands{name = update_modules_specs,
+    [#ejabberd_commands{name = modules_update_specs,
                         tags = [admin,modules],
                         desc = "",
                         longdesc = "",
                         module = ?MODULE, function = update,
                         args = [],
                         result = {res, integer}},
-     #ejabberd_commands{name = available_modules,
+     #ejabberd_commands{name = modules_available,
                         tags = [admin,modules],
                         desc = "",
                         longdesc = "",
@@ -70,7 +72,7 @@ commands() ->
                                   {module, {tuple,
                                    [{name, atom},
                                     {summary, string}]}}}}},
-     #ejabberd_commands{name = installed_modules,
+     #ejabberd_commands{name = modules_installed,
                         tags = [admin,modules],
                         desc = "",
                         longdesc = "",
@@ -80,28 +82,28 @@ commands() ->
                                   {module, {tuple,
                                    [{name, atom},
                                     {summary, string}]}}}}},
-     #ejabberd_commands{name = install_module,
+     #ejabberd_commands{name = module_install,
                         tags = [admin,modules],
                         desc = "",
                         longdesc = "",
                         module = ?MODULE, function = install,
                         args = [{module, binary}],
                         result = {res, integer}},
-     #ejabberd_commands{name = uninstall_module,
+     #ejabberd_commands{name = module_uninstall,
                         tags = [admin,modules],
                         desc = "",
                         longdesc = "",
                         module = ?MODULE, function = uninstall,
                         args = [{module, binary}],
                         result = {res, integer}},
-     #ejabberd_commands{name = upgrade_module,
+     #ejabberd_commands{name = module_upgrade,
                         tags = [admin,modules],
                         desc = "",
                         longdesc = "",
                         module = ?MODULE, function = upgrade,
                         args = [{module, binary}],
                         result = {res, integer}},
-     #ejabberd_commands{name = check_module,
+     #ejabberd_commands{name = module_check,
                         tags = [admin,modules],
                         desc = "",
                         longdesc = "",
@@ -193,7 +195,7 @@ upgrade(Package) when is_binary(Package) ->
     install(Package).
 
 add_sources(Path) when is_list(Path) ->
-    add_sources(module_name(Path), Path).
+    add_sources(iolist_to_binary(module_name(Path)), Path).
 add_sources(_, "") ->
     {error, no_url};
 add_sources(Module, Path) when is_atom(Module), is_list(Path) ->
