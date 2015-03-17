@@ -459,11 +459,13 @@ s2s_receive_packet(_From, #jid{lserver=LServer},
     Hook = hookid(concat(<<"s2s">>, packet(<<"receive">>, Name, Type))),
     cast(LServer, {inc, Hook}).
 
-privacy_iq_set(_, #jid{lserver=LServer}, _To, _Iq) ->
-    cast(LServer, {inc, privacy_iq_set}).
+privacy_iq_set(Acc, #jid{lserver=LServer}, _To, _Iq) ->
+    cast(LServer, {inc, privacy_iq_set}),
+    Acc.
 
-privacy_iq_get(_, #jid{lserver=LServer}, _To, _Iq, _) ->
-    cast(LServer, {inc, privacy_iq_get}).
+privacy_iq_get(Acc, #jid{lserver=LServer}, _To, _Iq, _) ->
+    cast(LServer, {inc, privacy_iq_get}),
+    Acc.
 
 backend_api_call(LServer, _Method, _Path) ->
     cast(LServer, {inc, backend_api_call}).
