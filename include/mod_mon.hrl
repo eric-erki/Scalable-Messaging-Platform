@@ -38,6 +38,7 @@
          user_available_hook, unset_presence_hook, set_presence_hook,
          user_send_packet, user_receive_packet,
          s2s_send_packet, s2s_receive_packet,
+         privacy_iq_get, privacy_iq_set,
          backend_api_call, backend_api_response_time,
          backend_api_timeout, backend_api_error]).
         % TODO those need submodule register

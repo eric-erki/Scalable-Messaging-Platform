@@ -67,6 +67,8 @@
          user_receive_packet/5,
          s2s_send_packet/3,
          s2s_receive_packet/3,
+         privacy_iq_set/4,
+         privacy_iq_get/5,
          remove_user/2,
          register_user/2,
          backend_api_call/3,
@@ -456,6 +458,12 @@ s2s_receive_packet(_From, #jid{lserver=LServer},
     Type = xml:get_attr_s(<<"type">>, Attrs),
     Hook = hookid(concat(<<"s2s">>, packet(<<"receive">>, Name, Type))),
     cast(LServer, {inc, Hook}).
+
+privacy_iq_set(_, #jid{lserver=LServer}, _To, _Iq) ->
+    cast(LServer, {inc, privacy_iq_set}).
+
+privacy_iq_get(_, #jid{lserver=LServer}, _To, _Iq, _) ->
+    cast(LServer, {inc, privacy_iq_get}).
 
 backend_api_call(LServer, _Method, _Path) ->
     cast(LServer, {inc, backend_api_call}).
