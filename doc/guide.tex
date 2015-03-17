@@ -4227,6 +4227,7 @@ Note that \term{ejabberdctl}\ind{ejabberdctl} has a command to delete expired me
   \term{max\_user\_sessions} (see \ref{configmaxsessions}).
   \titem{store\_empty\_body: true|false}\ind{options!store\_empty\_body} Whether or not
   to store messages with empty \term{<body/>} element. The default value is \term{true}.
+  \titem{pool\_size: N}\ind{options!pool_size} Size of the worker pool for offline storage. Default is 16.
 \end{description}
 
 This example allows power users to have as much as 5000 offline messages,
