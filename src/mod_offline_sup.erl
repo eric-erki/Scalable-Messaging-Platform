@@ -37,7 +37,14 @@
 
 -define(PROCNAME, ejabberd_offline_sup).
 
--define(POOL_SIZE, 16).
+-define(DEFAULT_POOL_SIZE, 16).
+
+
+
+get_pool_size(Host) ->
+    gen_mod:get_module_opt(Host, mod_offline,  pool_size,
+                           fun(N) when is_integer(N) -> N end,
+                           ?DEFAULT_POOL_SIZE).
 
 start(Host, Opts) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
@@ -73,10 +80,13 @@ start_link(Host, Opts) ->
 %%% Supervisor callbacks
 %%%===================================================================
 init([Host, Opts]) ->
+    PoolSize = gen_mod:get_opt(pool_size, Opts,
+                           fun(N) when is_integer(N) -> N end,
+                           ?DEFAULT_POOL_SIZE),
     PoolName = gen_mod:get_module_proc(Host, mod_offline_pool),
     WorkerName = gen_mod:get_module_proc(Host, mod_offline_worker),
     WorkerSupSpec = {worker_sup,
-                     {ejabberd_pool, start_link, [PoolName, WorkerName, mod_offline_worker, [Host,Opts], ?POOL_SIZE]},
+                     {ejabberd_pool, start_link, [PoolName, WorkerName, mod_offline_worker, [Host,Opts], PoolSize]},
                      permanent, brutal_kill, supervisor, [ejabberd_pool]},
     ModOfflineProcSpec =
                     {mod_offline,
@@ -91,5 +101,6 @@ init([Host, Opts]) ->
 %%%
 
 get_worker_for(Host, Term) ->
+    PoolSize = get_pool_size(Host),
     WorkerName = gen_mod:get_module_proc(Host, mod_offline_worker),
-    ejabberd_pool:get_proc_by_hash(WorkerName, ?POOL_SIZE, Term).
+    ejabberd_pool:get_proc_by_hash(WorkerName, PoolSize, Term).
