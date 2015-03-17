@@ -48,7 +48,7 @@
 -export([active_counters_command/1, flush_probe_command/2]).
 %-export([jabs_count_command/1, jabs_reset_command/1]).
 %% monitors
--export([process_queues/0, worker_queues/1]).
+-export([process_queues/1, worker_message_queues/2, worker_internal_queues/2]).
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
@@ -628,11 +628,12 @@ logfilename(Host) when is_binary(Host) ->
 %% high level monitors
 %%====================================================================
 
-run_monitors(_Host, Monitors) ->
+run_monitors(Host, Monitors) ->
     Probes = [{Key, Val} || {Key, Val} <- get(), is_integer(Val)],
     lists:foreach(
         fun({I, M, F, A}) -> put(I, apply(M, F, A));
            ({I, M, F, A, Fun}) -> put(I, Fun(apply(M, F, A)));
+           ({I, F, A}) -> put(I, apply(?MODULE, F, [Host, A]));
            ({I, Spec}) -> put(I, eval_monitors(Probes, Spec, 0));
            (_) -> ok
         end, Monitors).
@@ -749,22 +750,39 @@ push(_Host, _Probes, none) ->
 %% Monitors helpers
 %%====================================================================
 
-process_queues() ->
+process_queues(_Host) ->
     queues([erlang:process_info(Pid, message_queue_len)
             || Pid <- processes()]).
 
-worker_queues(Sup) ->
-    case catch supervisor:which_children(Sup) of
+worker_message_queues(Host, Sup) ->
+    case catch workers(Host, Sup) of
         {'EXIT', _} -> 0;
         Workers -> queues([erlang:process_info(Pid, message_queue_len)
+                            || {_,Pid,_,_} <- Workers])
+    end.
+
+worker_internal_queues(Host, Sup) ->
+    case catch workers(Host, Sup) of
+        {'EXIT', _} -> 0;
+        Workers -> queues([proplists:get_value('$internal_queue_len',
+                                               element(2, erlang:process_info(Pid, dictionary)),
+                                               0)
                             || {_,Pid,_,_} <- Workers])
     end.
 
 queues(Data) ->
     lists:foldl(
         fun ({message_queue_len, I}, Acc) -> Acc+I;
+            (I, Acc) when is_integer(I) -> Acc+I;
             (_,Acc) -> Acc
         end, 0, Data).
+
+workers(Host, ejabberd_odbc_sup) ->
+    supervisor:which_children(gen_mod:get_module_proc(Host, ejabberd_odbc_sup));
+workers(Host, mod_offline_pool) ->
+    supervisor:which_children(gen_mod:get_module_proc(Host, mod_offline_pool));
+workers(_Host, Sup) ->
+    supervisor:which_children(Sup).
 
 %%====================================================================
 %% Temporary helper to get clear cluster view of most important probes
