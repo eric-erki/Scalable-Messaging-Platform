@@ -59,14 +59,10 @@ start(Host) ->
             self() ! roster(),
             self() ! {set, client_roster_time},
             self() ! disconnect(),
-            self() ! quit,
-            case loop(#state{host=Host, start=Start, sock=Sock}) of
-                {error, Reason} ->
-                    gen_tcp:close(Sock),
-                    {error, Reason};
-                Success ->
-                    Success
-            end;
+            Result = loop(#state{host=Host, start=Start, sock=Sock}),
+            timer:sleep(1000),
+            gen_tcp:close(Sock),
+            Result;
         Error ->
             mod_mon:set(Host, client_conn_time, ?TCP_SEND_TIMEOUT),
             ?ERROR_MSG("test_client connection failed: ~p", [Error]),
