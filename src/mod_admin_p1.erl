@@ -63,7 +63,7 @@
 	% stats
 	 local_sessions_number/0, local_muc_rooms_number/0,
 	 p1db_records_number/0, iq_handlers_number/0,
-	 server_info/0, server_version/0,
+	 server_info/0, server_version/0, server_health/0,
 	% mass notification
 	 start_mass_message/3, stop_mass_message/1, mass_message/5]).
 
@@ -500,6 +500,13 @@ commands() ->
 			args = [],
 			result = {res, {list,
 			    {probe, {tuple, [{name, atom}, {value, string}]}}}}},
+     #ejabberd_commands{name = server_health,
+			tags = [stats],
+			desc = "Server health, returns warnings or alerts",
+			module = ?MODULE, function = server_health,
+			args = [],
+			result = {res, {list,
+			    {probe, {tuple, [{level, atom}, {message, string}]}}}}},
      #ejabberd_commands{name = user_info,
 			tags = [session],
 			desc = "Number of IQ handlers in the node",
@@ -1266,6 +1273,17 @@ server_version() ->
     [{Patch, Last}|_] = lists:reverse(Stamps),
     [{version, list_to_binary(Version)}, {build, Build} | [{patch, Patch} || Last-Secs > 120]].
 
+server_health() ->
+    Hosts = ejabberd_config:get_myhosts(),
+    Health = lists:usort(lists:foldl(
+		fun(Host, Acc) ->
+			case mod_mon:value(Host, health) of
+			    H when is_list(H) -> H++Acc;
+			    _ -> Acc
+			end
+		end, [], Hosts)),
+    [{Level, <<Componant/binary, ": ", Message/binary>>}
+     || {Level, Componant, Message} <- Health].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Internal functions
