@@ -157,7 +157,7 @@ process([Call], #request{method = 'GET', q = Data, ip = IP}) ->
     try
         Args = case Data of
             [{nokey, <<>>}] -> [];
-            _ -> [Arg || {_, Arg} <- Data]
+            _ -> Data
         end,
         log(Call, Args, IP),
         {Code, Result} = handle(Call, Args),
@@ -237,11 +237,16 @@ handle(Call, [{_,_}|_] = Args) when is_binary(Call) ->
     case ejabberd_commands:get_command_format(jlib:binary_to_atom(Call)) of
         {ArgsSpec, _} when is_list(ArgsSpec) ->
             Spec = lists:foldr(
-                    fun ({Key, binary}, Acc) -> [{Key, <<>>}|Acc];
-                        ({Key, string}, Acc) -> [{Key, <<>>}|Acc];
-                        ({Key, integer}, Acc) -> [{Key, 0}|Acc];
-                        ({Key, {list, _}}, Acc) -> [{Key, []}|Acc];
-                        ({Key, atom}, Acc) -> [{Key, undefined}|Acc]
+                    fun ({Key, binary}, Acc) ->
+                            [{jlib:atom_to_binary(Key), <<>>}|Acc];
+                        ({Key, string}, Acc) ->
+                            [{jlib:atom_to_binary(Key), <<>>}|Acc];
+                        ({Key, integer}, Acc) ->
+                            [{jlib:atom_to_binary(Key), 0}|Acc];
+                        ({Key, {list, _}}, Acc) ->
+                            [{jlib:atom_to_binary(Key), []}|Acc];
+                        ({Key, atom}, Acc) ->
+                            [{jlib:atom_to_binary(Key), undefined}|Acc]
                     end, [], ArgsSpec),
             handle(Call, match(Args, Spec));
         Error ->
@@ -249,7 +254,7 @@ handle(Call, [{_,_}|_] = Args) when is_binary(Call) ->
     end;
 handle(Call, Args) when is_binary(Call), is_list(Args) ->
     Fun = jlib:binary_to_atom(Call),
-    case ejabberd_command(Fun, [Arg || {_, Arg} <- Args], 400) of
+    case ejabberd_command(Fun, Args, 400) of
         0 -> {200, <<"OK">>};
         1 -> {500, <<"500 Internal server error">>};
         400 -> {400, <<"400 Bad Request">>};
