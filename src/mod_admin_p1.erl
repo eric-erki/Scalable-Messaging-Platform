@@ -1242,8 +1242,13 @@ server_info() ->
 	{'EXIT', _} -> 0;
 	Size -> Size
     end,
-    Jabs = lists:sum([ejabberd_command(jabs_count, [Host], 0)
-		|| Host <- Hosts]),
+    {Jabs, {MegaSecs,Secs,_}} = lists:foldr(fun(Host, {J,S}) ->
+                    case catch mod_jabs:value(Host) of
+                        {Int, Now} -> {J+Int, Now};
+                        _ -> {J,S}
+                    end
+            end, {0, os:timestamp()}, Hosts),
+    JabsSince = MegaSecs*1000000+Secs,
     DefaultActive = [{<<"daily_active_users">>, 0},
 		     {<<"weekly_active_users">>, 0},
 		     {<<"monthly_active_users">>, 0}],
@@ -1258,7 +1263,9 @@ server_info() ->
 	end, FirstActive, OtherActive),
     lists:flatten([
 	[{online, Sessions} | lists:zip(Nodes--LocalFailed, LocalSessions)],
-	[{jabs, Jabs} | [{jlib:binary_to_atom(Key), Val} || {Key, Val} <- ActiveAll]],
+	[{jlib:binary_to_atom(Key), Val} || {Key, Val} <- ActiveAll],
+	{jabs, Jabs},
+	{jabs_since, JabsSince},
 	{memory, Memory},
 	{processes, Processes},
 	{iq_handlers, IqHandlers},
