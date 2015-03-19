@@ -38,35 +38,39 @@
 -record(state, {host, start, sock, inbox=[]}).
 
 start(Host) ->
-    ClientSpec = ejabberd_config:get_option({test_client, Host},
-                                            fun(V) when is_list(V) -> V end,
-                                            []),
-    {Ip, Port} = proplists:get_value(interface, ClientSpec, {{127,0,0,1},5222}),
-    Start = os:timestamp(),
+    case ejabberd_config:get_option({test_client, Host},
+                                    fun(V) when is_list(V) -> V end,
+                                    undefined) of
+        undefined ->
+            ok;
+        ClientSpec ->
+            {Ip, Port} = proplists:get_value(interface, ClientSpec, {{127,0,0,1},5222}),
+            Start = os:timestamp(),
 
-    case gen_tcp:connect(Ip, Port,
-                         [binary, {packet, 0},
-                          {send_timeout, ?TCP_SEND_TIMEOUT},
-                          {recbuf, ?TCP_RECV_BUFF}, {sndbuf, ?TCP_SEND_BUFF}]) of
-        {ok, Sock} ->
-            mod_mon:set(Host, client_conn_time, age(Start)),
-            mod_mon:set(Host, client_auth_time, 100000),
-            mod_mon:set(Host, client_roster_time, 100000),
-            Login = proplists:get_value(login, ClientSpec),
-            Pass = proplists:get_value(password, ClientSpec),
-            self() ! connect(Host, Login, Pass, <<"test_client">>),
-            self() ! {set, client_auth_time},
-            self() ! roster(),
-            self() ! {set, client_roster_time},
-            self() ! disconnect(),
-            Result = loop(#state{host=Host, start=Start, sock=Sock}),
-            timer:sleep(1000),
-            gen_tcp:close(Sock),
-            Result;
-        Error ->
-            mod_mon:set(Host, client_conn_time, ?TCP_SEND_TIMEOUT),
-            ?ERROR_MSG("test_client connection failed: ~p", [Error]),
-            Error
+            case gen_tcp:connect(Ip, Port,
+                                [binary, {packet, 0},
+                                {send_timeout, ?TCP_SEND_TIMEOUT},
+                                {recbuf, ?TCP_RECV_BUFF}, {sndbuf, ?TCP_SEND_BUFF}]) of
+                {ok, Sock} ->
+                    mod_mon:set(Host, client_conn_time, age(Start)),
+                    mod_mon:set(Host, client_auth_time, 100000),
+                    mod_mon:set(Host, client_roster_time, 100000),
+                    Login = proplists:get_value(login, ClientSpec),
+                    Pass = proplists:get_value(password, ClientSpec),
+                    self() ! connect(Host, Login, Pass, <<"test_client">>),
+                    self() ! {set, client_auth_time},
+                    self() ! roster(),
+                    self() ! {set, client_roster_time},
+                    self() ! disconnect(),
+                    Result = loop(#state{host=Host, start=Start, sock=Sock}),
+                    timer:sleep(1000),
+                    gen_tcp:close(Sock),
+                    Result;
+                Error ->
+                    mod_mon:set(Host, client_conn_time, ?TCP_SEND_TIMEOUT),
+                    ?ERROR_MSG("test_client connection failed: ~p", [Error]),
+                    Error
+            end
     end.
 
 loop(State) ->
