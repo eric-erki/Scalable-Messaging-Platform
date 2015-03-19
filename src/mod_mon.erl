@@ -48,7 +48,7 @@
 -export([active_counters_command/1, flush_probe_command/2]).
 %-export([jabs_count_command/1, jabs_reset_command/1]).
 %% monitors
--export([process_queues/2, internal_queues/2]).
+-export([process_queues/2, internal_queues/2, health_check/2]).
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
@@ -787,6 +787,92 @@ workers(Host, mod_offline_pool) ->
     workers(Host, Sup);
 workers(_Host, Sup) ->
     supervisor:which_children(Sup).
+
+% Note: health_check must be called last from monitors list
+%       as it uses values as they are pushed and also some other
+%       monitors values
+health_check(Host, all) ->
+    spawn(mod_mon_client, start, [Host]),
+    HealthCfg = ejabberd_config:get_option({health, Host},
+                               fun(V) when is_list(V) -> V end,
+                               []),
+    lists:foldr(fun({Component, Check}, Acc) ->
+                lists:foldr(fun({Probe, Message, Critical}, Acc2) ->
+                            Spec = case proplists:get_value(Probe, HealthCfg, []) of
+                                L when is_list(L) -> L;
+                                Other -> [Other]
+                            end,
+                            case check_level(Probe, Spec) of
+                                ok -> Acc2;
+                                critical -> [{critical, Component, Critical}|Acc2];
+                                Level -> [{Level, Component, Message}|Acc2]
+                            end
+                    end, Acc, Check)
+            end, [],
+        [{<<"REST API">>,
+          [{backend_api_response_time, <<"slow responses">>, <<"no response">>},
+           {backend_api_error, <<"error responses">>, <<"total failure">>},
+           {backend_api_badauth, <<"logins with bad credentials">>, <<"auth flooding">>}]},
+         {<<"Router">>,
+          [{c2s_queues, <<"c2s processes overloaded">>, <<"c2s dead">>},
+           {s2s_queues, <<"s2s processes overloaded">>, <<"s2s dead">>},
+           {iq_queues, <<"iq handlers overloaded">>, <<"iq handlers dead">>},
+           {sm_queues, <<"session managers overloaded">>, <<"sessions dead">>}]},
+         {<<"Database">>,
+          [{odbc_queues, <<"odbc driver overloaded">>, <<"service down">>},
+           {offline_queues, <<"offline spool overloaded">>, <<"service down">>}]},
+         {<<"Client">>,
+          [{client_conn_time, <<"connection is slow">>, <<"service unavailable">>},
+           {client_auth_time, <<"authentification is slow">>, <<"auth broken">>},
+           {client_roster_time, <<"roster response is slow">>, <<"roster broken">>}]}]).
+
+%%====================================================================
+%% Health check helpers
+%%====================================================================
+
+check_level(_, []) ->
+    ok;
+check_level(iq_queues, Spec) ->
+    Value = get(iq_message_queues)+get(iq_internal_queues),
+    check_level(ok, Value, Spec);
+check_level(sm_queues, Spec) ->
+    Value = get(sm_message_queues)+get(sm_internal_queues),
+    check_level(ok, Value, Spec);
+check_level(c2s_queues, Spec) ->
+    Value = get(c2s_message_queues)+get(c2s_internal_queues),
+    check_level(ok, Value, Spec);
+check_level(s2s_queues, Spec) ->
+    Value = get(s2s_message_queues)+get(s2s_internal_queues),
+    check_level(ok, Value, Spec);
+check_level(odbc_queues, Spec) ->
+    Value = get(odbc_message_queues)+get(odbc_internal_queues),
+    check_level(ok, Value, Spec);
+check_level(offline_queues, Spec) ->
+    Value = get(offline_message_queues)+get(offline_internal_queues),
+    check_level(ok, Value, Spec);
+check_level(Probe, Spec) ->
+    check_level(ok, get(Probe), Spec).
+
+check_level(Acc, _, []) -> Acc;
+check_level(Acc, Value, [{Level, gt, Limit}|Tail]) ->
+    if Value > Limit -> check_level(Level, Value, Tail);
+        true -> check_level(Acc, Value, Tail)
+    end;
+check_level(Acc, Value, [{Level, lt, Limit}|Tail]) ->
+    if Value < Limit -> check_level(Level, Value, Tail);
+        true -> check_level(Acc, Value, Tail)
+    end;
+check_level(Acc, Value, [{Level, in, {Low,Up}}|Tail]) ->
+    if (Value >= Low) and (Value =< Up) -> check_level(Level, Value, Tail);
+        true -> check_level(Acc, Value, Tail)
+    end;
+check_level(Acc, Value, [{Level, out, {Low,Up}}|Tail]) ->
+    if (Value < Low) or (Value > Up) -> check_level(Level, Value, Tail);
+        true -> check_level(Acc, Value, Tail)
+    end;
+check_level(Acc, Value, [Invalid|Tail]) ->
+    ?WARNING_MSG("invalid health limit spec: ~p", [Invalid]),
+    check_level(Acc, Value, Tail).
 
 %%====================================================================
 %% Temporary helper to get clear cluster view of most important probes

@@ -60,6 +60,20 @@
          {memory, gauge},
          {processes, gauge},
          {backend_api_response_time, gauge},
+         {message_queues, gauge},
+         {iq_message_queues, gauge},
+         {sm_message_queues, gauge},
+         {c2s_message_queues, gauge},
+         {odbc_message_queues, gauge},
+         {offline_message_queues, gauge},
+         {iq_internal_queues, gauge},
+         {sm_internal_queues, gauge},
+         {c2s_internal_queues, gauge},
+         {odbc_internal_queues, gauge},
+         {offline_internal_queues, gauge},
+         {client_conn_time, gauge},
+         {client_auth_time, gauge},
+         {client_roster_time, gauge},
          {daily_active_users, gauge},
          {weekly_active_users, gauge},
          {monthly_active_users, gauge}]).
@@ -94,7 +108,8 @@
          {offline_internal_queues, internal_queues, mod_offline_pool},
          {sessions, mnesia, table_info, [session, size]},
          {memory, erlang, memory, [total]},
-         {processes, erlang, system_info, [process_count]}
+         {processes, erlang, system_info, [process_count]},
+         {health, health_check, all}
         ]).
 
 % Unit to mesure JABS counter
