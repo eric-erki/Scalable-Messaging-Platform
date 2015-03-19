@@ -1,9 +1,8 @@
 %%% ====================================================================
-%%% Event monitor for runtime statistics
-%%% @author Christophe Romain <christophe.romain@process-one.net>
-%%%   [http://www.process-one.net/]
-%%% @version {@vsn}, {@date} {@time}
-%%% @end
+%%% File    : mod_mon.erl
+%%% Author  : Christophe Romain <christophe.romain@process-one.net>
+%%% Purpose : Event monitor for runtime statistics
+%%% Created : 10 Apr 2014 by Christophe Romain <christophe.romain@process-one.net>
 %%%
 %%%
 %%% ejabberd, Copyright (C) 2002-2015   ProcessOne
