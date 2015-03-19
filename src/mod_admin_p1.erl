@@ -1441,6 +1441,9 @@ roster_push(User, Server, JID, Nick, Subscription,
 	    Groups) ->
     TJID = jlib:string_to_jid(JID),
     {TU, TS, _} = jlib:jid_tolower(TJID),
+
+    mod_roster:invalidate_roster_cache(jlib:nodeprep(User), jlib:nameprep(Server)),
+
     Presence = #xmlel{name = <<"presence">>,
 		      attrs =
 			  [{<<"type">>,
