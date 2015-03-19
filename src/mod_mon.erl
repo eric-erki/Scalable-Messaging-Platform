@@ -874,12 +874,20 @@ check_level(Acc, Value, [{Level, lt, Limit}|Tail]) ->
     if Value < Limit -> check_level(Level, Value, Tail);
         true -> check_level(Acc, Value, Tail)
     end;
-check_level(Acc, Value, [{Level, in, {Low,Up}}|Tail]) ->
+check_level(Acc, Value, [{Level, in, Low, Up}|Tail]) ->
     if (Value >= Low) and (Value =< Up) -> check_level(Level, Value, Tail);
         true -> check_level(Acc, Value, Tail)
     end;
-check_level(Acc, Value, [{Level, out, {Low,Up}}|Tail]) ->
+check_level(Acc, Value, [{Level, out, Low, Up}|Tail]) ->
     if (Value < Low) or (Value > Up) -> check_level(Level, Value, Tail);
+        true -> check_level(Acc, Value, Tail)
+    end;
+check_level(Acc, Value, [{Level, eq, Limit}|Tail]) ->
+    if Value == Limit -> check_level(Level, Value, Tail);
+        true -> check_level(Acc, Value, Tail)
+    end;
+check_level(Acc, Value, [{Level, neq, Limit}|Tail]) ->
+    if Value =/= Limit -> check_level(Level, Value, Tail);
         true -> check_level(Acc, Value, Tail)
     end;
 check_level(Acc, Value, [Invalid|Tail]) ->
