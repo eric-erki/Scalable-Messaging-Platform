@@ -208,6 +208,12 @@ handle_cast({set, log, Value}, State) ->
 handle_cast({set, Probe, Value}, State) ->
     put(Probe, Value),
     {noreply, State};
+handle_cast({avg, Probe, Value}, State) ->
+    case get(Probe) of
+        0 -> put(Probe, {Value, 1});
+        {Old, Count} -> put(Probe, {Old+Value, Count+1})
+    end,
+    {noreply, State};
 handle_cast({active, Item}, State) ->
     Log = case State#state.active_count of
         true -> ehyperloglog:update(Item, State#state.log);
@@ -219,6 +225,7 @@ handle_cast(_Msg, State) ->
 
 handle_info(push, State) ->
     run_monitors(State#state.host, State#state.monitors),
+    [compute_average(Probe) || Probe <- [backend_api_response_time]],
     Probes = [{Key, Val} || {Key, Val} <- get(),
                             is_integer(Val) and not proplists:is_defined(Key, ?JABS)],
     [push(State#state.host, Probes, Backend) || Backend <- State#state.backends],
@@ -470,7 +477,7 @@ privacy_iq_get(Acc, #jid{lserver=LServer}, _To, _Iq, _) ->
 backend_api_call(LServer, _Method, _Path) ->
     cast(LServer, {inc, backend_api_call}).
 backend_api_response_time(LServer, _Method, _Path, Ms) ->
-    cast(LServer, {set, backend_api_response_time, Ms}).
+    cast(LServer, {avg, backend_api_response_time, Ms}).
 backend_api_timeout(LServer, _Method, _Path) ->
     cast(LServer, {inc, backend_api_timeout}).
 backend_api_error(LServer, _Method, _Path) ->
@@ -664,6 +671,12 @@ compute_monitor(Probes, {'-', Probe}, Acc) ->
     case proplists:get_value(Probe, Probes) of
         undefined -> Acc;
         Val -> Acc-Val
+    end.
+
+compute_average(Probe) ->
+    case get(Probe) of
+        {Value, Count} -> put(Probe, Value div Count);
+        _ -> ok
     end.
 
 %%====================================================================
