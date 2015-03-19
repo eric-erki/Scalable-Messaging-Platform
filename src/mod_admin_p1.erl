@@ -1284,7 +1284,7 @@ server_health() ->
     Hosts = ejabberd_config:get_myhosts(),
     Health = lists:usort(lists:foldl(
 		fun(Host, Acc) ->
-			case mod_mon:value(Host, health) of
+			case catch mod_mon:value(Host, health) of
 			    H when is_list(H) -> H++Acc;
 			    _ -> Acc
 			end
