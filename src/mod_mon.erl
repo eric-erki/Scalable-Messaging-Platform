@@ -209,8 +209,8 @@ handle_cast({set, Probe, Value}, State) ->
     {noreply, State};
 handle_cast({avg, Probe, Value}, State) ->
     case get(Probe) of
-        0 -> put(Probe, {Value, 1});
-        {Old, Count} -> put(Probe, {Old+Value, Count+1})
+        {Old, Count} -> put(Probe, {Old+Value, Count+1});
+        _ -> put(Probe, {Value, 1})
     end,
     {noreply, State};
 handle_cast({active, Item}, State) ->
