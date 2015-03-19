@@ -49,7 +49,8 @@
 	 roster_versioning_enabled/1, roster_version/2,
 	 enc_key/1, enc_val/2, dec_val/2,
 	 dec_roster_key/1, dec_roster_version_key/1,
-         record_to_string/1, groups_to_string/1, import_stop/2]).
+	 record_to_string/1, groups_to_string/1, import_stop/2,
+	 invalidate_roster_cache/2]).
 
 %% For benchmarking
 -export([create_rosters/4]).
@@ -130,6 +131,23 @@ init_db(p1db, Host) ->
                                {dec_key, fun ?MODULE:dec_roster_version_key/1},
                                {enc_key, fun ?MODULE:enc_key/1}]}]);
 init_db(odbc, Host) ->
+    case use_cache(Host) of
+        true ->
+            MaxSize = gen_mod:get_module_opt(
+                        Host, ?MODULE, cache_size,
+                        fun(I) when is_integer(I), I>0 -> I end,
+                        1000),
+            LifeTime = gen_mod:get_module_opt(
+                         Host, ?MODULE, cache_life_time,
+                         fun(I) when is_integer(I), I>0 -> I end,
+                         timer:seconds(5) div 1000),
+            cache_tab:new(roster, [{max_size, MaxSize},
+                                   {lru, false},
+                                   {life_time, LifeTime}]);
+        false ->
+            ok
+    end;
+init_db(rest, Host) ->
     case use_cache(Host) of
         true ->
             MaxSize = gen_mod:get_module_opt(
@@ -454,9 +472,17 @@ get_roster(LUser, LServer, odbc) ->
                end, Items),
     RItems;
 get_roster(LUser, LServer, rest) ->
-    case roster_rest:get_user_roster(LServer, LUser) of
-            {ok, Items} -> Items;
-            _ -> []
+    Res = case use_cache(LServer) of
+              true ->
+                  cache_tab:dirty_lookup(
+                    roster, {LUser, LServer},
+                    fun() -> roster_rest:get_user_roster(LServer, LUser) end);
+              false ->
+                  roster_rest:get_user_roster(LServer, LUser)
+          end,
+    case Res of
+        {ok, Items} -> Items;
+        error -> []
     end.
 
 get_roster_odbc(LUser, LServer) ->
@@ -493,7 +519,7 @@ get_roster_odbc_query(LUser, LServer) ->
             error
     end.
 
-del_roster_cache(LUser, LServer) ->
+invalidate_roster_cache(LUser, LServer) ->
     case use_cache(LServer) of
         true ->
             cache_tab:dirty_delete(
@@ -537,7 +563,7 @@ get_roster_by_jid_t(LUser, LServer, LJID) ->
 get_roster_by_jid_t(LUser, LServer, LJID, rest) ->
      case roster_rest:get_jid_info(LServer, LUser, LJID) of
              {ok, Item} -> Item;
-             not_found -> 
+             not_found ->
             #roster{usj = {LUser, LServer, LJID},   %%No idea why,  but on the other backends if is not found it returns this
                     us = {LUser, LServer}, jid = LJID}
      end;
@@ -822,7 +848,7 @@ roster_subscribe_t(LUser, LServer, LJID, Item, odbc) ->
     ItemVals = record_to_string(Item),
     Username = ejabberd_odbc:escape(LUser),
     SJID = ejabberd_odbc:escape(jlib:jid_to_string(LJID)),
-    del_roster_cache(LUser, LServer),
+    invalidate_roster_cache(LUser, LServer),
     odbc_queries:roster_subscribe(LServer, Username, SJID,
 				  ItemVals);
 roster_subscribe_t(LUser, LServer, LJID, Item, p1db) ->
@@ -1125,7 +1151,7 @@ remove_user(LUser, LServer, mnesia) ->
     mnesia:transaction(F);
 remove_user(LUser, LServer, odbc) ->
     Username = ejabberd_odbc:escape(LUser),
-    del_roster_cache(LUser, LServer),
+    invalidate_roster_cache(LUser, LServer),
     odbc_queries:del_user_roster_t(LServer, Username),
     ok;
 remove_user(LUser, LServer, p1db) ->
@@ -1210,7 +1236,7 @@ update_roster_t(LUser, LServer, LJID, Item, odbc) ->
     SJID = ejabberd_odbc:escape(jlib:jid_to_string(LJID)),
     ItemVals = record_to_string(Item),
     ItemGroups = groups_to_string(Item),
-    del_roster_cache(LUser, LServer),
+    invalidate_roster_cache(LUser, LServer),
     odbc_queries:update_roster(LServer, Username, SJID, ItemVals,
                                ItemGroups);
 update_roster_t(LUser, LServer, LJID, Item, p1db) ->
@@ -1231,7 +1257,7 @@ del_roster_t(LUser, LServer, LJID, mnesia) ->
 del_roster_t(LUser, LServer, LJID, odbc) ->
     Username = ejabberd_odbc:escape(LUser),
     SJID = ejabberd_odbc:escape(jlib:jid_to_string(LJID)),
-    del_roster_cache(LUser, LServer),
+    invalidate_roster_cache(LUser, LServer),
     odbc_queries:del_roster(LServer, Username, SJID);
 del_roster_t(LUser, LServer, LJID, p1db) ->
     USJKey = usj2key(LUser, LServer, LJID),
@@ -1811,7 +1837,7 @@ item_to_p1db(Roster) ->
     DefRoster = #roster{us = Roster#roster.us,
                         usj = Roster#roster.usj,
                         jid = Roster#roster.jid},
-    {_, PropList} = 
+    {_, PropList} =
         lists:foldl(
           fun(Key, {Pos, L}) ->
                   Val = element(Pos, Roster),
