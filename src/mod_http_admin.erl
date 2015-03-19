@@ -291,7 +291,7 @@ format_result(Int, {Name, integer}) ->
     {Name, Int};
 
 format_result(String, {Name, string}) ->
-    {Name, String};
+    {Name, iolist_to_binary(String)};
 
 format_result(Code, {_Name, rescode}) ->
     Code;

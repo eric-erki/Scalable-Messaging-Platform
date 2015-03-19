@@ -133,19 +133,19 @@ commands2(ArgType) -> [
                         desc = "Returns the current value of jabs counter",
                         module = ?MODULE, function = jabs_count_command,
                         args = [{server, ArgType}],
-                        result = {count, integer}},
+                        result = {res, integer}},
      #ejabberd_commands{name = jabs_since,
                         tags = [stats],
                         desc = "Returns start date of jabs counter",
                         module = ?MODULE, function = jabs_since_command,
                         args = [{server, ArgType}],
-                        result = {since, string}},
+                        result = {res, string}},
      #ejabberd_commands{name = jabs_reset,
                         tags = [stats],
                         desc = "Reset jabs counter",
                         module = ?MODULE, function = jabs_reset_command,
                         args = [{server, ArgType}],
-                        result = {result, string}}].
+                        result = {res, string}}].
 
 jabs_count_command(Host) ->
     {Count, _} = value(Host),
@@ -154,8 +154,8 @@ jabs_count_command(Host) ->
 jabs_since_command(Host) ->
     {_, Timestamp} = value(Host),
     {{Y,M,D},{HH,MM,SS}} = calendar:now_to_datetime(Timestamp),
-    io_lib:format("~4..0B-~2..0B-~2..0B ~2..0B:~2..0B:~2..0B",
-                           [Y, M, D, HH, MM, SS]).
+    lists:flatten(io_lib:format("~4..0B-~2..0B-~2..0B ~2..0B:~2..0B:~2..0B",
+                                [Y, M, D, HH, MM, SS])).
 
 jabs_reset_command(Host) ->
     atom_to_list(reset(Host)).
