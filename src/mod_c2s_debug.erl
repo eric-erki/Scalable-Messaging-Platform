@@ -158,6 +158,8 @@ terminate(_Reason, #modstate{host = Host}) ->
     ejabberd_hooks:delete(c2s_debug_stop_hook, Host,
 			  ?MODULE, debug_stop, 50),
     ejabberd_hooks:delete(user_send_packet, Host, ?MODULE,
+			  log_packet, 50),
+    ejabberd_hooks:delete(user_receive_packet, Host, ?MODULE,
 			  log_packet, 50).
 
 handle_call({debug_start, ClientInfo}, _From,

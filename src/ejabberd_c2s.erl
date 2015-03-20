@@ -3439,7 +3439,12 @@ rebind(StateData, JID, StreamID) ->
 			     #xmlel{name = <<"rebind">>,
 				    attrs = [{<<"xmlns">>, ?NS_P1_REBIND}],
 				    children = []}),
-		open_session(session_established, StateData2)
+		  DebugFlag =
+		      ejabberd_hooks:run_fold(c2s_debug_start_hook,
+					      StateData2#state.server,
+					      false,
+					      [self(), StateData2]),
+		open_session(session_established, StateData2#state{debug = DebugFlag})
 	    after 1000 ->
 		      send_element(StateData,
 				   #xmlel{name = <<"failure">>,
@@ -3630,13 +3635,13 @@ process_push_iq(From, To,
 					end,
 				NSD1 = StateData#state{oor_unread_client =
 							   Badge},
-                if 
+                if
                    StateData#state.oor_notification == undefined ->
                         %% User didn't enable push before in this session, we have no idea of the token.
-                        {{error, ?ERR_BAD_REQUEST}, StateData};  
+                        {{error, ?ERR_BAD_REQUEST}, StateData};
                     true ->
 	                    DeviceID = xml:get_path_s(StateData#state.oor_notification, [{elem, <<"id">>}, cdata]),
-                        ok = mod_applepush:set_local_badge(From, jlib:binary_to_integer(DeviceID,16), Badge), 
+                        ok = mod_applepush:set_local_badge(From, jlib:binary_to_integer(DeviceID,16), Badge),
 		        		{{result, []}, NSD1}
                 end;
 			    _ -> {{error, ?ERR_BAD_REQUEST}, StateData}
