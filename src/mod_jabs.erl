@@ -44,7 +44,7 @@
 %% handled ejabberd hooks
 -export([sm_register_connection_hook/3, user_send_packet/3, user_send_packet/4]).
 
--record(state, {host, jabs, timestamp}).
+-record(jabs, {host, counter, stamp, timer}).
 
 -define(PROCNAME, ?MODULE).
 -define(CALL_TIMEOUT, 4000).
@@ -79,33 +79,44 @@ reset(Host) ->
 %%====================================================================
 
 init([Host, _Opts]) ->
+    mnesia:create_table(jabs, [{disc_copies, [node()]},
+                               {local_content, true},
+                               {attributes, record_info(fields, jabs)}]),
+    ejabberd_commands:register_commands(commands(Host)),
+    {ok, TRef} = timer:send_interval(60000*15, backup),  % backup every 15 minutes
+    Jabs = case mnesia:dirty_read({jabs, Host}) of
+        [#jabs{}=Record] -> Record;
+        _ -> #jabs{host = Host, counter = 0, stamp = os:timestamp(), timer = TRef}
+    end,
     [ejabberd_hooks:add(Hook, Host, ?MODULE, Hook, 20)
      || Hook <- ?SUPPORTED_HOOKS],
-    ejabberd_commands:register_commands(commands(Host)),
-    {ok, #state{host = Host, jabs = 0, timestamp = now()}}.
+    {ok, Jabs}.
 
 handle_call(value, _From, State) ->
-    Jabs = State#state.jabs,
-    Timestamp = State#state.timestamp,
-    {reply, {Jabs, Timestamp}, State};
+    {reply, {State#jabs.counter, State#jabs.stamp}, State};
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State}.
 
 handle_cast({inc, Step}, State) ->
-    Old = State#state.jabs,
-    {noreply, State#state{jabs = Old+Step}};
+    Old = State#jabs.counter,
+    {noreply, State#jabs{counter = Old+Step}};
 handle_cast(reset, State) ->
-    {noreply, State#state{jabs = 0, timestamp = now()}};
+    {noreply, State#jabs{counter = 0, stamp = os:timestamp()}};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
+handle_info(backup, State) ->
+    mnesia:dirty_write(State),
+    {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 
 terminate(_Reason, State) ->
-    Host = State#state.host,
+    Host = State#jabs.host,
+    timer:cancel(State#jabs.timer),
     [ejabberd_hooks:delete(Hook, Host, ?MODULE, Hook, 20)
      || Hook <- ?SUPPORTED_HOOKS],
+    mnesia:dirty_write(State#jabs{timer = undefined}),
     ejabberd_commands:unregister_commands(commands(Host)).
 
 code_change(_OldVsn, State, _Extra) ->
@@ -152,8 +163,8 @@ jabs_count_command(Host) ->
     Count.
 
 jabs_since_command(Host) ->
-    {_, Timestamp} = value(Host),
-    {{Y,M,D},{HH,MM,SS}} = calendar:now_to_datetime(Timestamp),
+    {_, Stamp} = value(Host),
+    {{Y,M,D},{HH,MM,SS}} = calendar:now_to_datetime(Stamp),
     lists:flatten(io_lib:format("~4..0B-~2..0B-~2..0B ~2..0B:~2..0B:~2..0B",
                                 [Y, M, D, HH, MM, SS])).
 
