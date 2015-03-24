@@ -676,7 +676,15 @@ do_route1(From, To, Packet, Hops) ->
 	  case mnesia:dirty_read(session, USR) of
 	    [] ->
 		case Name of
-		  <<"message">> -> route_message(From, To, Packet);
+		  <<"message">> ->
+		      case xml:get_attr_s(<<"type">>, Attrs) of
+			<<"chat">> -> route_message(From, To, Packet);
+			<<"error">> -> ok;
+			_ ->
+			    Err = jlib:make_error_reply(Packet,
+							?ERR_SERVICE_UNAVAILABLE),
+			    ejabberd_router:route(To, From, Err)
+		      end;
 		  <<"iq">> ->
 		      case xml:get_attr_s(<<"type">>, Attrs) of
 			<<"error">> -> ok;
