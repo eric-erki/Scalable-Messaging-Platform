@@ -91,14 +91,24 @@ start_link(SockData, Opts) ->
 init({SockMod, Socket}, Opts) ->
     TLSEnabled = proplists:get_bool(tls, Opts),
     TLSOpts1 = lists:filter(fun ({certfile, _}) -> true;
+				({ciphers, _}) -> true;
 				(_) -> false
 			    end,
 			    Opts),
-    TLSOpts2 = case proplists:get_bool(tls_compression, Opts) of
-                   false -> [compression_none | TLSOpts1];
-                   true -> TLSOpts1
+    TLSOpts2 = case lists:keysearch(protocol_options, 1, Opts) of
+                   {value, {_, O}} ->
+                       [_|ProtocolOptions] = lists:foldl(
+                                    fun(X, Acc) -> X ++ Acc end, [],
+                                    [["|" | binary_to_list(Opt)] || Opt <- O, is_binary(Opt)]
+                                   ),
+                        [{protocol_options, iolist_to_binary(ProtocolOptions)} | TLSOpts1];
+                   _ -> TLSOpts1
                end,
-    TLSOpts = [verify_none | TLSOpts2],
+    TLSOpts3 = case proplists:get_bool(tls_compression, Opts) of
+                   false -> [compression_none | TLSOpts2];
+                   true -> TLSOpts2
+               end,
+    TLSOpts = [verify_none | TLSOpts3],
     {SockMod1, Socket1} = if TLSEnabled ->
 				 inet:setopts(Socket, [{recbuf, 8192}]),
 				 {ok, TLSSocket} = p1_tls:tcp_to_tls(Socket,
@@ -148,10 +158,10 @@ init({SockMod, Socket}, Opts) ->
                                             M = proplists:get_value(
                                                   module, ModOpts,
                                                   ejabberd_http_ws),
-                                            O = proplists:get_value(
+                                            O2 = proplists:get_value(
                                                   options, ModOpts,
                                                   [{protocol, <<"xmpp">>}]),
-                                            {PathList, M, O}
+                                            {PathList, M, O2}
                                     end, Hs)
                           end, []),
     ?DEBUG("WS: ~p~n", [WebSocketHandlers]),
