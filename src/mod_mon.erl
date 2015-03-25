@@ -773,18 +773,31 @@ push(_Host, _Probes, none) ->
 %%====================================================================
 
 process_queues(_Host, all) ->
-    lists:sum([queue(Pid, message_queue_len) || Pid <- processes()]);
+    weight([queue(Pid, message_queue_len) || Pid <- processes()]);
 process_queues(Host, Sup) ->
     case catch workers(Host, Sup) of
         {'EXIT', _} -> 0;
-        Workers -> lists:sum([queue(Pid, message_queue_len) || {_,Pid,_,_} <- Workers])
+        Workers -> weight([queue(Pid, message_queue_len) || {_,Pid,_,_} <- Workers])
     end.
 
 internal_queues(Host, Sup) ->
     case catch workers(Host, Sup) of
         {'EXIT', _} -> 0;
-        Workers -> lists:sum([queue(Pid, dictionary) || {_,Pid,_,_} <- Workers])
+        Workers -> weight([queue(Pid, dictionary) || {_,Pid,_,_} <- Workers])
     end.
+
+weight([]) -> 0;
+weight(List) when is_list(List) ->
+    {Sum, Max} = lists:foldl(
+            fun(X, {S, M}) when is_integer(X) ->
+                    if X>M -> {S+X, X};
+                        true -> {S+X, M}
+                    end;
+                (_, Acc) ->
+                    Acc
+            end, {0, 0}, List),
+    Avg = Sum div length(List),
+    (Avg + Max) div 2.
 
 queue(Pid, Attr) -> queue(erlang:process_info(Pid, Attr)).
 queue({message_queue_len, I}) -> I;
