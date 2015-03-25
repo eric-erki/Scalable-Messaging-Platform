@@ -85,7 +85,7 @@ init([Host, _Opts]) ->
     ejabberd_commands:register_commands(commands(Host)),
     {ok, TRef} = timer:send_interval(60000*15, backup),  % backup every 15 minutes
     Jabs = case mnesia:dirty_read({jabs, Host}) of
-        [#jabs{}=Record] -> Record;
+        [#jabs{}=Record] -> Record#jabs{timer = TRef};
         _ -> #jabs{host = Host, counter = 0, stamp = os:timestamp(), timer = TRef}
     end,
     [ejabberd_hooks:add(Hook, Host, ?MODULE, Hook, 20)
