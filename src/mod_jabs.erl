@@ -100,6 +100,9 @@ handle_call(stop, _From, State) ->
 handle_cast({inc, Step}, State) ->
     Old = State#jabs.counter,
     {noreply, State#jabs{counter = Old+Step}};
+handle_cast({dec, Step}, State) ->
+    Old = State#jabs.counter,
+    {noreply, State#jabs{counter = Old-Step}};
 handle_cast(reset, State) ->
     {noreply, State#jabs{counter = 0, stamp = os:timestamp()}};
 handle_cast(_Msg, State) ->
