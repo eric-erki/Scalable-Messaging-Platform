@@ -44,7 +44,7 @@
 %% handled ejabberd hooks
 -export([sm_register_connection_hook/3, user_send_packet/3, user_send_packet/4]).
 
--record(jabs, {host, counter, stamp, timer}).
+-record(jabs, {host, counter, stamp, timer, ignore=[]}).
 
 -define(PROCNAME, ?MODULE).
 -define(CALL_TIMEOUT, 4000).
@@ -78,15 +78,22 @@ reset(Host) ->
 %% callbacks
 %%====================================================================
 
-init([Host, _Opts]) ->
+init([Host, Opts]) ->
     mnesia:create_table(jabs, [{disc_copies, [node()]},
                                {local_content, true},
                                {attributes, record_info(fields, jabs)}]),
     ejabberd_commands:register_commands(commands(Host)),
+    Ignore = gen_mod:get_opt(ignore, Opts,
+                             fun(L) when is_list(L) -> L end, []),
     {ok, TRef} = timer:send_interval(60000*15, backup),  % backup every 15 minutes
     Jabs = case mnesia:dirty_read({jabs, Host}) of
-        [#jabs{}=Record] -> Record#jabs{timer = TRef};
-        _ -> #jabs{host = Host, counter = 0, stamp = os:timestamp(), timer = TRef}
+        [#jabs{}=Record] ->
+            IgnoreBackup = Record#jabs.ignore,
+            IgnoreLast = lists:usort(Ignore++IgnoreBackup),
+            Record#jabs{ignore = IgnoreLast, timer = TRef};
+        _ ->
+            #jabs{host = Host, counter = 0, stamp = os:timestamp(),
+                  ignore = Ignore, timer = TRef}
     end,
     [ejabberd_hooks:add(Hook, Host, ?MODULE, Hook, 20)
      || Hook <- ?SUPPORTED_HOOKS],
@@ -97,12 +104,26 @@ handle_call(value, _From, State) ->
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State}.
 
+handle_cast({inc, Step, User}, State) ->
+    case lists:member(User, State#jabs.ignore) of
+        true ->
+            {noreply, State};
+        false ->
+            Old = State#jabs.counter,
+            {noreply, State#jabs{counter = Old+Step}}
+    end;
 handle_cast({inc, Step}, State) ->
     Old = State#jabs.counter,
     {noreply, State#jabs{counter = Old+Step}};
 handle_cast({dec, Step}, State) ->
     Old = State#jabs.counter,
     {noreply, State#jabs{counter = Old-Step}};
+handle_cast({ignore, User}, State) ->
+    Ignore = lists:usort([User|State#jabs.ignore]),
+    {noreply, State#jabs{ignore = Ignore}};
+handle_cast({attend, User}, State) ->
+    Ignore = lists:delete(User, State#jabs.ignore),
+    {noreply, State#jabs{ignore = Ignore}};
 handle_cast(reset, State) ->
     {noreply, State#jabs{counter = 0, stamp = os:timestamp()}};
 handle_cast(_Msg, State) ->
@@ -178,11 +199,11 @@ jabs_reset_command(Host) ->
 %% Hooks handlers
 %%====================================================================
 
-sm_register_connection_hook(_SID, #jid{lserver=Host}, _Info) ->
-    gen_server:cast(process(Host), {inc, 5}).
+sm_register_connection_hook(_SID, #jid{luser=User,lserver=Host}, _Info) ->
+    gen_server:cast(process(Host), {inc, 5, User}).
 
 user_send_packet(Packet, _C2SState, From, To) ->
     user_send_packet(From, To, Packet).
-user_send_packet(#jid{lserver=Host}, _To, Packet) ->
-    gen_server:cast(process(Host), {inc, 1}),
+user_send_packet(#jid{luser=User,lserver=Host}, _To, Packet) ->
+    gen_server:cast(process(Host), {inc, 1, User}),
     Packet.
