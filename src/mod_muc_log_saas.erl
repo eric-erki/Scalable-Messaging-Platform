@@ -29,46 +29,33 @@
 %% API
 -export([start_link/2, start/2, stop/1]).
 
+%% Internal export
+-export([check_proc_running/2]).
+
 -include("ejabberd.hrl").
 -include("logger.hrl").
 
--define(MAX_START_RETRIES, 5).
+-define(CHECK_INTERVAL, 60 * 1000).  %% 1 minute
 
 start_link(Host, Opts) ->
-    start_with_retry(Host, Opts, 0).
+    mod_muc_log:start_link(Host, Opts).
 
-
-start_with_retry(Host, _Opts, Retries) when Retries == ?MAX_START_RETRIES ->
-    ?ERROR_MSG("Max retries reached (~p), mod_muc_log_saas (~p) can't be started", [Retries, Host]),
-    error;
-start_with_retry(Host, Opts, Retries) ->
-    try
-        case mod_muc_log:whereis_proc(Host) of
-            Pid when is_pid(Pid) ->
-                rpc:call(node(Pid), ?MODULE, stop, [Host]);
-            undefined ->
-                ok
-        end,
-        mod_muc_log:start_link(Host, Opts)
-    catch
-        _:Error ->
-            % I think there could be delays between the process is stoped in possibly remote node,
-            % and the name be ready to global register again from here. This retry is for that
-            NewRetries = Retries +1,
-            Sleep = 200 * NewRetries,
-            ?ERROR_MSG("Error(~p) starting mod_muc (~p), retry in ~p milliseconds: ~p", [NewRetries, Host, Sleep, Error]),
-            timer:sleep(Sleep),
-            start_with_retry(Host, Opts, Retries +1)
+%% Workaround for unique muc log process in saas: we just keep asking periodically if there is a log process registered in the cluster,
+%% and if not, start it in the local node.
+check_proc_running(Host, Opts) ->
+    case mod_muc_log:whereis_proc(Host) of
+        Pid when is_pid(Pid) ->
+            ok;
+        undefined ->
+             Proc = mod_muc_log:get_proc_name(Host),
+             ChildSpec = {Proc, {?MODULE, start_link, [Host, Opts]},
+	    	 transient, 1000, worker, [mod_muc_log]},
+             supervisor:start_child(ejabberd_sup, ChildSpec)
     end.
 
-
-
-
 start(Host, Opts) ->
-    Proc = mod_muc_log:get_proc_name(Host),
-    ChildSpec = {Proc, {?MODULE, start_link, [Host, Opts]},
-		 transient, 1000, worker, [mod_muc_log]},
-    supervisor:start_child(ejabberd_sup, ChildSpec).
+    timer:apply_interval(?CHECK_INTERVAL, ?MODULE, check_proc_running, [Host, Opts]),
+    check_proc_running(Host, Opts). %%do an check right now, to run it at startup when it is the first node
 
 stop(Host) ->
     mod_muc_log:stop(Host).
