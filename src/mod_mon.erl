@@ -880,7 +880,11 @@ check_level(offline_queues, Spec) ->
     Value = get(offline_message_queues)+get(offline_internal_queues),
     check_level(ok, Value, Spec);
 check_level(Probe, Spec) ->
-    check_level(ok, get(Probe), Spec).
+    Val = case get(Probe) of
+        {Sum, Count} -> Sum div Count;
+        Value -> Value
+    end,
+    check_level(ok, Val, Spec).
 
 check_level(Acc, _, []) -> Acc;
 check_level(Acc, Value, [{Level, gt, Limit}|Tail]) ->
