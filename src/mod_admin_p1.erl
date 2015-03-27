@@ -1244,6 +1244,7 @@ server_info() ->
     end,
     {Jabs, {MegaSecs,Secs,_}} = lists:foldr(fun(Host, {J,S}) ->
                     case catch mod_jabs:value(Host) of
+                        {'EXIT', _} -> {J,S};
                         {Int, Now} -> {J+Int, Now};
                         _ -> {J,S}
                     end
