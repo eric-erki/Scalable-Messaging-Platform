@@ -174,7 +174,11 @@ init([Host, Opts]) ->
 handle_call({get, log}, _From, State) ->
     {reply, State#state.log, State};
 handle_call({get, Probe}, _From, State) ->
-    {reply, get(Probe), State};
+    Ret = case get(Probe) of
+        {Sum, Count} -> Sum div Count;
+        Value -> Value
+    end,
+    {reply, Ret, State};
 handle_call({reset, Probe}, _From, State) ->
     OldVal = get(Probe),
     IsLog = State#state.active_count andalso lists:member(Probe, ?HYPERLOGLOGS),
