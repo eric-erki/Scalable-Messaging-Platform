@@ -68,7 +68,7 @@
 tokenize(Node) -> str:tokens(Node, <<"/#">>).
 
 start(Host, Opts) ->
-    init_db(gen_mod:db_type(Opts), Host),
+    init_db(gen_mod:db_type(Host, Opts), Host),
     ejabberd_hooks:add(local_send_to_resource_hook, Host,
 		       ?MODULE, announce, 50),
     ejabberd_hooks:add(disco_local_identity, Host, ?MODULE, disco_identity, 50),

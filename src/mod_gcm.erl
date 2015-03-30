@@ -73,7 +73,7 @@
 start(Host, Opts) ->
     case init_host(Host) of
 	true ->
-            init_db(gen_mod:db_type(Opts), Host),
+            init_db(gen_mod:db_type(Host, Opts), Host),
 	    ejabberd_hooks:add(p1_push_notification, Host,
 			       ?MODULE, push_notification, 50),
 	    ejabberd_hooks:add(p1_push_notification_custom, Host,

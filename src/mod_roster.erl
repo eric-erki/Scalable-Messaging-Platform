@@ -71,7 +71,7 @@
 start(Host, Opts) ->
     IQDisc = gen_mod:get_opt(iqdisc, Opts, fun gen_iq_handler:check_type/1,
                              one_queue),
-    init_db(gen_mod:db_type(Opts), Host),
+    init_db(gen_mod:db_type(Host, Opts), Host),
     ejabberd_hooks:add(roster_get, Host, ?MODULE,
 		       get_user_roster, 50),
     ejabberd_hooks:add(roster_in_subscription, Host,

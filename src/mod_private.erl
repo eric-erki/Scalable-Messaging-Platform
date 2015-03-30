@@ -51,7 +51,7 @@
 start(Host, Opts) ->
     IQDisc = gen_mod:get_opt(iqdisc, Opts, fun gen_iq_handler:check_type/1,
                              one_queue),
-    init_db(gen_mod:db_type(Opts), Host),
+    init_db(gen_mod:db_type(Host, Opts), Host),
     ejabberd_hooks:add(remove_user, Host, ?MODULE,
 		       remove_user, 50),
     gen_iq_handler:add_iq_handler(ejabberd_sm, Host,

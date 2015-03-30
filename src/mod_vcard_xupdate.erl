@@ -30,7 +30,7 @@
 %%====================================================================
 
 start(Host, Opts) ->
-    init_db(gen_mod:db_type(Opts), Host),
+    init_db(gen_mod:db_type(Host, Opts), Host),
     ejabberd_hooks:add(c2s_update_presence, Host, ?MODULE,
 		       update_presence, 100),
     ejabberd_hooks:add(vcard_set, Host, ?MODULE, vcard_set,

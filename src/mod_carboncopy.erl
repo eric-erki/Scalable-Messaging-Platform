@@ -74,7 +74,7 @@ start(Host, Opts) ->
     IQDisc = gen_mod:get_opt(iqdisc, Opts,fun gen_iq_handler:check_type/1, one_queue),
     mod_disco:register_feature(Host, ?NS_CARBONS_1),
     mod_disco:register_feature(Host, ?NS_CARBONS_2),
-    init_db(gen_mod:db_type(Opts), Host),
+    init_db(gen_mod:db_type(Host, Opts), Host),
     ejabberd_hooks:add(unset_presence_hook,Host, ?MODULE, remove_connection, 10),
     %% why priority 89: to define clearly that we must run BEFORE mod_logdb hook (90)
     ejabberd_hooks:add(user_send_packet,Host, ?MODULE, user_send_packet, 89),

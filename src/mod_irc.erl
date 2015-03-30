@@ -118,7 +118,7 @@ init([Host, Opts]) ->
     ejabberd:start_app(p1_iconv),
     MyHost = gen_mod:get_opt_host(Host, Opts,
 				  <<"irc.@HOST@">>),
-    init_db(gen_mod:db_type(Opts), Host),
+    init_db(gen_mod:db_type(Host, Opts), Host),
     Access = gen_mod:get_opt(access, Opts,
                              fun(A) when is_atom(A) -> A end,
                              all),

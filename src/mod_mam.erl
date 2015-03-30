@@ -59,7 +59,7 @@
 start(Host, Opts) ->
     IQDisc = gen_mod:get_opt(iqdisc, Opts, fun gen_iq_handler:check_type/1,
                              one_queue),
-    DBType = gen_mod:db_type(Opts),
+    DBType = gen_mod:db_type(Host, Opts),
     init_db(DBType, Host),
     init_cache(DBType, Opts),
     gen_iq_handler:add_iq_handler(ejabberd_local, Host,

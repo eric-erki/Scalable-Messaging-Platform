@@ -93,7 +93,7 @@ status(Host) ->
 %%====================================================================
 
 init([Host, Opts]) ->
-    init_db(gen_mod:db_type(Opts), Host),
+    init_db(gen_mod:db_type(Host, Opts), Host),
     ejabberd_hooks:add(offline_message_hook, Host, ?MODULE,
 		       store_packet, 50),
     ejabberd_hooks:add(resend_offline_messages_hook, Host,
@@ -117,7 +117,7 @@ init([Host, Opts]) ->
     {ok,
      #state{host = Host,
             access_max_offline_messages = AccessMaxOfflineMsgs,
-            dbtype = gen_mod:db_type(Opts)}}.
+            dbtype = gen_mod:db_type(Host, Opts)}}.
 
 
 handle_call(stop, _From, State) ->

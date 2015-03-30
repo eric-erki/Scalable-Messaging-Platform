@@ -68,7 +68,7 @@ init([Host, Opts]) ->
     {ok,
      #state{host = Host,
             access_max_offline_messages = AccessMaxOfflineMsgs,
-            dbtype = gen_mod:db_type(Opts)}}.
+            dbtype = gen_mod:db_type(Host, Opts)}}.
 
 
 handle_cast(_Msg, State) -> {noreply, State}.

@@ -74,7 +74,7 @@
 start(Host, Opts) ->
     case init_host(Host) of
 	true ->
-            init_db(gen_mod:db_type(Opts), Host),
+            init_db(gen_mod:db_type(Host, Opts), Host),
 	    ejabberd_hooks:add(p1_push_notification, Host,
 			       ?MODULE, push_notification, 50),
 	    ejabberd_hooks:add(p1_push_notification_custom, Host,
@@ -94,7 +94,7 @@ start(Host, Opts) ->
                      (false) -> false
                   end,
                   false),
-            case {gen_mod:db_type(Opts), MultipleAccs} of
+            case {gen_mod:db_type(Host, Opts), MultipleAccs} of
                 {odbc, _} -> ok;
                 {DBType, false} ->
                     ?WARNING_MSG(

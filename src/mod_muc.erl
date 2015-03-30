@@ -330,7 +330,7 @@ can_use_nick(LServer, Host, JID, Nick, odbc) ->
 init([Host, Opts]) ->
     MyHost = gen_mod:get_opt_host(Host, Opts,
 				  <<"conference.@HOST@">>),
-    init_db(gen_mod:db_type(Opts), Host),
+    init_db(gen_mod:db_type(Host, Opts), Host),
     update_muc_online_table(),
     mnesia:create_table(muc_online_room,
 			[{ram_copies, [node()]}, {local_content, true},

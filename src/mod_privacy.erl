@@ -62,7 +62,7 @@ privacy_schema() ->
 start(Host, Opts) ->
     IQDisc = gen_mod:get_opt(iqdisc, Opts, fun gen_iq_handler:check_type/1,
                              one_queue),
-    init_db(gen_mod:db_type(Opts), Host),
+    init_db(gen_mod:db_type(Host, Opts), Host),
     mod_disco:register_feature(Host, ?NS_PRIVACY),
     ejabberd_hooks:add(privacy_iq_get, Host, ?MODULE,
 		       process_iq_get, 50),

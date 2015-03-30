@@ -66,7 +66,7 @@
                   group_host = {<<"">>, <<"">>} :: {binary(), binary()}}).
 
 start(Host, Opts) ->
-    init_db(gen_mod:db_type(Opts), Host),
+    init_db(gen_mod:db_type(Host, Opts), Host),
     ejabberd_hooks:add(webadmin_menu_host, Host, ?MODULE,
 		       webadmin_menu, 70),
     ejabberd_hooks:add(webadmin_page_host, Host, ?MODULE,
