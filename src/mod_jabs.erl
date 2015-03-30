@@ -69,7 +69,13 @@ stop(Host) ->
     supervisor:delete_child(ejabberd_sup, Proc).
 
 value(Host) ->
-    gen_server:call(process(Host), value, ?CALL_TIMEOUT).
+    Nodes = ejabberd_cluster:get_nodes(),
+    {Replies, _} = gen_server:multi_call(Nodes, process(Host), value, ?CALL_TIMEOUT),
+    lists:foldl(
+            fun({_N, {C, S}}, {CAcc, SAcc}) when S<SAcc -> {CAcc+C, S};
+               ({_N, {C, _S}}, {CAcc, SAcc}) -> {CAcc+C, SAcc}
+            end,
+            {0, os:timestamp()}, Replies).
 
 reset(Host) ->
     gen_server:cast(process(Host), reset).
@@ -79,22 +85,14 @@ reset(Host) ->
 %%====================================================================
 
 init([Host, Opts]) ->
-    mnesia:create_table(jabs, [{disc_copies, [node()]},
-                               {local_content, true},
-                               {attributes, record_info(fields, jabs)}]),
+    init_db(gen_mod:db_type(Host, Opts), Host),
     ejabberd_commands:register_commands(commands(Host)),
     Ignore = gen_mod:get_opt(ignore, Opts,
                              fun(L) when is_list(L) -> L end, []),
     {ok, TRef} = timer:send_interval(60000*15, backup),  % backup every 15 minutes
-    Jabs = case mnesia:dirty_read({jabs, Host}) of
-        [#jabs{}=Record] ->
-            IgnoreBackup = Record#jabs.ignore,
-            IgnoreLast = lists:usort(Ignore++IgnoreBackup),
-            Record#jabs{ignore = IgnoreLast, timer = TRef};
-        _ ->
-            #jabs{host = Host, counter = 0, stamp = os:timestamp(),
-                  ignore = Ignore, timer = TRef}
-    end,
+    Record = read_db(Host),
+    IgnoreLast = lists:usort(Ignore++Record#jabs.ignore),
+    Jabs = Record#jabs{ignore = IgnoreLast, timer = TRef},
     [ejabberd_hooks:add(Hook, Host, ?MODULE, Hook, 20)
      || Hook <- ?SUPPORTED_HOOKS],
     {ok, Jabs}.
@@ -130,7 +128,7 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info(backup, State) ->
-    mnesia:dirty_write(State),
+    write_db(State),
     {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -140,7 +138,7 @@ terminate(_Reason, State) ->
     timer:cancel(State#jabs.timer),
     [ejabberd_hooks:delete(Hook, Host, ?MODULE, Hook, 20)
      || Hook <- ?SUPPORTED_HOOKS],
-    mnesia:dirty_write(State#jabs{timer = undefined}),
+    write_db(State#jabs{timer = undefined}),
     ejabberd_commands:unregister_commands(commands(Host)).
 
 code_change(_OldVsn, State, _Extra) ->
@@ -152,6 +150,35 @@ code_change(_OldVsn, State, _Extra) ->
 
 process(Host) ->
     gen_mod:get_module_proc(Host, ?PROCNAME).
+
+%%====================================================================
+%% database functions
+%%====================================================================
+
+init_db(mnesia, _Host) ->
+    mnesia:create_table(jabs, [{disc_copies, [node()]},
+                               {local_content, true},
+                               {attributes, record_info(fields, jabs)}]);
+init_db(_, _) ->
+    ok.
+
+read_db(Host) when is_binary(Host) ->
+    read_db(Host, gen_mod:db_type(Host, ?MODULE)).
+
+read_db(Host, mnesia) ->
+    case catch mnesia:dirty_read({jabs, Host}) of
+        [#jabs{}=Jabs] -> Jabs;
+        _ -> #jabs{host = Host, counter = 0, stamp = os:timestamp()}
+    end;
+read_db(Host, _) ->
+    #jabs{host = Host, counter = 0, stamp = os:timestamp()}.
+
+write_db(Jabs) when is_record(Jabs, jabs) ->
+    write_db(Jabs, gen_mod:db_type(Jabs#jabs.host, ?MODULE)).
+write_db(Jabs, mnesia) ->
+    mnesia:dirty_write(Jabs);
+write_db(_, _) ->
+    ok.
 
 %%====================================================================
 %% ejabberd commands
