@@ -100,7 +100,7 @@ init_db(p1db, Host) ->
 	      ejabberd_config:get_option(
 		{p1db_group, Host}, fun(G) when is_atom(G) -> G end)),
     p1db:open_table(vcard,
-		    [{group, Group},
+		    [{group, Group}, {nosync, true},
                      {schema, [{keys, [server, user]},
                                {vals, [vcard]},
                                {enc_key, fun ?MODULE:enc_key/1},

@@ -114,7 +114,7 @@ init_db(p1db, Host) ->
 	      ejabberd_config:get_option(
 		{p1db_group, Host}, fun(G) when is_atom(G) -> G end)),
     p1db:open_table(roster,
-		    [{group, Group},
+		    [{group, Group}, {nosync, true},
 		     {nosync, true},
                      {schema, [{keys, [server, user, jid]},
                                {vals, [name, subscription,
@@ -125,7 +125,7 @@ init_db(p1db, Host) ->
                                {enc_val, fun ?MODULE:enc_val/2},
                                {dec_val, fun ?MODULE:dec_val/2}]}]),
     p1db:open_table(roster_version,
-		    [{group, Group},
+		    [{group, Group}, {nosync, true},
                      {schema, [{keys, [server, user]},
                                {vals, [version]},
                                {dec_key, fun ?MODULE:dec_roster_version_key/1},

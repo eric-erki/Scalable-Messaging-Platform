@@ -111,12 +111,12 @@ init_db(p1db, Host) ->
 	      ejabberd_config:get_option(
 		{p1db_group, Host}, fun(G) when is_atom(G) -> G end)),
     p1db:open_table(sr_group,
-		    [{group, Group},
+		    [{group, Group}, {nosync, true},
                      {schema, [{keys, [host, group, server, user]},
                                {enc_key, fun ?MODULE:enc_key/1},
                                {dec_key, fun ?MODULE:dec_key/1}]}]),
     p1db:open_table(sr_opts,
-		    [{group, Group},
+		    [{group, Group}, {nosync, true},
                      {schema, [{keys, [host, group]},
                                {vals, OptsFields},
                                {enc_key, fun ?MODULE:enc_key/1},
@@ -124,7 +124,7 @@ init_db(p1db, Host) ->
                                {enc_val, fun ?MODULE:enc_val/2},
                                {dec_val, fun ?MODULE:dec_val/2}]}]),
     p1db:open_table(sr_user,
-		    [{group, Group},
+		    [{group, Group}, {nosync, true},
                      {schema, [{keys, [host, server, user, group]},
                                {enc_key, fun ?MODULE:enc_key/1},
                                {dec_key, fun ?MODULE:dec_key/1}]}]);

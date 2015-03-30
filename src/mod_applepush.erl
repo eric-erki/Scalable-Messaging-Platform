@@ -128,7 +128,7 @@ init_db(p1db, Host) ->
 	      ejabberd_config:get_option(
 		{p1db_group, Host}, fun(G) when is_atom(G) -> G end)),
     p1db:open_table(applepush_cache,
-		    [{group, Group},
+		    [{group, Group}, {nosync, true},
 		     {schema, [{keys, [server, user, device_id]},
 			       {vals, [app_id, send_body,
 				       send_from, local_badge,

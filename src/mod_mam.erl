@@ -95,7 +95,7 @@ init_db(p1db, Host) ->
 	      ejabberd_config:get_option(
 		{p1db_group, Host}, fun(G) when is_atom(G) -> G end)),
     p1db:open_table(archive_msg,
-		    [{group, Group},
+		    [{group, Group}, {nosync, true},
                      {schema, [{keys, [server, user, timestamp]},
                                {vals, [peer, packet]},
                                {enc_key, fun ?MODULE:enc_key/1},
@@ -103,7 +103,7 @@ init_db(p1db, Host) ->
                                {enc_val, fun ?MODULE:enc_val/2},
                                {dec_val, fun ?MODULE:dec_val/2}]}]),
     p1db:open_table(archive_prefs,
-		    [{group, Group},
+		    [{group, Group}, {nosync, true},
                      {schema, [{keys, [server, user]},
                                {vals, [default, always, never]},
                                {enc_key, fun ?MODULE:enc_key/1},
