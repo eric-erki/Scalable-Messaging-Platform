@@ -30,8 +30,8 @@
 
 -include("logger.hrl").
 
--define(HTTP_TIMEOUT, 7000).
--define(CONNECT_TIMEOUT, 5000).
+-define(HTTP_TIMEOUT, 10000).
+-define(CONNECT_TIMEOUT, 8000).
 
 start() ->
     http_p1:start(),
