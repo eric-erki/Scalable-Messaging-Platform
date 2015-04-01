@@ -90,14 +90,9 @@ is_user_exists(User, Server) ->
             true;
         {ok, 401, _RespBody} ->
             false;
-        {ok, Other, RespBody} ->
-            {error, {rest_error, {Other, RespBody}}};
-        {error, Reason} ->
-            ?ERROR_MSG("HTTP request failed:~n"
-                       "** URI = ~p~n"
-                       "** Err = ~p",
-                       [{Server, Path}, Reason]),
-            {error, {rest_error, {error, Reason}}}
+        _ ->
+            % assume user exists if we have any trouble with api
+            true
     end.
 
 %% Functions not implemented or not relevant for REST authentication
