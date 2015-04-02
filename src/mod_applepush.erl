@@ -45,6 +45,7 @@
 	 remove_user/2,
          transform_module_options/1,
          process_sm_iq/3,
+         process_customization_iq/3,
          export/1,
 	 enc_key/1,
 	 dec_key/1,
@@ -64,6 +65,7 @@
 -include("mod_privacy.hrl").
 
 -define(NS_P1_PUSH, <<"p1:push">>).
+-define(NS_P1_PUSH_CUSTOMIZE, <<"p1:push:customize">>).
 -define(NS_P1_PUSH_APPLEPUSH, <<"p1:push:applepush">>).
 -define(NS_P1_PUSHED, <<"p1:pushed">>).
 -define(NS_P1_ATTACHMENT, <<"http://process-one.net/attachement">>).
@@ -107,7 +109,9 @@ start(Host, Opts) ->
                        iqdisc, Opts, fun gen_iq_handler:check_type/1,
                        one_queue),
             gen_iq_handler:add_iq_handler(ejabberd_sm, Host, ?NS_P1_PUSH_APPLEPUSH,
-                                          ?MODULE, process_sm_iq, IQDisc);
+                                          ?MODULE, process_sm_iq, IQDisc),
+            gen_iq_handler:add_iq_handler(ejabberd_sm, Host, ?NS_P1_PUSH_CUSTOMIZE,
+                                          ?MODULE, process_customization_iq, IQDisc);
 	false ->
 	    ?ERROR_MSG("Cannot start ~s on host ~s. 
                Check you had the correct license for the domain and # of 
@@ -216,12 +220,37 @@ push_notification_with_custom_fields(Host, JID, Notification, Msg, Unread, Sound
     case Type of
 	<<"applepush">> ->
 	    DeviceID = xml:get_path_s(Notification, [{elem, <<"id">>}, cdata]),
-            PushPacket = build_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields),
-            route_push_notification(Host, JID, AppID, PushPacket),
+            PushPacket = build_and_customize_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields),
+            case PushPacket of
+                skip ->
+                    ok;
+                _ ->
+                    route_push_notification(Host, JID, AppID, PushPacket)
+            end,
 	    stop;
 	_ ->
 	    ok
     end.
+
+build_and_customize_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields) ->
+    LServer = JID#jid.lserver,
+    case gen_mod:db_type(LServer, ?MODULE) of
+        odbc ->
+            LUser = ejabberd_odbc:escape(JID#jid.luser),
+            SJID = jlib:jid_remove_resource(jlib:jid_tolower(jlib:string_to_jid(Sender))),
+            LSender = ejabberd_odbc:escape(jlib:jid_to_string(SJID)),
+            case ejabberd_odbc:sql_query(LServer,
+                                         [<<"SELECT mute FROM push_customizations WHERE username = '">>, LUser,
+                                          <<"' AND match_jid = '">>, LSender, <<"';">>]) of
+                {selected, _, [_|_]} ->
+                    skip;
+                _ ->
+                    build_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields)
+            end;
+        _ ->
+            build_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields)
+    end.
+
 build_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields) ->
     Badge = jlib:integer_to_binary(Unread),
     SSound =
@@ -464,6 +493,95 @@ process_sm_iq(From, To, #iq{type = Type, sub_el = SubEl} = IQ) ->
 	    IQ#iq{type = error, sub_el = [SubEl, ?ERR_NOT_ALLOWED]}
     end.
 
+process_customization_iq(From, To, #iq{type = Type, sub_el = SubEl} = IQ) ->
+    DB = gen_mod:db_type(From#jid.lserver, ?MODULE),
+    case {From#jid.lserver == To#jid.lserver, Type, SubEl} of
+        {false, _, _} ->
+	    IQ#iq{type = error, sub_el = [SubEl, ?ERR_NOT_ALLOWED]};
+	{_, set, #xmlel{name = <<"customize">>, children = Items}} ->
+            ItemsInfo = lists:filtermap(
+                         fun(#xmlel{name = <<"item">>, attrs = Attrs}) ->
+                                 From = xml:get_attr_s(<<"from">>, Attrs),
+                                 Mute = xml:get_attr_s(<<"mute">>, Attrs),
+                                 Delete = xml:get_attr_s(<<"delete">>, Attrs),
+                                 {true, {From, Mute == <<"true">>, Delete == <<"true">>}};
+                            (_) ->
+                                 false
+                         end, Items),
+            case change_customizations(DB, From, ItemsInfo) of
+                ok ->
+                    IQ#iq{type = result, sub_el = []};
+                not_supported ->
+                    IQ#iq{type = error, sub_el = [SubEl, ?ERR_FEATURE_NOT_IMPLEMENTED]}
+            end;
+	{_, get, #xmlel{name = <<"customize">>, children = Items}} ->
+            Jids = lists:filtermap(fun(#xmlel{name = <<"item">>, attrs = Attrs}) ->
+                                           case xml:get_attr_s(<<"from">>, Attrs) of
+                                               <<"">> ->
+                                                   false;
+                                               V ->
+                                                   {true, V}
+                                           end;
+                                      (_) ->
+                                           false
+                                   end, Items),
+            case get_customizations(DB, From, Jids) of
+                not_supported ->
+                    IQ#iq{type = error, sub_el = [SubEl, ?ERR_FEATURE_NOT_IMPLEMENTED]};
+                error ->
+                    IQ#iq{type = error, sub_el = [SubEl, ?ERR_INTERNAL_SERVER_ERROR]};
+                Res ->
+                    ResX = [#xmlel{name = <<"item">>, attrs = [{<<"from">>, R}, {<<"mute">>, <<"true">>}]} || R <- Res],
+                    IQ#iq{type = result, sub_el = ResX}
+            end;
+        _ ->
+	    IQ#iq{type = error, sub_el = [SubEl, ?ERR_NOT_ALLOWED]}
+    end.
+
+change_customizations(odbc, User, Items) ->
+    LServer = User#jid.lserver,
+    LUser = ejabberd_odbc:escape(User#jid.luser),
+    F = fun() ->
+                lists:map(
+                  fun({From, IsMute, IsDelete}) ->
+                          SJID = jlib:jid_remove_resource(jlib:jid_tolower(jlib:string_to_jid(From))),
+                          LSender = ejabberd_odbc:escape(jlib:jid_to_string(SJID)),
+
+                          ejabberd_odbc:sql_query_t([<<"DELETE FROM push_customizations WHERE username = '">>, LUser,
+                                                     <<"' AND match_jid = '">>, LSender, <<"';">>]),
+
+                          if not IsDelete andalso IsMute ->
+                                  ejabberd_odbc:sql_query_t([<<"INSERT INTO push_customizations(username, match_jid, mute) VALUES ('">>,
+                                                                     LUser, <<"', '">>, LSender, <<"', true);">>]);
+                             true ->
+                                  ok
+                          end
+                  end, Items)
+        end,
+    {atomic, _} = odbc_queries:sql_transaction(LServer, F),
+    ok;
+change_customizations(_Db, _User, _Items) ->
+    not_supported.
+
+get_customizations(odbc, User, Items) ->
+    LServer = User#jid.lserver,
+    LUser = ejabberd_odbc:escape(User#jid.luser),
+    Query = case Items of
+                [] ->
+                    [<<"SELECT match_jid FROM push_customizations WHERE username = '">>, LUser, <<"';">>];
+                [F|T] ->
+                    ItemsP = [[<<",'">>, ejabberd_odbc:escape(I), <<"'">>] || I <- T],
+                    [<<"SELECT match_jid FROM push_customizations WHERE username = '">>, LUser, <<"'">>,
+                     <<" AND match_jid IN ('">>, ejabberd_odbc:escape(F), <<"'">>, ItemsP, <<");">>]
+            end,
+    case ejabberd_odbc:sql_query(LServer, Query) of
+        {selected, _, Res} ->
+            Res;
+        _ ->
+            error
+    end;
+get_customizations(_Db, _User, _Items) ->
+    not_supported.
 
 device_reset_badge(Host, To, DeviceID, AppID, Badge) ->
     ?INFO_MSG("Sending reset badge (~p) push to ~p ~p", [Badge, To, DeviceID]),

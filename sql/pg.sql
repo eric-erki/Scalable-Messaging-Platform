@@ -295,6 +295,15 @@ CREATE TABLE applepush_cache (
 CREATE UNIQUE INDEX i_applepush_cache_username_device_id ON applepush_cache
 USING btree (username, device_id);
 
+CREATE TABLE push_customizations (
+    username text NOT NULL,
+    match_jid text NOT NULL,
+    mute boolean NOT NULL,
+    sound text,
+    message text
+);
+CREATE UNIQUE INDEX i_push_customizations_username_match_jid ON push_customizations USING btree (username, match_jid);
+
 CREATE TABLE muc_room (
     name text NOT NULL,
     host text NOT NULL,

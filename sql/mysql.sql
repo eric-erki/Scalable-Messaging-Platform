@@ -346,6 +346,15 @@ CREATE TABLE `gcm_cache` (
    UNIQUE KEY `i_gcm_cache_username_device_id` (`username`,`device_id`)
 ) ENGINE=InnoDB CHARACTER SET utf8;
 
+CREATE TABLE push_customizations (
+    username varchar(255) NOT NULL,
+    match_jid varchar(255) NOT NULL,
+    mute boolean NOT NULL,
+    sound varchar(255),
+    message varchar(255),
+    UNIQUE KEY i_push_customizations_username_match_jid (username, match_jid)
+) ENGINE=InnoDB CHARACTER SET utf8;
+
 CREATE TABLE carboncopy (
     server varchar(255) NOT NULL,
     username varchar(255) NOT NULL,

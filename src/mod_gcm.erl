@@ -199,12 +199,37 @@ push_notification_with_custom_fields(Host, JID, Notification, Msg, Unread, Sound
     case Type of
 	<<"gcm">> ->
 	    DeviceID = xml:get_path_s(Notification, [{elem, <<"id">>}, cdata]),
-            PushPacket = build_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields),
-            route_push_notification(Host, JID, AppID, PushPacket),
+            PushPacket = build_and_customize_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields),
+            case PushPacket of
+                skip ->
+                    ok;
+                _ ->
+                    route_push_notification(Host, JID, AppID, PushPacket)
+            end,
 	    stop;
 	_ ->
 	    ok
     end.
+
+build_and_customize_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields) ->
+    LServer = JID#jid.lserver,
+    case gen_mod:db_type(LServer, ?MODULE) of
+        odbc ->
+            LUser = ejabberd_odbc:escape(JID#jid.luser),
+            SJID = jlib:jid_remove_resource(jlib:jid_tolower(jlib:string_to_jid(Sender))),
+            LSender = ejabberd_odbc:escape(jlib:jid_to_string(SJID)),
+            case ejabberd_odbc:sql_query(LServer,
+                                         [<<"SELECT mute FROM push_customizations WHERE username = '">>, LUser,
+                                          <<"' AND match_jid = '">>, LSender, <<"';">>]) of
+                {selected, _, [_|_]} ->
+                    skip;
+                _ ->
+                    build_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields)
+            end;
+        _ ->
+            build_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields)
+    end.
+
 build_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields) ->
     Badge = jlib:integer_to_binary(Unread),
     SSound =
