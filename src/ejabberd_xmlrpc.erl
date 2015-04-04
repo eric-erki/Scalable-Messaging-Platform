@@ -462,6 +462,8 @@ format_arg(Arg, binary) when is_list(Arg) -> process_unicode_codepoints(Arg);
 format_arg(Arg, binary) when is_binary(Arg) -> Arg;
 format_arg(Arg, string) when is_list(Arg) -> process_unicode_codepoints(Arg);
 format_arg(Arg, string) when is_binary(Arg) -> Arg;
+format_arg(undefined, binary) -> <<>>;
+format_arg(undefined, string) -> <<>>;
 format_arg(Arg, Format) ->
     ?ERROR_MSG("don't know how to format Arg ~p for format ~p", [Arg, Format]),
     error.
