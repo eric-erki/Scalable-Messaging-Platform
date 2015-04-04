@@ -88,7 +88,7 @@ start() ->
 %% If not specified, the default value 'ejabberd.yml' is assumed.
 %% @spec () -> string()
 get_ejabberd_config_path() ->
-    case application:get_env(config) of
+    case get_env_config() of
 	{ok, Path} -> Path;
 	undefined ->
 	    case os:getenv("EJABBERD_CONFIG_PATH") of
@@ -97,6 +97,18 @@ get_ejabberd_config_path() ->
 		Path ->
 		    Path
 	    end
+    end.
+
+-spec get_env_config() -> {ok, string()} | undefined.
+get_env_config() ->
+    %% First case: the filename can be specified with: erl -config "/path/to/ejabberd.yml".
+    case application:get_env(config) of
+	R = {ok, _Path} -> R;
+	undefined ->
+            %% Second case for embbeding ejabberd in another app, for example for Elixir:
+            %% config :ejabberd,
+            %%   file: "config/ejabberd.yml"
+            application:get_env(ejabberd, file)
     end.
 
 %% @doc Read the ejabberd configuration file.
@@ -716,7 +728,10 @@ add_host(Host) ->
     end.
 
 get_version() ->
-    list_to_binary(element(2, application:get_key(ejabberd, vsn))).
+    case application:get_key(ejabberd, vsn) of
+        undefined -> "";
+        {ok, Vsn} -> list_to_binary(Vsn)
+    end.
 
 -spec get_myhosts() -> [binary()].
 
