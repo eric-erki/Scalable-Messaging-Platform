@@ -109,6 +109,7 @@ loop() ->
     end.
 
 db_init() ->
+    ejabberd_config:env_binary_to_list(mnesia, dir),
     case mnesia:system_info(extra_db_nodes) of
 	[] ->
 	    mnesia:create_schema([node()]);
