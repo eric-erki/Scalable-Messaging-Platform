@@ -225,8 +225,8 @@ p1db_start() ->
 -endif.
 
 start_apps() ->
+    crypto:start(),
     ejabberd:start_app(sasl),
-    ejabberd:start_app(crypto),
     ejabberd:start_app(ssl),
     ejabberd:start_app(p1_yaml),
     ejabberd:start_app(p1_tls),
