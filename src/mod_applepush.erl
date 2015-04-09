@@ -54,7 +54,8 @@
 	 device_dec_key/1,
 	 device_enc_val/2,
 	 device_dec_val/2,
-    set_local_badge/3]).
+         set_local_badge/3,
+         p1db_update_device_table/0]).
 
 
 %% Debug commands
@@ -1233,6 +1234,18 @@ update_deviceid_p1db(DeviceID, LUser, LServer) ->
             ok
     end.
 
+p1db_update_device_table() ->
+    p1db_update_device_table(p1db:first(applepush_cache)).
+
+p1db_update_device_table({ok, Key, _Val, _VClock}) ->
+    [LServer, LUser, SDeviceID] = dec_key(Key),
+    DeviceID = jlib:binary_to_integer(SDeviceID, 16),
+    update_deviceid_p1db(DeviceID, LUser, LServer),
+    p1db_update_device_table(p1db:next(applepush_cache, Key));
+p1db_update_device_table({error, notfound}) ->
+    ok;
+p1db_update_device_table({error, _} = Error) ->
+    Error.
 
 export(_Server) ->
     [{applepush_cache,
