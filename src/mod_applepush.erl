@@ -51,6 +51,9 @@
 	 dec_key/1,
 	 enc_val/2,
 	 dec_val/2,
+	 device_dec_key/1,
+	 device_enc_val/2,
+	 device_dec_val/2,
     set_local_badge/3]).
 
 
@@ -98,6 +101,12 @@ start(Host, Opts) ->
                   false),
             case {gen_mod:db_type(Host, Opts), MultipleAccs} of
                 {odbc, _} -> ok;
+                {p1db, false} -> ok;
+                {p1db = DBType, true} ->
+                    ?WARNING_MSG(
+                       "Option 'multiple_accounts_per_device' is forced "
+                       "to 'false' with db_type=~w in ~w", [DBType, ?MODULE]),
+                    ok;
                 {DBType, false} ->
                     ?WARNING_MSG(
                        "Option 'multiple_accounts_per_device' is forced "
@@ -140,7 +149,15 @@ init_db(p1db, Host) ->
 			       {enc_key, fun ?MODULE:enc_key/1},
 			       {dec_key, fun ?MODULE:dec_key/1},
 			       {enc_val, fun ?MODULE:enc_val/2},
-			       {dec_val, fun ?MODULE:dec_val/2}]}]);
+			       {dec_val, fun ?MODULE:dec_val/2}]}]),
+    p1db:open_table(applepush_cache_device,
+		    [{group, Group}, {nosync, true},
+		     {schema, [{keys, [device_id]},
+			       {vals, [server, user]},
+			       {enc_key, fun ?MODULE:enc_key/1},
+			       {dec_key, fun ?MODULE:device_dec_key/1},
+			       {enc_val, fun ?MODULE:device_enc_val/2},
+			       {dec_val, fun ?MODULE:device_dec_val/2}]}]);
 init_db(_, _) ->
     ok.
 
@@ -840,6 +857,7 @@ store_cache_p1db(JID, DeviceID, Options) ->
     #jid{luser = LUser, lserver = LServer} = JID,
     Key = usd2key(LUser, LServer, DeviceID),
     Val = opts_to_p1db(Options),
+    update_deviceid_p1db(DeviceID, LUser, LServer),
     case p1db:get(applepush_cache, Key) of
 	{ok, Val, _VClock} ->
 	    %%previous entry exists but is equal, don't do anything
@@ -945,7 +963,9 @@ delete_cache_mnesia(JID, DeviceID) ->
 delete_cache_p1db(JID, DeviceID) ->
     #jid{luser = LUser, lserver = LServer} = JID,
     Key = usd2key(LUser, LServer, DeviceID),
-    [p1db:delete(applepush_cache, Key)].
+    p1db:delete(applepush_cache, Key),
+    SDeviceID = jlib:integer_to_binary(DeviceID, 16),
+    p1db:delete(applepush_cache_device, SDeviceID).
 
 delete_cache_sql(JID, DeviceID) ->
     #jid{luser = LUser, lserver = LServer} = JID,
@@ -979,7 +999,9 @@ delete_cache_p1db(JID) ->
 	{ok, L} ->
 	    lists:foreach(
 	      fun({Key, _Val, _VClock}) ->
-		      p1db:delete(applepush_cache, Key)
+                      [_, _, SDeviceID] = dec_key(Key),
+		      p1db:delete(applepush_cache, Key),
+		      p1db:delete(applepush_cache_device, SDeviceID)
 	      end, L);
 	{error, _} = Err ->
 	    Err
@@ -1174,6 +1196,43 @@ dec_val(_, Bin) ->
      jlib:atom_to_binary(proplists:get_value(send_from, Options, true)),
      jlib:integer_to_binary(proplists:get_value(local_badge, Options, 0)),
      jlib:integer_to_binary(proplists:get_value(timestamp, Options, 0))].
+
+device_dec_key(Key) ->
+    [Key].
+
+device_enc_val(_, [Server, User]) ->
+    Options = [{server, Server},
+	       {user, User}],
+    opts_to_p1db(Options).
+
+device_dec_val(_, Bin) ->
+    Options = p1db_to_opts(Bin),
+    [proplists:get_value(server, Options, <<"">>),
+     proplists:get_value(user, Options, <<"">>)].
+
+update_deviceid_p1db(DeviceID, LUser, LServer) ->
+    SDeviceID = jlib:integer_to_binary(DeviceID, 16),
+    Insert =
+        case p1db:get(applepush_cache_device, SDeviceID) of
+            {ok, Val, _VClock} ->
+                case device_dec_val(ok, Val) of
+                    [LServer, LUser] -> false;
+                    [OldLServer, OldLUser] ->
+                        OldKey = usd2key(OldLUser, OldLServer, DeviceID),
+                        p1db:delete(applepush_cache, OldKey),
+                        true
+                end;
+            {error, _} ->
+                true
+        end,
+    if
+        Insert ->
+            DeviceVal = device_enc_val(ok, [LServer, LUser]),
+            p1db:insert(applepush_cache_device, SDeviceID, DeviceVal);
+        true ->
+            ok
+    end.
+
 
 export(_Server) ->
     [{applepush_cache,
