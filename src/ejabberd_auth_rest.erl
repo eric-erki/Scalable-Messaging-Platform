@@ -28,8 +28,8 @@
 
 -behaviour(ejabberd_auth).
 
--export([start/1, set_password/3, check_password/3,
-	 check_password/5, try_register/3,
+-export([start/1, set_password/3, check_password/4,
+	 check_password/6, try_register/3,
 	 dirty_get_registered_users/0, get_vh_registered_users/1,
 	 get_vh_registered_users/2,
 	 get_vh_registered_users_number/1,
@@ -49,37 +49,41 @@ start(Host) ->
     ok.
 
 test(Host, Pairs) when is_binary(Host), is_list(Pairs) ->
-    [{User, is_user_exists(User, Host), check_password(User, Host, Password)}
+    [{User, is_user_exists(User, Host), check_password(User, <<>>, Host, Password)}
      || {User, Password} <- Pairs].
 
 plain_password_required() -> true.
 
 store_type() -> external.
 
-check_password(_User, _Server, <<>>) ->
+check_password(_User, _AuthzId, _Server, <<>>) ->
     false;
-check_password(User, Server, Password) ->
-    Path = path(Server, auth),
-    case rest:get(Server, Path ,
-		  [{"username", User}, {"password",Password}]) of
-	{ok, 200, _RespBody} ->
-            true;
-        {ok, 401, _RespBody} ->
-            ?WARNING_MSG("API rejected authentication for user ~p (~p) password ~p, resp: ~p" ,[User, Server, Password, _RespBody]),
-            ejabberd_hooks:run(backend_api_badauth, Server, [Server, get, Path]),
-            false;
-        {ok, Other, RespBody} ->
-            ?ERROR_MSG("The authentication module ~p returned "
-		       "an error~nwhen checking user ~p password "
-		       "in server ~p~nError message: ~p",
-		       [?MODULE, User, Server, {Other, RespBody}]),
-            false;
-        {error, Reason} ->
-            ?ERROR_MSG("HTTP request failed:~n"
-                       "** URI = ~p~n"
-                       "** Err = ~p",
-                       [{Server, Path}, Reason]),
-            false
+check_password(User, AuthzId, Server, Password) ->
+    if AuthzId /= <<>> andalso AuthzId /= User ->
+        false;
+    true ->
+        Path = path(Server, auth),
+        case rest:get(Server, Path ,
+    		  [{"username", User}, {"password",Password}]) of
+    	{ok, 200, _RespBody} ->
+                true;
+            {ok, 401, _RespBody} ->
+                ?WARNING_MSG("API rejected authentication for user ~p (~p) password ~p, resp: ~p" ,[User, Server, Password, _RespBody]),
+                ejabberd_hooks:run(backend_api_badauth, Server, [Server, get, Path]),
+                false;
+            {ok, Other, RespBody} ->
+                ?ERROR_MSG("The authentication module ~p returned "
+    		       "an error~nwhen checking user ~p password "
+    		       "in server ~p~nError message: ~p",
+    		       [?MODULE, User, Server, {Other, RespBody}]),
+                false;
+            {error, Reason} ->
+                ?ERROR_MSG("HTTP request failed:~n"
+                           "** URI = ~p~n"
+                           "** Err = ~p",
+                           [{Server, Path}, Reason]),
+                false
+        end
     end.
 
 is_user_exists(User, Server) ->
@@ -96,7 +100,7 @@ is_user_exists(User, Server) ->
 
 %% Functions not implemented or not relevant for REST authentication
 
-check_password(_User, _Server, _Password, _Digest, _DigestGen) ->
+check_password(_User, _AuthzId, _Server, _Password, _Digest, _DigestGen) ->
     false.
 
 set_password(_User, _Server, _Password) ->

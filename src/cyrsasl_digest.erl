@@ -50,7 +50,7 @@
                 username = <<"">> :: binary(),
                 authzid = <<"">> :: binary(),
                 get_password = fun(_) -> {false, <<>>} end :: get_password_fun(),
-                check_password = fun(_, _, _, _) -> false end :: check_password_fun(),
+                check_password = fun(_, _, _, _, _) -> false end :: check_password_fun(),
                 auth_module :: atom(),
                 host = <<"">> :: binary(),
                 hostfqdn :: binary() | [binary()]}).
@@ -102,7 +102,7 @@ mech_step(#state{step = 3, nonce = Nonce} = State,
 		case (State#state.get_password)(UserName) of
 		  {false, _} -> {error, <<"not-authorized">>, UserName};
 		  {Passwd, AuthModule} ->
-		      case (State#state.check_password)(UserName, <<"">>,
+		      case (State#state.check_password)(UserName, UserName, <<"">>,
 		                    proplists:get_value(<<"response">>, KeyVals, <<>>),
 							%fxml:get_attr_s(<<"response">>, KeyVals),
 							fun (PW) ->
@@ -131,7 +131,11 @@ mech_step(#state{step = 5, auth_module = AuthModule,
 		 username = UserName, authzid = AuthzId},
 	  <<"">>) ->
     {ok,
-     [{username, UserName}, {authzid, AuthzId},
+     [{username, UserName}, {authzid, case AuthzId of
+        <<"">> -> UserName;
+        _ -> AuthzId
+      end
+    },
       {auth_module, AuthModule}]};
 mech_step(A, B) ->
     ?DEBUG("SASL DIGEST: A ~p B ~p", [A, B]),

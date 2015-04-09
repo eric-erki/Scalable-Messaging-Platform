@@ -47,8 +47,8 @@
 
 	 % Accounts
 	 change_password/3, check_password_hash/4, delete_old_users/1,
-	 delete_old_users_vhost/2, ban_account/3,
-	 rename_account/4,
+	 delete_old_users_vhost/2, ban_account/3, rename_account/4,
+	 check_password/3,
 	 check_users_registration/1,
 
 	 % vCard
@@ -185,8 +185,8 @@ get_commands_spec() ->
 			result_example = ok,
 			result_desc = "Status code: 0 on success, 1 otherwise"},
      #ejabberd_commands{name = check_password, tags = [accounts],
-			desc = "Check if a password is correct  (0 yes, 1 no)",
-			module = ejabberd_auth, function = check_password,
+			desc = "Check if a password is correct",
+			module = ?MODULE, function = check_password,
 			args = [{user, binary}, {host, binary}, {password, binary}],
 			args_example = [<<"peter">>, <<"myserver.com">>, <<"secret">>],
 			args_desc = ["User name to check", "Server to check", "Password to check"],
@@ -876,6 +876,9 @@ change_password(U, S, P) ->
     Fun = fun () -> ejabberd_auth:set_password(U, S, P) end,
     user_action(U, S, Fun, ok).
 
+
+check_password(User, Host, Password) ->
+    ejabberd_auth:check_password(User, <<>>, Host, Password).
 
 %% Copied some code from ejabberd_commands.erl
 check_password_hash(User, Host, PasswordHash, HashMethod) ->

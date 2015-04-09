@@ -480,13 +480,13 @@ wait_for_stream({xmlstreamstart, Name, Attrs}, StateData) ->
 							  ejabberd_auth:get_password_with_authmodule(
 							    U, Server)
 						  end,
-						  fun (U, P) ->
+					  fun(U, AuthzId, P) ->
 							  ejabberd_auth:check_password_with_authmodule(
-							    U, Server, P)
+						    U, AuthzId, Server, P)
 						  end,
-						  fun (U, P, D, DG) ->
+					  fun(U, AuthzId, P, D, DG) ->
 							  ejabberd_auth:check_password_with_authmodule(
-							    U, Server, P, D, DG)
+						    U, AuthzId, Server, P, D, DG)
 						  end,
 						  fun (U) ->
 							  ejabberd_auth:is_user_exists(U, Server)
@@ -710,8 +710,9 @@ wait_for_auth({xmlstreamelement, El}, StateData) ->
 		    DGen = fun (PW) ->
 				   p1_sha:sha(<<(StateData#state.streamid)/binary, PW/binary>>)
 			   end,
-		    case ejabberd_auth:check_password_with_authmodule(
-			   U, S, P, D, DGen)
+		case ejabberd_auth:check_password_with_authmodule(U, U,
+								  StateData#state.server,
+								  P, D, DGen)
 		    of
 			{true, AuthModule} ->
 			    accept_auth(StateData, U, JID, AuthModule),
@@ -4035,7 +4036,7 @@ opt_type(_) ->
 
 %%%%%% ADDED FOR FACTORIZATION
 accept_auth(StateData, Props) ->
-    U = proplists:get_value(username, Props, <<"">>),
+    U = identity(Props),
     AuthModule = proplists:get_value(auth_module, Props),
     accept_auth(StateData, U, AuthModule),
     {U, AuthModule}.
@@ -4199,3 +4200,8 @@ sm_close_migrated_session(StateData) ->
 				       StateData#state.user,
 				       StateData#state.server,
 				       StateData#state.resource).
+identity(Props) ->
+	case proplists:get_value(authzid, Props, <<>>) of
+		<<>> -> proplists:get_value(username, Props, <<>>);
+		AuthzId -> AuthzId
+	end.

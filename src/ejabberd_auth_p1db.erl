@@ -33,8 +33,8 @@
 
 -behaviour(ejabberd_auth).
 
--export([start/1, set_password/3, check_password/3,
-	 check_password/5, try_register/3,
+-export([start/1, set_password/3, check_password/4,
+	 check_password/6, try_register/3,
 	 dirty_get_registered_users/0, get_vh_registered_users/1,
 	 get_vh_registered_users/2, init_db/1,
 	 get_vh_registered_users_number/1,
@@ -91,50 +91,58 @@ server_prefix(Server) ->
     LServer = jid:nameprep(Server),
     <<LServer/binary, 0>>.
 
-check_password(_User, _Server, <<>>) ->
+check_password(_User, _AuthzId, _Server, <<>>) ->
     false;
-check_password(User, Server, Password) ->
-    LUser = jid:nodeprep(User),
-    LServer = jid:nameprep(Server),
-    if LUser /= error, LServer /= error ->
-            US = us2key(LUser, LServer),
-            case p1db:get(passwd, US) of
-                {ok, <<0, BScram/binary>>, _VClock} ->
-                    case catch binary_to_term(BScram) of
-                        Scram when is_record(Scram, scram) ->
-                            is_password_scram_valid(Password, Scram);
-                        _ ->
-                            false
-                    end;
-                {ok, Passwd, _VClock} ->
-                    Passwd == Password;
-                {error, _} ->
-                    false
-            end;
-       true ->
-            false
+check_password(User, AuthzId, Server, Password) ->
+    if AuthzId /= <<>> andalso AuthzId /= User ->
+        false;
+    true ->
+        LUser = jid:nodeprep(User),
+        LServer = jid:nameprep(Server),
+        if LUser /= error, LServer /= error ->
+                US = us2key(LUser, LServer),
+                case p1db:get(passwd, US) of
+                    {ok, <<0, BScram/binary>>, _VClock} ->
+                        case catch binary_to_term(BScram) of
+                            Scram when is_record(Scram, scram) ->
+                                is_password_scram_valid(Password, Scram);
+                            _ ->
+                                false
+                        end;
+                    {ok, Passwd, _VClock} ->
+                        Passwd == Password;
+                    {error, _} ->
+                        false
+                end;
+           true ->
+                false
+        end
     end.
 
-check_password(User, Server, Password, Digest, DigestGen) ->
-    LUser = jid:nodeprep(User),
-    LServer = jid:nameprep(Server),
-    if LUser /= error, LServer /= error ->
-            US = us2key(LUser, LServer),
-            case p1db:get(passwd, US) of
-                {ok, <<0, _BScram/binary>>, _VClock} ->
-                    false;
-                {ok, Passwd, _VClock} ->
-                    DigRes = if Digest /= <<"">> ->
-                                     Digest == DigestGen(Passwd);
-                                true -> false
-                             end,
-                    if DigRes -> true;
-                       true -> (Passwd == Password) and (Password /= <<"">>)
-                    end;
-                {error, _} -> false
-            end;
-       true ->
-            false
+check_password(User, AuthzId, Server, Password, Digest, DigestGen) ->
+    if AuthzId /= <<>> andalso AuthzId /= User ->
+        false;
+    true ->
+        LUser = jid:nodeprep(User),
+        LServer = jid:nameprep(Server),
+        if LUser /= error, LServer /= error ->
+                US = us2key(LUser, LServer),
+                case p1db:get(passwd, US) of
+                    {ok, <<0, _BScram/binary>>, _VClock} ->
+                        false;
+                    {ok, Passwd, _VClock} ->
+                        DigRes = if Digest /= <<"">> ->
+                                         Digest == DigestGen(Passwd);
+                                    true -> false
+                                 end,
+                        if DigRes -> true;
+                           true -> (Passwd == Password) and (Password /= <<"">>)
+                        end;
+                    {error, _} -> false
+                end;
+           true ->
+                false
+        end
     end.
 
 -spec set_password(binary(), binary(), binary()) ->

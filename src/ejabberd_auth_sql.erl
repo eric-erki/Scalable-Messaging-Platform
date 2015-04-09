@@ -33,8 +33,9 @@
 
 -behaviour(ejabberd_auth).
 
--export([start/1, set_password/3, check_password/3,
-	 check_password/5, try_register/3,
+%% External exports
+-export([start/1, set_password/3, check_password/4,
+	 check_password/6, try_register/3,
 	 dirty_get_registered_users/0, get_vh_registered_users/1,
 	 get_vh_registered_users/2,
 	 get_vh_registered_users_number/1,
@@ -66,10 +67,13 @@ store_type() ->
       true -> scram %% allows: PLAIN SCRAM
     end.
 
-%% @spec (User, Server, Password) -> true | false | {error, Error}
-check_password(User, Server, Password) ->
-    LServer = jid:nameprep(Server),
-    LUser = jid:nodeprep(User),
+%% @spec (User, AuthzId, Server, Password) -> true | false | {error, Error}
+check_password(User, AuthzId, Server, Password) ->
+    if AuthzId /= <<>> andalso AuthzId /= User ->
+        false;
+    true ->
+        LServer = jid:nameprep(Server),
+        LUser = jid:nodeprep(User),
     if (LUser == error) or (LServer == error) ->
             false;
        (LUser == <<>>) or (LServer == <<>>) ->
@@ -109,13 +113,17 @@ check_password(User, Server, Password) ->
                             false %% Typical error is database not accessible
                     end
             end
+        end
     end.
 
-%% @spec (User, Server, Password, Digest, DigestGen) -> true | false | {error, Error}
-check_password(User, Server, Password, Digest,
+%% @spec (User, AuthzId, Server, Password, Digest, DigestGen) -> true | false | {error, Error}
+check_password(User, AuthzId, Server, Password, Digest,
 	       DigestGen) ->
-    LServer = jid:nameprep(Server),
-    LUser = jid:nodeprep(User),
+    if AuthzId /= <<>> andalso AuthzId /= User ->
+        false;
+    true ->
+        LServer = jid:nameprep(Server),
+        LUser = jid:nodeprep(User),
     if (LUser == error) or (LServer == error) ->
             false;
        (LUser == <<>>) or (LServer == <<>>) ->
@@ -144,6 +152,7 @@ check_password(User, Server, Password, Digest,
                 true ->
                     false
             end
+        end
     end.
 
 %% @spec (User::string(), Server::string(), Password::string()) ->
@@ -362,7 +371,7 @@ remove_user(User, Server, Password) ->
        true ->
             case is_scrammed() of
                 true ->
-                    case check_password(User, Server, Password) of
+                    case check_password(User, <<"">>, Server, Password) of
                         true ->
                             remove_user(User, Server),
                             ok;
