@@ -501,10 +501,10 @@ process_customization_iq(From, To, #iq{type = Type, sub_el = SubEl} = IQ) ->
 	{_, set, #xmlel{name = <<"customize">>, children = Items}} ->
             ItemsInfo = lists:filtermap(
                          fun(#xmlel{name = <<"item">>, attrs = Attrs}) ->
-                                 From = xml:get_attr_s(<<"from">>, Attrs),
+                                 From2 = xml:get_attr_s(<<"from">>, Attrs),
                                  Mute = xml:get_attr_s(<<"mute">>, Attrs),
                                  Delete = xml:get_attr_s(<<"delete">>, Attrs),
-                                 {true, {From, Mute == <<"true">>, Delete == <<"true">>}};
+                                 {true, {From2, Mute == <<"true">>, Delete == <<"true">>}};
                             (_) ->
                                  false
                          end, Items),
