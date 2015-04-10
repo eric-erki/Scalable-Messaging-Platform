@@ -836,7 +836,7 @@ store_cache_p1db(JID, DeviceID, Options) ->
     #jid{luser = LUser, lserver = LServer} = JID,
     Key = usd2key(LUser, LServer, DeviceID),
     Val = opts_to_p1db(Options),
-    update_deviceid_p1db(DeviceID, LUser, LServer),
+    update_deviceid_p1db(DeviceID, LUser, LServer, true),
     case p1db:get(applepush_cache, Key) of
 	{ok, Val, _VClock} ->
 	    %%previous entry exists but is equal, don't do anything
@@ -1189,7 +1189,7 @@ device_dec_val(_, Bin) ->
     [proplists:get_value(server, Options, <<"">>),
      proplists:get_value(user, Options, <<"">>)].
 
-update_deviceid_p1db(DeviceID, LUser, LServer) ->
+update_deviceid_p1db(DeviceID, LUser, LServer, Notify) ->
     SDeviceID = jlib:integer_to_binary(DeviceID, 16),
     Insert =
         case p1db:get(applepush_cache_device, SDeviceID) of
@@ -1199,6 +1199,15 @@ update_deviceid_p1db(DeviceID, LUser, LServer) ->
                     [OldLServer, OldLUser] ->
                         OldKey = usd2key(OldLUser, OldLServer, DeviceID),
                         p1db:delete(applepush_cache, OldKey),
+                        if
+                            Notify ->
+                                ejabberd_sm:route(
+                                  jlib:make_jid(OldLUser, OldLServer, <<"">>),
+                                  jlib:make_jid(OldLUser, OldLServer, <<"">>),
+                                  {broadcast, {stop_by_device_id, DeviceID}});
+                            true ->
+                                ok
+                        end,
                         true
                 end;
             {error, _} ->
@@ -1218,7 +1227,7 @@ p1db_update_device_table() ->
 p1db_update_device_table({ok, Key, _Val, _VClock}) ->
     [LServer, LUser, SDeviceID] = dec_key(Key),
     DeviceID = jlib:binary_to_integer(SDeviceID, 16),
-    update_deviceid_p1db(DeviceID, LUser, LServer),
+    update_deviceid_p1db(DeviceID, LUser, LServer, false),
     p1db_update_device_table(p1db:next(applepush_cache, Key));
 p1db_update_device_table({error, notfound}) ->
     ok;

@@ -1723,6 +1723,19 @@ handle_info({route, _From, _To, {broadcast, Data}},
                     Pid2 ! {rebind, false},
                     fsm_next_state(StateName, StateData)
             end;
+        {stop_by_device_id, DeviceID} ->
+            case catch jlib:binary_to_integer(
+                         xml:get_path_s(StateData#state.oor_notification,
+                                        [{elem, <<"id">>}, cdata]),
+                         16) of
+                DeviceID ->
+                    Lang = StateData#state.lang,
+                    send_element(StateData, ?SERRT_CONFLICT(Lang, <<"Device conflict">>)),
+                    catch send_trailer(StateData),
+                    {stop, normal, StateData};
+                _ ->
+                    fsm_next_state(StateName, StateData)
+            end;
         _ ->
             fsm_next_state(StateName, StateData)
     end;
