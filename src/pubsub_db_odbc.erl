@@ -26,23 +26,23 @@
 -include("pubsub.hrl").
 
 -export([add_subscription/1, read_subscription/1,
-         delete_subscription/1, update_subscription/1]).
+    delete_subscription/1, update_subscription/1]).
 
 %% TODO: Those -spec lines produce errors in old Erlang versions.
 %% They can be enabled again in ejabberd 3.0 because it uses R12B or higher.
 %% -spec read_subscription(SubID :: string()) -> {ok, #pubsub_subscription{}} |  notfound.
 read_subscription(SubID) ->
     case
-        ejabberd_odbc:sql_query_t([<<"select opt_name, opt_value from pubsub_subscr"
-                                     "iption_opt where subid = '">>,
-                                   ejabberd_odbc:escape(SubID), <<"'">>])
+	ejabberd_odbc:sql_query_t([<<"select opt_name, opt_value from pubsub_subscr"
+		    "iption_opt where subid = '">>,
+		ejabberd_odbc:escape(SubID), <<"'">>])
     of
-        {selected, [<<"opt_name">>, <<"opt_value">>], []} ->
-            notfound;
-        {selected, [<<"opt_name">>, <<"opt_value">>], Options} ->
-            {ok,
-             #pubsub_subscription{subid = SubID,
-                                  options = lists:map(fun subscription_opt_from_odbc/1, Options)}}
+	{selected, [<<"opt_name">>, <<"opt_value">>], []} ->
+	    notfound;
+	{selected, [<<"opt_name">>, <<"opt_value">>], Options} ->
+	    {ok,
+		#pubsub_subscription{subid = SubID,
+		    options = lists:map(fun subscription_opt_from_odbc/1, Options)}}
     end.
 
 %% -spec delete_subscription(SubID :: string()) -> ok.
@@ -51,8 +51,8 @@ delete_subscription(SubID) ->
     %% -spec add_subscription(#pubsub_subscription{}) -> ok.
     %% -------------- Internal utilities -----------------------
     ejabberd_odbc:sql_query_t([<<"delete from pubsub_subscription_opt "
-                                 "where subid = '">>,
-                               ejabberd_odbc:escape(SubID), <<"'">>]),
+		"where subid = '">>,
+	    ejabberd_odbc:escape(SubID), <<"'">>]),
     ok.
 
 update_subscription(#pubsub_subscription{subid = SubId} = Sub) ->
@@ -61,14 +61,14 @@ update_subscription(#pubsub_subscription{subid = SubId} = Sub) ->
 add_subscription(#pubsub_subscription{subid = SubId, options = Opts}) ->
     EscapedSubId = ejabberd_odbc:escape(SubId),
     lists:foreach(fun (Opt) ->
-                {OdbcOptName, OdbcOptValue} = subscription_opt_to_odbc(Opt),
-                ejabberd_odbc:sql_query_t([<<"insert into pubsub_subscription_opt(subid, "
-                                             "opt_name, opt_value)values ('">>,
-                                           EscapedSubId, <<"','">>,
-                                           OdbcOptName, <<"','">>,
-                                           OdbcOptValue, <<"')">>])
-        end,
-        Opts),
+		{OdbcOptName, OdbcOptValue} = subscription_opt_to_odbc(Opt),
+		ejabberd_odbc:sql_query_t([<<"insert into pubsub_subscription_opt(subid, "
+			    "opt_name, opt_value)values ('">>,
+			EscapedSubId, <<"','">>,
+			OdbcOptName, <<"','">>,
+			OdbcOptValue, <<"')">>])
+	end,
+	Opts),
     ok.
 
 subscription_opt_from_odbc({<<"DELIVER">>, Value}) ->
@@ -87,16 +87,16 @@ subscription_opt_from_odbc({<<"SHOW_VALUES">>, Value}) ->
     {show_values, Value};
 subscription_opt_from_odbc({<<"SUBSCRIPTION_TYPE">>, Value}) ->
     {subscription_type,
-     case Value of
-            <<"items">> -> items;
-            <<"nodes">> -> nodes
-        end};
+	case Value of
+	    <<"items">> -> items;
+	    <<"nodes">> -> nodes
+	end};
 subscription_opt_from_odbc({<<"SUBSCRIPTION_DEPTH">>, Value}) ->
     {subscription_depth,
-     case Value of
-            <<"all">> -> all;
-            N -> odbc_to_integer(N)
-        end}.
+	case Value of
+	    <<"all">> -> all;
+	    N -> odbc_to_integer(N)
+	end}.
 
 subscription_opt_to_odbc({deliver, Bool}) ->
     {<<"DELIVER">>, boolean_to_odbc(Bool)};
@@ -112,16 +112,16 @@ subscription_opt_to_odbc({show_values, Values}) ->
     {<<"SHOW_VALUES">>, Values};
 subscription_opt_to_odbc({subscription_type, Type}) ->
     {<<"SUBSCRIPTION_TYPE">>,
-     case Type of
-            items -> <<"items">>;
-            nodes -> <<"nodes">>
-        end};
+	case Type of
+	    items -> <<"items">>;
+	    nodes -> <<"nodes">>
+	end};
 subscription_opt_to_odbc({subscription_depth, Depth}) ->
     {<<"SUBSCRIPTION_DEPTH">>,
-     case Depth of
-            all -> <<"all">>;
-            N -> integer_to_odbc(N)
-        end}.
+	case Depth of
+	    all -> <<"all">>;
+	    N -> integer_to_odbc(N)
+	end}.
 
 integer_to_odbc(N) -> iolist_to_binary(integer_to_list(N)).
 

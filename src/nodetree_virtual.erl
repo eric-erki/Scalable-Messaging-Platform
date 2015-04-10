@@ -40,10 +40,10 @@
 -include("jlib.hrl").
 
 -export([init/3, terminate/2, options/0, set_node/1,
-         get_node/3, get_node/2, get_node/1, get_nodes/2,
-         get_nodes/1, get_parentnodes/3, get_parentnodes_tree/3,
-         get_subnodes/3, get_subnodes_tree/3, create_node/6,
-         delete_node/2]).
+    get_node/3, get_node/2, get_node/1, get_nodes/2,
+    get_nodes/1, get_parentnodes/3, get_parentnodes_tree/3,
+    get_subnodes/3, get_subnodes_tree/3, create_node/6,
+    delete_node/2]).
 
 init(_Host, _ServerHost, _Opts) ->
     ok.
@@ -68,7 +68,7 @@ get_node(Nidx) ->
     Record = #pubsub_node{nodeid = Node, id = Nidx},
     Module = jlib:binary_to_atom(<<"node_", (Record#pubsub_node.type)/binary>>),
     Record#pubsub_node{owners = [{<<"">>, Host, <<"">>}],
-                       options = Module:options()}.
+	options = Module:options()}.
 
 get_nodes(Host, _From) ->
     get_nodes(Host).
@@ -81,8 +81,8 @@ get_parentnodes(_Host, _Node, _From) ->
 
 get_parentnodes_tree(Host, Node, From) ->
     case get_node(Host, Node, From) of
-        Node when is_record(Node, pubsub_node) -> [{0, [Node]}];
-        _Error -> []
+	Node when is_record(Node, pubsub_node) -> [{0, [Node]}];
+	_Error -> []
     end.
 
 get_subnodes(Host, Node, _From) ->

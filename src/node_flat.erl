@@ -32,31 +32,31 @@
 -include("jlib.hrl").
 
 -export([init/3, terminate/2, options/0, features/0,
-         create_node_permission/6, create_node/2, delete_node/1,
-         purge_node/2, subscribe_node/8, unsubscribe_node/4,
-         publish_item/6, delete_item/4, remove_extra_items/3,
-         get_entity_affiliations/2, get_node_affiliations/1,
-         get_affiliation/2, set_affiliation/3,
-         get_entity_subscriptions/2, get_node_subscriptions/1,
-         get_subscriptions/2, set_subscriptions/4,
-         get_pending_nodes/2, get_states/1, get_state/2,
-         set_state/1, get_items/7, get_items/3, get_item/7,
-         get_item/2, set_item/1, get_item_name/3, node_to_path/1,
-         path_to_node/1]).
+    create_node_permission/6, create_node/2, delete_node/1,
+    purge_node/2, subscribe_node/8, unsubscribe_node/4,
+    publish_item/6, delete_item/4, remove_extra_items/3,
+    get_entity_affiliations/2, get_node_affiliations/1,
+    get_affiliation/2, set_affiliation/3,
+    get_entity_subscriptions/2, get_node_subscriptions/1,
+    get_subscriptions/2, set_subscriptions/4,
+    get_pending_nodes/2, get_states/1, get_state/2,
+    set_state/1, get_items/7, get_items/3, get_item/7,
+    get_item/2, set_item/1, get_item_name/3, node_to_path/1,
+    path_to_node/1]).
 
 init(_Host, _ServerHost, _Opts) ->
     pubsub_subscription:init(),
     mnesia:create_table(pubsub_state,
-                        [{disc_copies, [node()]}, {index, [nodeidx]},
-                         {type, ordered_set},
-                         {attributes, record_info(fields, pubsub_state)}]),
+	[{disc_copies, [node()]}, {index, [nodeidx]},
+	    {type, ordered_set},
+	    {attributes, record_info(fields, pubsub_state)}]),
     mnesia:create_table(pubsub_item,
-                        [{disc_only_copies, [node()]}, {index, [nodeidx]},
-                         {attributes, record_info(fields, pubsub_item)}]),
+	[{disc_only_copies, [node()]}, {index, [nodeidx]},
+	    {attributes, record_info(fields, pubsub_item)}]),
     ItemsFields = record_info(fields, pubsub_item),
     case mnesia:table_info(pubsub_item, attributes) of
-        ItemsFields -> ok;
-        _ -> mnesia:transform_table(pubsub_item, ignore, ItemsFields)
+	ItemsFields -> ok;
+	_ -> mnesia:transform_table(pubsub_item, ignore, ItemsFields)
     end,
     ok.
 
@@ -75,10 +75,10 @@ features() ->
 create_node_permission(Host, ServerHost, _Node, _ParentNode, Owner, Access) ->
     LOwner = jlib:jid_tolower(Owner),
     Allowed = case LOwner of
-        {<<"">>, Host, <<"">>} ->
-            true; % pubsub service always allowed
-        _ ->
-            acl:match_rule(ServerHost, Access, LOwner) =:= allow
+	{<<"">>, Host, <<"">>} ->
+	    true; % pubsub service always allowed
+	_ ->
+	    acl:match_rule(ServerHost, Access, LOwner) =:= allow
     end,
     {result, Allowed}.
 
@@ -89,10 +89,10 @@ delete_node(Removed) ->
     node_hometree:delete_node(Removed).
 
 subscribe_node(Nidx, Sender, Subscriber, AccessModel,
-               SendLast, PresenceSubscription, RosterGroup, Options) ->
+	    SendLast, PresenceSubscription, RosterGroup, Options) ->
     node_hometree:subscribe_node(Nidx, Sender, Subscriber,
-                                 AccessModel, SendLast, PresenceSubscription,
-                                 RosterGroup, Options).
+	AccessModel, SendLast, PresenceSubscription,
+	RosterGroup, Options).
 
 unsubscribe_node(Nidx, Sender, Subscriber, SubId) ->
     node_hometree:unsubscribe_node(Nidx, Sender, Subscriber, SubId).
@@ -150,14 +150,14 @@ get_items(Nidx, From, RSM) ->
 
 get_items(Nidx, JID, AccessModel, PresenceSubscription, RosterGroup, SubId, RSM) ->
     node_hometree:get_items(Nidx, JID, AccessModel,
-                            PresenceSubscription, RosterGroup, SubId, RSM).
+	PresenceSubscription, RosterGroup, SubId, RSM).
 
 get_item(Nidx, ItemId) ->
     node_hometree:get_item(Nidx, ItemId).
 
 get_item(Nidx, ItemId, JID, AccessModel, PresenceSubscription, RosterGroup, SubId) ->
     node_hometree:get_item(Nidx, ItemId, JID, AccessModel,
-                           PresenceSubscription, RosterGroup, SubId).
+	PresenceSubscription, RosterGroup, SubId).
 
 set_item(Item) ->
     node_hometree:set_item(Item).
@@ -170,11 +170,11 @@ node_to_path(Node) ->
 
 path_to_node(Path) ->
     case Path of
-        % default slot
-        [Node] -> iolist_to_binary(Node);
-        % handle old possible entries, used when migrating database content to new format
-        [Node | _] when is_binary(Node) ->
-            iolist_to_binary(str:join([<<"">> | Path], <<"/">>));
-        % default case (used by PEP for example)
-        _ -> iolist_to_binary(Path)
+	% default slot
+	[Node] -> iolist_to_binary(Node);
+	% handle old possible entries, used when migrating database content to new format
+	[Node | _] when is_binary(Node) ->
+	    iolist_to_binary(str:join([<<"">> | Path], <<"/">>));
+	% default case (used by PEP for example)
+	_ -> iolist_to_binary(Path)
     end.
