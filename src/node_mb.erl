@@ -41,17 +41,17 @@
 %%% <p>PubSub plugin nodes are using the {@link gen_pubsub_node} behaviour.</p>
 
 -export([init/3, terminate/2, options/0, features/0,
-         create_node_permission/6, create_node/2, delete_node/1,
-         purge_node/2, subscribe_node/8, unsubscribe_node/4,
-         publish_item/6, delete_item/4, remove_extra_items/3,
-         get_entity_affiliations/2, get_node_affiliations/1,
-         get_affiliation/2, set_affiliation/3,
-         get_entity_subscriptions/2, get_node_subscriptions/1,
-         get_subscriptions/2, set_subscriptions/4,
-         get_pending_nodes/2, get_states/1, get_state/2,
-         set_state/1, get_items/7, get_items/3, get_item/7,
-         get_item/2, set_item/1, get_item_name/3, node_to_path/1,
-         path_to_node/1]).
+    create_node_permission/6, create_node/2, delete_node/1,
+    purge_node/2, subscribe_node/8, unsubscribe_node/4,
+    publish_item/6, delete_item/4, remove_extra_items/3,
+    get_entity_affiliations/2, get_node_affiliations/1,
+    get_affiliation/2, set_affiliation/3,
+    get_entity_subscriptions/2, get_node_subscriptions/1,
+    get_subscriptions/2, set_subscriptions/4,
+    get_pending_nodes/2, get_states/1, get_state/2,
+    set_state/1, get_items/7, get_items/3, get_item/7,
+    get_item/2, set_item/1, get_item_name/3, node_to_path/1,
+    path_to_node/1]).
 
 init(Host, ServerHost, Opts) ->
     node_pep:init(Host, ServerHost, Opts).
@@ -61,39 +61,39 @@ terminate(Host, ServerHost) ->
 
 options() ->
     [{deliver_payloads, true},
-     {notify_config, false},
-     {notify_delete, false},
-     {notify_retract, false},
-     {purge_offline, false},
-     {persist_items, true},
-     {max_items, ?MAXITEMS},
-     {subscribe, true},
-     {access_model, presence},
-     {roster_groups_allowed, []},
-     {publish_model, publishers},
-     {notification_type, headline},
-     {max_payload_size, ?MAX_PAYLOAD_SIZE},
-     {send_last_published_item, on_sub_and_presence},
-     {deliver_notifications, true},
-     {presence_based_delivery, true}].
+	{notify_config, false},
+	{notify_delete, false},
+	{notify_retract, false},
+	{purge_offline, false},
+	{persist_items, true},
+	{max_items, ?MAXITEMS},
+	{subscribe, true},
+	{access_model, presence},
+	{roster_groups_allowed, []},
+	{publish_model, publishers},
+	{notification_type, headline},
+	{max_payload_size, ?MAX_PAYLOAD_SIZE},
+	{send_last_published_item, on_sub_and_presence},
+	{deliver_notifications, true},
+	{presence_based_delivery, true}].
 
 features() ->
     [<<"create-nodes">>,
-     <<"auto-create">>,
-     <<"auto-subscribe">>,
-     <<"delete-nodes">>,
-     <<"delete-items">>,
-     <<"filtered-notifications">>,
-     <<"modify-affiliations">>,
-     <<"outcast-affiliation">>,
-     <<"persistent-items">>,
-     <<"publish">>,
-     <<"purge-nodes">>,
-     <<"retract-items">>,
-     <<"retrieve-affiliations">>,
-     <<"retrieve-items">>,
-     <<"retrieve-subscriptions">>,
-     <<"subscribe">>].
+	<<"auto-create">>,
+	<<"auto-subscribe">>,
+	<<"delete-nodes">>,
+	<<"delete-items">>,
+	<<"filtered-notifications">>,
+	<<"modify-affiliations">>,
+	<<"outcast-affiliation">>,
+	<<"persistent-items">>,
+	<<"publish">>,
+	<<"purge-nodes">>,
+	<<"retract-items">>,
+	<<"retrieve-affiliations">>,
+	<<"retrieve-items">>,
+	<<"retrieve-subscriptions">>,
+	<<"subscribe">>].
 
 create_node_permission(Host, ServerHost, Node, ParentNode, Owner, Access) ->
     node_pep:create_node_permission(Host, ServerHost, Node, ParentNode, Owner, Access).
@@ -105,9 +105,9 @@ delete_node(Removed) ->
     node_pep:delete_node(Removed).
 
 subscribe_node(Nidx, Sender, Subscriber, AccessModel,
-               SendLast, PresenceSubscription, RosterGroup, Options) ->
+	    SendLast, PresenceSubscription, RosterGroup, Options) ->
     node_pep:subscribe_node(Nidx, Sender, Subscriber, AccessModel, SendLast,
-                            PresenceSubscription, RosterGroup, Options).
+	PresenceSubscription, RosterGroup, Options).
 
 unsubscribe_node(Nidx, Sender, Subscriber, SubId) ->
     node_pep:unsubscribe_node(Nidx, Sender, Subscriber, SubId).
@@ -171,7 +171,7 @@ get_item(Nidx, ItemId) ->
 
 get_item(Nidx, ItemId, JID, AccessModel, PresenceSubscription, RosterGroup, SubId) ->
     node_pep:get_item(Nidx, ItemId, JID, AccessModel,
-                      PresenceSubscription, RosterGroup, SubId).
+	PresenceSubscription, RosterGroup, SubId).
 
 set_item(Item) ->
     node_pep:set_item(Item).

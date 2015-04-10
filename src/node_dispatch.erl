@@ -38,17 +38,17 @@
 %%% This module can not work with virtual nodetree
 
 -export([init/3, terminate/2, options/0, features/0,
-         create_node_permission/6, create_node/2, delete_node/1,
-         purge_node/2, subscribe_node/8, unsubscribe_node/4,
-         publish_item/6, delete_item/4, remove_extra_items/3,
-         get_entity_affiliations/2, get_node_affiliations/1,
-         get_affiliation/2, set_affiliation/3,
-         get_entity_subscriptions/2, get_node_subscriptions/1,
-         get_subscriptions/2, set_subscriptions/4,
-         get_pending_nodes/2, get_states/1, get_state/2,
-         set_state/1, get_items/7, get_items/3, get_item/7,
-         get_item/2, set_item/1, get_item_name/3, node_to_path/1,
-         path_to_node/1]).
+    create_node_permission/6, create_node/2, delete_node/1,
+    purge_node/2, subscribe_node/8, unsubscribe_node/4,
+    publish_item/6, delete_item/4, remove_extra_items/3,
+    get_entity_affiliations/2, get_node_affiliations/1,
+    get_affiliation/2, set_affiliation/3,
+    get_entity_subscriptions/2, get_node_subscriptions/1,
+    get_subscriptions/2, set_subscriptions/4,
+    get_pending_nodes/2, get_states/1, get_state/2,
+    set_state/1, get_items/7, get_items/3, get_item/7,
+    get_item/2, set_item/1, get_item_name/3, node_to_path/1,
+    path_to_node/1]).
 
 init(Host, ServerHost, Opts) ->
     node_hometree:init(Host, ServerHost, Opts).
@@ -58,30 +58,30 @@ terminate(Host, ServerHost) ->
 
 options() ->
     [{deliver_payloads, true},
-     {notify_config, false},
-     {notify_delete, false},
-     {notify_retract, true},
-     {purge_offline, false},
-     {persist_items, true},
-     {max_items, ?MAXITEMS},
-     {subscribe, true},
-     {access_model, presence},
-     {roster_groups_allowed, []},
-     {publish_model, publishers},
-     {notification_type, headline},
-     {max_payload_size, ?MAX_PAYLOAD_SIZE},
-     {send_last_published_item, never},
-     {deliver_notifications, true},
-     {presence_based_delivery, false}].
+	{notify_config, false},
+	{notify_delete, false},
+	{notify_retract, true},
+	{purge_offline, false},
+	{persist_items, true},
+	{max_items, ?MAXITEMS},
+	{subscribe, true},
+	{access_model, presence},
+	{roster_groups_allowed, []},
+	{publish_model, publishers},
+	{notification_type, headline},
+	{max_payload_size, ?MAX_PAYLOAD_SIZE},
+	{send_last_published_item, never},
+	{deliver_notifications, true},
+	{presence_based_delivery, false}].
 
 features() ->
     [<<"create-nodes">>,
-     <<"delete-nodes">>,
-     <<"instant-nodes">>,
-     <<"outcast-affiliation">>,
-     <<"persistent-items">>,
-     <<"publish">>,
-     <<"retrieve-items">>].
+	<<"delete-nodes">>,
+	<<"instant-nodes">>,
+	<<"outcast-affiliation">>,
+	<<"persistent-items">>,
+	<<"publish">>,
+	<<"retrieve-items">>].
 
 create_node_permission(Host, ServerHost, Node, ParentNode, Owner, Access) ->
     node_hometree:create_node_permission(Host, ServerHost, Node, ParentNode, Owner, Access).
@@ -93,7 +93,7 @@ delete_node(Nodes) ->
     node_hometree:delete_node(Nodes).
 
 subscribe_node(_Nidx, _Sender, _Subscriber, _AccessModel, _SendLast, _PresenceSubscription,
-               _RosterGroup, _Options) ->
+	    _RosterGroup, _Options) ->
     {error, ?ERR_FORBIDDEN}.
 
 unsubscribe_node(_Nidx, _Sender, _Subscriber, _SubId) ->
@@ -101,16 +101,16 @@ unsubscribe_node(_Nidx, _Sender, _Subscriber, _SubId) ->
 
 publish_item(Nidx, Publisher, PublishModel, MaxItems, ItemId, Payload) ->
     case nodetree_tree:get_node(Nidx) of
-        #pubsub_node{nodeid = {Host, Node}} ->
-            lists:foreach(fun (SubNode) ->
-                        node_hometree:publish_item(SubNode#pubsub_node.id,
-                                                   Publisher, PublishModel, MaxItems,
-                                                   ItemId, Payload)
-                end,
-                nodetree_tree:get_subnodes(Host, Node, Publisher)),
-            {result, {default, broadcast, []}};
-        Error ->
-            Error
+	#pubsub_node{nodeid = {Host, Node}} ->
+	    lists:foreach(fun (SubNode) ->
+			node_hometree:publish_item(SubNode#pubsub_node.id,
+			    Publisher, PublishModel, MaxItems,
+			    ItemId, Payload)
+		end,
+		nodetree_tree:get_subnodes(Host, Node, Publisher)),
+	    {result, {default, broadcast, []}};
+	Error ->
+	    Error
     end.
 
 remove_extra_items(_Nidx, _MaxItems, ItemIds) ->
@@ -163,14 +163,14 @@ get_items(Nidx, From, RSM) ->
 
 get_items(Nidx, JID, AccessModel, PresenceSubscription, RosterGroup, SubId, RSM) ->
     node_hometree:get_items(Nidx, JID, AccessModel,
-                            PresenceSubscription, RosterGroup, SubId, RSM).
+	PresenceSubscription, RosterGroup, SubId, RSM).
 
 get_item(Nidx, ItemId) ->
     node_hometree:get_item(Nidx, ItemId).
 
 get_item(Nidx, ItemId, JID, AccessModel, PresenceSubscription, RosterGroup, SubId) ->
     node_hometree:get_item(Nidx, ItemId, JID, AccessModel,
-                           PresenceSubscription, RosterGroup, SubId).
+	PresenceSubscription, RosterGroup, SubId).
 
 set_item(Item) ->
     node_hometree:set_item(Item).

@@ -36,18 +36,18 @@
 %%% <p>PubSub plugin nodes are using the {@link gen_pubsub_node} behaviour.</p>
 
 -export([init/3, terminate/2, options/0, features/0,
-         create_node_permission/6, create_node/2, delete_node/1,
-         purge_node/2, subscribe_node/8, unsubscribe_node/4,
-         publish_item/6, delete_item/4, remove_extra_items/3,
-         get_entity_affiliations/2, get_node_affiliations/1,
-         get_affiliation/2, set_affiliation/3,
-         get_entity_subscriptions/2, get_node_subscriptions/1,
-         get_subscriptions/2, set_subscriptions/4,
-         get_pending_nodes/2, get_states/1, get_state/2,
-         set_state/1, get_items/7, get_items/3, get_item/7,
-         get_item/2, set_item/1, get_item_name/3, node_to_path/1,
-         path_to_node/1,
-         get_entity_subscriptions_for_send_last/2, get_last_items/3]).
+    create_node_permission/6, create_node/2, delete_node/1,
+    purge_node/2, subscribe_node/8, unsubscribe_node/4,
+    publish_item/6, delete_item/4, remove_extra_items/3,
+    get_entity_affiliations/2, get_node_affiliations/1,
+    get_affiliation/2, set_affiliation/3,
+    get_entity_subscriptions/2, get_node_subscriptions/1,
+    get_subscriptions/2, set_subscriptions/4,
+    get_pending_nodes/2, get_states/1, get_state/2,
+    set_state/1, get_items/7, get_items/3, get_item/7,
+    get_item/2, set_item/1, get_item_name/3, node_to_path/1,
+    path_to_node/1,
+    get_entity_subscriptions_for_send_last/2, get_last_items/3]).
 
 init(Host, ServerHost, Opts) ->
     node_hometree_odbc:init(Host, ServerHost, Opts),
@@ -75,15 +75,15 @@ delete_node(Nodes) ->
     {result, {[], Result}}.
 
 subscribe_node(Nidx, Sender, Subscriber, AccessModel,
-               SendLast, PresenceSubscription, RosterGroup, Options) ->
+	    SendLast, PresenceSubscription, RosterGroup, Options) ->
     node_hometree_odbc:subscribe_node(Nidx, Sender, Subscriber, AccessModel, SendLast,
-                                      PresenceSubscription, RosterGroup, Options).
+	PresenceSubscription, RosterGroup, Options).
 
 
 unsubscribe_node(Nidx, Sender, Subscriber, SubId) ->
     case node_hometree_odbc:unsubscribe_node(Nidx, Sender, Subscriber, SubId) of
-        {error, Error} -> {error, Error};
-        {result, _} -> {result, []}
+	{error, Error} -> {error, Error};
+	{result, _} -> {result, []}
     end.
 
 publish_item(Nidx, Publisher, Model, MaxItems, ItemId, Payload) ->
@@ -118,31 +118,31 @@ get_entity_subscriptions(_Host, Owner) ->
     SJ = node_hometree_odbc:encode_jid(SubKey),
     GJ = node_hometree_odbc:encode_jid(GenKey),
     Query = case SubKey of
-        GenKey ->
-            [<<"select host, node, type, i.nodeid, jid, "
-               "subscriptions from pubsub_state i, pubsub_node n "
-               "where i.nodeid = n.nodeid and jid "
-               "like '">>, GJ, <<"%' and host like '%@">>, Host, <<"';">>];
-        _ ->
-            [<<"select host, node, type, i.nodeid, jid, "
-               "subscriptions from pubsub_state i, pubsub_node n "
-               "where i.nodeid = n.nodeid and jid "
-               "in ('">>, SJ, <<"', '">>, GJ, <<"') and host like '%@">>, Host, <<"';">>]
+	GenKey ->
+	    [<<"select host, node, type, i.nodeid, jid, "
+		    "subscriptions from pubsub_state i, pubsub_node n "
+		    "where i.nodeid = n.nodeid and jid "
+		    "like '">>, GJ, <<"%' and host like '%@">>, Host, <<"';">>];
+	_ ->
+	    [<<"select host, node, type, i.nodeid, jid, "
+		    "subscriptions from pubsub_state i, pubsub_node n "
+		    "where i.nodeid = n.nodeid and jid "
+		    "in ('">>, SJ, <<"', '">>, GJ, <<"') and host like '%@">>, Host, <<"';">>]
     end,
     Reply = case catch ejabberd_odbc:sql_query_t(Query) of
-        {selected,
-         [<<"host">>, <<"node">>, <<"type">>, <<"nodeid">>, <<"jid">>, <<"subscriptions">>],
-         RItems} ->
-            lists:map(fun ([H, N, T, I, J, S]) ->
-                        O = node_hometree_odbc:decode_jid(H),
-                        Node = nodetree_tree_odbc:raw_to_node(O, [N, <<"">>, T, I]),
-                        {Node,
-                         node_hometree_odbc:decode_subscriptions(S),
-                         node_hometree_odbc:decode_jid(J)}
-                end,
-                RItems);
-        _ ->
-            []
+	{selected,
+		    [<<"host">>, <<"node">>, <<"type">>, <<"nodeid">>, <<"jid">>, <<"subscriptions">>],
+		    RItems} ->
+	    lists:map(fun ([H, N, T, I, J, S]) ->
+			O = node_hometree_odbc:decode_jid(H),
+			Node = nodetree_tree_odbc:raw_to_node(O, [N, <<"">>, T, I]),
+			{Node,
+			    node_hometree_odbc:decode_subscriptions(S),
+			    node_hometree_odbc:decode_jid(J)}
+		end,
+		RItems);
+	_ ->
+	    []
     end,
     {result, Reply}.
 
@@ -153,35 +153,35 @@ get_entity_subscriptions_for_send_last(_Host, Owner) ->
     SJ = node_hometree_odbc:encode_jid(SubKey),
     GJ = node_hometree_odbc:encode_jid(GenKey),
     Query = case SubKey of
-        GenKey ->
-            [<<"select host, node, type, i.nodeid, jid, "
-               "subscriptions from pubsub_state i, pubsub_node n, "
-               "pubsub_node_option o where i.nodeid = n.nodeid "
-               "and n.nodeid = o.nodeid and name='send_last_published_item' and "
-               "val='on_sub_and_presence' and jid like '">>,
-             GJ, <<"%' and host like '%@">>, Host, <<"';">>];
-        _ ->
-            [<<"select host, node, type, i.nodeid, jid, "
-               "subscriptions from pubsub_state i, pubsub_node n, "
-               "pubsub_node_option o where i.nodeid = n.nodeid "
-               "and n.nodeid = o.nodeid and name='send_last_published_item' and "
-               "val='on_sub_and_presence' and jid in ",
-               "('">>, SJ, <<"', '">>, GJ, <<"') and host like '%@">>, Host, <<"';">>]
+	GenKey ->
+	    [<<"select host, node, type, i.nodeid, jid, "
+		    "subscriptions from pubsub_state i, pubsub_node n, "
+		    "pubsub_node_option o where i.nodeid = n.nodeid "
+		    "and n.nodeid = o.nodeid and name='send_last_published_item' and "
+		    "val='on_sub_and_presence' and jid like '">>,
+		GJ, <<"%' and host like '%@">>, Host, <<"';">>];
+	_ ->
+	    [<<"select host, node, type, i.nodeid, jid, "
+		    "subscriptions from pubsub_state i, pubsub_node n, "
+		    "pubsub_node_option o where i.nodeid = n.nodeid "
+		    "and n.nodeid = o.nodeid and name='send_last_published_item' and "
+		    "val='on_sub_and_presence' and jid in ",
+		    "('">>, SJ, <<"', '">>, GJ, <<"') and host like '%@">>, Host, <<"';">>]
     end,
     Reply = case catch ejabberd_odbc:sql_query_t(Query) of
-        {selected,
-         [<<"host">>, <<"node">>, <<"type">>, <<"nodeid">>, <<"jid">>, <<"subscriptions">>],
-         RItems} ->
-            lists:map(fun ([H, N, T, I, J, S]) ->
-                        O = node_hometree_odbc:decode_jid(H),
-                        Node = nodetree_tree_odbc:raw_to_node(O, [N, <<"">>, T, I]),
-                        {Node,
-                         node_hometree_odbc:decode_subscriptions(S),
-                         node_hometree_odbc:decode_jid(J)}
-                end,
-                RItems);
-        _ ->
-            []
+	{selected,
+		    [<<"host">>, <<"node">>, <<"type">>, <<"nodeid">>, <<"jid">>, <<"subscriptions">>],
+		    RItems} ->
+	    lists:map(fun ([H, N, T, I, J, S]) ->
+			O = node_hometree_odbc:decode_jid(H),
+			Node = nodetree_tree_odbc:raw_to_node(O, [N, <<"">>, T, I]),
+			{Node,
+			    node_hometree_odbc:decode_subscriptions(S),
+			    node_hometree_odbc:decode_jid(J)}
+		end,
+		RItems);
+	_ ->
+	    []
     end,
     {result, Reply}.
 
@@ -211,7 +211,7 @@ get_items(Nidx, From, RSM) ->
 
 get_items(Nidx, JID, AccessModel, PresenceSubscription, RosterGroup, SubId, RSM) ->
     node_hometree_odbc:get_items(Nidx, JID, AccessModel,
-                                 PresenceSubscription, RosterGroup, SubId, RSM).
+	PresenceSubscription, RosterGroup, SubId, RSM).
 
 get_last_items(Nidx, JID, Count) ->
     node_hometree_odbc:get_last_items(Nidx, JID, Count).
@@ -221,7 +221,7 @@ get_item(Nidx, ItemId) ->
 
 get_item(Nidx, ItemId, JID, AccessModel, PresenceSubscription, RosterGroup, SubId) ->
     node_hometree_odbc:get_item(Nidx, ItemId, JID, AccessModel,
-                                PresenceSubscription, RosterGroup, SubId).
+	PresenceSubscription, RosterGroup, SubId).
 
 set_item(Item) ->
     node_hometree_odbc:set_item(Item).
@@ -245,10 +245,10 @@ path_to_node(Path) ->
 %% If not, show a warning message in the ejabberd log file.
 complain_if_modcaps_disabled(ServerHost) ->
     case gen_mod:is_loaded(ServerHost, mod_caps) of
-        false ->
-            ?WARNING_MSG("The PEP plugin is enabled in mod_pubsub "
-                         "of host ~p. This plugin requires mod_caps "
-                         "to be enabled, but it isn't.",
-                         [ServerHost]);
-        true -> ok
+	false ->
+	    ?WARNING_MSG("The PEP plugin is enabled in mod_pubsub "
+		"of host ~p. This plugin requires mod_caps "
+		"to be enabled, but it isn't.",
+		[ServerHost]);
+	true -> ok
     end.

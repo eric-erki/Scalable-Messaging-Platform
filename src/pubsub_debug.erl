@@ -33,15 +33,15 @@
 -compile(export_all).
 
 -spec(nodeid/2 ::
-      (
-        Host :: mod_pubsub:host(),
-        Node :: mod_pubsub:nodeId())
-      -> mod_pubsub:nodeIdx() | 0
-      ).
+    (
+	Host :: mod_pubsub:host(),
+	Node :: mod_pubsub:nodeId())
+    -> mod_pubsub:nodeIdx() | 0
+    ).
 nodeid(Host, Node) ->
     case mnesia:dirty_read({pubsub_node, {Host, Node}}) of
-        [N] -> nodeid(N);
-        _ -> 0
+	[N] -> nodeid(N);
+	_ -> 0
     end.
 
 nodeid(N) -> N#pubsub_node.id.
@@ -50,42 +50,42 @@ nodeid(N) -> N#pubsub_node.id.
 
 nodeids() ->
     [nodeid(Host, Node)
-     || {Host, Node} <- mnesia:dirty_all_keys(pubsub_node)].
+	|| {Host, Node} <- mnesia:dirty_all_keys(pubsub_node)].
 
 -spec(nodeids_by_type/1 ::
-      (
-        Type :: binary())
-      -> [0 | mod_pubsub:nodeIdx()]
-      ).
+    (
+	Type :: binary())
+    -> [0 | mod_pubsub:nodeIdx()]
+    ).
 nodeids_by_type(Type) ->
     [nodeid(N)
-     || N
-        <- mnesia:dirty_match_object(#pubsub_node{type = Type, _ = '_'})].
+	|| N
+	    <- mnesia:dirty_match_object(#pubsub_node{type = Type, _ = '_'})].
 
 nodeids_by_option(Key, Value) ->
     [nodeid(N)
-     || N
-        <- mnesia:dirty_match_object(#pubsub_node{_ = '_'}),
-        lists:member({Key, Value}, N#pubsub_node.options)].
+	|| N
+	    <- mnesia:dirty_match_object(#pubsub_node{_ = '_'}),
+	    lists:member({Key, Value}, N#pubsub_node.options)].
 
 nodeids_by_owner(JID) ->
     [nodeid(N)
-     || N
-        <- mnesia:dirty_match_object(#pubsub_node{_ = '_'}),
-        lists:member(JID, N#pubsub_node.owners)].
+	|| N
+	    <- mnesia:dirty_match_object(#pubsub_node{_ = '_'}),
+	    lists:member(JID, N#pubsub_node.owners)].
 
 nodes_by_id(I) ->
     mnesia:dirty_match_object(#pubsub_node{id = I, _ = '_'}).
 
 nodes() ->
     [element(2, element(2, N))
-     || N
-        <- mnesia:dirty_match_object(#pubsub_node{_ = '_'})].
+	|| N
+	    <- mnesia:dirty_match_object(#pubsub_node{_ = '_'})].
 
 state(JID, NodeId) ->
     case mnesia:dirty_read({pubsub_state, {JID, NodeId}}) of
-        [S] -> S;
-        _ -> undefined
+	[S] -> S;
+	_ -> undefined
     end.
 
 states(NodeId) ->
@@ -100,13 +100,13 @@ states_by_jid(JID) ->
 
 item(ItemId, NodeId) ->
     case mnesia:dirty_read({pubsub_item, {ItemId, NodeId}}) of
-        [I] -> I;
-        _ -> undefined
+	[I] -> I;
+	_ -> undefined
     end.
 
 items(NodeId) ->
     mnesia:dirty_index_read(pubsub_item, NodeId,
-                            #pubsub_item.nodeidx).
+	#pubsub_item.nodeidx).
 
 itemid(I) -> element(1, I#pubsub_item.itemid).
 
@@ -117,47 +117,47 @@ items_by_id(ItemId) ->
 
 affiliated(NodeId) ->
     [stateid(S)
-     || S <- states(NodeId),
-        S#pubsub_state.affiliation =/= none].
+	|| S <- states(NodeId),
+	    S#pubsub_state.affiliation =/= none].
 
 subscribed(NodeId) ->
     [stateid(S)
-     || S <- states(NodeId),
-        S#pubsub_state.subscriptions =/= []].
+	|| S <- states(NodeId),
+	    S#pubsub_state.subscriptions =/= []].
 
 offline_subscribers(NodeId) ->
     lists:filter(fun
-            ({U, S, <<"">>}) -> ejabberd_sm:get_user_resources(U, S) == [];
-            ({U, S, R}) -> not lists:member(R, ejabberd_sm:get_user_resources(U, S))
-        end,
-        subscribed(NodeId)).
+	    ({U, S, <<"">>}) -> ejabberd_sm:get_user_resources(U, S) == [];
+	    ({U, S, R}) -> not lists:member(R, ejabberd_sm:get_user_resources(U, S))
+	end,
+	subscribed(NodeId)).
 
 
 owners(NodeId) ->
     [stateid(S)
-     || S <- states(NodeId),
-        S#pubsub_state.affiliation == owner].
+	|| S <- states(NodeId),
+	    S#pubsub_state.affiliation == owner].
 
 orphan_items(NodeId) ->
     itemids(NodeId) --
     lists:foldl(fun (S, A) -> A ++ S#pubsub_state.items end,
-                [], states(NodeId)).
+	[], states(NodeId)).
 
 newer_items(NodeId, Seconds) ->
     Now = calendar:universal_time(),
     Oldest = calendar:seconds_to_daystime(Seconds),
     [itemid(I)
-     || I <- items(NodeId),
-        calendar:time_difference(calendar:now_to_universal_time(element(1, I#pubsub_item.modification)), Now)
-        < Oldest].
+	|| I <- items(NodeId),
+	    calendar:time_difference(calendar:now_to_universal_time(element(1, I#pubsub_item.modification)), Now)
+	    < Oldest].
 
 older_items(NodeId, Seconds) ->
     Now = calendar:universal_time(),
     Oldest = calendar:seconds_to_daystime(Seconds),
     [itemid(I)
-     || I <- items(NodeId),
-        calendar:time_difference(calendar:now_to_universal_time(element(1, I#pubsub_item.modification)), Now)
-        > Oldest].
+	|| I <- items(NodeId),
+	    calendar:time_difference(calendar:now_to_universal_time(element(1, I#pubsub_item.modification)), Now)
+	    > Oldest].
 
 orphan_nodes() ->
     [I || I <- nodeids(), owners(I) == []].
@@ -177,91 +177,91 @@ update_node_options(Key, Value, NodeId) ->
 
 check() ->
     mnesia:transaction(fun () ->
-                case mnesia:read({pubsub_index, node}) of
-                    [Idx] ->
-                        Free = Idx#pubsub_index.free,
-                        Last = Idx#pubsub_index.last,
-                        Allocated = lists:seq(1, Last) -- Free,
-                        NodeIds = mnesia:foldl(fun (N, A) ->
-                                        [nodeid(N) | A]
-                                end,
-                                [], pubsub_node),
-                        StateIds = lists:usort(mnesia:foldl(fun (S, A) ->
-                                            [element(2, S#pubsub_state.stateid) | A]
-                                    end,
-                                    [], pubsub_state)),
-                        ItemIds = lists:usort(mnesia:foldl(fun (I, A) ->
-                                            [element(2, I#pubsub_item.itemid) | A]
-                                    end,
-                                    [], pubsub_item)),
-                        BadNodeIds = NodeIds -- Allocated,
-                        BadStateIds = StateIds -- NodeIds,
-                        BadItemIds = ItemIds -- NodeIds,
-                        Lost = Allocated -- NodeIds,
-                        [{bad_nodes,
-                          [N#pubsub_node.nodeid
-                           || N <- lists:flatten([mnesia:match_object(#pubsub_node{id = I, _ = '_'})
-                                                || I <- BadNodeIds])]},
-                         {bad_states,
-                          lists:foldl(fun (N, A) ->
-                                            A ++ [{I, N} || I <- stateids(N)]
-                                    end,
-                                    [], BadStateIds)},
-                         {bad_items,
-                          lists:foldl(fun (N, A) ->
-                                            A ++ [{I, N} || I <- itemids(N)]
-                                    end,
-                                    [], BadItemIds)},
-                         {lost_idx, Lost},
-                         {orphaned,
-                          [I || I <- NodeIds, owners(I) == []]},
-                         {duplicated,
-                          lists:usort(NodeIds -- lists:seq(1, lists:max(NodeIds)))}];
-                    _ ->
-                        no_index
-                end
-        end).
+		case mnesia:read({pubsub_index, node}) of
+		    [Idx] ->
+			Free = Idx#pubsub_index.free,
+			Last = Idx#pubsub_index.last,
+			Allocated = lists:seq(1, Last) -- Free,
+			NodeIds = mnesia:foldl(fun (N, A) ->
+					[nodeid(N) | A]
+				end,
+				[], pubsub_node),
+			StateIds = lists:usort(mnesia:foldl(fun (S, A) ->
+					    [element(2, S#pubsub_state.stateid) | A]
+				    end,
+				    [], pubsub_state)),
+			ItemIds = lists:usort(mnesia:foldl(fun (I, A) ->
+					    [element(2, I#pubsub_item.itemid) | A]
+				    end,
+				    [], pubsub_item)),
+			BadNodeIds = NodeIds -- Allocated,
+			BadStateIds = StateIds -- NodeIds,
+			BadItemIds = ItemIds -- NodeIds,
+			Lost = Allocated -- NodeIds,
+			[{bad_nodes,
+				[N#pubsub_node.nodeid
+				    || N <- lists:flatten([mnesia:match_object(#pubsub_node{id = I, _ = '_'})
+						|| I <- BadNodeIds])]},
+			    {bad_states,
+				lists:foldl(fun (N, A) ->
+					    A ++ [{I, N} || I <- stateids(N)]
+				    end,
+				    [], BadStateIds)},
+			    {bad_items,
+				lists:foldl(fun (N, A) ->
+					    A ++ [{I, N} || I <- itemids(N)]
+				    end,
+				    [], BadItemIds)},
+			    {lost_idx, Lost},
+			    {orphaned,
+				[I || I <- NodeIds, owners(I) == []]},
+			    {duplicated,
+				lists:usort(NodeIds -- lists:seq(1, lists:max(NodeIds)))}];
+		    _ ->
+			no_index
+		end
+	end).
 
 rebuild_index() ->
     mnesia:transaction(fun () ->
-                NodeIds = mnesia:foldl(fun (N, A) ->
-                                [nodeid(N) | A]
-                        end,
-                        [], pubsub_node),
-                Last = lists:max(NodeIds),
-                Free = lists:seq(1, Last) -- NodeIds,
-                mnesia:write(#pubsub_index{index = node, last = Last, free = Free})
-        end).
+		NodeIds = mnesia:foldl(fun (N, A) ->
+				[nodeid(N) | A]
+			end,
+			[], pubsub_node),
+		Last = lists:max(NodeIds),
+		Free = lists:seq(1, Last) -- NodeIds,
+		mnesia:write(#pubsub_index{index = node, last = Last, free = Free})
+	end).
 
 pep_subscriptions(LUser, LServer, LResource) ->
     case ejabberd_sm:get_session_pid(LUser, LServer, LResource) of
-        C2SPid when is_pid(C2SPid) ->
-            case catch ejabberd_c2s:get_subscribed(C2SPid) of
-                Contacts when is_list(Contacts) ->
-                    lists:map(fun ({U, S, _}) ->
-                                io_lib:format("~s@~s", [U, S])
-                        end,
-                        Contacts);
-                _ ->
-                    []
-            end;
-        _ ->
-            []
+	C2SPid when is_pid(C2SPid) ->
+	    case catch ejabberd_c2s:get_subscribed(C2SPid) of
+		Contacts when is_list(Contacts) ->
+		    lists:map(fun ({U, S, _}) ->
+				io_lib:format("~s@~s", [U, S])
+			end,
+			Contacts);
+		_ ->
+		    []
+	    end;
+	_ ->
+	    []
     end.
 
 purge_offline_subscriptions() ->
     lists:foreach(fun (K) ->
-                [N] = mnesia:dirty_read({pubsub_node, K}),
-                I = element(3, N),
-                lists:foreach(fun (JID) ->
-                            case mnesia:dirty_read({pubsub_state, {JID, I}}) of
-                                [{pubsub_state, K, _, _, _, [{subscribed, S}]}] ->
-                                    mnesia:dirty_delete({pubsub_subscription, S});
-                                _ ->
-                                    ok
-                            end,
-                            mnesia:dirty_delete({pubsub_state, {JID, I}})
-                    end,
-                    offline_subscribers(I))
-        end,
-        mnesia:dirty_all_keys(pubsub_node)).
+		[N] = mnesia:dirty_read({pubsub_node, K}),
+		I = element(3, N),
+		lists:foreach(fun (JID) ->
+			    case mnesia:dirty_read({pubsub_state, {JID, I}}) of
+				[{pubsub_state, K, _, _, _, [{subscribed, S}]}] ->
+				    mnesia:dirty_delete({pubsub_subscription, S});
+				_ ->
+				    ok
+			    end,
+			    mnesia:dirty_delete({pubsub_state, {JID, I}})
+		    end,
+		    offline_subscribers(I))
+	end,
+	mnesia:dirty_all_keys(pubsub_node)).
