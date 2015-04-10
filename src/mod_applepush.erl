@@ -408,36 +408,14 @@ do_send_offline_packet_notification(From, To, Packet, ID, AppID, SendBody, SendF
                         true ->
                             <<"">>
                     end,
-                SSound =
-                    if
-                        IncludeBody -> <<"true">>;
-                        true -> <<"false">>
-                    end,
-                Badge = jlib:integer_to_binary(BadgeCount),
                 DeviceID = jlib:integer_to_binary(ID, 16),
-                STo = jlib:jid_to_string(To),
-                Packet1 =
-                    #xmlel{name = <<"message">>,
-                           attrs = [],
-                           children =
-                           [#xmlel{name = <<"push">>,
-                                   attrs = [{<<"xmlns">>, ?NS_P1_PUSH}],
-                                   children =
-                                   [#xmlel{name = <<"id">>, attrs = [],
-                                           children = [{xmlcdata, DeviceID}]},
-                                    #xmlel{name = <<"msg">>, attrs = [],
-                                           children = [{xmlcdata, Msg}]},
-                                    #xmlel{name = <<"badge">>, attrs = [],
-                                           children = [{xmlcdata, Badge}]},
-                                    #xmlel{name = <<"sound">>, attrs = [],
-                                           children = [{xmlcdata, SSound}]},
-                                    #xmlel{name = <<"from">>, attrs = [],
-                                           children = [{xmlcdata, SFrom}]},
-                                    #xmlel{name = <<"to">>, attrs = [],
-                                           children = [{xmlcdata, STo}]}]
-                                  }
-                           ]},
-                ejabberd_router:route(To, ServiceJID, Packet1)
+                PushPacket = build_and_customize_push_packet(DeviceID, Msg, BadgeCount, IncludeBody, SFrom, To, []),
+                case PushPacket of
+                    skip ->
+                        ok;
+                    _ ->
+                        ejabberd_router:route(To, ServiceJID, PushPacket)
+                end
         end.
 
 send_offline_packet_notification(From, To, Packet, SDeviceID, BadgeCount) ->

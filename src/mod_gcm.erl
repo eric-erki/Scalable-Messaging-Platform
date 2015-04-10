@@ -213,11 +213,13 @@ push_notification_with_custom_fields(Host, JID, Notification, Msg, Unread, Sound
 
 build_and_customize_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields) ->
     LServer = JID#jid.lserver,
+    ?DEBUG("BACPP ~p", [[DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields, LServer]]),
     case gen_mod:db_type(LServer, ?MODULE) of
         odbc ->
             LUser = ejabberd_odbc:escape(JID#jid.luser),
             SJID = jlib:jid_remove_resource(jlib:jid_tolower(jlib:string_to_jid(Sender))),
             LSender = ejabberd_odbc:escape(jlib:jid_to_string(SJID)),
+            ?DEBUG("BACPP2 ~p", [[LUser, SJID, LSender]]),
             case ejabberd_odbc:sql_query(LServer,
                                          [<<"SELECT mute FROM push_customizations WHERE username = '">>, LUser,
                                           <<"' AND match_jid = '">>, LSender, <<"';">>]) of
@@ -369,35 +371,13 @@ do_send_offline_packet_notification(From, To, Packet, ID, AppID, SendBody, SendF
                         true ->
                             <<"">>
                     end,
-                SSound =
-                    if
-                        IncludeBody -> <<"true">>;
-                        true -> <<"false">>
-                    end,
-                Badge = jlib:integer_to_binary(BadgeCount),
-                STo = jlib:jid_to_string(To),
-                Packet1 =
-                    #xmlel{name = <<"message">>,
-                           attrs = [],
-                           children =
-                           [#xmlel{name = <<"push">>,
-                                   attrs = [{<<"xmlns">>, ?NS_P1_PUSH}],
-                                   children =
-                                   [#xmlel{name = <<"id">>, attrs = [],
-                                           children = [{xmlcdata, ID}]},
-                                    #xmlel{name = <<"msg">>, attrs = [],
-                                           children = [{xmlcdata, Msg}]},
-                                    #xmlel{name = <<"badge">>, attrs = [],
-                                           children = [{xmlcdata, Badge}]},
-                                    #xmlel{name = <<"sound">>, attrs = [],
-                                           children = [{xmlcdata, SSound}]},
-                                    #xmlel{name = <<"from">>, attrs = [],
-                                           children = [{xmlcdata, SFrom}]},
-                                    #xmlel{name = <<"to">>, attrs = [],
-                                           children = [{xmlcdata, STo}]}]
-                                  }
-                           ]},
-                ejabberd_router:route(To, ServiceJID, Packet1)
+                PushPacket = build_and_customize_push_packet(ID, Msg, BadgeCount, IncludeBody, SFrom, To, []),
+                case PushPacket of
+                    skip ->
+                        ok;
+                    _ ->
+                        ejabberd_router:route(To, ServiceJID, PushPacket)
+                end
         end.
 
 send_offline_packet_notification(From, To, Packet, DeviceID, BadgeCount) ->
