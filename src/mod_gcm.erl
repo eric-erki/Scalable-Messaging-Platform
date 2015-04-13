@@ -66,6 +66,7 @@
 -define(NS_P1_PUSH_GCM, <<"p1:push:gcm">>).
 -define(NS_P1_PUSHED, <<"p1:pushed">>).
 -define(NS_P1_ATTACHMENT, <<"http://process-one.net/attachement">>).
+-define(NS_P1_PUSH_CUSTOM, <<"p1:push:custom">>).
 
 -record(gcm_cache, {us, device_id, options}).
 
@@ -371,7 +372,19 @@ do_send_offline_packet_notification(From, To, Packet, ID, AppID, SendBody, SendF
                         true ->
                             <<"">>
                     end,
-                PushPacket = build_and_customize_push_packet(ID, Msg, BadgeCount, IncludeBody, SFrom, To, []),
+                CustomFields = lists:filtermap(fun(#xmlel{name = <<"x">>} = E) ->
+                                                       case {xml:get_tag_attr_s(<<"xmlns">>, E),
+                                                             xml:get_tag_attr_s(<<"key">>, E),
+                                                             xml:get_tag_attr_s(<<"value">>, E)} of
+                                                           {?NS_P1_PUSH_CUSTOM, K, V} when K /= <<"">> ->
+                                                               {true, {K, V}};
+                                                           _ ->
+                                                               false
+                                                       end;
+                                                  (_) ->
+                                                       false
+                                               end, Packet#xmlel.children),
+                PushPacket = build_and_customize_push_packet(ID, Msg, BadgeCount, IncludeBody, SFrom, To, CustomFields),
                 case PushPacket of
                     skip ->
                         ok;

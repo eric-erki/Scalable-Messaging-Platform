@@ -162,6 +162,8 @@
 
 -define(NS_P1_PUSH, <<"p1:push">>).
 
+-define(NS_P1_PUSH_CUSTOM, <<"p1:push:custom">>).
+
 -define(NS_P1_ACK, <<"p1:ack">>).
 
 -define(NS_P1_PUSHED, <<"p1:pushed">>).
@@ -3189,16 +3191,28 @@ send_out_of_reception_message(StateData, From, To,
 			       end;
 			   true -> <<"">>
 			end,
+                CustomFields = lists:filtermap(fun(#xmlel{name = <<"x">>} = E) ->
+                                                       case {xml:get_tag_attr_s(<<"xmlns">>, E),
+                                                             xml:get_tag_attr_s(<<"key">>, E),
+                                                             xml:get_tag_attr_s(<<"value">>, E)} of
+                                                           {?NS_P1_PUSH_CUSTOM, K, V} when K /= <<"">> ->
+                                                               {true, {K, V}};
+                                                           _ ->
+                                                               false
+                                                       end;
+                                                  (_) ->
+                                                       false
+                                               end, Packet#xmlel.children),
 		  Sound = IncludeBody,
 		  AppID = StateData#state.oor_appid,
-		  ejabberd_hooks:run(p1_push_notification,
+		  ejabberd_hooks:run(p1_push_notification_custom,
 				     StateData#state.server,
 				     [StateData#state.server,
 				      StateData#state.jid,
 				      StateData#state.oor_notification, Msg,
 				      Unread +
 					StateData#state.oor_unread_client,
-				      Sound, AppID, SFrom]),
+				      Sound, AppID, SFrom, CustomFields]),
 		  ejabberd_hooks:run(delayed_message_hook,
 				     StateData#state.server,
 				     [From, To, Packet]),
