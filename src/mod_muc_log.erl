@@ -354,6 +354,11 @@ htmlize_nick(Nick1, html) ->
 htmlize_nick(Nick1, plaintext) ->
     htmlize(<<?PLAINTEXT_IN/binary, Nick1/binary, ?PLAINTEXT_OUT/binary>>, plaintext).
 
+htmlize_nick(Nick1, html) ->
+    htmlize(<<"<", Nick1/binary, ">">>, html);
+htmlize_nick(Nick1, plaintext) ->
+    htmlize(<<?PLAINTEXT_IN/binary, Nick1/binary, ?PLAINTEXT_OUT/binary>>, plaintext).
+
 add_message_to_log(Nick1, Message, RoomJID, Opts,
 		   State) ->
     #logstate{out_dir = OutDir, dir_type = DirType,
