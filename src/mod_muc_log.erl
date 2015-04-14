@@ -349,6 +349,11 @@ write_last_lines(F, Images_dir, _FileFormat) ->
        [Images_dir]),
     fw(F, <<"</span></div></body></html>">>).
 
+htmlize_nick(Nick1, html) ->
+    htmlize(<<"<", Nick1/binary, ">">>, html);
+htmlize_nick(Nick1, plaintext) ->
+    htmlize(<<?PLAINTEXT_IN/binary, Nick1/binary, ?PLAINTEXT_OUT/binary>>, plaintext).
+
 add_message_to_log(Nick1, Message, RoomJID, Opts,
 		   State) ->
     #logstate{out_dir = OutDir, dir_type = DirType,
@@ -358,7 +363,7 @@ add_message_to_log(Nick1, Message, RoomJID, Opts,
 	State,
     Room = get_room_info(RoomJID, Opts),
     Nick = htmlize(Nick1, FileFormat),
-    Nick2 = htmlize(<<"<", Nick1/binary, ">">>, FileFormat),
+    Nick2 = htmlize_nick(Nick1, FileFormat),
     Now = now(),
     TimeStamp = case Timezone of
 		  local -> calendar:now_to_local_time(Now);
