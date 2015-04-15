@@ -259,7 +259,7 @@ init([ServerHost, Opts]) ->
 	    fun(A) when is_boolean(A) -> A end, false),
     MaxItemsNode = gen_mod:get_opt(max_items_node, Opts,
 	    fun(A) when is_integer(A) andalso A >= 0 -> A end, ?MAXITEMS),
-    pubsub_index:init(Host, ServerHost, Opts),
+    [pubsub_index:init(Host, ServerHost, Opts) || gen_mod:db_type(ServerHost, ?MODULE)==mnesia],
     ets:new(gen_mod:get_module_proc(ServerHost, config), [set, named_table]),
     {Plugins, NodeTree, PepMapping} = init_plugins(Host, ServerHost, Opts),
     mnesia:create_table(pubsub_last_item,
@@ -2451,7 +2451,8 @@ get_last_item(Host, Type, Nidx, LJID) ->
 	undefined -> get_last_item(Host, Type, Nidx, LJID, gen_mod:db_type(serverhost(Host), ?MODULE));
 	LastItem -> LastItem
     end.
-get_last_item(Host, Type, Nidx, LJID, mnesia) ->
+get_last_item(Host, Type, Nidx, LJID, DBType)
+        when DBType==mnesia; DBType==p1db ->
     case node_action(Host, Type, get_items, [Nidx, LJID, none]) of
 	{result, {[LastItem|_], _}} -> LastItem;
 	_ -> undefined
@@ -2466,7 +2467,8 @@ get_last_item(_Host, _Type, _Nidx, _LJID, _) ->
 
 get_last_items(Host, Type, Nidx, LJID, Number) ->
     get_last_items(Host, Type, Nidx, LJID, Number, gen_mod:db_type(serverhost(Host), ?MODULE)).
-get_last_items(Host, Type, Nidx, LJID, Number, mnesia) ->
+get_last_items(Host, Type, Nidx, LJID, Number, DBType)
+        when DBType==mnesia; DBType==p1db ->
     case node_action(Host, Type, get_items, [Nidx, LJID, none]) of
 	{result, {Items, _}} -> lists:sublist(Items, Number);
 	_ -> []
@@ -2937,7 +2939,8 @@ get_subscriptions(Host, Node, JID) ->
 	    Error
     end.
 
-get_subscriptions_for_send_last(Host, PType, mnesia, JID, LJID, BJID) ->
+get_subscriptions_for_send_last(Host, PType, DBType, JID, LJID, BJID)
+        when DBType==mnesia; DBType==p1db ->
     {result, Subs} = node_action(Host, PType,
 	    get_entity_subscriptions,
 	    [Host, JID]),
@@ -3556,7 +3559,7 @@ node_options(Host, Type) ->
 
 node_owners_action(Host, Type, Nidx, []) ->
     case gen_mod:db_type(serverhost(Host), ?MODULE) of
-	odbc ->
+	DBType when DBType==odbc; DBType==p1db ->
 	    case node_action(Host, Type, get_node_affiliations, [Nidx]) of
 		{result, Affs} -> [LJID || {LJID, Aff} <- Affs, Aff =:= owner];
 		_ -> []
@@ -3569,7 +3572,7 @@ node_owners_action(_Host, _Type, _Nidx, Owners) ->
 
 node_owners_call(Host, Type, Nidx, []) ->
     case gen_mod:db_type(serverhost(Host), ?MODULE) of
-	odbc ->
+	DBType when DBType==odbc; DBType==p1db ->
 	    case node_call(Host, Type, get_node_affiliations, [Nidx]) of
 		{result, Affs} -> [LJID || {LJID, Aff} <- Affs, Aff =:= owner];
 		_ -> []
@@ -3919,6 +3922,7 @@ tree(Host, Name) ->
     case gen_mod:db_type(serverhost(Host), ?MODULE) of
 	mnesia -> jlib:binary_to_atom(<<"nodetree_", Name/binary>>);
 	odbc -> jlib:binary_to_atom(<<"nodetree_", Name/binary, "_odbc">>);
+	p1db -> jlib:binary_to_atom(<<"nodetree_", Name/binary, "_p1db">>);
 	_ -> Name
     end.
 
@@ -3926,6 +3930,7 @@ plugin(Host, Name) ->
     case gen_mod:db_type(serverhost(Host), ?MODULE) of
 	mnesia -> jlib:binary_to_atom(<<"node_", Name/binary>>);
 	odbc -> jlib:binary_to_atom(<<"node_", Name/binary, "_odbc">>);
+	p1db -> jlib:binary_to_atom(<<"node_", Name/binary, "_p1db">>);
 	_ -> Name
     end.
 
@@ -3940,6 +3945,7 @@ subscription_plugin(Host) ->
     case gen_mod:db_type(serverhost(Host), ?MODULE) of
 	mnesia -> pubsub_subscription;
 	odbc -> pubsub_subscription_odbc;
+	p1db -> pubsub_subscription_p1db;
 	_ -> none
     end.
 
@@ -4039,6 +4045,8 @@ tree_action(Host, Function, Args) ->
 		    ?ERROR_MSG("transaction return internal error: ~p~n", [{aborted, Reason}]),
 		    {error, ?ERR_INTERNAL_SERVER_ERROR}
 	    end;
+	p1db ->
+	    {atomic, Fun()};
 	Other ->
 	    ?ERROR_MSG("unsupported backend: ~p~n", [Other]),
 	    {error, ?ERR_INTERNAL_SERVER_ERROR}
@@ -4108,6 +4116,8 @@ transaction_retry(Host, ServerHost, Fun, Trans, DBType, Count) ->
 		_ -> sql_bloc
 	    end,
 	    catch ejabberd_odbc:SqlFun(ServerHost, Fun);
+	p1db ->
+	    catch Fun();
 	_ ->
 	    {unsupported, DBType}
     end,

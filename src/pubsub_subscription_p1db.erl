@@ -15,19 +15,21 @@
 %%% All Rights Reserved.''
 %%% This software is copyright 2006-2015, ProcessOne.
 %%%
-%%% @author Brian Cully <bjc@kublai.com>
+%%% @author Christophe Romain <cromain@process-one.net>
 %%% @version {@vsn}, {@date} {@time}
 %%% @end
 %%% ====================================================================
 
--module(pubsub_subscription).
+-module(pubsub_subscription_p1db).
 
--author("bjc@kublai.com").
+-author("cromain@process-one.net").
 
 %% API
 -export([init/3, subscribe_node/3, unsubscribe_node/3,
     get_subscription/3, set_subscription/4,
     get_options_xform/2, parse_options_xform/1]).
+
+-export([enc_key/1, dec_key/1, enc_val/2, dec_val/2]).
 
 % Internal function also exported for use in transactional bloc from pubsub plugins
 -export([add_subscription/3, delete_subscription/3,
@@ -69,10 +71,23 @@
 %%====================================================================
 %% API
 %%====================================================================
-init(_Host, _ServerHost, _Opts) -> ok = create_table().
+init(_Host, ServerHost, Opts) ->
+    Group = gen_mod:get_opt(p1db_group, Opts, fun(G) when is_atom(G) -> G end, 
+			ejabberd_config:get_option(
+			    {p1db_group, ServerHost}, fun(G) when is_atom(G) -> G end)),
+    [Key|Values] = record_info(fields, pubsub_subscription),
+    p1db:open_table(pubsub_subscription,
+			[{group, Group}, {nosync, true},
+			 {schema, [{keys, [Key]},
+				   {vals, Values},
+				   {enc_key, fun ?MODULE:enc_key/1},
+				   {dec_key, fun ?MODULE:dec_key/1},
+				   {enc_val, fun ?MODULE:enc_val/2},
+				   {dec_val, fun ?MODULE:dec_val/2}]}]),
+    ok.
 
 subscribe_node(JID, NodeId, Options) ->
-    case catch mnesia:sync_dirty(fun add_subscription/3, [JID, NodeId, Options])
+    case catch add_subscription(JID, NodeId, Options)
     of
 	{'EXIT', {aborted, Error}} -> Error;
 	{error, Error} -> {error, Error};
@@ -80,7 +95,7 @@ subscribe_node(JID, NodeId, Options) ->
     end.
 
 unsubscribe_node(JID, NodeId, SubID) ->
-    case catch mnesia:sync_dirty(fun delete_subscription/3, [JID, NodeId, SubID])
+    case catch delete_subscription(JID, NodeId, SubID)
     of
 	{'EXIT', {aborted, Error}} -> Error;
 	{error, Error} -> {error, Error};
@@ -88,7 +103,7 @@ unsubscribe_node(JID, NodeId, SubID) ->
     end.
 
 get_subscription(JID, NodeId, SubID) ->
-    case catch mnesia:sync_dirty(fun read_subscription/3, [JID, NodeId, SubID])
+    case catch read_subscription(JID, NodeId, SubID)
     of
 	{'EXIT', {aborted, Error}} -> Error;
 	{error, Error} -> {error, Error};
@@ -96,7 +111,7 @@ get_subscription(JID, NodeId, SubID) ->
     end.
 
 set_subscription(JID, NodeId, SubID, Options) ->
-    case catch mnesia:sync_dirty(fun write_subscription/4, [JID, NodeId, SubID, Options])
+    case catch write_subscription(JID, NodeId, SubID, Options)
     of
 	{'EXIT', {aborted, Error}} -> Error;
 	{error, Error} -> {error, Error};
@@ -136,18 +151,6 @@ parse_options_xform(XFields) ->
 %%====================================================================
 %% Internal functions
 %%====================================================================
-create_table() ->
-    case mnesia:create_table(pubsub_subscription,
-	    [{disc_copies, [node()]},
-		{attributes,
-		    record_info(fields, pubsub_subscription)},
-		{type, set}])
-    of
-	{atomic, ok} -> ok;
-	{aborted, {already_exists, _}} -> ok;
-	Other -> Other
-    end.
-
 -spec(add_subscription/3 ::
     (
 	_JID    :: ljid(),
@@ -159,7 +162,7 @@ create_table() ->
 add_subscription(_JID, _NodeId, []) -> make_subid();
 add_subscription(_JID, _NodeId, Options) ->
     SubID = make_subid(),
-    mnesia:write(#pubsub_subscription{subid = SubID, options = Options}),
+    p1db:async_insert(pubsub_subscription, SubID, opts_to_p1db(Options)),
     SubID.
 
 -spec(delete_subscription/3 ::
@@ -171,7 +174,7 @@ add_subscription(_JID, _NodeId, Options) ->
     ).
 
 delete_subscription(_JID, _NodeId, SubID) ->
-    mnesia:delete({pubsub_subscription, SubID}).
+    p1db:async_delete(pubsub_subscription, SubID).
 
 -spec(read_subscription/3 ::
     (
@@ -183,8 +186,8 @@ delete_subscription(_JID, _NodeId, SubID) ->
     ).
 
 read_subscription(_JID, _NodeId, SubID) ->
-    case mnesia:read({pubsub_subscription, SubID}) of
-	[Sub] -> Sub;
+    case p1db:get(pubsub_subscription, SubID) of
+	{ok, BinOpts, _VClock} -> #pubsub_subscription{subid=SubID, options=p1db_to_opts(BinOpts)};
 	_ -> {error, notfound}
     end.
 
@@ -198,7 +201,7 @@ read_subscription(_JID, _NodeId, SubID) ->
     ).
 
 write_subscription(_JID, _NodeId, SubID, Options) ->
-    mnesia:write(#pubsub_subscription{subid = SubID, options = Options}).
+    p1db:async_insert(pubsub_subscription, SubID, opts_to_p1db(Options)).
 
 -spec(make_subid/0 :: () -> SubId::mod_pubsub:subId()).
 make_subid() ->
@@ -362,3 +365,16 @@ xfield_val(subscription_depth, N) ->
 
 bool_to_xopt(true) -> <<"true">>;
 bool_to_xopt(false) -> <<"false">>.
+
+%% p1db helpers
+opts_to_p1db(Options) when is_list(Options) ->
+    term_to_binary({options, Options}).
+
+p1db_to_opts(Bin) when is_binary(Bin) ->
+    {options, Opts} = binary_to_term(Bin),
+    Opts.
+
+enc_key(SubId) when is_binary(SubId) -> SubId.
+dec_key(SubId) when is_binary(SubId) -> SubId.
+enc_val(_, [Options]) -> opts_to_p1db(Options).
+dec_val(_, Bin) -> [p1db_to_opts(Bin)].

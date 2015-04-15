@@ -66,8 +66,8 @@
     encode_affiliation/1, encode_subscriptions/1,
     encode_host/1]).
 
-init(Host, ServerHost, _Opts) ->
-    pubsub_subscription_odbc:init(),
+init(Host, ServerHost, Opts) ->
+    pubsub_subscription_odbc:init(Host, ServerHost, Opts),
     Owner = mod_pubsub:service_jid(Host),
     mod_pubsub:create_node(Host, ServerHost, <<"/home">>, Owner, <<"hometree">>),
     mod_pubsub:create_node(Host, ServerHost, <<"/home/", ServerHost/binary>>, Owner, <<"hometree">>),

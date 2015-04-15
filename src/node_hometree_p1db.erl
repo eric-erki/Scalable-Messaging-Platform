@@ -39,7 +39,7 @@
 %%% useable and useful as is. Please, send us comments, feedback and
 %%% improvements.</p>
 
--module(node_hometree).
+-module(node_hometree_p1db).
 -behaviour(gen_pubsub_node).
 -author('christophe.romain@process-one.net').
 
@@ -55,25 +55,37 @@
     get_entity_subscriptions/2, get_node_subscriptions/1,
     get_subscriptions/2, set_subscriptions/4,
     get_pending_nodes/2, get_states/1, get_state/2,
-    set_state/1, get_items/6, get_items/2,
-    get_items/7, get_items/3, get_item/7,
+    set_state/1, get_items/7, get_items/3,
+    get_items/6, get_items/2, get_item/7,
     get_item/2, set_item/1, get_item_name/3, node_to_path/1,
-    path_to_node/1]).
+    path_to_node/1, get_states_by_prefix/1]).
+
+-export([enc_state_key/1, dec_state_key/1, enc_state_val/2, dec_state_val/2]).
+-export([enc_item_key/1, dec_item_key/1, enc_item_val/2, dec_item_val/2]).
 
 init(Host, ServerHost, Opts) ->
-    pubsub_subscription:init(Host, ServerHost, Opts),
-    mnesia:create_table(pubsub_state,
-	[{disc_copies, [node()]}, {index, [nodeidx]},
-	    {type, ordered_set},
-	    {attributes, record_info(fields, pubsub_state)}]),
-    mnesia:create_table(pubsub_item,
-	[{disc_only_copies, [node()]}, {index, [nodeidx]},
-	    {attributes, record_info(fields, pubsub_item)}]),
-    ItemsFields = record_info(fields, pubsub_item),
-    case mnesia:table_info(pubsub_item, attributes) of
-	ItemsFields -> ok;
-	_ -> mnesia:transform_table(pubsub_item, ignore, ItemsFields)
-    end,
+    pubsub_subscription_p1db:init(Host, ServerHost, Opts),
+    Group = gen_mod:get_opt(p1db_group, Opts, fun(G) when is_atom(G) -> G end, 
+			ejabberd_config:get_option(
+			    {p1db_group, ServerHost}, fun(G) when is_atom(G) -> G end)),
+    [SKey|SValues] = record_info(fields, pubsub_state),
+    p1db:open_table(pubsub_state,
+			[{group, Group}, {nosync, true},
+			 {schema, [{keys, [SKey]},
+				   {vals, SValues},
+				   {enc_key, fun ?MODULE:enc_state_key/1},
+				   {dec_key, fun ?MODULE:dec_state_key/1},
+				   {enc_val, fun ?MODULE:enc_state_val/2},
+				   {dec_val, fun ?MODULE:dec_state_val/2}]}]),
+    [IKey|IValues] = record_info(fields, pubsub_item),
+    p1db:open_table(pubsub_item,
+			[{group, Group}, {nosync, true},
+			 {schema, [{keys, [IKey]},
+				   {vals, IValues},
+				   {enc_key, fun ?MODULE:enc_item_key/1},
+				   {dec_key, fun ?MODULE:dec_item_key/1},
+				   {enc_val, fun ?MODULE:enc_item_val/2},
+				   {dec_val, fun ?MODULE:dec_item_val/2}]}]),
     Owner = mod_pubsub:service_jid(Host),
     mod_pubsub:create_node(Host, ServerHost, <<"/home">>, Owner, <<"hometree">>),
     mod_pubsub:create_node(Host, ServerHost, <<"/home/", ServerHost/binary>>, Owner, <<"hometree">>),
@@ -83,45 +95,10 @@ terminate(_Host, _ServerHost) ->
     ok.
 
 options() ->
-    [{deliver_payloads, true},
-	{notify_config, false},
-	{notify_delete, false},
-	{notify_retract, true},
-	{purge_offline, false},
-	{persist_items, true},
-	{max_items, ?MAXITEMS},
-	{subscribe, true},
-	{access_model, open},
-	{roster_groups_allowed, []},
-	{publish_model, publishers},
-	{notification_type, headline},
-	{max_payload_size, ?MAX_PAYLOAD_SIZE},
-	{send_last_published_item, on_sub_and_presence},
-	{deliver_notifications, true},
-	{presence_based_delivery, false}].
+    node_hometree:options().
 
 features() ->
-    [<<"create-nodes">>,
-	<<"auto-create">>,
-	<<"access-authorize">>,
-	<<"delete-nodes">>,
-	<<"delete-items">>,
-	<<"get-pending">>,
-	<<"instant-nodes">>,
-	<<"manage-subscriptions">>,
-	<<"modify-affiliations">>,
-	<<"multi-subscribe">>,
-	<<"outcast-affiliation">>,
-	<<"persistent-items">>,
-	<<"publish">>,
-	<<"purge-nodes">>,
-	<<"retract-items">>,
-	<<"retrieve-affiliations">>,
-	<<"retrieve-items">>,
-	<<"retrieve-subscriptions">>,
-	<<"subscribe">>,
-	<<"subscription-notifications">>,
-	<<"subscription-options">>].
+    node_hometree:features().
 
 %% @doc Checks if the current user has the permission to create the requested node
 %% <p>In {@link node_default}, the permission is decided by the place in the
@@ -500,7 +477,7 @@ purge_node(Nidx, Owner) ->
 get_entity_affiliations(Host, Owner) ->
     SubKey = jlib:jid_tolower(Owner),
     GenKey = jlib:jid_remove_resource(SubKey),
-    States = mnesia:match_object(#pubsub_state{stateid = {GenKey, '_'}, _ = '_'}),
+    States = get_states_by_prefix(GenKey),
     NodeTree = mod_pubsub:tree(Host),
     Reply = lists:foldl(fun (#pubsub_state{stateid = {_, N}, affiliation = A}, Acc) ->
 		    case NodeTree:get_node(N) of
@@ -543,11 +520,11 @@ get_entity_subscriptions(Host, Owner) ->
     GenKey = jlib:jid_remove_resource(SubKey),
     States = case SubKey of
 	GenKey ->
-	    mnesia:match_object(#pubsub_state{stateid = {{U, D, '_'}, '_'}, _ = '_'});
+	    get_states_by_prefix({U, D, '_'});
 	_ ->
-	    mnesia:match_object(#pubsub_state{stateid = {GenKey, '_'}, _ = '_'})
+	    get_states_by_prefix(GenKey)
 	    ++
-	    mnesia:match_object(#pubsub_state{stateid = {SubKey, '_'}, _ = '_'})
+	    get_states_by_prefix(SubKey)
     end,
     NodeTree = mod_pubsub:tree(Host),
     Reply = lists:foldl(fun (#pubsub_state{stateid = {J, N}, subscriptions = Ss}, Acc) ->
@@ -641,26 +618,19 @@ unsub_with_subid(Nidx, SubId, #pubsub_state{stateid = {Entity, _}} = SubState) -
 %% subscriptions.</p>
 get_pending_nodes(Host, Owner) ->
     GenKey = jlib:jid_remove_resource(jlib:jid_tolower(Owner)),
-    States = mnesia:match_object(#pubsub_state{stateid = {GenKey, '_'},
-		affiliation = owner,
-		_ = '_'}),
-    NodeIdxs = [Nidx || #pubsub_state{stateid = {_, Nidx}} <- States],
+    NodeIdxs = [Nidx || #pubsub_state{stateid={_,Nidx}, affiliation=Aff}
+			<- get_states_by_prefix(GenKey),
+			Aff==owner],
     NodeTree = mod_pubsub:tree(Host),
-    Reply = mnesia:foldl(fun (#pubsub_state{stateid = {_, Nidx}} = S, Acc) ->
-		    case lists:member(Nidx, NodeIdxs) of
-			true ->
-			    case get_nodes_helper(NodeTree, S) of
-				{value, Node} -> [Node | Acc];
-				false -> Acc
-			    end;
-			false ->
-			    Acc
-		    end
+    Reply = lists:foldl(fun (Nidx, Acc) ->
+		    {result, States} = get_states(Nidx),
+		    acc_pending(States, NodeTree, Acc)
 	    end,
-	    [], pubsub_state),
+	    [], NodeIdxs),
     {result, Reply}.
 
-get_nodes_helper(NodeTree, #pubsub_state{stateid = {_, N}, subscriptions = Subs}) ->
+acc_pending([], _, Acc) -> Acc;
+acc_pending([#pubsub_state{stateid = {_, Nidx}, subscriptions = Subs}|Tail], NodeTree, Acc) ->
     HasPending = fun
 	({pending, _}) -> true;
 	(pending) -> true;
@@ -668,12 +638,12 @@ get_nodes_helper(NodeTree, #pubsub_state{stateid = {_, N}, subscriptions = Subs}
     end,
     case lists:any(HasPending, Subs) of
 	true ->
-	    case NodeTree:get_node(N) of
-		#pubsub_node{nodeid = {_, Node}} -> {value, Node};
-		_ -> false
+	    case NodeTree:get_node(Nidx) of
+		#pubsub_node{nodeid = {_, Node}} -> acc_pending(Tail, NodeTree, [Node|Acc]);
+		_ -> acc_pending(Tail, NodeTree, Acc)
 	    end;
 	false ->
-	    false
+	    acc_pending(Tail, NodeTree, Acc)
     end.
 
 %% @doc Returns the list of stored states for a given node.
@@ -687,28 +657,42 @@ get_nodes_helper(NodeTree, #pubsub_state{stateid = {_, N}, subscriptions = Subs}
 %% ```get_states(Nidx) ->
 %%           node_default:get_states(Nidx).'''</p>
 get_states(Nidx) ->
-    States = case catch mnesia:index_read(pubsub_state, Nidx, #pubsub_state.nodeidx) of
-	List when is_list(List) -> List;
-	_ -> []
-    end,
+    States = get_states_by_nidx(p1db:first(pubsub_state), Nidx, []),
     {result, States}.
+get_states_by_prefix(USR) ->
+    case p1db:get_by_prefix(pubsub_state, enc_state_key(USR)) of
+	{ok, L} -> [p1db_to_state(Key, Val) || {Key, Val, _} <- L];
+	_ -> []
+    end.
+get_states_by_nidx({ok, Key, Val, _}, Nidx, Acc) ->
+    {USR, NodeIdx} = dec_state_key(Key),
+    Acc2 = case NodeIdx of
+	Nidx -> [p1db_to_state({USR, Nidx}, Val)|Acc];
+	_ -> Acc
+    end,
+    get_states_by_nidx(p1db:next(pubsub_state, Key), Nidx, Acc2);
+get_states_by_nidx(_, _, Acc) ->
+    Acc.
 
 %% @doc <p>Returns a state (one state list), given its reference.</p>
-get_state(Nidx, Key) ->
-    StateId = {Key, Nidx},
-    case catch mnesia:read({pubsub_state, StateId}) of
-	[State] when is_record(State, pubsub_state) -> State;
-	_ -> #pubsub_state{stateid = StateId, nodeidx = Nidx}
+get_state(Nidx, USR) ->
+    Key = enc_state_key({USR, Nidx}),
+    case p1db:get(pubsub_state, Key) of
+	{ok, Val, _VClock} -> p1db_to_state(Key, Val);
+	_ -> #pubsub_state{stateid = {USR, Nidx}, nodeidx = Nidx}
     end.
 
 %% @doc <p>Write a state into database.</p>
 set_state(State) when is_record(State, pubsub_state) ->
-    mnesia:write(State).
+    Key = enc_state_key(State#pubsub_state.stateid),
+    Val = state_to_p1db(State),
+    p1db:async_insert(pubsub_state, Key, Val).
 %set_state(_) -> {error, ?ERR_INTERNAL_SERVER_ERROR}.
 
 %% @doc <p>Delete a state from database.</p>
-del_state(Nidx, Key) ->
-    mnesia:delete({pubsub_state, {Key, Nidx}}).
+del_state(Nidx, USR) ->
+    Key = enc_state_key({USR, Nidx}),
+    p1db:async_delete(pubsub_state, Key).
 
 %% @doc Returns the list of stored items for a given node.
 %% <p>For the default PubSub module, items are stored in Mnesia database.</p>
@@ -723,7 +707,10 @@ del_state(Nidx, Key) ->
 get_items(Nidx, From) ->
     get_items(Nidx, From, none).
 get_items(Nidx, _From, _RSM) ->
-    Items = mnesia:index_read(pubsub_item, Nidx, #pubsub_item.nodeidx),
+    Items = case p1db:get_by_prefix(pubsub_item, enc_item_key(Nidx)) of
+	{ok, L} -> [p1db_to_item(Key, Val) || {Key, Val, _} <- L];
+	_ -> []
+    end,
     {result, {lists:reverse(lists:keysort(#pubsub_item.modification, Items)), none}}.
 
 get_items(Nidx, JID, AccessModel, PresenceSubscription, RosterGroup, SubId) ->
@@ -764,9 +751,10 @@ get_items(Nidx, JID, AccessModel, PresenceSubscription, RosterGroup, _SubId, _RS
 
 %% @doc <p>Returns an item (one item list), given its reference.</p>
 
-get_item(Nidx, ItemId) ->
-    case mnesia:read({pubsub_item, {ItemId, Nidx}}) of
-	[Item] when is_record(Item, pubsub_item) -> {result, Item};
+get_item(Nidx, Id) ->
+    Key = enc_item_key({Id, Nidx}),
+    case p1db:get(pubsub_item, Key) of
+	{ok, Val, _VClock} -> {result, p1db_to_item(Key, Val)};
 	_ -> {error, ?ERR_ITEM_NOT_FOUND}
     end.
 
@@ -805,12 +793,15 @@ get_item(Nidx, ItemId, JID, AccessModel, PresenceSubscription, RosterGroup, _Sub
 
 %% @doc <p>Write an item into database.</p>
 set_item(Item) when is_record(Item, pubsub_item) ->
-    mnesia:write(Item).
+    Key = enc_item_key(Item#pubsub_item.itemid),
+    Val = item_to_p1db(Item),
+    p1db:async_insert(pubsub_item, Key, Val).
 %set_item(_) -> {error, ?ERR_INTERNAL_SERVER_ERROR}.
 
 %% @doc <p>Delete an item from database.</p>
 del_item(Nidx, ItemId) ->
-    mnesia:delete({pubsub_item, {ItemId, Nidx}}).
+    Key = enc_item_key({ItemId, Nidx}),
+    p1db:async_delete(pubsub_item, Key).
 
 del_items(Nidx, ItemIds) ->
     lists:foreach(fun (ItemId) -> del_item(Nidx, ItemId)
@@ -822,9 +813,7 @@ get_item_name(_Host, _Node, Id) ->
 
 %% @doc <p>Return the name of the node if known: Default is to return
 %% node id.</p>
-node_to_path(Node) ->
-    str:tokens(Node, <<"/">>).
-
+node_to_path(Node) -> str:tokens(Node, <<"/">>).
 path_to_node([]) -> <<>>;
 path_to_node(Path) -> iolist_to_binary(str:join([<<"">> | Path], <<"/">>)).
 
@@ -849,3 +838,74 @@ first_in_list(Pred, [H | T]) ->
 	true -> {value, H};
 	_ -> first_in_list(Pred, T)
     end.
+% p1db helper
+
+state_to_p1db(State) when is_record(State, pubsub_state) ->
+    term_to_binary([
+	    {items, State#pubsub_state.items},
+	    {affiliation, State#pubsub_state.affiliation},
+	    {subscriptions, State#pubsub_state.subscriptions}]).
+item_to_p1db(Item) when is_record(Item, pubsub_item) ->
+    term_to_binary([
+	    {creation, Item#pubsub_item.creation},
+	    {modification, Item#pubsub_item.modification},
+	    {payload, Item#pubsub_item.payload}]).
+p1db_to_state(Key, Val) when is_binary(Key) ->
+    p1db_to_state(dec_state_key(Key), Val);
+p1db_to_state({USR, Nidx}, Val) ->
+    lists:foldl(
+	fun({items, I}, S) -> S#pubsub_state{items=I};
+	   ({affiliation, A}, S) -> S#pubsub_state{affiliation=A};
+	   ({subscriptions, L}, S) -> S#pubsub_state{subscriptions=L};
+	   (_, S) -> S
+	end, #pubsub_state{stateid={USR,Nidx},nodeidx=Nidx}, binary_to_term(Val)).
+p1db_to_item(Key, Val) when is_binary(Key) ->
+    p1db_to_item(dec_item_key(Key), Val);
+p1db_to_item({Id, Nidx}, Val) ->
+    lists:foldl(
+	fun({creation, C}, I) -> I#pubsub_item{creation=C};
+	   ({modification, M}, I) -> I#pubsub_item{modification=M};
+	   ({payload, P}, I) -> I#pubsub_item{payload=P};
+	   (_, I) -> I
+	end, #pubsub_item{itemid={Id,Nidx},nodeidx=Nidx}, binary_to_term(Val)).
+
+enc_state_key({USR, Nidx}) ->
+    <<(jlib:jid_to_string(USR))/binary, 0, Nidx/binary>>;
+enc_state_key({U, S, '_'}) ->
+    jlib:jid_to_string({U, S, <<>>});
+enc_state_key({U, S, R}) ->
+    <<(jlib:jid_to_string({U, S, R}))/binary, 0>>.
+dec_state_key(Key) ->
+    SLen = str:chr(Key, 0) - 1,
+    <<USR:SLen/binary, 0, Nidx/binary>> = Key,
+    {jlib:string_to_usr(USR), Nidx}.
+enc_item_key({Id, Nidx}) ->
+    <<Nidx/binary, 0, Id/binary>>;
+enc_item_key(Nidx) ->
+    <<Nidx/binary, 0>>.
+dec_item_key(Key) ->
+    SLen = str:rchr(Key, 0) - 1,
+    <<Nidx:SLen/binary, 0, Id/binary>> = Key,
+    {Id, Nidx}.
+
+enc_state_val(_, [Items,Affiliation,Subscriptions]) ->
+    state_to_p1db(#pubsub_state{
+	    items=Items,
+	    affiliation=Affiliation,
+	    subscriptions=Subscriptions}).
+dec_state_val(Key, Bin) ->
+    S = p1db_to_state(Key, Bin),
+    [S#pubsub_state.items,
+     S#pubsub_state.affiliation,
+     S#pubsub_state.subscriptions].
+enc_item_val(_, [Creation,Modification,Payload]) ->
+    item_to_p1db(#pubsub_item{
+	    creation=Creation,
+	    modification=Modification,
+	    payload=Payload}).
+dec_item_val(Key, Bin) ->
+    I = p1db_to_item(Key, Bin),
+    [I#pubsub_item.creation,
+     I#pubsub_item.modification,
+     I#pubsub_item.payload].
+

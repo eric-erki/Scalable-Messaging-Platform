@@ -24,7 +24,7 @@
 %%% @end
 %%% ====================================================================
 
--module(node_flat).
+-module(node_flat_p1db).
 -behaviour(gen_pubsub_node).
 -author('christophe.romain@process-one.net').
 
@@ -45,125 +45,104 @@
     path_to_node/1]).
 
 init(Host, ServerHost, Opts) ->
-    pubsub_subscription:init(Host, ServerHost, Opts),
-    mnesia:create_table(pubsub_state,
-	[{disc_copies, [node()]}, {index, [nodeidx]},
-	    {type, ordered_set},
-	    {attributes, record_info(fields, pubsub_state)}]),
-    mnesia:create_table(pubsub_item,
-	[{disc_only_copies, [node()]}, {index, [nodeidx]},
-	    {attributes, record_info(fields, pubsub_item)}]),
-    ItemsFields = record_info(fields, pubsub_item),
-    case mnesia:table_info(pubsub_item, attributes) of
-	ItemsFields -> ok;
-	_ -> mnesia:transform_table(pubsub_item, ignore, ItemsFields)
-    end,
-    ok.
+    node_hometree_p1db:init(Host, ServerHost, Opts).
 
 terminate(Host, ServerHost) ->
-    node_hometree:terminate(Host, ServerHost).
+    node_hometree_p1db:terminate(Host, ServerHost).
 
 options() ->
-    node_hometree:options().
+    node_flat:options().
 
 features() ->
-    node_hometree:features().
+    node_flat:features().
 
-%% use same code as node_hometree, but do not limite node to
+%% use same code as node_hometree_p1db, but do not limite node to
 %% the home/localhost/user/... hierarchy
 %% any node is allowed
-create_node_permission(Host, ServerHost, _Node, _ParentNode, Owner, Access) ->
-    LOwner = jlib:jid_tolower(Owner),
-    Allowed = case LOwner of
-	{<<"">>, Host, <<"">>} ->
-	    true; % pubsub service always allowed
-	_ ->
-	    acl:match_rule(ServerHost, Access, LOwner) =:= allow
-    end,
-    {result, Allowed}.
+create_node_permission(Host, ServerHost, Node, ParentNode, Owner, Access) ->
+    node_flat:create_node_permission(Host, ServerHost, Node, ParentNode, Owner, Access).
 
 create_node(Nidx, Owner) ->
-    node_hometree:create_node(Nidx, Owner).
+    node_hometree_p1db:create_node(Nidx, Owner).
 
 delete_node(Removed) ->
-    node_hometree:delete_node(Removed).
+    node_hometree_p1db:delete_node(Removed).
 
 subscribe_node(Nidx, Sender, Subscriber, AccessModel,
 	    SendLast, PresenceSubscription, RosterGroup, Options) ->
-    node_hometree:subscribe_node(Nidx, Sender, Subscriber,
-	AccessModel, SendLast, PresenceSubscription,
-	RosterGroup, Options).
+    node_hometree_p1db:subscribe_node(Nidx, Sender, Subscriber, AccessModel, SendLast,
+	PresenceSubscription, RosterGroup, Options).
 
 unsubscribe_node(Nidx, Sender, Subscriber, SubId) ->
-    node_hometree:unsubscribe_node(Nidx, Sender, Subscriber, SubId).
+    node_hometree_p1db:unsubscribe_node(Nidx, Sender, Subscriber, SubId).
 
 publish_item(Nidx, Publisher, Model, MaxItems, ItemId, Payload) ->
-    node_hometree:publish_item(Nidx, Publisher, Model, MaxItems, ItemId, Payload).
+    node_hometree_p1db:publish_item(Nidx, Publisher, Model, MaxItems, ItemId, Payload).
 
 remove_extra_items(Nidx, MaxItems, ItemIds) ->
-    node_hometree:remove_extra_items(Nidx, MaxItems, ItemIds).
+    node_hometree_p1db:remove_extra_items(Nidx, MaxItems, ItemIds).
 
 delete_item(Nidx, Publisher, PublishModel, ItemId) ->
-    node_hometree:delete_item(Nidx, Publisher, PublishModel, ItemId).
+    node_hometree_p1db:delete_item(Nidx, Publisher, PublishModel, ItemId).
 
 purge_node(Nidx, Owner) ->
-    node_hometree:purge_node(Nidx, Owner).
+    node_hometree_p1db:purge_node(Nidx, Owner).
 
 get_entity_affiliations(Host, Owner) ->
-    node_hometree:get_entity_affiliations(Host, Owner).
+    node_hometree_p1db:get_entity_affiliations(Host, Owner).
 
 get_node_affiliations(Nidx) ->
-    node_hometree:get_node_affiliations(Nidx).
+    node_hometree_p1db:get_node_affiliations(Nidx).
 
 get_affiliation(Nidx, Owner) ->
-    node_hometree:get_affiliation(Nidx, Owner).
+    node_hometree_p1db:get_affiliation(Nidx, Owner).
 
 set_affiliation(Nidx, Owner, Affiliation) ->
-    node_hometree:set_affiliation(Nidx, Owner, Affiliation).
+    node_hometree_p1db:set_affiliation(Nidx, Owner, Affiliation).
 
 get_entity_subscriptions(Host, Owner) ->
-    node_hometree:get_entity_subscriptions(Host, Owner).
+    node_hometree_p1db:get_entity_subscriptions(Host, Owner).
 
 get_node_subscriptions(Nidx) ->
-    node_hometree:get_node_subscriptions(Nidx).
+    node_hometree_p1db:get_node_subscriptions(Nidx).
 
 get_subscriptions(Nidx, Owner) ->
-    node_hometree:get_subscriptions(Nidx, Owner).
+    node_hometree_p1db:get_subscriptions(Nidx, Owner).
 
 set_subscriptions(Nidx, Owner, Subscription, SubId) ->
-    node_hometree:set_subscriptions(Nidx, Owner, Subscription, SubId).
+    node_hometree_p1db:set_subscriptions(Nidx, Owner, Subscription, SubId).
 
 get_pending_nodes(Host, Owner) ->
-    node_hometree:get_pending_nodes(Host, Owner).
+    node_hometree_p1db:get_pending_nodes(Host, Owner).
 
 get_states(Nidx) ->
-    node_hometree:get_states(Nidx).
+    node_hometree_p1db:get_states(Nidx).
 
 get_state(Nidx, JID) ->
-    node_hometree:get_state(Nidx, JID).
+    node_hometree_p1db:get_state(Nidx, JID).
 
 set_state(State) ->
-    node_hometree:set_state(State).
+    node_hometree_p1db:set_state(State).
 
 get_items(Nidx, From, RSM) ->
-    node_hometree:get_items(Nidx, From, RSM).
+    node_hometree_p1db:get_items(Nidx, From, RSM).
 
 get_items(Nidx, JID, AccessModel, PresenceSubscription, RosterGroup, SubId, RSM) ->
-    node_hometree:get_items(Nidx, JID, AccessModel,
+    node_hometree_p1db:get_items(Nidx, JID, AccessModel,
 	PresenceSubscription, RosterGroup, SubId, RSM).
 
 get_item(Nidx, ItemId) ->
-    node_hometree:get_item(Nidx, ItemId).
+    node_hometree_p1db:get_item(Nidx, ItemId).
 
 get_item(Nidx, ItemId, JID, AccessModel, PresenceSubscription, RosterGroup, SubId) ->
-    node_hometree:get_item(Nidx, ItemId, JID, AccessModel,
-	PresenceSubscription, RosterGroup, SubId).
+    node_hometree_p1db:get_item(Nidx, ItemId, JID,
+	AccessModel, PresenceSubscription, RosterGroup, SubId).
 
 set_item(Item) ->
-    node_hometree:set_item(Item).
+    node_hometree_p1db:set_item(Item).
 
 get_item_name(Host, Node, Id) ->
-    node_hometree:get_item_name(Host, Node, Id).
+    node_hometree_p1db:get_item_name(Host, Node, Id).
 
 node_to_path(Node) ->
     [(Node)].
