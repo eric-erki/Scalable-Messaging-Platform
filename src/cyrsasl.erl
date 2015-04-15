@@ -29,7 +29,7 @@
 -author('alexey@process-one.net').
 
 -export([start/0, register_mechanism/3, listmech/1,
-	 server_new/7, server_start/3, server_step/2]).
+	 server_new/8, server_start/4, server_step/2]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -64,10 +64,11 @@
     check_password,
     check_password_digest,
     mech_mod,
-    mech_state
+    mech_state,
+    is_user_exists
 }).
 
--callback mech_new(binary(), fun(), fun(), fun()) -> any().
+-callback mech_new(binary(), fun(), fun(), fun(), fun(), term()) -> any().
 -callback mech_step(any(), binary()) -> {ok, props()} |
                                         {ok, props(), binary()} |
                                         {continue, binary(), any()} |
@@ -82,6 +83,7 @@ start() ->
     cyrsasl_digest:start([]),
     cyrsasl_scram:start([]),
     cyrsasl_anonymous:start([]),
+    cyrsasl_pkix:start([]),
     ok.
 
 %%
@@ -159,13 +161,14 @@ listmech(Host) ->
     filter_anonymous(Host, Mechs).
 
 server_new(Service, ServerFQDN, UserRealm, _SecFlags,
-	   GetPassword, CheckPassword, CheckPasswordDigest) ->
+	   GetPassword, CheckPassword, CheckPasswordDigest, IsUserExists) ->
     #sasl_state{service = Service, myname = ServerFQDN,
 		realm = UserRealm, get_password = GetPassword,
 		check_password = CheckPassword,
-		check_password_digest = CheckPasswordDigest}.
+		check_password_digest = CheckPasswordDigest,
+		is_user_exists = IsUserExists}.
 
-server_start(State, Mech, ClientIn) ->
+server_start(State, Mech, ClientIn, ClientCertFile) ->
     case lists:member(Mech,
 		      listmech(State#sasl_state.myname))
 	of
@@ -176,7 +179,9 @@ server_start(State, Mech, ClientIn) ->
 		    Module:mech_new(State#sasl_state.myname,
 				    State#sasl_state.get_password,
 				    State#sasl_state.check_password,
-				    State#sasl_state.check_password_digest),
+				    State#sasl_state.check_password_digest,
+				    State#sasl_state.is_user_exists,
+				    ClientCertFile),
 		server_step(State#sasl_state{mech_mod = Module,
 					     mech_state = MechState},
 			    ClientIn);
@@ -203,6 +208,8 @@ server_step(State, ClientIn) ->
             {continue, ServerOut, State#sasl_state{mech_state = NewMechState}};
         {error, Error, Username} ->
             {error, Error, Username};
+	{error, Error, Username, Txt} ->
+	    {error, Error, Username, Txt};
         {error, Error} ->
             {error, Error}
     end.

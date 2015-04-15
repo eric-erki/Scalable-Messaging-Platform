@@ -343,6 +343,8 @@ listen:
     module: ejabberd_c2s
     max_stanza_size: 65536
     certfile: CERTFILE
+    tls_verify: true
+    cafile: "@@data_dir@@/ca.pem"
     zlib: true
     starttls: true
     shaper: c2s_shaper

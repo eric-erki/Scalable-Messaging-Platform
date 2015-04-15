@@ -41,7 +41,8 @@ init_config(Config) ->
                                                     {pgsql_port, 5432},
                                                     {pgsql_db, <<"ejabberd_test">>},
                                                     {pgsql_user, <<"ejabberd_test">>},
-                                                    {pgsql_pass, <<"ejabberd_test">>}
+                                                    {pgsql_pass, <<"ejabberd_test">>},
+						    {data_dir, DataDir}
                                                    ]),
     ConfigPath = filename:join([CWD, "ejabberd.yml"]),
     ok = file:write_file(ConfigPath, CfgContent),
@@ -278,6 +279,9 @@ send_recv(State, El) ->
 
 sasl_new(<<"PLAIN">>, User, Server, Password) ->
     {<<User/binary, $@, Server/binary, 0, User/binary, 0, Password/binary>>,
+     fun (_) -> {error, <<"Invalid SASL challenge">>} end};
+sasl_new(<<"EXTERNAL">>, User, Server, _Password) ->
+    {<<User/binary, $@, Server/binary>>,
      fun (_) -> {error, <<"Invalid SASL challenge">>} end};
 sasl_new(<<"DIGEST-MD5">>, User, Server, Password) ->
     {<<"">>,

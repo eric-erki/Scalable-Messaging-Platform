@@ -32,7 +32,8 @@
 -export([init/0, start/4, connect/3, connect/4, starttls/2,
 	 starttls/3, compress/1, compress/2, reset_stream/1,
 	 send/2, send_xml/2, change_shaper/2, monitor/1,
-	 get_sockmod/1, get_peer_certificate/1, get_conn_type/1,
+	 get_sockmod/1, get_peer_certificate/1,
+	 get_peer_certificate/2, get_conn_type/1,
 	 get_verify_result/1, close/1, change_controller/2,
 	 change_socket/2, sockname/1, peername/1, is_remote_receiver/1]).
 
@@ -242,7 +243,10 @@ get_sockmod(SocketData) ->
     SocketData#socket_state.sockmod.
 
 get_peer_certificate(SocketData) ->
-    p1_tls:get_peer_certificate(SocketData#socket_state.socket).
+    get_peer_certificate(SocketData, plain).
+
+get_peer_certificate(SocketData, Type) ->
+    p1_tls:get_peer_certificate(SocketData#socket_state.socket, Type).
 
 get_verify_result(SocketData) ->
     p1_tls:get_verify_result(SocketData#socket_state.socket).

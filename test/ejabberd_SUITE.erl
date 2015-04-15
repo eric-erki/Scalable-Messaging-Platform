@@ -154,6 +154,8 @@ init_per_testcase(TestCase, OrigConfig) ->
             connect(Config);
         auth_plain ->
             connect(Config);
+	auth_external ->
+	    connect(Config);
 	p1_rebind_reconnect ->
 	    connect(Config);
         test_bind ->
@@ -265,6 +267,7 @@ db_tests(_) ->
       [test_register,
        auth_plain,
        auth_md5,
+       auth_external,
        presence_broadcast,
        last,
        roster_get,
@@ -415,6 +418,16 @@ auth_plain(Config) ->
         false ->
             disconnect(Config),
             {skipped, 'PLAIN_not_available'}
+    end.
+
+auth_external(Config) ->
+    Mechs = ?config(mechs, Config),
+    case lists:member(<<"EXTERNAL">>, Mechs) of
+	true ->
+	    disconnect(auth_SASL(<<"EXTERNAL">>, starttls(Config)));
+	false ->
+	    disconnect(Config),
+	    {skipped, 'SASL_EXTERNAL_not_available'}
     end.
 
 test_auth(Config) ->

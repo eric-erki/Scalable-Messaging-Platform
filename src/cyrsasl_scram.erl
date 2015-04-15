@@ -28,7 +28,7 @@
 
 -author('stephen.roettger@googlemail.com').
 
--export([start/1, stop/0, mech_new/4, mech_step/2]).
+-export([start/1, stop/0, mech_new/6, mech_step/2]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -57,7 +57,7 @@ start(_Opts) ->
 stop() -> ok.
 
 mech_new(_Host, GetPassword, _CheckPassword,
-	 _CheckPasswordDigest) ->
+	 _CheckPasswordDigest, _IsUserExists, _ClientCertFile) ->
     {ok, #state{step = 2, get_password = GetPassword}}.
 
 mech_step(#state{step = 2} = State, ClientIn) ->

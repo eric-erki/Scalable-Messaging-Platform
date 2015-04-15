@@ -311,6 +311,7 @@ init([{SockMod, Socket}, Opts, FSMLimitOpts]) ->
 	    StartTLSRequired orelse TLSEnabled,
     TLSOpts1 = lists:filter(fun ({certfile, _}) -> true;
 				({ciphers, _}) -> true;
+				({cafile, _}) -> true;
 				(_) -> false
 			    end,
 			    Opts),
@@ -327,7 +328,12 @@ init([{SockMod, Socket}, Opts, FSMLimitOpts]) ->
                    false -> [compression_none | TLSOpts2];
                    true -> TLSOpts2
                end,
-    TLSOpts = [verify_none | TLSOpts3],
+    TLSOpts = case proplists:get_bool(tls_verify, Opts) of
+		  true ->
+		      TLSOpts3;
+		  false ->
+		      [verify_none | TLSOpts3]
+	      end,
     Redirect = case lists:keysearch(redirect, 1, Opts) of
 		 {value, {_, true}} -> true;
 		 _ -> false
@@ -502,6 +508,9 @@ wait_for_stream({xmlstreamstart, Name, Attrs},
 														P,
 														D,
 														DG)
+							   end,
+							   fun (U) ->
+								   ejabberd_auth:is_user_exists(U, Server)
 							   end),
 			    Mechs =
 				case TLSEnabled or not TLSRequired of
@@ -955,8 +964,9 @@ wait_for_feature_request({xmlstreamelement, El},
 	  when TLSEnabled or not TLSRequired ->
 	  Mech = xml:get_attr_s(<<"mechanism">>, Attrs),
 	  ClientIn = jlib:decode_base64(xml:get_cdata(Els)),
+	  ClientCertFile = get_cert_file(StateData, Mech),
 	  case cyrsasl:server_start(StateData#state.sasl_state,
-				    Mech, ClientIn)
+				    Mech, ClientIn, ClientCertFile)
 	      of
 	    {ok, Props} ->
 		catch
@@ -1016,6 +1026,32 @@ wait_for_feature_request({xmlstreamelement, El},
 						children = []}]}),
 		{next_state, wait_for_feature_request, StateData,
 		 ?C2S_OPEN_TIMEOUT};
+	    {error, Error, Username, Txt} ->
+		if Username /= <<"">> ->
+			?INFO_MSG("(~w) Failed authentication for ~s@~s from ~s: ~s",
+				  [StateData#state.socket,
+				   Username, StateData#state.server,
+				   jlib:ip_to_list(StateData#state.ip), Txt]),
+			ejabberd_hooks:run(c2s_auth_result,
+					   StateData#state.server,
+					   [false, Username,
+					    StateData#state.server,
+					    StateData#state.ip]);
+		   true ->
+			ok
+		end,
+		send_element(
+		  StateData,
+		  #xmlel{name = <<"failure">>,
+			 attrs = [{<<"xmlns">>, ?NS_SASL}],
+			 children =
+			     [#xmlel{name = Error,
+				     children =
+					 [#xmlel{name = <<"text">>,
+						 children =
+						     [{xmlcdata, Txt}]}]}]}),
+		{next_state, wait_for_feature_request, StateData,
+		 ?C2S_OPEN_TIMEOUT};
 	    {error, Error} ->
 		send_element(StateData,
 			     #xmlel{name = <<"failure">>,
@@ -1028,7 +1064,7 @@ wait_for_feature_request({xmlstreamelement, El},
       {?NS_TLS, <<"starttls">>}
 	  when TLS == true, TLSEnabled == false,
 	       SockMod == gen_tcp ->
-	  TLSOpts = case
+	  TLSOpts1 = case
 		      ejabberd_config:get_option(
                         {domain_certfile, StateData#state.server},
                         fun iolist_to_binary/1)
@@ -1037,6 +1073,15 @@ wait_for_feature_request({xmlstreamelement, El},
 		      CertFile ->
 			  [{certfile, CertFile} | lists:keydelete(certfile, 1,
 								  StateData#state.tls_options)]
+		    end,
+	  TLSOpts = case ejabberd_config:get_option(
+			   {c2s_tls_verify, StateData#state.server},
+			   fun(B) when is_boolean(B) -> B end,
+			   false) of
+			true ->
+			    TLSOpts1 -- [verify_none];
+			false ->
+			    TLSOpts1
 		    end,
 	  Socket = StateData#state.socket,
 	  case (StateData#state.sockmod):starttls(
@@ -1244,6 +1289,32 @@ wait_for_sasl_response({xmlstreamelement, El},
 					[#xmlel{name = Error, attrs = [],
 						children = []}]}),
 		fsm_next_state(wait_for_feature_request, StateData);
+	    {error, Error, Username, Txt} ->
+		if Username /= <<"">> ->
+			?INFO_MSG("(~w) Failed authentication for ~s@~s from ~s: ~s",
+				  [StateData#state.socket,
+				   Username, StateData#state.server,
+				   jlib:ip_to_list(StateData#state.ip), Txt]),
+			ejabberd_hooks:run(c2s_auth_result,
+					   StateData#state.server,
+					   [false, Username,
+					    StateData#state.server,
+					    StateData#state.ip]);
+		   true ->
+			ok
+		end,
+		send_element(
+		  StateData,
+		  #xmlel{name = <<"failure">>,
+			 attrs = [{<<"xmlns">>, ?NS_SASL}],
+			 children =
+			     [#xmlel{name = Error,
+				     children =
+					 [#xmlel{name = <<"text">>,
+						 children =
+						     [{xmlcdata, Txt}]}]}]}),
+		{next_state, wait_for_feature_request, StateData,
+		 ?C2S_OPEN_TIMEOUT};
 	    {error, Error} ->
 		send_element(StateData,
 			     #xmlel{name = <<"failure">>,
@@ -3792,6 +3863,53 @@ bounce_messages() ->
       {route, From, To, El = #xmlel{}} ->
 	  ejabberd_router:route(From, To, El), bounce_messages()
       after 0 -> ok
+    end.
+
+get_cert_file(StateData, <<"EXTERNAL">>) ->
+    case proplists:get_bool(verify_none, StateData#state.tls_options) of
+        false ->
+            %% Certificate verification is enabled in the config
+            case (StateData#state.sockmod):get_peer_certificate(
+                   StateData#state.socket, otp) of
+                {ok, Cert} ->
+		    case verify_cert(StateData, Cert) of
+			true ->
+			    Cert;
+			false ->
+			    {Cert, <<"certificate verification failed">>}
+		    end;
+                error ->
+                    undefined
+            end;
+        true ->
+            undefined
+    end;
+get_cert_file(_StateData, _Mech) ->
+    undefined.
+
+verify_cert(StateData, Cert) ->
+    case lists:keyfind(cafile, 1, StateData#state.tls_options) of
+	false ->
+	    case (StateData#state.sockmod):get_verify_result(
+		   StateData#state.socket) of
+		0 ->
+		    true;
+		_ ->
+		    false
+	    end;
+	{cafile, Path} ->
+	    case file:read_file(Path) of
+		{ok, PemBin} ->
+		    CAList = public_key:pem_decode(PemBin),
+		    lists:any(
+		      fun({'Certificate', Issuer, _}) ->
+			      public_key:pkix_is_issuer(Cert, Issuer)
+		      end, CAList);
+		{error, Why} ->
+		    ?ERROR_MSG("Failed to read file ~s: ~s",
+			       [Path, file:format_error(Why)]),
+		    false
+	    end
     end.
 
 %%%----------------------------------------------------------------------

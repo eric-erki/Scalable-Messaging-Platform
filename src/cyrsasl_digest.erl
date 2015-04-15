@@ -28,7 +28,7 @@
 
 -author('alexey@sevcom.net').
 
--export([start/1, stop/0, mech_new/4, mech_step/2, parse/1]).
+-export([start/1, stop/0, mech_new/6, mech_step/2, parse/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -64,7 +64,7 @@ start(_Opts) ->
 stop() -> ok.
 
 mech_new(Host, GetPassword, _CheckPassword,
-	 CheckPasswordDigest) ->
+	 CheckPasswordDigest, _IsUserExists, _CertFile) ->
     {ok,
      #state{step = 1, nonce = randoms:get_string(),
 	    host = Host, hostfqdn = get_local_fqdn(),
