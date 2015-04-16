@@ -919,7 +919,7 @@ The available modules, their purpose and the options allowed by each one are:
   \titem{\texttt{ejabberd\_c2s}}
     Handles c2s connections.\\
     Options: \texttt{access}, \texttt{certfile}, \texttt{ciphers},
-    \texttt{protocol\_options},
+    \texttt{protocol\_options}, \texttt{cafile}, \texttt{tls\_verify},
     \texttt{max\_ack\_queue}, \texttt{max\_fsm\_queue},
     \texttt{max\_stanza\_size}, \texttt{resend\_on\_timeout},
     \texttt{resume\_timeout}, \texttt{shaper},
@@ -984,6 +984,8 @@ This is a detailed description of each option allowed by the listening modules:
     lots of new incoming connections as they may be dropped if there is
     no space in the queue (and ejabberd was not able to accept them
     immediately). Default value is 5.
+  \titem{cafile: Path} Full path to a file containing root CA certificates in PEM format.
+  This option is only used in conjunction with \option{tls\_verify} option.
   \titem{captcha: true|false} \ind{options!http-captcha}
     Simple web page that allows a user to fill a CAPTCHA challenge (see section \ref{captcha}).
   \titem{certfile: Path} Full path to a file containing the default SSL certificate.
@@ -1143,6 +1145,14 @@ request_handlers:
     The option \term{tls} can also be used in \term{ejabberd\_http} to support HTTPS.
   \titem{tls\_compression: true|false}
   Whether to enable or disable TLS compression. The default value is \term{true}.
+  \titem{tls\_verify: true|false}
+  Set SASL EXTERNAL authentication as described in \xepref{0178}. When enabled another
+  option \option{cafile} should specify the file with root CA certificates in PEM format.
+  All client certificates should be signed by one of these root CA certificates and should
+  contain the corresponding JID(s) in \term{subjectAltName} field as described in
+  \footahref{https://tools.ietf.org/html/rfc6120\#section-13.7.1.4}{RFC 6120: XMPP Core}.
+  If \option{cafile} is not defined, system CA certificate storage will be consulted
+  which in the most cases will be too broad and, thus, insecure.
   \titem{trusted\_proxies: all | [IpString]} \ind{options!trusted\_proxies}
     Specify what proxies are trusted when an HTTP request contains the header \term{X-Forwarded-For}
     You can specify \term{all} to allow all proxies, or specify a list of IPs in string format.
@@ -1159,6 +1169,8 @@ request_handlers:
 
 There are some additional global options that can be specified in the ejabberd configuration file (outside \term{listen}):
 \begin{description}
+  \titem{c2s\_tls\_verify: true|false} Same as the listening option \term{tls\_verify}
+  but can be applied to a different virtual hosts if used within \option{host\_config}.
   \titem{s2s\_use\_starttls: false|optional|required|required\_trusted}
   \ind{options!s2s\_use\_starttls}\ind{STARTTLS}This option defines if 
   s2s connections don't use STARTTLS encryption; if STARTTLS can be used optionally;
@@ -4227,7 +4239,7 @@ Note that \term{ejabberdctl}\ind{ejabberdctl} has a command to delete expired me
   \term{max\_user\_sessions} (see \ref{configmaxsessions}).
   \titem{store\_empty\_body: true|false}\ind{options!store\_empty\_body} Whether or not
   to store messages with empty \term{<body/>} element. The default value is \term{true}.
-  \titem{pool\_size: N}\ind{options!pool_size} Size of the worker pool for offline storage. Default is 16.
+  \titem{pool\_size: N}\ind{options!pool\_size} Size of the worker pool for offline storage. Default is 16.
 \end{description}
 
 This example allows power users to have as much as 5000 offline messages,
