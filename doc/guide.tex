@@ -1152,7 +1152,8 @@ request_handlers:
   contain the corresponding JID(s) in \term{subjectAltName} field as described in
   \footahref{https://tools.ietf.org/html/rfc6120\#section-13.7.1.4}{RFC 6120: XMPP Core}.
   If \option{cafile} is not defined, system CA certificate storage will be consulted
-  which in the most cases will be too broad and, thus, insecure.
+  which in the most cases will be too broad and, thus, insecure. Note that a user
+  should be still registered in the system in order for this type of authentication to work.
   \titem{trusted\_proxies: all | [IpString]} \ind{options!trusted\_proxies}
     Specify what proxies are trusted when an HTTP request contains the header \term{X-Forwarded-For}
     You can specify \term{all} to allow all proxies, or specify a list of IPs in string format.
