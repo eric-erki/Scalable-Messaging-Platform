@@ -143,6 +143,15 @@ Welcome to this XMPP server."
         db_type: p1db
       mod_private: 
         db_type: p1db
+      mod_pubsub: 
+        db_type: p1db
+        access_createnode: pubsub_createnode
+        ignore_pep_from_offline: true
+        last_item_cache: false
+        plugins: 
+          - "flat"
+          - "hometree"
+          - "pep"
       mod_roster: 
         versioning: true
         store_current_id: true
