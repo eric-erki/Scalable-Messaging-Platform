@@ -199,7 +199,6 @@ no_db_tests() ->
       [client_state_master, client_state_slave]}].
 
 db_tests(p1db) ->
-    %% No support for mod_pubsub so far
     [{single_user, [sequence],
       [test_register,
        auth_plain,
@@ -211,6 +210,7 @@ db_tests(p1db) ->
        privacy,
        blocking,
        vcard,
+       pubsub,
        test_unregister]},
      {test_muc_register, [sequence],
       [muc_register_master, muc_register_slave]},
