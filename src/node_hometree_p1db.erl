@@ -218,7 +218,7 @@ subscribe_node(Nidx, Sender, Subscriber, AccessModel,
 	%%        % Requesting entity is anonymous
 	%%        {error, ?ERR_FORBIDDEN};
 	true ->
-	    SubId = pubsub_subscription:add_subscription(Subscriber, Nidx, Options),
+	    SubId = pubsub_subscription_p1db:add_subscription(Subscriber, Nidx, Options),
 	    NewSub = case AccessModel of
 		authorize -> pending;
 		_ -> subscribed
@@ -300,7 +300,7 @@ unsubscribe_node(Nidx, Sender, Subscriber, SubId) ->
 
 delete_subscriptions(SubKey, Nidx, Subscriptions, SubState) ->
     NewSubs = lists:foldl(fun ({Subscription, SubId}, Acc) ->
-		    pubsub_subscription:delete_subscription(SubKey, Nidx, SubId),
+		    pubsub_subscription_p1db:delete_subscription(SubKey, Nidx, SubId),
 		    Acc -- [{Subscription, SubId}]
 	    end, SubState#pubsub_state.subscriptions, Subscriptions),
     case {SubState#pubsub_state.affiliation, NewSubs} of
@@ -599,13 +599,13 @@ replace_subscription({Sub, SubId}, [{_, SubId} | T], Acc) ->
     replace_subscription({Sub, SubId}, T, [{Sub, SubId} | Acc]).
 
 new_subscription(Nidx, Owner, Sub, SubState) ->
-    SubId = pubsub_subscription:add_subscription(Owner, Nidx, []),
+    SubId = pubsub_subscription_p1db:add_subscription(Owner, Nidx, []),
     Subs = SubState#pubsub_state.subscriptions,
     set_state(SubState#pubsub_state{subscriptions = [{Sub, SubId} | Subs]}),
     {Sub, SubId}.
 
 unsub_with_subid(Nidx, SubId, #pubsub_state{stateid = {Entity, _}} = SubState) ->
-    pubsub_subscription:delete_subscription(SubState#pubsub_state.stateid, Nidx, SubId),
+    pubsub_subscription_p1db:delete_subscription(SubState#pubsub_state.stateid, Nidx, SubId),
     NewSubs = [{S, Sid}
 	    || {S, Sid} <- SubState#pubsub_state.subscriptions,
 		SubId =/= Sid],
