@@ -4046,7 +4046,7 @@ tree_action(Host, Function, Args) ->
 		    {error, ?ERR_INTERNAL_SERVER_ERROR}
 	    end;
 	p1db ->
-	    {atomic, Fun()};
+	    Fun();
 	Other ->
 	    ?ERROR_MSG("unsupported backend: ~p~n", [Other]),
 	    {error, ?ERR_INTERNAL_SERVER_ERROR}
