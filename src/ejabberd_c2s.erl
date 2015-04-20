@@ -2062,12 +2062,17 @@ handle_info({route, From, To,
 						true -> {true, Attrs, StateData}
 					     end;
 					 deny ->
-					     Err =
-						 jlib:make_error_reply(Packet,
-								       ?ERR_SERVICE_UNAVAILABLE),
-					     ejabberd_router:route(To, From,
-								   Err),
-					     {false, Attrs, StateData}
+                                               case xml:get_attr_s(<<"type">>, Attrs) of
+                                                   <<"error">> -> ok;
+                                                   <<"result">> -> ok;
+                                                   _ ->
+                                                       Err =
+                                                           jlib:make_error_reply(Packet,
+                                                                                 ?ERR_SERVICE_UNAVAILABLE),
+                                                       ejabberd_router:route(To, From,
+                                                                             Err)
+                                               end,
+                                               {false, Attrs, StateData}
 				       end;
 				   _ -> {true, Attrs, StateData}
 				 end,
@@ -2713,15 +2718,16 @@ check_privacy_route(From, StateData, FromRoute, To,
     case privacy_check_packet(StateData, From, To, Packet,
 			      out)
 	of
-      deny ->
-	  Lang = StateData#state.lang,
-	  ErrText = <<"Your active privacy list has denied "
-		      "the routing of this stanza.">>,
-	  Err = jlib:make_error_reply(Packet,
-				      ?ERRT_NOT_ACCEPTABLE(Lang, ErrText)),
-	  ejabberd_router:route(To, From, Err),
-	  ok;
-      allow -> ejabberd_router:route(FromRoute, To, Packet)
+        deny ->
+            Lang = StateData#state.lang,
+            ErrText = <<"Your active privacy list has denied "
+                       "the routing of this stanza.">>,
+            Err = jlib:make_error_reply(Packet,
+                                        ?ERRT_NOT_ACCEPTABLE(Lang, ErrText)),
+            Err2 = jlib:replace_from_to(To, From, Err),
+            send_element(StateData, Err2),
+            ok;
+        allow -> ejabberd_router:route(FromRoute, To, Packet)
     end.
 
 privacy_check_packet(StateData, From, To, Packet,
