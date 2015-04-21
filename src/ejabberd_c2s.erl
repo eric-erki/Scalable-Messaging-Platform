@@ -3567,6 +3567,33 @@ rebind(StateData, JID, StreamID) ->
 	  end
     end.
 
+notif_to_disable(El, StateData) ->
+    SessionNotif = StateData#state.oor_notification,
+    SessionAppId = StateData#state.oor_appid,
+    SpecifiedNotif = xml:get_path_s(El, [{elem, <<"notification">>}]),
+    SpecifiedAppID = xml:get_path_s(El, [{elem, <<"appid">>}, cdata]),
+    case {SpecifiedNotif, SessionNotif} of
+        {#xmlel{}, #xmlel{}} ->
+            SpecifiedNormalized = { xml:get_path_s(SpecifiedNotif, [{elem, <<"type">>}, cdata]),
+	                            xml:get_path_s(SpecifiedNotif, [{elem, <<"id">>}, cdata])},
+            SessionNormalized = { xml:get_path_s(SessionNotif, [{elem, <<"type">>}, cdata]),
+	                            xml:get_path_s(SessionNotif, [{elem, <<"id">>}, cdata])},
+            if
+                (SpecifiedNormalized == SessionNormalized) and (SessionAppId == SpecifiedAppID) ->
+                    {ok, SessionAppId, SessionNotif}; %% match
+                true ->
+                    %% device ID doesn't match
+                    {error, "Device data provided doesn't match with the session"}
+            end;
+        {#xmlel{}, _} when SpecifiedAppID /= "" ->
+            {ok, SpecifiedAppID, SpecifiedNotif};
+        {_, #xmlel{}} ->
+            {ok, SessionAppId, SessionNotif};
+        {_,_} ->
+            %% Session not enabled push, and notif element not specified neither.
+            {error, "Push not enabled in this session. To disable offline push, provide the device ID and application ID"}
+    end.
+
 process_push_iq(From, To,
 		#iq{type = _Type, sub_el = El} = IQ, StateData) ->
     {Res, NewStateData} = case El of
@@ -3719,21 +3746,27 @@ process_push_iq(From, To,
 				  _ -> {{error, ?ERR_BAD_REQUEST}, StateData}
 				end;
 			    #xmlel{name = <<"disable">>} ->
-				ejabberd_hooks:run(p1_push_disable,
-						   StateData#state.server,
-						   [StateData#state.jid,
-						    StateData#state.oor_notification,
-						    StateData#state.oor_appid]),
-				NSD1 = StateData#state{keepalive_timeout =
-							   undefined,
-						       oor_timeout = undefined,
-						       oor_status = <<"">>,
-						       oor_show = <<"">>,
-						       oor_notification =
-							   undefined,
-						       oor_send_body = all},
-				NSD2 = start_keepalive_timer(NSD1),
-				{{result, []}, NSD2};
+                                case notif_to_disable(El, StateData) of
+                                    {ok, AppId, Notif} ->
+                                        ejabberd_hooks:run(p1_push_disable,
+                                                           StateData#state.server,
+                                                           [StateData#state.jid,
+                                                            Notif,
+                                                            AppId]),
+                                        NSD1 = StateData#state{keepalive_timeout =
+                                                                   undefined,
+                                                               oor_timeout = undefined,
+                                                               oor_status = <<"">>,
+                                                               oor_show = <<"">>,
+                                                               oor_notification =
+                                                                   undefined,
+                                                               oor_send_body = all},
+                                        NSD2 = start_keepalive_timer(NSD1),
+                                        {{result, []}, NSD2};
+                                    {error, ErrText} ->
+                                        Lang = StateData#state.lang,
+                                         {{error, ?ERRT_NOT_ACCEPTABLE(Lang,ErrText)}, StateData}
+                                end;
 			    #xmlel{name = <<"badge">>} ->
 				SBadge = xml:get_path_s(El,
 							[{attr, <<"unread">>}]),
