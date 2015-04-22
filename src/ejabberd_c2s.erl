@@ -1714,6 +1714,13 @@ handle_sync_event({resume_session, Time}, _From, _StateName,
 handle_sync_event({resume_session, _Time}, _From, StateName,
 		  StateData) ->
     {reply, {error, <<"Previous session not found">>}, StateName, StateData};
+handle_sync_event({messages_replaced, Msgs}, _From, StateName, StateData) ->
+    %% See EJABS-2443
+    ?DEBUG("Processing messages to replace connection ~p", [Msgs]),
+    NewStateData = lists:foldl(fun({From, To, FixedPacket}, State) ->
+                    send_or_enqueue_packet(State, From, To, FixedPacket)
+                  end, StateData, Msgs),
+    fsm_reply(ok, StateName, NewStateData);
 handle_sync_event(_Event, _From, StateName,
 		  StateData) ->
     Reply = ok, fsm_reply(Reply, StateName, StateData).
@@ -1725,6 +1732,23 @@ handle_info({send_text, Text}, StateName, StateData) ->
     send_text(StateData, Text),
     ejabberd_hooks:run(c2s_loop_debug, [Text]),
     fsm_next_state(StateName, StateData);
+handle_info({replaced, Pid}, StateName, StateData) ->
+    %% We try to pass the queued messages to the new session,  if that fails for some reason, do the normal workflow
+    %% (re-route the messages,  on terminate() ). See discussion on EJABS-2443
+    NewStateData = if
+        StateData#state.queue_len > 0 ->
+            case catch ?GEN_FSM:sync_send_all_state_event(Pid, {messages_replaced, queue:to_list(StateData#state.queue)}) of
+                       ok ->
+                           StateData#state{queue=queue:new(), queue_len = 0};
+                       Error ->
+                           ?ERROR_MSG("Messages failed to transfer to the new session, will be re-routed ~p (~p): ~p",
+                                      [Pid, jlib:jid_to_string(StateData#state.jid), Error]),
+                           StateData
+            end;
+        true ->
+            StateData
+    end,
+    handle_info(replaced, StateName, NewStateData);
 handle_info(replaced, StateName, StateData) ->
     Lang = StateData#state.lang,
     Xmlelement = ?SERRT_CONFLICT(Lang, <<"Replaced by new connection">>),
@@ -1734,8 +1758,10 @@ handle_info(kick, StateName, StateData) ->
     Xmlelement = ?SERRT_POLICY_VIOLATION(Lang, <<"has been kicked">>),
     handle_info({kick, kicked_by_admin, Xmlelement}, StateName, StateData);
 handle_info({kick, Reason, Xmlelement}, _StateName, StateData) ->
-    send_element(StateData, Xmlelement),
-    send_trailer(StateData),
+    %% Catch the send because the session we are kicking might be in detached state (no socket),
+    %% and we want to terminate it cleanly anyway.
+    catch send_element(StateData, Xmlelement),
+    catch send_trailer(StateData),
     {stop, normal,
      StateData#state{authenticated = Reason}};
 handle_info({route, _From, _To, {broadcast, Data}},

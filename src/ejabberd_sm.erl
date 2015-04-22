@@ -102,7 +102,7 @@ open_session(SID, User, Server, Resource, Priority,
 	     Info) ->
     set_session(SID, User, Server, Resource, Priority,
 		Info),
-    check_for_sessions_to_replace(User, Server),
+    check_for_sessions_to_replace(User, Server, element(2,SID)),
     JID = jlib:make_jid(User, Server, Resource),
     ejabberd_hooks:run(sm_register_connection_hook,
 		       JID#jid.lserver, [SID, JID, Info]).
@@ -525,11 +525,11 @@ write_session(#session{usr = USR, sid = {T1, P1}} = S1) ->
 		   end, acceptnew) of
 		acceptnew ->
 		    ejabberd_cluster:send(
-		      element(2, Old#session.sid), replaced),
+		      element(2, Old#session.sid), {replaced, element(2, New#session.sid)}),
 		    mnesia:dirty_write(New);
 		closenew ->
 		    ejabberd_cluster:send(
-		      element(2, New#session.sid), replaced),
+		      element(2, New#session.sid), {replaced, element(2, Old#session.sid)}),
 		    mnesia:dirty_write(Old)
 	    end;
 	_ ->
@@ -799,12 +799,12 @@ clean_session_list([S1, S2 | Rest], Res) ->
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-check_for_sessions_to_replace(User, Server) ->
+check_for_sessions_to_replace(User, Server, NewPid) ->
     LUser = jlib:nodeprep(User),
     LServer = jlib:nameprep(Server),
-    check_max_sessions(LUser, LServer).
+    check_max_sessions(LUser, LServer, NewPid).
 
-check_max_sessions(LUser, LServer) ->
+check_max_sessions(LUser, LServer, NewPid) ->
     Ss = mnesia:dirty_index_read(session, {LUser, LServer}, #session.us),
     MaxSessions = get_max_user_sessions(LUser, LServer),
     if length(Ss) =< MaxSessions ->
@@ -812,7 +812,7 @@ check_max_sessions(LUser, LServer) ->
        true ->
             SIDs = [SID || #session{sid = SID} <- Ss],
             {_, Pid} = lists:min(SIDs),
-            ejabberd_cluster:send(Pid, replaced)
+            ejabberd_cluster:send(Pid, {replaced, NewPid})
     end.
 
 get_max_user_sessions(LUser, Host) ->
