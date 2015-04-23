@@ -71,7 +71,7 @@ start(Host, Opts) ->
 		       log_out, 90),
     ejabberd_hooks:add(message_to_user, Host, ?MODULE,
 		       log_message_to_user, 100),
-    IQDisc = gen_mod:get_opt(iqdisc, Opts, fun(X) -> X end, one_queue),
+    IQDisc = gen_mod:get_opt(iqdisc, Opts, fun gen_iq_handler:check_type/1, one_queue),
     gen_iq_handler:add_iq_handler(ejabberd_sm, Host,
 				  ?NS_P1_HISTORY, ?MODULE, process_sm_iq,
 				  IQDisc),
