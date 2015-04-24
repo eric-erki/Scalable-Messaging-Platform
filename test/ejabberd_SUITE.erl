@@ -155,7 +155,7 @@ init_per_testcase(TestCase, OrigConfig) ->
         auth_plain ->
             connect(Config);
 	auth_external ->
-	    connect(Config);
+	    starttls(connect(Config));
 	p1_rebind_reconnect ->
 	    connect(Config);
         test_bind ->
@@ -424,7 +424,7 @@ auth_external(Config) ->
     Mechs = ?config(mechs, Config),
     case lists:member(<<"EXTERNAL">>, Mechs) of
 	true ->
-	    disconnect(auth_SASL(<<"EXTERNAL">>, starttls(Config)));
+	    disconnect(auth_SASL(<<"EXTERNAL">>, Config));
 	false ->
 	    disconnect(Config),
 	    {skipped, 'SASL_EXTERNAL_not_available'}

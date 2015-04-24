@@ -515,12 +515,19 @@ wait_for_stream({xmlstreamstart, Name, Attrs},
 			    Mechs =
 				case TLSEnabled or not TLSRequired of
 				    true ->
+					Ms1 = cyrsasl:listmech(Server),
+					Ms2 = case is_verification_enabled(
+						     StateData#state{server = Server}) of
+						  false ->
+						      Ms1 -- [<<"EXTERNAL">>];
+						  true ->
+						      Ms1
+					      end,
 					Ms = lists:map(fun (S) ->
 								#xmlel{name = <<"mechanism">>,
 									attrs = [],
 									children = [{xmlcdata, S}]}
-							end,
-							cyrsasl:listmech(Server)),
+							end, Ms2),
 					[#xmlel{name = <<"mechanisms">>,
 						attrs = [{<<"xmlns">>, ?NS_SASL}],
 						children = Ms}];
@@ -1074,14 +1081,12 @@ wait_for_feature_request({xmlstreamelement, El},
 			  [{certfile, CertFile} | lists:keydelete(certfile, 1,
 								  StateData#state.tls_options)]
 		    end,
-	  TLSOpts = case ejabberd_config:get_option(
-			   {c2s_tls_verify, StateData#state.server},
-			   fun(B) when is_boolean(B) -> B end,
-			   false) of
+	  TLSOpts = case is_verification_enabled(
+			   StateData#state{tls_enabled = true}) of
 			true ->
 			    TLSOpts1 -- [verify_none];
 			false ->
-			    TLSOpts1
+			    [verify_none|TLSOpts1]
 		    end,
 	  Socket = StateData#state.socket,
 	  case (StateData#state.sockmod):starttls(
@@ -3931,9 +3936,8 @@ bounce_messages() ->
     end.
 
 get_cert_file(StateData, <<"EXTERNAL">>) ->
-    case proplists:get_bool(verify_none, StateData#state.tls_options) of
-        false ->
-            %% Certificate verification is enabled in the config
+    case is_verification_enabled(StateData) of
+	true ->
             case (StateData#state.sockmod):get_peer_certificate(
                    StateData#state.socket, otp) of
                 {ok, Cert} ->
@@ -3943,10 +3947,11 @@ get_cert_file(StateData, <<"EXTERNAL">>) ->
 			false ->
 			    {Cert, <<"certificate verification failed">>}
 		    end;
-                error ->
+                {error, Reason} ->
+		    ?ERROR_MSG("get_peer_certificate failed: ~s", [Reason]),
                     undefined
             end;
-        true ->
+        false ->
             undefined
     end;
 get_cert_file(_StateData, _Mech) ->
@@ -3975,6 +3980,18 @@ verify_cert(StateData, Cert) ->
 			       [Path, file:format_error(Why)]),
 		    false
 	    end
+    end.
+
+is_verification_enabled(#state{tls_enabled = false}) ->
+    false;
+is_verification_enabled(StateData) ->
+    case ejabberd_config:get_option(
+	   {c2s_tls_verify, StateData#state.server},
+	   fun(B) when is_boolean(B) -> B end) of
+	undefined ->
+	    not proplists:get_bool(verify_none, StateData#state.tls_options);
+	IsEnabled ->
+	    IsEnabled
     end.
 
 %%%----------------------------------------------------------------------
