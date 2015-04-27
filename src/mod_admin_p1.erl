@@ -43,7 +43,7 @@
 
 -export([start/2, stop/1,
 	% module
-	 restart_module/2,
+	 restart_module/2, module_options/1,
 	% users
 	 create_account/3, delete_account/2, check_account/2, rename_account/4,
 	 check_password/3, change_password/3, check_users_registration/1,
@@ -523,6 +523,10 @@ commands() ->
 %%%
 %%% Erlang
 %%%
+
+module_options(Module) ->
+    [{Host, proplists:get_value(Module, gen_mod:loaded_modules_with_opts(Host))}
+	|| Host <- ejabberd_config:get_myhosts()].
 
 restart_module(Module, Host) when is_binary(Module) ->
     restart_module(jlib:binary_to_atom(Module), Host);
