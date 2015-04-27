@@ -1,6 +1,6 @@
 %%%----------------------------------------------------------------------
 %%% File    : mod_multicast.erl
-%%% Author  : Badlop <badlop@ono.com>
+%%% Author  : Badlop <badlop@process-one.net>
 %%% Purpose : Extended Stanza Addressing (XEP-0033) support
 %%% Created : 29 May 2007 by Badlop <badlop@ono.com>
 %%% Id      : $Id: mod_multicast.erl 440 2007-12-06 22:36:21Z badlop $
@@ -27,7 +27,7 @@
 
 -module(mod_multicast).
 
--author('badlop@ono.com').
+-author('badlop@process-one.net').
 
 -behaviour(gen_server).
 

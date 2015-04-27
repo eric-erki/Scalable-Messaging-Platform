@@ -25,9 +25,8 @@
 %%%----------------------------------------------------------------------
 
 -module(ejabberd_router_multicast).
--author('alexey@sevcom.net').
--author('badlop@ono.com').
--vsn('$Revision$ ').
+-author('alexey@process-one.net').
+-author('badlop@process-one.net').
 
 -behaviour(gen_server).
 
