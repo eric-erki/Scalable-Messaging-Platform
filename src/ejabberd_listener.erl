@@ -198,20 +198,15 @@ listen_tcp(PortIP, Module, SockOpts, Port, IPS) ->
 	    ets:delete(listen_sockets, Port),
 	    ListenSocket;
 	_ ->
-	    SockOpts2 = try erlang:system_info(otp_release) >= "R13B" of
-			    true -> [{send_timeout_close, true} | SockOpts];
-			    false -> SockOpts
-			catch
-			    _:_ -> []
-			end,
 	    Res = gen_tcp:listen(Port, [binary,
 					{packet, 0},
 					{active, false},
 					{reuseaddr, true},
 					{nodelay, true},
 					{send_timeout, ?TCP_SEND_TIMEOUT},
-					{keepalive, true} |
-					SockOpts2]),
+					{keepalive, true},
+					{send_timeout_close, true} |
+					SockOpts]),
 	    case Res of
 		{ok, ListenSocket} ->
 		    ListenSocket;
