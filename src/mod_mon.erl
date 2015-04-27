@@ -64,6 +64,7 @@
          set_presence_hook/4,
          user_send_packet/4,
          user_receive_packet/5,
+         c2s_replaced/1,
          s2s_send_packet/3,
          s2s_receive_packet/3,
          privacy_iq_set/4,
@@ -457,6 +458,9 @@ user_receive_packet(#xmlel{name=Name, attrs=Attrs} = Packet,
     Hook = hookid(packet(<<"send">>, Name, Type)), % user receive = server send
     cast(LServer, {inc, Hook}),
     Packet.
+
+c2s_replaced(#jid{lserver=LServer}) ->
+    cast(LServer, {inc, c2s_replaced}).
 
 s2s_send_packet(#jid{lserver=LServer}, _To,
                 #xmlel{name=Name, attrs=Attrs}) ->

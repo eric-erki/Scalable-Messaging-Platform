@@ -36,7 +36,7 @@
          % remove_user, register_user,
          % roster_in_subscription, roster_out_subscription,
          user_available_hook, unset_presence_hook, set_presence_hook,
-         user_send_packet, user_receive_packet,
+         user_send_packet, user_receive_packet, c2s_replaced,
          s2s_send_packet, s2s_receive_packet,
          privacy_iq_get, privacy_iq_set,
          backend_api_call, backend_api_response_time,

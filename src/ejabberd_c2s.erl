@@ -1757,6 +1757,7 @@ handle_info({replaced, Pid}, StateName, StateData) ->
 handle_info(replaced, StateName, StateData) ->
     Lang = StateData#state.lang,
     Xmlelement = ?SERRT_CONFLICT(Lang, <<"Replaced by new connection">>),
+    ejabberd_hooks:run(c2s_replaced, StateData#state.server, [StateData#state.jid]),
     handle_info({kick, replaced, Xmlelement}, StateName, StateData);
 handle_info(kick, StateName, StateData) ->
     Lang = StateData#state.lang,
