@@ -31,7 +31,8 @@
 -behaviour(?GEN_SERVER).
 
 %% API
--export([start_link/0, route/3, do_route1/4, set_session/6,
+-export([start/0,
+         start_link/0, route/3, do_route1/4, set_session/6,
 	 open_session/5, open_session/6, close_session/4,
 	 close_migrated_session/4, drop_session/2,
 	 check_in_subscription/6, bounce_offline_message/3,
@@ -54,28 +55,33 @@
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
--include_lib("stdlib/include/ms_transform.hrl").
 -include("jlib.hrl").
 
 -include("ejabberd_commands.hrl").
-
 -include("mod_privacy.hrl").
+-include("ejabberd_sm.hrl").
 
--record(session, {usr, us, sid, priority, info}).
+-callback init() -> ok | {error, any()}.
+-callback get_session(binary(), binary(), binary()) -> {ok, #session{}} | {error, notfound}.
+-callback set_session(#session{}) -> ok.
+-callback delete_session({binary(), binary(), binary()}) -> ok.
+-callback get_sessions() -> [#session{}].
+-callback get_sessions(binary()) -> [#session{}].
+-callback get_sessions(binary(), binary()) -> [#session{}].
 
 -record(state, {}).
 
 -define(MAX_USER_SESSIONS, infinity).
 -define(CALL_TIMEOUT, timer:seconds(60)).
 
--type sid() :: {erlang:timestamp(), pid()}.
--type ip() :: {inet:ip_address(), inet:port_number()} | undefined.
--type info() :: [{conn, atom()} | {ip, ip()} | {node, atom()}
-                 | {oor, boolean()} | {auth_module, atom()}].
--type prio() :: undefined | integer().
 -type session() :: #session{}.
 
 -export_type([sid/0]).
+
+start() ->
+    ChildSpec = {?MODULE, {?MODULE, start_link, []},
+		 transient, 1000, worker, [?MODULE]},
+    supervisor:start_child(ejabberd_sup, ChildSpec).
 
 start_link() ->
     ?GEN_SERVER:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -130,9 +136,10 @@ do_close_session(SID, User, Server, Resource) ->
     LServer = jlib:nameprep(Server),
     LResource = jlib:resourceprep(Resource),
     USR = {LUser, LServer, LResource},
-    Info = case mnesia:dirty_read({session, USR}) of
-	     [] -> [];
-	     [#session{info = I}] -> I
+    Mod = get_sm_backend(),
+    Info = case Mod:get_session(LUser, LServer, LResource) of
+	       {ok, #session{info = I}} -> I;
+	       {error, notfound} -> []
 	   end,
     drop_session(SID, USR),
     Info.
@@ -177,31 +184,25 @@ disconnect_removed_user(User, Server) ->
 get_user_sessions(User, Server) ->
     LUser = jlib:nodeprep(User),
     LServer = jlib:nameprep(Server),
-    US = {LUser, LServer},
-    mnesia:dirty_index_read(session, US, #session.us).
+    Mod = get_sm_backend(),
+    Mod:get_sessions(LUser, LServer).
 
 -spec get_user_resources(binary(), binary()) -> [binary()].
 
 get_user_resources(User, Server) ->
     LUser = jlib:nodeprep(User),
     LServer = jlib:nameprep(Server),
-    US = {LUser, LServer},
-    Ss = mnesia:dirty_index_read(session, US, #session.us),
+    Mod = get_sm_backend(),
+    Ss = Mod:get_sessions(LUser, LServer),
     [element(3, S#session.usr) || S <- clean_session_list(Ss)].
 
 -spec get_user_present_resources(binary(), binary()) -> [tuple()].
 
 get_user_present_resources(LUser, LServer) ->
-    US = {LUser, LServer},
-    case catch mnesia:dirty_index_read(session, US,
-				       #session.us)
-	of
-      {'EXIT', _Reason} -> [];
-      Ss ->
-	  [{S#session.priority, element(3, S#session.usr)}
-	   || S <- clean_session_list(Ss),
-	      is_integer(S#session.priority)]
-    end.
+    Mod = get_sm_backend(),
+    Ss = Mod:get_sessions(LUser, LServer),
+    [{S#session.priority, element(3, S#session.usr)}
+     || S <- clean_session_list(Ss), is_integer(S#session.priority)].
 
 -spec get_user_ip(binary(), binary(), binary()) -> ip().
 
@@ -209,12 +210,10 @@ get_user_ip(User, Server, Resource) ->
     LUser = jlib:nodeprep(User),
     LServer = jlib:nameprep(Server),
     LResource = jlib:resourceprep(Resource),
-    USR = {LUser, LServer, LResource},
-    Ss = mnesia:dirty_read(session, USR),
-    if is_list(Ss), Ss /= [] ->
-	   Session = lists:max(Ss),
-	   proplists:get_value(ip, Session#session.info);
-       true -> undefined
+    Mod = get_sm_backend(),
+    case Mod:get_session(LUser, LServer, LResource) of
+        {ok, Session} -> proplists:get_value(ip, Session#session.info);
+        {error, notfound} -> undefined
     end.
 
 -spec get_user_info(binary(), binary(), binary()) -> info() | offline.
@@ -223,15 +222,14 @@ get_user_info(User, Server, Resource) ->
     LUser = jlib:nodeprep(User),
     LServer = jlib:nameprep(Server),
     LResource = jlib:resourceprep(Resource),
-    USR = {LUser, LServer, LResource},
-    Ss = mnesia:dirty_read(session, USR),
-    if is_list(Ss), Ss /= [] ->
-	   Session = lists:max(Ss),
-	   N = node(element(2, Session#session.sid)),
-	   Conn = proplists:get_value(conn, Session#session.info),
-	   IP = proplists:get_value(ip, Session#session.info),
-	   [{node, N}, {conn, Conn}, {ip, IP}];
-       true -> offline
+    Mod = get_sm_backend(),
+    case Mod:get_session(LUser, LServer, LResource) of
+        {ok, Session} ->
+            N = node(element(2, Session#session.sid)),
+            Conn = proplists:get_value(conn, Session#session.info),
+            IP = proplists:get_value(ip, Session#session.info),
+            [{node, N}, {conn, Conn}, {ip, IP}];
+        {error, notfound} -> offline
     end.
 
 -spec set_presence(sid(), binary(), binary(), binary(),
@@ -269,67 +267,47 @@ close_session_unset_presence(SID, User, Server,
 -spec get_session_pid(binary(), binary(), binary()) -> none | pid().
 
 get_session_pid(User, Server, Resource) ->
-    USR = jlib:jid_tolower({User, Server, Resource}),
-    Res = mnesia:dirty_read(session, USR),
-    case Res of
-      [#session{sid = {_, Pid}}] -> Pid;
-      _ -> none
+    LUser = jlib:nodeprep(User),
+    LServer = jlib:nameprep(Server),
+    LResource = jlib:resourceprep(Resource),
+    Mod = get_sm_backend(),
+    case Mod:get_session(LUser, LServer, LResource) of
+        {ok, #session{sid = {_, Pid}}} -> Pid;
+        {error, notfound} -> none
     end.
 
 -spec dirty_get_sessions_list() -> [ljid()].
 
 dirty_get_sessions_list() ->
-    mnesia:dirty_select(
-      session,
-      ets:fun2ms(
-        fun(#session{usr = USR}) ->
-                USR
-        end)).
+    Mod = get_sm_backend(),
+    [S#session.usr || S <- Mod:get_sessions()].
 
 -spec dirty_get_my_sessions_list() -> [ljid()].
 
 dirty_get_my_sessions_list() ->
-    mnesia:dirty_select(
-      session,
-      ets:fun2ms(
-        fun(#session{usr = USR, sid = {_, Pid}})
-              when node(Pid) == node() ->
-                USR
-        end)).
+    Mod = get_sm_backend(),
+    [S || S <- Mod:get_sessions(), node(element(2, S#session.sid)) == node()].
 
 -spec get_vh_my_session_list(binary()) -> [ljid()].
 
 get_vh_my_session_list(Server) ->
     LServer = jlib:nameprep(Server),
-    mnesia:dirty_select(
-      session,
-      ets:fun2ms(
-        fun(#session{usr = {U, S, R}, sid = {_, Pid}})
-              when node(Pid) == node(), S == LServer ->
-                {U, S, R}
-        end)).
+    Mod = get_sm_backend(),
+    [S#session.usr || S <- Mod:get_sessions(LServer),
+                      node(element(2, S#session.sid)) == node()].
 
 -spec get_vh_session_list(binary()) -> [ljid()].
 
 get_vh_session_list(Server) ->
     LServer = jlib:nameprep(Server),
-    mnesia:dirty_select(
-      session,
-      ets:fun2ms(
-        fun(#session{usr = {U, S, R}})
-              when S == LServer ->
-                {U, S, R}
-        end)).
+    Mod = get_sm_backend(),
+    [S#session.usr || S <- Mod:get_sessions(LServer)].
 
 -spec get_all_pids() -> [pid()].
 
 get_all_pids() ->
-    mnesia:dirty_select(
-      session,
-      ets:fun2ms(
-        fun(#session{sid = {_, Pid}}) ->
-		Pid
-        end)).
+    Mod = get_sm_backend(),
+    [element(2, S#session.sid) || S <- Mod:get_sessions()].
 
 -spec get_vh_session_number(binary()) -> non_neg_integer().
 
@@ -366,12 +344,8 @@ register_hooks(Host) ->
 %%====================================================================
 
 init([]) ->
-    update_tables(),
-    mnesia:create_table(session,
-			[{ram_copies, [node()]}, {local_content, true},
-			 {attributes, record_info(fields, session)}]),
-    mnesia:add_table_index(session, us),
-    mnesia:add_table_copy(session, node(), ram_copies),
+    Mod = get_sm_backend(),
+    Mod:init(),
     ets:new(sm_iqtable, [named_table, bag]),
     lists:foreach(fun register_hooks/1, ?MYHOSTS),
     ejabberd_commands:register_commands(commands()),
@@ -499,8 +473,9 @@ set_session(SID, User, Server, Resource, Priority, Info) ->
     USR = {LUser, LServer, LResource},
     Session = #session{sid = SID, usr = USR, us = US,
                        priority = Priority, info = Info},
-    case mnesia:dirty_read(session, USR) of
-	[Session] ->
+    Mod = get_sm_backend(),
+    case Mod:get_session(LUser, LServer, LResource) of
+	{ok, Session} ->
 	    ok;
 	_ ->
 	    lists:foreach(
@@ -512,8 +487,10 @@ set_session(SID, User, Server, Resource, Priority, Info) ->
     end.
 
 write_session(#session{usr = USR, sid = {T1, P1}} = S1) ->
-    case mnesia:dirty_read(session, USR) of
-	[#session{sid = {T2, P2}, us = {_, Server}} = S2] when P1 /= P2 ->
+    {LUser, LServer, LResource} = USR,
+    Mod = get_sm_backend(),
+    case Mod:get_session(LUser, LServer, LResource) of
+	{ok, #session{sid = {T2, P2}, us = {_, Server}} = S2} when P1 /= P2 ->
 	    {Old, New} = if T1 < T2 -> {S1, S2};
 			    true -> {S2, S1}
 			 end,
@@ -526,20 +503,22 @@ write_session(#session{usr = USR, sid = {T1, P1}} = S1) ->
 		acceptnew ->
 		    ejabberd_cluster:send(
 		      element(2, Old#session.sid), {replaced, element(2, New#session.sid)}),
-		    mnesia:dirty_write(New);
+		    Mod:set_session(New);
 		closenew ->
 		    ejabberd_cluster:send(
 		      element(2, New#session.sid), {replaced, element(2, Old#session.sid)}),
-		    mnesia:dirty_write(Old)
+		    Mod:set_session(Old)
 	    end;
 	_ ->
-	    mnesia:dirty_write(S1)
+	    Mod:set_session(S1)
     end.
 
 delete_session({_, Pid1} = _SID, USR) ->
-    case mnesia:dirty_read(session, USR) of
-	[#session{sid = {_, Pid2}}] when Pid1 == Pid2 ->
-	    mnesia:dirty_delete(session, USR);
+    {LUser, LServer, LResource} = USR,
+    Mod = get_sm_backend(),
+    case Mod:get_session(LUser, LServer, LResource) of
+	{ok, #session{sid = {_, Pid2}}} when Pid1 == Pid2 ->
+	    Mod:delete_session(USR);
 	_ ->
 	    ok
     end.
@@ -552,9 +531,10 @@ do_route(From, To, Packet, Hops) ->
 	   [jlib:jid_to_string(From),
 	    jlib:jid_to_string(To),
 	    Packet, 8]),
-    {U, S, _} = USR = jlib:jid_tolower(To),
-    case mnesia:dirty_read(session, USR) of
-	[#session{sid = {_, Pid}}] ->
+    {U, S, R} = jlib:jid_tolower(To),
+    Mod = get_sm_backend(),
+    case Mod:get_session(U, S, R) of
+	{ok, #session{sid = {_, Pid}}} ->
 	    Node = node(Pid),
 	    if Node == node() ->
 		    dispatch(From, To, Packet, Hops);
@@ -569,7 +549,7 @@ do_route(From, To, Packet, Hops) ->
 			      {route, From, To, Packet, [node()|Hops]})
 		    end
 	    end;
-	[] ->
+	{error, notfound} ->
 	    dispatch(From, To, Packet, Hops)
     end.
 
@@ -584,11 +564,12 @@ do_route1(From, To, {broadcast, _} = Packet, Hops) ->
                           get_user_resources(To#jid.user, To#jid.server));
         _ ->
             USR = jlib:jid_tolower(To),
-            case mnesia:dirty_read(session, USR) of
-                [] ->
+            {LUser, LServer, LResource} = USR,
+            Mod = get_sm_backend(),
+            case Mod:get_session(LUser, LServer, LResource) of
+                {error, notfound} ->
                     ?DEBUG("packet dropped~n", []);
-                Ss ->
-                    Session = lists:max(Ss),
+                {ok, Session} ->
                     Pid = element(2, Session#session.sid),
                     ?DEBUG("sending to process ~p~n", [Pid]),
                     ejabberd_cluster:send(Pid, {route, From, To, Packet})
@@ -683,9 +664,9 @@ do_route1(From, To, Packet, Hops) ->
 	    _ -> ok
 	  end;
       _ ->
-	  USR = {LUser, LServer, LResource},
-	  case mnesia:dirty_read(session, USR) of
-	    [] ->
+          Mod = get_sm_backend(),
+          case Mod:get_session(LUser, LServer, LResource) of
+	    {error, notfound} ->
 		case Name of
 		  <<"message">> ->
 		      case xml:get_attr_s(<<"type">>, Attrs) of
@@ -707,9 +688,7 @@ do_route1(From, To, Packet, Hops) ->
 		      end;
 		  _ -> ?DEBUG("packet dropped~n", [])
 		end;
-	    Ss ->
-
-		Session = lists:max(Ss),
+	    {ok, Session} ->
 		Pid = element(2, Session#session.sid),
 		?DEBUG("sending to process ~p~n", [Pid]),
 		ejabberd_cluster:send(Pid, {route, From, To, Packet})
@@ -743,12 +722,11 @@ route_message(From, To, Packet, Type) ->
 	  lists:foreach(fun ({P, R}) when P == Priority;
 					  (P >= 0) and (Type == headline) ->
 				LResource = jlib:resourceprep(R),
-				USR = {LUser, LServer, LResource},
-				case mnesia:dirty_read(session, USR) of
-				  [] ->
+                                Mod = get_sm_backend(),
+                                case Mod:get_session(LUser, LServer, LResource) of
+                                  {error, notfound} ->
 				      ok; % Race condition
-				  Ss ->
-				      Session = lists:max(Ss),
+				  {ok, Session} ->
 				      Pid = element(2, Session#session.sid),
 				      ?DEBUG("sending to process ~p~n", [Pid]),
 				      ejabberd_cluster:send(
@@ -805,7 +783,8 @@ check_for_sessions_to_replace(User, Server, NewPid) ->
     check_max_sessions(LUser, LServer, NewPid).
 
 check_max_sessions(LUser, LServer, NewPid) ->
-    Ss = mnesia:dirty_index_read(session, {LUser, LServer}, #session.us),
+    Mod = get_sm_backend(),
+    Ss = Mod:get_sessions(LUser, LServer),
     MaxSessions = get_max_user_sessions(LUser, LServer),
     if length(Ss) =< MaxSessions ->
             ok;
@@ -865,18 +844,25 @@ process_iq(From, To, Packet) ->
 
 -spec force_update_presence({binary(), binary()}) -> any().
 
-force_update_presence({LUser, _LServer} = US) ->
-    case catch mnesia:dirty_index_read(session, US,
-				       #session.us)
-	of
-      {'EXIT', _Reason} -> ok;
-      Ss ->
-	  lists:foreach(fun (#session{sid = {_, Pid}}) ->
-				ejabberd_cluster:send(
-                                  Pid, {force_update_presence, LUser})
-			end,
-			Ss)
-    end.
+force_update_presence({LUser, LServer}) ->
+    Mod = get_sm_backend(),
+    Ss = Mod:get_sessions(LUser, LServer),
+    lists:foreach(fun (#session{sid = {_, Pid}}) ->
+                          ejabberd_cluster:send(
+                            Pid, {force_update_presence, LUser})
+                  end,
+                  Ss).
+
+-spec get_sm_backend() -> module().
+
+get_sm_backend() ->
+    DBType = ejabberd_config:get_option(sm_db_type,
+					fun(mnesia) -> mnesia;
+					   (internal) -> mnesia;
+					   (odbc) -> odbc;
+					   (redis) -> redis
+					end, mnesia),
+    list_to_atom("ejabberd_sm_" ++ atom_to_list(DBType)).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% ejabberd commands
@@ -958,36 +944,3 @@ kick_user(User, Server) ->
 		PID ! kick
 	end, Resources),
     length(Resources).
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Update Mnesia tables
-
-update_tables() ->
-    case catch mnesia:table_info(session, attributes) of
-      [ur, user, node] -> mnesia:delete_table(session);
-      [ur, user, pid] -> mnesia:delete_table(session);
-      [usr, us, pid] -> mnesia:delete_table(session);
-      [sid, usr, us, priority] ->
-	  mnesia:delete_table(session);
-      [sid, usr, us, priority, info] ->
-          mnesia:delete_table(session);
-      [usr, us, sid, priority, info] ->
-          ok;
-      {'EXIT', _} -> ok
-    end,
-    case lists:member(presence, mnesia:system_info(tables))
-	of
-      true -> mnesia:delete_table(presence);
-      false -> ok
-    end,
-    case lists:member(local_session,
-		      mnesia:system_info(tables))
-	of
-      true -> mnesia:delete_table(local_session);
-      false -> ok
-    end,
-    mnesia:delete_table(session_counter),
-    case catch mnesia:table_info(session, local_content) of
-      false -> mnesia:delete_table(session);
-      _ -> ok
-    end.

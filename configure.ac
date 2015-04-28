@@ -139,10 +139,10 @@ AC_ARG_ENABLE(mssql,
 esac],[db_type=generic])
 
 AC_ARG_ENABLE(all,
-[AC_HELP_STRING([--enable-all], [same as --enable-nif --enable-odbc --enable-mysql --enable-pgsql --enable-sqlite --enable-pam --enable-zlib --enable-riak --enable-json --enable-elixir --enable-iconv --enable-debug --enable-http --enable-lager --enable-tools --enable-p1db (useful for Dialyzer checks, default: no)])],
+[AC_HELP_STRING([--enable-all], [same as --enable-nif --enable-odbc --enable-mysql --enable-pgsql --enable-sqlite --enable-pam --enable-zlib --enable-riak --enable-redis --enable-json --enable-elixir --enable-iconv --enable-debug --enable-http --enable-lager --enable-tools --enable-p1db (useful for Dialyzer checks, default: no)])],
 [case "${enableval}" in
-  yes) nif=true odbc=true mysql=true pgsql=true sqlite=true pam=true zlib=true riak=true json=true elixir=true iconv=true debug=true http=true lager=true tools=true p1db=true ;;
-  no) nif=false odbc=false mysql=false pgsql=false sqlite=false pam=false zlib=false riak=false json=false elixir=false iconv=false debug=false http=false lager=false tools=false p1db=false ;;
+  yes) nif=true odbc=true mysql=true pgsql=true sqlite=true pam=true zlib=true riak=true redis=true json=true elixir=true iconv=true debug=true http=true lager=true tools=true p1db=true ;;
+  no) nif=false odbc=false mysql=false pgsql=false sqlite=false pam=false zlib=false riak=false redis=false json=false elixir=false iconv=false debug=false http=false lager=false tools=false p1db=false ;;
   *) AC_MSG_ERROR(bad value ${enableval} for --enable-all) ;;
 esac],[])
 
@@ -217,6 +217,14 @@ AC_ARG_ENABLE(riak,
   no)  riak=false ;;
   *) AC_MSG_ERROR(bad value ${enableval} for --enable-riak) ;;
 esac],[if test "x$riak" = "x"; then riak=false; fi])
+
+AC_ARG_ENABLE(redis,
+[AC_HELP_STRING([--enable-redis], [enable Redis support (default: no)])],
+[case "${enableval}" in
+  yes) redis=true ;;
+  no)  redis=false ;;
+  *) AC_MSG_ERROR(bad value ${enableval} for --enable-redis) ;;
+esac],[if test "x$redis" = "x"; then redis=false; fi])
 
 AC_ARG_ENABLE(p1db,
 [AC_HELP_STRING([--enable-p1db], [enable P1DB support (default: no)])],
@@ -331,6 +339,7 @@ AC_SUBST(sqlite)
 AC_SUBST(pam)
 AC_SUBST(zlib)
 AC_SUBST(riak)
+AC_SUBST(redis)
 AC_SUBST(p1db)
 AC_SUBST(json)
 AC_SUBST(elixir)

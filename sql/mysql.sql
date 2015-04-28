@@ -324,6 +324,19 @@ CREATE TABLE caps_features (
 
 CREATE INDEX i_caps_features_node_subnode ON caps_features(node(75), subnode(75));
 
+CREATE TABLE sm (
+    usec bigint NOT NULL,
+    pid text NOT NULL,
+    node text NOT NULL,
+    username varchar(250) NOT NULL,
+    resource varchar(250) NOT NULL,
+    priority text NOT NULL,
+    info text NOT NULL
+) ENGINE=InnoDB CHARACTER SET utf8;
+
+CREATE UNIQUE INDEX i_username_resource ON sm(username, resource);
+CREATE INDEX i_node ON sm(node(75));
+
 CREATE TABLE `applepush_cache` (
    `username` varchar(255) NOT NULL,
    `device_id` varchar(255) NOT NULL,

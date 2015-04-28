@@ -133,6 +133,8 @@ CfgDeps = lists:flatmap(
                     [{p1db, ".*", {git, "ssh://git@git.process-one.net:7999/ebe/p1db.git"}}];
                ({tools, true}) ->
                     [{meck, "0.*", {git, "https://github.com/eproxus/meck"}}];
+	       ({redis, true}) ->
+		    [{eredis, ".*", {git, "git://github.com/wooga/eredis"}}];
                (_) ->
                     []
             end, Cfg),
