@@ -258,6 +258,8 @@ handle(Call, Args) when is_binary(Call), is_list(Args) ->
         0 -> {200, <<"OK">>};
         1 -> {500, <<"500 Internal server error">>};
         400 -> {400, <<"400 Bad Request">>};
+        {Code, Text} when is_integer(Code) -> format_command_result(Fun, {Code, Text});
+        {Code, Text} when is_atom(Code) -> format_command_result(Fun, {Code, Text});
         Res -> {200, format_command_result(Fun, Res)}
     end.
 
@@ -296,8 +298,18 @@ format_result(String, {Name, string}) ->
 format_result(Code, {_Name, rescode}) ->
     Code;
 
-format_result({Code, Text}, {_Name, restuple}) ->
-    {Text, Code};
+format_result({Code, List}, {Name, restuple})
+        when is_list(List) ->
+    Text = iolist_to_binary(lists:flatten(List)),
+    format_result({Code, Text}, {Name, restuple});
+format_result({ok, Text}, {_Name, restuple}) ->
+    {200, Text};
+format_result({Code, Text}, {_Name, restuple})
+        when is_atom(Code) ->
+    {500, Text};
+format_result({Code, Text}, {_Name, restuple})
+        when is_integer(Code) ->
+    {Code, Text};
 
 format_result(Els, {Name, {list, Def}}) ->
     {Name, {[format_result(El, Def) || El <- Els]}};
@@ -319,7 +331,7 @@ badrequest_response() ->
     {400, ?HEADER(?CT_XML),
      #xmlel{name = <<"h1">>, attrs = [],
             children = [{xmlcdata, <<"400 Bad Request">>}]}}.
-json_response(Code, Body) ->
+json_response(Code, Body) when is_integer(Code) ->
     {Code, ?HEADER(?CT_JSON), Body}.
 
 log(Call, Args, {Addr, Port}) ->
