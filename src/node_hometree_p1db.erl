@@ -688,13 +688,13 @@ get_state(Nidx, USR) ->
 set_state(State) when is_record(State, pubsub_state) ->
     Key = enc_state_key(State#pubsub_state.stateid),
     Val = state_to_p1db(State),
-    p1db:async_insert(pubsub_state, Key, Val).
+    p1db:insert(pubsub_state, Key, Val).
 %set_state(_) -> {error, ?ERR_INTERNAL_SERVER_ERROR}.
 
 %% @doc <p>Delete a state from database.</p>
 del_state(Nidx, USR) ->
     Key = enc_state_key({USR, Nidx}),
-    p1db:async_delete(pubsub_state, Key).
+    p1db:delete(pubsub_state, Key).
 
 %% @doc Returns the list of stored items for a given node.
 %% <p>For the default PubSub module, items are stored in Mnesia database.</p>
@@ -797,7 +797,7 @@ get_item(Nidx, ItemId, JID, AccessModel, PresenceSubscription, RosterGroup, _Sub
 set_item(Item) when is_record(Item, pubsub_item) ->
     Key = enc_item_key(Item#pubsub_item.itemid),
     Val = item_to_p1db(Item),
-    p1db:async_insert(pubsub_item, Key, Val).
+    p1db:insert(pubsub_item, Key, Val).
 %set_item(_) -> {error, ?ERR_INTERNAL_SERVER_ERROR}.
 
 %% @doc <p>Delete an item from database.</p>

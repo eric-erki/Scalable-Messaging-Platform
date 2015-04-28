@@ -162,7 +162,7 @@ parse_options_xform(XFields) ->
 add_subscription(_JID, _NodeId, []) -> make_subid();
 add_subscription(_JID, _NodeId, Options) ->
     SubID = make_subid(),
-    p1db:async_insert(pubsub_subscription, SubID, opts_to_p1db(Options)),
+    p1db:insert(pubsub_subscription, SubID, opts_to_p1db(Options)),
     SubID.
 
 -spec(delete_subscription/3 ::
@@ -201,7 +201,7 @@ read_subscription(_JID, _NodeId, SubID) ->
     ).
 
 write_subscription(_JID, _NodeId, SubID, Options) ->
-    p1db:async_insert(pubsub_subscription, SubID, opts_to_p1db(Options)).
+    p1db:insert(pubsub_subscription, SubID, opts_to_p1db(Options)).
 
 -spec(make_subid/0 :: () -> SubId::mod_pubsub:subId()).
 make_subid() ->
