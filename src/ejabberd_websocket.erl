@@ -71,12 +71,12 @@ check(_Path, Headers) ->
 		case lists:keyfind(Tag, 1, Headers) of
 		  false -> true; % header not found, keep in list
 		  {_, HVal} ->
-		      LHVal = str:to_lower(HVal),
 		      case Val of
 			ignore -> false; % ignore value -> ok, remove from list
-			LHVal -> false;   % expected val -> ok, remove from list
 			_ ->
-			    true         % val is different, keep in list
+			    % expected value -> ok, remove from list (false)
+			    % value is different, keep in list (true)
+			    str:to_lower(HVal) /= Val
                       end
                 end
         end,
