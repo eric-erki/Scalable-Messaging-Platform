@@ -39,6 +39,59 @@ rename_default_nodeplugin() ->
 	mnesia:dirty_match_object(#pubsub_node{type = <<"default">>, _ = '_'})).
 
 
+update_node_database_binary() ->
+    F = fun () ->
+	    case catch mnesia:read({pubsub_node, mnesia:first(pubsub_node)}) of
+		[First] when is_list(First#pubsub_node.type) ->
+		    ?INFO_MSG("Binarization of pubsub nodes table...", []),
+		    lists:foreach(fun ({H, N}) ->
+				[Node] = mnesia:read({pubsub_node, {H, N}}),
+
+				Type = iolist_to_binary(Node#pubsub_node.type),
+				BN = case N of
+				    Binary when is_binary(Binary) ->
+					N;
+				    _ ->
+					{result, BN1} = mod_pubsub:node_call(H, Type, path_to_node, [N]),
+					BN1
+				end,
+				BP = case [case P of
+					    Binary2 when is_binary(Binary2) -> P;
+					    _ -> element(2, mod_pubsub:node_call(H, Type, path_to_node, [P]))
+					end
+					|| P <- Node#pubsub_node.parents] of
+				    [<<>>] -> [];
+				    Parents -> Parents
+				end,
+
+				BH = case H of
+				    {U, S, R} -> {iolist_to_binary(U), iolist_to_binary(S), iolist_to_binary(R)};
+				    String -> iolist_to_binary(String)
+				end,
+
+				Owners = [{iolist_to_binary(U), iolist_to_binary(S), iolist_to_binary(R)} ||
+					{U, S, R} <- Node#pubsub_node.owners],
+
+				ok = mnesia:delete({pubsub_node, {H, N}}),
+				ok = mnesia:write(Node#pubsub_node{nodeid = {BH, BN},
+					    parents = BP,
+					    type = Type,
+					    owners = Owners});
+			    (_) -> ok
+			end,
+			mnesia:all_keys(pubsub_node));
+		_-> no_need
+	    end
+    end,
+    case mnesia:transaction(F) of
+	{aborted, Reason} ->
+	    ?ERROR_MSG("Failed to binarize pubsub node table: ~p", [Reason]);
+	{atomic, no_need} ->
+	    ok;
+	{atomic, Result} ->
+	    ?INFO_MSG("Pubsub nodes table has been binarized: ~p", [Result])
+    end.
+
 update_node_database(Host, ServerHost) ->
     mnesia:del_table_index(pubsub_node, type),
     mnesia:del_table_index(pubsub_node, parentid),
@@ -159,59 +212,6 @@ update_node_database(Host, ServerHost) ->
     end,
     update_node_database_binary().
 
-update_node_database_binary() ->
-    F = fun () ->
-	    case catch mnesia:read({pubsub_node, mnesia:first(pubsub_node)}) of
-		[First] when is_list(First#pubsub_node.type) ->
-		    ?INFO_MSG("Binarization of pubsub nodes table...", []),
-		    lists:foreach(fun ({H, N}) ->
-				[Node] = mnesia:read({pubsub_node, {H, N}}),
-
-				Type = iolist_to_binary(Node#pubsub_node.type),
-				BN = case N of
-				    Binary when is_binary(Binary) ->
-					N;
-				    _ ->
-					{result, BN1} = mod_pubsub:node_call(H, Type, path_to_node, [N]),
-					BN1
-				end,
-				BP = case [case P of
-					    Binary2 when is_binary(Binary2) -> P;
-					    _ -> element(2, mod_pubsub:node_call(H, Type, path_to_node, [P]))
-					end
-					|| P <- Node#pubsub_node.parents] of
-				    [<<>>] -> [];
-				    Parents -> Parents
-				end,
-
-				BH = case H of
-				    {U, S, R} -> {iolist_to_binary(U), iolist_to_binary(S), iolist_to_binary(R)};
-				    String -> iolist_to_binary(String)
-				end,
-
-				Owners = [{iolist_to_binary(U), iolist_to_binary(S), iolist_to_binary(R)} ||
-					{U, S, R} <- Node#pubsub_node.owners],
-
-				ok = mnesia:delete({pubsub_node, {H, N}}),
-				ok = mnesia:write(Node#pubsub_node{nodeid = {BH, BN},
-					    parents = BP,
-					    type = Type,
-					    owners = Owners});
-			    (_) -> ok
-			end,
-			mnesia:all_keys(pubsub_node));
-		_-> no_need
-	    end
-    end,
-    case mnesia:transaction(F) of
-	{aborted, Reason} ->
-	    ?ERROR_MSG("Failed to binarize pubsub node table: ~p", [Reason]);
-	{atomic, no_need} ->
-	    ok;
-	{atomic, Result} ->
-	    ?INFO_MSG("Pubsub nodes table has been binarized: ~p", [Result])
-    end.
-
 update_state_database(_Host, _ServerHost) ->
     case catch mnesia:table_info(pubsub_state, attributes)
     of
@@ -264,7 +264,7 @@ update_state_database(_Host, _ServerHost) ->
 	    FNew = fun () -> [mnesia:write(Rec) || Rec <- NewRecs] end,
 	    case mnesia:transaction(FNew) of
 		{atomic, Res1} ->
-		    ?INFO_MSG("Pubsub state tables updated correctly: ~p", [Res1]);
+		    ?INFO_MSG("Pubsub states table upgraded: ~p", [Res1]);
 		{aborted, Rea1} ->
 		    ?ERROR_MSG("Problem updating Pubsub state table:~n~p", [Rea1])
 	    end,
@@ -283,7 +283,7 @@ update_state_database(_Host, _ServerHost) ->
 	    FNew = fun () -> [mnesia:write(Rec) || Rec <- NewRecs] end,
 	    case mnesia:transaction(FNew) of
 		{atomic, Res2} ->
-		    ?INFO_MSG("Pubsub item tables upgraded correctly: ~p", [Res2]);
+		    ?INFO_MSG("Pubsub items table upgraded: ~p", [Res2]);
 		{aborted, Rea2} ->
 		    ?ERROR_MSG("Problem upgrading Pubsub item table:~n~p", [Rea2])
 	    end;
