@@ -270,3 +270,76 @@ CREATE TABLE caps_features (
 );
 
 CREATE INDEX i_caps_features_node_subnode ON caps_features (node, subnode);
+
+CREATE TABLE applepush_cache (
+   username text NOT NULL,
+   device_id text NOT NULL,
+   app_id text NOT NULL,
+   send_body char(1) NOT NULL,
+   send_from char(1) NOT NULL,
+   local_badge integer,
+   created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX i_applepush_cache_username_device_id ON applepush_cache (username, device_id);
+
+CREATE TABLE gcm_cache (
+   username text NOT NULL,
+   device_id text NOT NULL,
+   app_id text NOT NULL,
+   send_body char(1) NOT NULL,
+   send_from char(1) NOT NULL,
+   local_badge integer,
+   created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX i_gcm_cache_username_device_id ON gcm_cache (username, device_id);
+
+CREATE TABLE room_history (
+    room text NOT NULL,
+    nick text NOT NULL,
+    packet text,
+    have_subject boolean,
+    timestamp bigint,
+    size int
+);
+CREATE INDEX i_room_history ON room_history (room);
+
+CREATE TABLE push_customizations (
+    username text NOT NULL,
+    match_jid text NOT NULL,
+    mute boolean NOT NULL,
+    sound text,
+    message text
+);
+CREATE UNIQUE INDEX i_push_customizations_username_match_jid ON push_customizations (username, match_jid);
+
+CREATE TABLE carboncopy (
+    server text NOT NULL,
+    username text NOT NULL,
+    resource text NOT NULL,
+    version text NOT NULL
+);
+CREATE UNIQUE INDEX i_carboncopy_server_username_resource ON carboncopy (server, username, resource);
+
+CREATE TABLE archive (
+    username text NOT NULL,
+    timestamp BIGINT UNSIGNED NOT NULL,
+    peer text NOT NULL,
+    bare_peer text NOT NULL,
+    xml text NOT NULL,
+    txt text,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX i_username ON archive(username);
+CREATE INDEX i_timestamp ON archive(timestamp);
+CREATE INDEX i_peer ON archive(peer);
+CREATE INDEX i_bare_peer ON archive(bare_peer);
+
+CREATE TABLE archive_prefs (
+    username text NOT NULL PRIMARY KEY,
+    def text NOT NULL,
+    always text NOT NULL,
+    never text NOT NULL,
+    created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
