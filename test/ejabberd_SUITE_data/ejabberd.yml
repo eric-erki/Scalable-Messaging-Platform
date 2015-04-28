@@ -82,7 +82,8 @@ Welcome to this XMPP server."
         db_type: odbc
       mod_private: 
         db_type: odbc
-      mod_pubsub_odbc: 
+      mod_pubsub: 
+        db_type: odbc
         access_createnode: pubsub_createnode
         ignore_pep_from_offline: true
         last_item_cache: false
@@ -93,10 +94,15 @@ Welcome to this XMPP server."
       mod_roster:
         versioning: true
         store_current_id: true
+        use_cache: true
+        db_type: odbc
+      mod_mam: 
         db_type: odbc
       mod_vcard: 
         db_type: odbc
       mod_vcard_xupdate:
+        db_type: odbc
+      mod_carboncopy:
         db_type: odbc
       mod_adhoc: []
       mod_configure: []
