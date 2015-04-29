@@ -41,7 +41,7 @@
 -include("jlib.hrl").
 
 start(Host, _Opts) ->
-    ejabberd:start_app(inets),
+    rest:start(),
     ejabberd_hooks:add(offline_message_hook, Host, ?MODULE,
 		       offline_packet, 35),
     ejabberd_hooks:add(user_available_hook, Host,
@@ -140,18 +140,7 @@ user_unavailable(User, Server, Resource, _Status) ->
 
 
 send_notification(URL, Params) ->
-    KVs = lists:map(
-            fun({K, V})->
-                    K1 = iolist_to_binary(K),
-                    V1 = ejabberd_http:url_encode(
-                           iolist_to_binary(V)),
-                    <<K1/binary, "=", V1/binary>>
-            end, Params),
-    Data = str:join(KVs, <<"&">>),
-    httpc:request(
-      post,
-      {URL, [], "application/x-www-form-urlencoded", Data},
-      [], []).
+    rest:post(undefined, URL, Params, <<>>).
 
 
 get_opt(Host, Name) ->
