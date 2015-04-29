@@ -216,6 +216,16 @@ get_opt_host(Host, Opts, Default) ->
     Val = get_opt(host, Opts, fun iolist_to_binary/1, Default),
     ejabberd_regexp:greplace(Val, <<"@HOST@">>, Host).
 
+-spec v_db(db_type()) -> db_type().
+
+v_db(odbc) -> odbc;
+v_db(sharding) -> sharding;
+v_db(internal) -> mnesia;
+v_db(mnesia) -> mnesia;
+v_db(p1db) -> p1db;
+v_db(riak) -> riak;
+v_db(rest) -> rest.
+
 -spec db_type(opts()) -> db_type().
 
 db_type(Opts) ->
@@ -224,40 +234,14 @@ db_type(Opts) ->
 -spec db_type(binary() | global, atom() | opts()) -> db_type().
 
 db_type(Host, Module) when is_atom(Module) ->
-    get_module_opt(Host, Module, db_type,
-                   fun(odbc) -> odbc;
-		      (sharding) -> sharding;
-                      (internal) -> mnesia;
-                      (mnesia) -> mnesia;
-                      (p1db) -> p1db;
-                      (riak) -> riak;
-                      (rest) -> rest
-                   end,
-                   default_db(Host));
+    get_module_opt(Host, Module, db_type, fun v_db/1, default_db(Host));
 db_type(Host, Opts) when is_list(Opts) ->
-    get_opt(db_type, Opts,
-	    fun(odbc) -> odbc;
-	       (sharding) -> sharding;
-	       (internal) -> mnesia;
-	       (mnesia) -> mnesia;
-	       (p1db) -> p1db;
-	       (riak) -> riak;
-	       (rest) -> rest
-            end,
-            default_db(Host)).
+    get_opt(db_type, Opts, fun v_db/1, default_db(Host)).
 
 -spec default_db(binary() | global) -> db_type().
 
 default_db(Host) ->
-    ejabberd_config:get_option({default_db, Host},
-			       fun(odbc) -> odbc;
-				  (sharding) -> sharding;
-				  (internal) -> mnesia;
-				  (mnesia) -> mnesia;
-				  (p1db) -> p1db;
-				  (riak) -> riak;
-				  (rest) -> rest
-			       end, mnesia).
+    ejabberd_config:get_option({default_db, Host}, fun v_db/1, mnesia).
 
 -spec loaded_modules(binary()) -> [atom()].
 
