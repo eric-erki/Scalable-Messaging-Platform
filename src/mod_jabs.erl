@@ -44,6 +44,9 @@
 %% handled ejabberd hooks
 -export([sm_register_connection_hook/3, user_send_packet/3, user_send_packet/4]).
 
+%% p1db exports
+-export([enc_key/1, dec_key/1, enc_val/2, dec_val/2]).
+
 -record(jabs, {host, counter, stamp, timer, ignore=[]}).
 
 -define(PROCNAME, ?MODULE).
@@ -159,6 +162,19 @@ init_db(mnesia, _Host) ->
     mnesia:create_table(jabs, [{disc_copies, [node()]},
                                {local_content, true},
                                {attributes, record_info(fields, jabs)}]);
+init_db(p1db, Host) ->
+    Group = gen_mod:get_module_opt(Host, ?MODULE, p1db_group, fun(G) when is_atom(G) -> G end, 
+                        ejabberd_config:get_option(
+                            {p1db_group, Host}, fun(G) when is_atom(G) -> G end)),
+    [Key|Values] = record_info(fields, jabs),
+    p1db:open_table(pubsub_state,
+                        [{group, Group}, {nosync, true},
+                         {schema, [{keys, [Key]},
+                                   {vals, Values},
+                                   {enc_key, fun ?MODULE:enc_key/1},
+                                   {dec_key, fun ?MODULE:dec_key/1},
+                                   {enc_val, fun ?MODULE:enc_val/2},
+                                   {dec_val, fun ?MODULE:dec_val/2}]}]);
 init_db(_, _) ->
     ok.
 
@@ -170,13 +186,24 @@ read_db(Host, mnesia) ->
         [#jabs{}=Jabs] -> Jabs;
         _ -> #jabs{host = Host, counter = 0, stamp = os:timestamp()}
     end;
+read_db(Host, p1db) ->
+    Key = enc_key({Host, node()}),
+    case p1db:get(jabs, Key) of
+        {ok, Val, _VClock} -> p1db_to_jabs(Key, Val);
+        _ -> #jabs{host = Host, counter = 0, stamp = os:timestamp()}
+    end;
 read_db(Host, _) ->
     #jabs{host = Host, counter = 0, stamp = os:timestamp()}.
 
 write_db(Jabs) when is_record(Jabs, jabs) ->
     write_db(Jabs, gen_mod:db_type(Jabs#jabs.host, ?MODULE)).
+
 write_db(Jabs, mnesia) ->
     mnesia:dirty_write(Jabs);
+write_db(Jabs, p1db) ->
+    Key = enc_key({Jabs#jabs.host, node()}),
+    Val = jabs_to_p1db(Jabs),
+    p1db:insert(jabs, Key, Val);
 write_db(_, _) ->
     ok.
 
@@ -234,3 +261,48 @@ user_send_packet(Packet, _C2SState, From, To) ->
 user_send_packet(#jid{luser=User,lserver=Host}, _To, Packet) ->
     gen_server:cast(process(Host), {inc, 1, User}),
     Packet.
+
+%%====================================================================
+%% p1db helpers
+%%====================================================================
+
+jabs_to_p1db(Jabs) when is_record(Jabs, jabs) ->
+    term_to_binary([
+            {counter, Jabs#jabs.counter},
+            {stamp, Jabs#jabs.stamp},
+            {timer, Jabs#jabs.timer},
+            {ignore, Jabs#jabs.ignore}]).
+p1db_to_jabs(Key, Val) when is_binary(Key) ->
+    p1db_to_jabs(dec_key(Key), Val);
+p1db_to_jabs({Host, _Node}, Val) ->
+    lists:foldl(
+        fun({counter, C}, J) -> J#jabs{counter=C};
+            ({stamp, S}, J) -> J#jabs{stamp=S};
+            ({timer, T}, J) -> J#jabs{timer=T};
+            ({ignore, I}, J) -> J#jabs{ignore=I};
+            (_, J) -> J
+        end, #jabs{host=Host}, binary_to_term(Val)).
+
+enc_key({Host, Node}) ->
+    N = jlib:atom_to_binary(Node),
+    <<Host/binary, 0, N/binary>>;
+enc_key(Host) ->
+    <<Host/binary, 0>>.
+dec_key(Key) ->
+    SLen = str:chr(Key, 0) - 1,
+    <<Host:SLen/binary, 0, N/binary>> = Key,
+    {Host, jlib:binary_to_atom(N)}.
+
+enc_val(_, [Counter, Stamp, Timer, Ignore]) ->
+    jabs_to_p1db(#jabs{
+            counter=Counter,
+            stamp=Stamp,
+            timer=Timer,
+            ignore=Ignore}).
+dec_val(Key, Bin) ->
+    J = p1db_to_jabs(Key, Bin),
+    [J#jabs.counter,
+     J#jabs.stamp,
+     J#jabs.timer,
+     J#jabs.ignore].
+
