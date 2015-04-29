@@ -216,7 +216,7 @@ get_opt_host(Host, Opts, Default) ->
     Val = get_opt(host, Opts, fun iolist_to_binary/1, Default),
     ejabberd_regexp:greplace(Val, <<"@HOST@">>, Host).
 
--spec v_db(db_type()) -> db_type().
+-spec v_db(db_type() | internal) -> db_type().
 
 v_db(odbc) -> odbc;
 v_db(sharding) -> sharding;
