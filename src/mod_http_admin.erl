@@ -176,62 +176,6 @@ process(_Path, Request) ->
 %% command handlers
 %% ----------------
 
-% ejabberd SaaS command update_roster
-% this command is only available through REST API  (TODO: move to mod_admin_p1 ?)
-%
-% input:
-%  {"username": "USER",
-%   "domain": "DOMAIN",  % if ommited, we take the first configured vhost
-%   "add": [{"jid": "CONTACT", "subscription": "both", "nick": "NICK"}, ...],
-%   "delete": ["CONTACT", ...]}
-% output:
-%  The HTTP status code will be 200 if user exists, 401 if not, or 500 codes if there was server errors.
-handle(<<"update_roster">>, Args) when is_list(Args) ->
-    [User, Domain, Add, Del] = match(Args, [
-                {<<"username">>, <<>>},
-                {<<"domain">>, <<>>},
-                {<<"add">>, []},
-                {<<"delete">>, []}]),
-    Server = case Domain of
-        <<>> ->
-            [Default|_] = ejabberd_config:get_myhosts(),
-            Default;
-        _ ->
-            Domain
-    end,
-    case ejabberd_auth:is_user_exists(User, Server) of
-        true ->
-            AddFun = fun({Item}) ->
-                    [Contact, Nick, Sub] = match(Item, [
-                                {<<"username">>, <<>>},
-                                {<<"nick">>, <<>>},
-                                {<<"subscription">>, <<"both">>}]),
-                    Jid = <<Contact/binary, "@", Server/binary>>,
-                    mod_admin_p1:add_rosteritem(User, Server, Jid, <<>>, Nick, Sub)
-            end,
-            AddRes = [AddFun(I) || I <- Add],
-            case lists:all(fun(X) -> X==0 end, AddRes) of
-                true ->
-                    DelFun = fun(Contact) ->
-                            Jid = <<Contact/binary, "@", Server/binary>>,
-                            mod_admin_p1:delete_rosteritem(User, Server, Jid)
-                    end,
-                    [DelFun(I) || I <- Del],
-                    {200, <<"OK">>};
-                false ->
-                    %% try rollback if errors
-                    DelFun = fun({Item}) ->
-                            [Contact] = match(Item, [{<<"username">>, <<>>}]),
-                            Jid = <<Contact/binary, "@", Server/binary>>,
-                            mod_admin_p1:delete_rosteritem(User, Server, Jid)
-                    end,
-                    [DelFun(I) || I <- Add],
-                    {500, <<"500 Internal server error">>}
-            end;
-        false ->
-            {401, <<"Invalid User">>}
-    end;
-
 % generic ejabberd command handler
 handle(Call, [{_,_}|_] = Args) when is_binary(Call) ->
     case ejabberd_commands:get_command_format(jlib:binary_to_atom(Call)) of

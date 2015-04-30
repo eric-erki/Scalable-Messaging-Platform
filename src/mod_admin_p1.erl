@@ -55,6 +55,7 @@
 	 link_contacts/6, unlink_contacts/2, link_contacts/7, unlink_contacts/3,
 	 get_roster/2, get_roster_with_presence/2,
 	 add_contacts/3, remove_contacts/3, set_rosternick/3,
+	 update_roster/4,
 	 transport_register/5,
 	% vcard
 	 set_nickname/3,
@@ -378,6 +379,13 @@ commands() ->
 			    [{user, binary}, {server, binary},
 			     {nick, binary}],
 			result = {res, integer}},
+     #ejabberd_commands{name = update_roster, tags = [roster],
+			desc = "Add and remove contacts from user roster in one shot",
+			module = ?MODULE, function = update_roster,
+			args = [{username, binary}, {domain, binary},
+				{add, {list, {contact, {list, {property, {tuple, [{name, binary},{value, binary}]}}}}}},
+				{delete, {list, {contact, {list, {property, {tuple, [{name, binary},{value, binary}]}}}}}}],
+			result = {res, restuple}},
      #ejabberd_commands{name = get_offline_count,
 			tags = [offline],
 			desc = "Get the number of unread offline messages",
@@ -888,6 +896,54 @@ change_rosternick(User, Server, Nick) ->
         {atomic, ok} -> ok;
         _ -> error
     end.
+
+update_roster(User, Host, Add, Del) when is_list(Add), is_list(Del) ->
+    Server = case Host of
+        <<>> ->
+            [Default|_] = ejabberd_config:get_myhosts(),
+            Default;
+        _ ->
+            Host
+    end,
+    case ejabberd_auth:is_user_exists(User, Server) of
+        true ->
+            AddFun = fun({Item}) ->
+                    [Contact, Nick, Sub] = match(Item, [
+                                {<<"username">>, <<>>},
+                                {<<"nick">>, <<>>},
+                                {<<"subscription">>, <<"both">>}]),
+                    Jid = <<Contact/binary, "@", Server/binary>>,
+                    add_rosteritem(User, Server, Jid, <<>>, Nick, Sub)
+            end,
+            AddRes = [AddFun(I) || I <- Add],
+            case lists:all(fun(X) -> X==0 end, AddRes) of
+                true ->
+                    DelFun = fun(Contact) ->
+                            Jid = <<Contact/binary, "@", Server/binary>>,
+                            delete_rosteritem(User, Server, Jid)
+                    end,
+                    [DelFun(I) || I <- Del],
+                    {ok, "OK"};
+                false ->
+                    %% try rollback if errors
+                    DelFun = fun({Item}) ->
+                            [Contact] = match(Item, [{<<"username">>, <<>>}]),
+                            Jid = <<Contact/binary, "@", Server/binary>>,
+                            delete_rosteritem(User, Server, Jid)
+                    end,
+                    [DelFun(I) || I <- Add],
+                    String = io_lib:format("Internal error updating roster for user ~s@~s at node ~p",
+                                           [User, Host, node()]),
+                    {roster_update_error, String}
+            end;
+        false ->
+            String = io_lib:format("User ~s@~s not found at node ~p",
+                                   [User, Host, node()]),
+            {invalid_user, String}
+    end.
+
+match(Args, Spec) ->
+    [proplists:get_value(Key, Args, Default) || {Key, Default} <- Spec].
 
 %%%
 %%% Groups of Roster Item
