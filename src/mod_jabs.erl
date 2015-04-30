@@ -72,13 +72,16 @@ stop(Host) ->
     supervisor:delete_child(ejabberd_sup, Proc).
 
 value(Host) ->
-    Nodes = ejabberd_cluster:get_nodes(),
-    {Replies, _} = gen_server:multi_call(Nodes, process(Host), value, ?CALL_TIMEOUT),
-    lists:foldl(
-            fun({_N, {C, S}}, {CAcc, SAcc}) when S<SAcc -> {CAcc+C, S};
-               ({_N, {C, _S}}, {CAcc, SAcc}) -> {CAcc+C, SAcc}
-            end,
-            {0, os:timestamp()}, Replies).
+    case gen_server:call(process(Host), values, ?CALL_TIMEOUT) of
+        [] ->
+            gen_server:call(process(Host), value, ?CALL_TIMEOUT);
+        Values ->
+            lists:foldl(
+                fun ({_N, C, S}, {CAcc, SAcc}) when S<SAcc -> {CAcc+C, S};
+                    ({_N, C, _S}, {CAcc, SAcc}) -> {CAcc+C, SAcc}
+                end,
+                {0, os:timestamp()}, Values)
+    end.
 
 reset(Host) ->
     gen_server:cast(process(Host), reset).
@@ -92,16 +95,30 @@ init([Host, Opts]) ->
     ejabberd_commands:register_commands(commands(Host)),
     Ignore = gen_mod:get_opt(ignore, Opts,
                              fun(L) when is_list(L) -> L end, []),
-    {ok, TRef} = timer:send_interval(60000*15, backup),  % backup every 15 minutes
-    Record = read_db(Host),
-    IgnoreLast = lists:usort(Ignore++Record#jabs.ignore),
-    Jabs = Record#jabs{ignore = IgnoreLast, timer = TRef},
+    {ok, TRef} = timer:send_interval(60000*5, backup),  % backup every 5 minutes
+    R1 = read_db(Host),
+    IgnoreLast = lists:usort(Ignore++R1#jabs.ignore),
+    R2 = R1#jabs{ignore = IgnoreLast, timer = TRef},
+    % temporary hack for SaaS: if stamp is more than 31 days old
+    % then force reset (in case of node saas upgrade)
+    Age = timer:now_diff(os:timestamp(), R2#jabs.stamp) div 1000000,
+    Jabs = if Age > 2678400 ->  % 31 days in seconds
+            R2#jabs{counter = 0, stamp = os:timestamp()};
+        true ->
+            R2
+    end,
+    write_db(Jabs),
     [ejabberd_hooks:add(Hook, Host, ?MODULE, Hook, 20)
      || Hook <- ?SUPPORTED_HOOKS],
     {ok, Jabs}.
 
 handle_call(value, _From, State) ->
     {reply, {State#jabs.counter, State#jabs.stamp}, State};
+handle_call(values, _From, State) ->
+    Host = State#jabs.host,
+    Values = [{Node, Jabs#jabs.counter, Jabs#jabs.stamp}
+              || {Node, Jabs} <- match_db(Host)],
+    {reply, Values, State};
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State}.
 
@@ -126,6 +143,7 @@ handle_cast({attend, User}, State) ->
     Ignore = lists:delete(User, State#jabs.ignore),
     {noreply, State#jabs{ignore = Ignore}};
 handle_cast(reset, State) ->
+    clean_db(State#jabs.host),
     {noreply, State#jabs{counter = 0, stamp = os:timestamp()}};
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -182,14 +200,14 @@ read_db(Host) when is_binary(Host) ->
     read_db(Host, gen_mod:db_type(Host, ?MODULE)).
 
 read_db(Host, mnesia) ->
-    case catch mnesia:dirty_read({jabs, Host}) of
-        [#jabs{}=Jabs] -> Jabs;
+    case catch mnesia:dirty_read(jabs, {Host, node()}) of
+        [#jabs{}=Jabs] -> Jabs#jabs{host = Host};
         _ -> #jabs{host = Host, counter = 0, stamp = os:timestamp()}
     end;
 read_db(Host, p1db) ->
     Key = enc_key({Host, node()}),
     case p1db:get(jabs, Key) of
-        {ok, Val, _VClock} -> p1db_to_jabs(Key, Val);
+        {ok, Val, _VClock} -> (p1db_to_jabs(Key, Val))#jabs{host = Host};
         _ -> #jabs{host = Host, counter = 0, stamp = os:timestamp()}
     end;
 read_db(Host, _) ->
@@ -199,12 +217,49 @@ write_db(Jabs) when is_record(Jabs, jabs) ->
     write_db(Jabs, gen_mod:db_type(Jabs#jabs.host, ?MODULE)).
 
 write_db(Jabs, mnesia) ->
-    mnesia:dirty_write(Jabs);
+    Key = {Jabs#jabs.host, node()},
+    ejabberd_cluster:multicall(mnesia, dirty_write, [Jabs#jabs{host=Key}]);
 write_db(Jabs, p1db) ->
     Key = enc_key({Jabs#jabs.host, node()}),
-    Val = jabs_to_p1db(Jabs),
-    p1db:insert(jabs, Key, Val);
+    p1db:insert(jabs, Key, jabs_to_p1db(Jabs));
 write_db(_, _) ->
+    ok.
+
+match_db(Host) when is_binary(Host) ->
+    match_db(Host, gen_mod:db_type(Host, ?MODULE)).
+
+match_db(Host, mnesia) ->
+    Record = #jabs{host = {Host, '_'}, _ = '_'},
+    lists:map(fun(Jabs) ->
+                {Host, Node} = Jabs#jabs.host,
+                {Node, Jabs#jabs{host = Host}}
+        end, mnesia:dirty_match_object(Record));
+match_db(Host, p1db) ->
+    case p1db:get_by_prefix(jabs, enc_key(Host)) of
+        {ok, L} ->
+            lists:map(fun(Jabs) ->
+                        {Host, Node} = Jabs#jabs.host,
+                        {Node, Jabs#jabs{host = Host}}
+                end, [p1db_to_jabs(Key, Val) || {Key, Val, _} <- L]);
+        _ ->
+            []
+    end;
+match_db(_, _) ->
+    [].
+
+clean_db(Host) when is_binary(Host) ->
+    clean_db(Host, gen_mod:db_type(Host, ?MODULE)).
+
+clean_db(Host, mnesia) ->
+    Record = #jabs{host = {Host, '_'}, _ = '_'},
+    ejabberd_cluster:multicall(mnesia, dirty_delete_object, [Record]),
+    ok;
+clean_db(Host, p1db) ->
+    case p1db:get_by_prefix(jabs, enc_key(Host)) of
+        {ok, L} -> [p1db:delete(jabs, Key) || {Key, _, _} <- L], ok;
+        _ -> ok
+    end;
+clean_db(_, _) ->
     ok.
 
 %%====================================================================
@@ -274,14 +329,14 @@ jabs_to_p1db(Jabs) when is_record(Jabs, jabs) ->
             {ignore, Jabs#jabs.ignore}]).
 p1db_to_jabs(Key, Val) when is_binary(Key) ->
     p1db_to_jabs(dec_key(Key), Val);
-p1db_to_jabs({Host, _Node}, Val) ->
+p1db_to_jabs({Host, Node}, Val) ->
     lists:foldl(
-        fun({counter, C}, J) -> J#jabs{counter=C};
+        fun ({counter, C}, J) -> J#jabs{counter=C};
             ({stamp, S}, J) -> J#jabs{stamp=S};
             ({timer, T}, J) -> J#jabs{timer=T};
             ({ignore, I}, J) -> J#jabs{ignore=I};
             (_, J) -> J
-        end, #jabs{host=Host}, binary_to_term(Val)).
+        end, #jabs{host={Host, Node}}, binary_to_term(Val)).
 
 enc_key({Host, Node}) ->
     N = jlib:atom_to_binary(Node),
