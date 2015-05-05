@@ -596,7 +596,10 @@ normal_state({route, From, ToNick,
 				   FromNickJID =
 				       jlib:jid_replace_resource(StateData#state.jid,
 								 FromNick),
-				   [route_stanza(FromNickJID, ToJID, Packet)
+				   X = #xmlel{name = <<"x">>,
+					      attrs = [{<<"xmlns">>, ?NS_MUC_USER}]},
+				   PrivMsg = xml:append_subtags(Packet, [X]),
+				   [route_stanza(FromNickJID, ToJID, PrivMsg)
 				    || ToJID <- ToJIDs];
 			       true ->
 				   ErrText =
