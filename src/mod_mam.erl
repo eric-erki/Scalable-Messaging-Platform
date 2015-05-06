@@ -451,8 +451,8 @@ do_store(Pkt, LUser, LServer, Peer, Type, Dir, rest) ->
 	{ok, Code, _} when Code == 200 orelse Code == 201 ->
 	    {ok, ID};
 	Err ->
-	    ?ERROR_MSG("failed to store packet for user ~s and peer ~s: ~p",
-		       [SUser, SPeer, Err]),
+	    ?ERROR_MSG("failed to store packet for user ~s and peer ~s: ~p.  Packet: ~p  direction: ~p",
+		       [SUser, SPeer, Err, Pkt, Dir]),
 	    {error, Err}
     end;
 do_store(Pkt, LUser, LServer, Peer, _Type, _Dir, DBType)
