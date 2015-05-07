@@ -444,10 +444,11 @@ do_store(Pkt, LUser, LServer, Peer, Type, Dir, rest) ->
     Path = ejabberd_config:get_option({ext_api_path_archive, LServer},
 				      fun(X) -> iolist_to_binary(X) end,
 				      <<"/archive">>),
-    case rest:post(LServer2, Path, [],
+    %% Retry 2 times, with a backoff of 500millisec
+    case rest:with_retry(post, [LServer2, Path, [],
 		   {[{<<"username">>, SUser},
 		     {<<"peer">>, SPeer},
-		     {<<"timestamp">>, now_to_iso(Now)} | T]}) of
+		     {<<"timestamp">>, now_to_iso(Now)} | T]}], 2, 500) of
 	{ok, Code, _} when Code == 200 orelse Code == 201 ->
 	    {ok, ID};
 	Err ->
