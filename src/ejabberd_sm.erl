@@ -55,6 +55,7 @@
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
+-include_lib("stdlib/include/ms_transform.hrl").
 -include("jlib.hrl").
 
 -include("ejabberd_commands.hrl").
