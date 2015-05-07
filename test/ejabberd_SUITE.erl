@@ -15,12 +15,12 @@
                 pubsub_jid/1, proxy_jid/1, muc_jid/1,
                 muc_room_jid/1, get_features/2, re_register/1,
                 is_feature_advertised/2, subscribe_to_events/1,
-                is_feature_advertised/3, set_opt/3, auth_SASL/2,
+                is_feature_advertised/3, set_opt/3, auth_SASL/3,
                 wait_for_master/1, wait_for_slave/1,
                 make_iq_result/1, start_event_relay/0,
                 stop_event_relay/1, put_event/2, get_event/1,
                 bind/1, auth/1, open_session/1, zlib/1, starttls/1,
-		close_socket/1]).
+		starttls/2, close_socket/1]).
 
 -include("suite.hrl").
 
@@ -123,6 +123,7 @@ init_per_testcase(TestCase, OrigConfig) ->
     Resource = ?config(resource, OrigConfig),
     MasterResource = ?config(master_resource, OrigConfig),
     SlaveResource = ?config(slave_resource, OrigConfig),
+    RevokedCertFile = ?config(revoked_certfile, OrigConfig),
     Test = atom_to_list(TestCase),
     IsMaster = lists:suffix("_master", Test),
     IsSlave = lists:suffix("_slave", Test),
@@ -166,6 +167,8 @@ init_per_testcase(TestCase, OrigConfig) ->
             connect(Config);
 	auth_external ->
 	    starttls(connect(Config));
+	auth_external_revoked ->
+	    starttls(connect(Config), RevokedCertFile);
 	p1_rebind_reconnect ->
 	    connect(Config);
         test_bind ->
@@ -278,6 +281,7 @@ db_tests(_) ->
        auth_plain,
        auth_md5,
        auth_external,
+       auth_external_revoked,
        presence_broadcast,
        last,
        roster_get,
@@ -416,7 +420,7 @@ auth_md5(Config) ->
     Mechs = ?config(mechs, Config),
     case lists:member(<<"DIGEST-MD5">>, Mechs) of
         true ->
-            disconnect(auth_SASL(<<"DIGEST-MD5">>, Config));
+            disconnect(auth_SASL(<<"DIGEST-MD5">>, Config, false));
         false ->
             disconnect(Config),
             {skipped, 'DIGEST-MD5_not_available'}
@@ -426,7 +430,7 @@ auth_plain(Config) ->
     Mechs = ?config(mechs, Config),
     case lists:member(<<"PLAIN">>, Mechs) of
         true ->
-            disconnect(auth_SASL(<<"PLAIN">>, Config));
+            disconnect(auth_SASL(<<"PLAIN">>, Config, false));
         false ->
             disconnect(Config),
             {skipped, 'PLAIN_not_available'}
@@ -436,7 +440,17 @@ auth_external(Config) ->
     Mechs = ?config(mechs, Config),
     case lists:member(<<"EXTERNAL">>, Mechs) of
 	true ->
-	    disconnect(auth_SASL(<<"EXTERNAL">>, Config));
+	    disconnect(auth_SASL(<<"EXTERNAL">>, Config, false));
+	false ->
+	    disconnect(Config),
+	    {skipped, 'SASL_EXTERNAL_not_available'}
+    end.
+
+auth_external_revoked(Config) ->
+    Mechs = ?config(mechs, Config),
+    case lists:member(<<"EXTERNAL">>, Mechs) of
+	true ->
+	    disconnect(auth_SASL(<<"EXTERNAL">>, Config, true));
 	false ->
 	    disconnect(Config),
 	    {skipped, 'SASL_EXTERNAL_not_available'}

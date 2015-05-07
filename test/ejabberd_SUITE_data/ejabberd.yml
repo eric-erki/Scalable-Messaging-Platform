@@ -419,8 +419,10 @@ listen:
     port: @@s2s_port@@
     module: ejabberd_s2s_in
   - 
-    port: @@web_port@@
+    port: 5280
     module: ejabberd_http
+    request_handlers:
+      "/data": mod_http_fileserver
     captcha: true
 loglevel: 4
 max_fsm_queue: 1000
@@ -441,6 +443,8 @@ Welcome to this XMPP server."
   mod_client_state:
     drop_chat_states: true
     queue_presence: true
+  mod_http_fileserver:
+    docroot: "@@data_dir@@"
 registration_timeout: infinity
 shaper: 
   fast: 50000

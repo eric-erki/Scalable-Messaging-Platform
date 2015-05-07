@@ -26,6 +26,7 @@ init_config(Config) ->
     SASLPath = filename:join([PrivDir, "sasl.log"]),
     MnesiaDir = filename:join([PrivDir, "mnesia"]),
     CertFile = filename:join([DataDir, "cert.pem"]),
+    RevokedCertFile = filename:join([DataDir, "rev-cert.pem"]),
     {ok, CWD} = file:get_cwd(),
     {ok, _} = file:copy(CertFile, filename:join([CWD, "cert.pem"])),
     {ok, CfgContentTpl} = file:read_file(ConfigPathTpl),
@@ -62,6 +63,7 @@ init_config(Config) ->
      {slave_nick, <<"slave_nick">>},
      {room_subject, <<"hello, world!">>},
      {certfile, CertFile},
+     {revoked_certfile, RevokedCertFile},
      {base_dir, BaseDir},
      {resource, <<"resource">>},
      {master_resource, <<"master_resource">>},
@@ -82,7 +84,7 @@ process_config_tpl(Content, [{Name, DefaultValue} | Rest]) ->
               V4 ->
                   V4
           end,
-    NewContent = binary:replace(Content, <<"@@",(atom_to_binary(Name, latin1))/binary, "@@">>, Val),
+    NewContent = binary:replace(Content, <<"@@",(atom_to_binary(Name, latin1))/binary, "@@">>, Val, [global]),
     process_config_tpl(NewContent, Rest).
 
 
@@ -134,11 +136,14 @@ close_socket(Config) ->
     Config.
 
 starttls(Config) ->
+    starttls(Config, ?config(certfile, Config)).
+
+starttls(Config, CertFile) ->
     send(Config, #starttls{}),
     #starttls_proceed{} = recv(),
     {ok, TLSSocket} = ejabberd_socket:starttls(
                         ?config(socket, Config),
-                        [{certfile, ?config(certfile, Config)},
+                        [{certfile, CertFile},
                          connect]),
     init_stream(set_opt(socket, TLSSocket, Config)).
 
@@ -153,9 +158,9 @@ auth(Config) ->
     HaveMD5 = lists:member(<<"DIGEST-MD5">>, Mechs),
     HavePLAIN = lists:member(<<"PLAIN">>, Mechs),
     if HavePLAIN ->
-            auth_SASL(<<"PLAIN">>, Config);
+            auth_SASL(<<"PLAIN">>, Config, false);
        HaveMD5 ->
-            auth_SASL(<<"DIGEST-MD5">>, Config);
+            auth_SASL(<<"DIGEST-MD5">>, Config, false);
        true ->
             ct:fail(no_sasl_mechanisms_available)
     end.
@@ -173,17 +178,19 @@ open_session(Config) ->
         send_recv(Config, #iq{type = set, sub_els = [#session{}]}),
     Config.
 
-auth_SASL(Mech, Config) ->
+auth_SASL(Mech, Config, ShouldFail) ->
     {Response, SASL} = sasl_new(Mech,
                                 ?config(user, Config),
                                 ?config(server, Config),
                                 ?config(password, Config)),
     send(Config, #sasl_auth{mechanism = Mech, text = Response}),
-    wait_auth_SASL_result(set_opt(sasl, SASL, Config)).
+    wait_auth_SASL_result(set_opt(sasl, SASL, Config), ShouldFail).
 
-wait_auth_SASL_result(Config) ->
+wait_auth_SASL_result(Config, ShouldFail) ->
     case recv() of
-        #sasl_success{} ->
+        #sasl_success{} when ShouldFail ->
+	    ct:fail(sasl_auth_should_have_failed);
+	#sasl_success{} ->
             ejabberd_socket:reset_stream(?config(socket, Config)),
             send_text(Config,
                       io_lib:format(?STREAM_HEADER,
@@ -205,7 +212,9 @@ wait_auth_SASL_result(Config) ->
         #sasl_challenge{text = ClientIn} ->
             {Response, SASL} = (?config(sasl, Config))(ClientIn),
             send(Config, #sasl_response{text = Response}),
-            wait_auth_SASL_result(set_opt(sasl, SASL, Config));
+            wait_auth_SASL_result(set_opt(sasl, SASL, Config), ShouldFail);
+	#sasl_failure{} when ShouldFail ->
+	    Config;
         #sasl_failure{} ->
             ct:fail(sasl_auth_failed)
     end.
