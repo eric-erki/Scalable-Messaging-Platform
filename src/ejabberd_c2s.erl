@@ -608,17 +608,17 @@ wait_for_stream({xmlstreamstart, Name, Attrs},
 						       [{<<"xmlns">>,
 							 ?NS_P1_ACK}],
 						   children = []}],
-                              StreamFeatures =
+                            StreamFeatures1 =
                                   TLSFeature ++
                                   CompressFeature ++
                                   P1PushFeature ++
                                   P1RebindFeature ++
                                   P1AckFeature ++
-                                  Mechs ++
-                                  ejabberd_hooks:run_fold(c2s_stream_features,
-                                                          Server,
-                                                          [],
-                                                          [Server]),
+                                  Mechs,
+                            StreamFeatures =
+                                ejabberd_hooks:run_fold(
+                                  c2s_stream_features,
+                                  Server, StreamFeatures1, [Server]),
 			    send_element(StateData,
 					 #xmlel{name = <<"stream:features">>,
 						attrs = [],
@@ -648,7 +648,7 @@ wait_for_stream({xmlstreamstart, Name, Attrs},
                                             false ->
                                                 []
                                         end,
-				  StreamFeatures = [#xmlel{name = <<"push">>,
+				  StreamFeatures1 = [#xmlel{name = <<"push">>,
 							   attrs =
 							       [{<<"xmlns">>,
 								 ?NS_P1_PUSH}],
@@ -667,11 +667,11 @@ wait_for_stream({xmlstreamstart, Name, Attrs},
 						     RosterVersioningFeature ++
                                                      StreamManagementFeature ++
                                                      ejabberd_hooks:run_fold(c2s_post_auth_features,
-                                                                             Server, [], [Server]) ++
-						       ejabberd_hooks:run_fold(c2s_stream_features,
-									       Server,
-									       [],
-									       [Server]),
+                                                                             Server, [], [Server]),
+                                  StreamFeatures =
+                                      ejabberd_hooks:run_fold(
+                                        c2s_stream_features,
+                                        Server, StreamFeatures1, [Server]),
 				  send_element(StateData,
 					       #xmlel{name =
 							  <<"stream:features">>,
