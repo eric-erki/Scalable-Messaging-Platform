@@ -54,8 +54,6 @@ start(Host, Opts) ->
     init_db(gen_mod:db_type(Host, Opts), Host),
     ejabberd_hooks:add(remove_user, Host, ?MODULE,
 		       remove_user, 50),
-    gen_iq_handler:add_iq_handler(ejabberd_local, Host,
-				  ?NS_PRIVATE, ?MODULE, process_sm_iq, IQDisc),
     gen_iq_handler:add_iq_handler(ejabberd_sm, Host,
 				  ?NS_PRIVATE, ?MODULE, process_sm_iq, IQDisc).
 
@@ -82,7 +80,6 @@ init_db(_, _) ->
 stop(Host) ->
     ejabberd_hooks:delete(remove_user, Host, ?MODULE,
 			  remove_user, 50),
-    gen_iq_handler:remove_iq_handler(ejabberd_local, Host, ?NS_PRIVATE),
     gen_iq_handler:remove_iq_handler(ejabberd_sm, Host,
 				     ?NS_PRIVATE).
 
