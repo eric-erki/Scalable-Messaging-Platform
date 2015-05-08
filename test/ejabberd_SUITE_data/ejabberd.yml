@@ -419,7 +419,7 @@ listen:
     port: @@s2s_port@@
     module: ejabberd_s2s_in
   - 
-    port: 5280
+    port: @@web_port@@
     module: ejabberd_http
     request_handlers:
       "/data": mod_http_fileserver
