@@ -66,7 +66,9 @@
 	 p1db_records_number/0, iq_handlers_number/0,
 	 server_info/0, server_version/0, server_health/0,
 	% mass notification
-	 start_mass_message/3, stop_mass_message/1, mass_message/5]).
+	 start_mass_message/3, stop_mass_message/1, mass_message/5,
+	% mam
+	 purge_mam/2]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -524,8 +526,20 @@ commands() ->
 				    {status, string},
 				    {sessions, {list,
 					{session, {list,
-					    {info, {tuple, [{name, atom}, {value, string}]}}}}}}]}}}
-	].
+					    {info, {tuple, [{name, atom}, {value, string}]}}}}}}]}}},
+          #ejabberd_commands{name = purge_mam,
+			     tags = [mam],
+			     desc = "Purge MAM archive for old messages",
+			     longdesc = "First parameter is virtual host "
+			     "name.\n"
+			     "Second parameter is the age of messages "
+			     "to delete, in days.\n"
+			     "It returns the number of deleted messages, "
+			     "or a negative error code.",
+			     module = ?MODULE, function = purge_mam,
+			     args = [{server, binary}, {days, integer}],
+			     result = {res, integer}}
+    ].
 
 
 %%%
@@ -1725,6 +1739,38 @@ mass_message(Host, Delay, Stanza, From, [Uid|Others]) ->
     end.
 
 %% -----------------------------
+%% MAM
+%% -----------------------------
+
+purge_mam(Host, Days) ->
+    case lists:member(Host, ?MYHOSTS) of
+	true ->
+	    purge_mam(Host, Days, gen_mod:db_type(Host, mod_roster));
+	_ ->
+	    ?ERROR_MSG("Unknown Host name: ~s", [Host]),
+	    -1
+    end.
+
+purge_mam(Host, Days, odbc) ->
+    Timestamp = now_to_usec(now()) - (3600*24 * Days * 1000000),
+    case ejabberd_odbc:sql_query(Host,
+				 [<<"DELETE FROM archive "
+				   "WHERE timestamp < ">>,
+				  integer_to_binary(Timestamp),
+				  <<";">>]) of
+	{updated, N} ->
+	    N;
+	_Err ->
+	    ?ERROR_MSG("Cannot purge MAM on Host ~s: ~p~n", [Host, _Err]),
+	    -1
+    end;
+purge_mam(_Host, _Days, _Backend) ->
+    ?ERROR_MSG("MAM purge not implemented for backend ~p~n",
+	       [_Backend]),
+    -2.
+
+
+%% -----------------------------
 %% Internal function pattern
 %% -----------------------------
 
@@ -1783,6 +1829,9 @@ workers_number(Supervisor) ->
 
 seconds_to_now(Secs) ->
     {Secs div 1000000, Secs rem 1000000, 0}.
+
+now_to_usec({MSec, Sec, USec}) ->
+    (MSec*1000000 + Sec)*1000000 + USec.
 
 build_stamp(Module) ->
     {Y,M,D,HH,MM,SS} = proplists:get_value(time, Module:module_info(compile)),
