@@ -61,7 +61,7 @@
 -include("licence.hrl").
 -include("ejabberd.hrl").
 -include("logger.hrl").
-
+-include_lib("public_key/include/public_key.hrl").
 -include("jlib.hrl").
 
 -include("mod_privacy.hrl").
@@ -3940,8 +3940,8 @@ get_cert_file(StateData, <<"EXTERNAL">>) ->
 		    case verify_cert(StateData, Cert) of
 			true ->
 			    Cert;
-			false ->
-			    {Cert, <<"certificate verification failed">>}
+			{false, Reason} ->
+			    {Cert, Reason}
 		    end;
                 {error, Reason} ->
 		    ?ERROR_MSG("get_peer_certificate failed: ~s", [Reason]),
@@ -3961,20 +3961,35 @@ verify_cert(StateData, Cert) ->
 		0 ->
 		    true;
 		_ ->
-		    false
+		    {false, <<"unknown certificate issuer">>}
 	    end;
 	{cafile, Path} ->
 	    case file:read_file(Path) of
 		{ok, PemBin} ->
 		    CAList = public_key:pem_decode(PemBin),
-		    lists:any(
-		      fun({'Certificate', Issuer, _}) ->
-			      public_key:pkix_is_issuer(Cert, Issuer)
-		      end, CAList);
+		    case is_known_issuer(Cert, CAList) of
+			true ->
+			    case get_crls(Cert, CAList) of
+				[] ->
+				    true;
+				CRLs ->
+				    IsRevoked =
+					lists:any(
+					  fun(CRL) -> is_revoked(Cert, CRL) end,
+					  CRLs),
+				    if IsRevoked ->
+					    {false, <<"certificate is revoked">>};
+				       true ->
+					    true
+				    end
+			    end;
+			false ->
+			    {false, <<"unknown certificate issuer">>}
+		    end;
 		{error, Why} ->
 		    ?ERROR_MSG("Failed to read file ~s: ~s",
 			       [Path, file:format_error(Why)]),
-		    false
+		    {false, <<"unknown certificate issuer">>}
 	    end
     end.
 
@@ -3989,6 +4004,67 @@ is_verification_enabled(StateData) ->
 	IsEnabled ->
 	    IsEnabled
     end.
+
+get_crls(Cert, CAList) ->
+    TBSCert = Cert#'OTPCertificate'.tbsCertificate,
+    lists:flatmap(
+      fun(#'Extension'{extnID = ?'id-ce-cRLDistributionPoints',
+		       extnValue = DistPoints}) when is_list(DistPoints) ->
+	      lists:flatmap(
+		fun(#'DistributionPoint'{
+		       distributionPoint = {fullName, GenNames}}) ->
+			lists:flatmap(
+			      fun({uniformResourceIdentifier, URI}) ->
+				      case fetch_crl(URI) of
+					  {ok, CRL} ->
+					      case is_known_issuer(CRL, CAList) of
+						  true ->
+						      [CRL];
+						  false ->
+						      ?ERROR_MSG(
+							 "CRL from ~s is signed"
+							 " by unknown CA",
+							 [URI]),
+						      []
+					      end;
+					  error ->
+					      []
+				      end;
+				 (_) ->
+				      []
+			      end, GenNames);
+		   (_) ->
+			[]
+		end, DistPoints);
+	 (_) ->
+	      []
+      end, TBSCert#'OTPTBSCertificate'.extensions).
+
+fetch_crl(URI0) ->
+    URI = binary_to_list(iolist_to_binary(URI0)),
+    case http_p1:get(URI) of
+	{ok, 200, _, BinCRL} ->
+	    {ok, public_key:der_decode('CertificateList', BinCRL)};
+	Err ->
+	    ?ERROR_MSG("failed to fetch CRL from ~s: ~p", [URI, Err]),
+	    error
+    end.
+
+is_revoked(Cert, CRL) ->
+    TBSCert = Cert#'OTPCertificate'.tbsCertificate,
+    TBSCertList = CRL#'CertificateList'.tbsCertList,
+    SerialNumber = TBSCert#'OTPTBSCertificate'.serialNumber,
+    RevokedCerts = TBSCertList#'TBSCertList'.revokedCertificates,
+    lists:any(
+      fun(#'TBSCertList_revokedCertificates_SEQOF'{userCertificate = N}) ->
+	      SerialNumber == N
+      end, RevokedCerts).
+
+is_known_issuer(Cert, CAList) ->
+    lists:any(
+      fun({'Certificate', Issuer, _}) ->
+	      public_key:pkix_is_issuer(Cert, Issuer)
+      end, CAList).
 
 %%%----------------------------------------------------------------------
 %%% XEP-0191

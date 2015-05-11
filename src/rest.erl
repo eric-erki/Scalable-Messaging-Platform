@@ -26,7 +26,7 @@
 
 -module(rest).
 
--export([start/1, stop/1, get/2, get/3, post/4, request/6]).
+-export([start/1, stop/1, get/2, get/3, post/4, request/6, with_retry/4]).
 
 -include("logger.hrl").
 
@@ -45,6 +45,20 @@ start(Host) ->
 
 stop(_Host) ->
     ok.
+
+with_retry(Method, Args, MaxRetries, Backoff) ->
+    with_retry(Method, Args, 0, MaxRetries, Backoff).
+with_retry(Method, Args, Retries, MaxRetries, Backoff) ->
+    case apply(?MODULE, Method, Args) of
+        %% Only retry on timeout errors
+        {error, {http_error,{error,Error}}}
+           when Retries < MaxRetries
+           andalso (Error == 'timeout' orelse Error == 'connect_timeout') ->
+            timer:sleep(round(math:pow(2, Retries)) * Backoff),
+            with_retry(Method, Args, Retries+1, MaxRetries, Backoff);
+        Result ->
+            Result
+    end.
 
 get(Server, Path) ->
     request(Server, get, Path, [], "application/json", <<>>).
