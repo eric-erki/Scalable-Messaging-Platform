@@ -36,7 +36,7 @@ start(Host, Opts) ->
 		       " not started.", [?MODULE]),
 	    stop;
 	_ ->
-	    rest:start(),
+	    rest:start(Host),
 	    IQDisc = gen_mod:get_opt(iqdisc, Opts,
 				     fun gen_iq_handler:check_type/1,
 				     one_queue),

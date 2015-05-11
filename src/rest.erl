@@ -26,18 +26,24 @@
 
 -module(rest).
 
--export([start/0, stop/0, get/2, get/3, post/4, request/6]).
+-export([start/1, stop/1, get/2, get/3, post/4, request/6]).
 
 -include("logger.hrl").
 
 -define(HTTP_TIMEOUT, 10000).
 -define(CONNECT_TIMEOUT, 8000).
 
-start() ->
+start(Host) ->
     http_p1:start(),
-    http_p1:set_pool_size(100).
+    Pool_size =
+	ejabberd_config:get_option({ext_api_http_pool_size, Host},
+				   fun(X) when is_integer(X), X > 0->
+					   X
+				   end,
+				   100),
+    http_p1:set_pool_size(Pool_size).
 
-stop() ->
+stop(_Host) ->
     ok.
 
 get(Server, Path) ->
@@ -102,13 +108,17 @@ request(Server, Method, Path, Params, Mime, Data) ->
         {ok, _, _} ->
             End = os:timestamp(),
             Elapsed = timer:now_diff(End, Begin) div 1000, %% time in ms
-            ejabberd_hooks:run(backend_api_response_time, Server, [Server, Method, Path, Elapsed]);
+            ejabberd_hooks:run(backend_api_response_time, Server,
+			       [Server, Method, Path, Elapsed]);
         {error, {http_error,{error,timeout}}} ->
-            ejabberd_hooks:run(backend_api_timeout, Server, [Server, Method, Path]);
+            ejabberd_hooks:run(backend_api_timeout, Server,
+			       [Server, Method, Path]);
         {error, {http_error,{error,connect_timeout}}} ->
-            ejabberd_hooks:run(backend_api_timeout, Server, [Server, Method, Path]);
+            ejabberd_hooks:run(backend_api_timeout, Server,
+			       [Server, Method, Path]);
         {error, _} ->
-            ejabberd_hooks:run(backend_api_error, Server, [Server, Method, Path])
+            ejabberd_hooks:run(backend_api_error, Server,
+			       [Server, Method, Path])
     end,
     Result.
 
@@ -125,7 +135,9 @@ base_url(Server, Path) ->
         <<"http", _Url/binary>> -> Tail;
         _ ->
             Base = ejabberd_config:get_option({ext_api_url, Server},
-                                              fun(X) -> iolist_to_binary(X) end,
+                                              fun(X) ->
+						      iolist_to_binary(X)
+					      end,
                                               <<"http://localhost/api">>),
             <<Base/binary, "/", Tail/binary>>
     end.
@@ -135,7 +147,8 @@ url(Server, Path, []) ->
 url(Server, Path, Params) ->
     Base = base_url(Server, Path),
     [<<$&, ParHead/binary>> | ParTail] =
-        [<<"&", (iolist_to_binary(Key))/binary, "=", (ejabberd_http:url_encode(Value))/binary>>
+        [<<"&", (iolist_to_binary(Key))/binary, "=",
+	  (ejabberd_http:url_encode(Value))/binary>>
             || {Key, Value} <- Params],
     Tail = iolist_to_binary([ParHead | ParTail]),
     binary_to_list(<<Base/binary, $?, Tail/binary>>).

@@ -31,8 +31,8 @@
 -include("logger.hrl").
 -include("mod_roster.hrl").
 
-start(_Host, _Opts) ->
-    rest:start(),
+start(Host, _Opts) ->
+    rest:start(Host),
     ok.
 
 stop(_Host) ->

@@ -79,8 +79,10 @@ start(Host, Opts) ->
 init_db(DBType, Host) when DBType==odbc orelse DBType==sharding ->
     Muchost = gen_mod:get_module_opt_host(Host, mod_muc,
                                          <<"conference.@HOST@">>),
-    ets:insert(ejabberd_modules, {ejabberd_module, {mod_mam, Muchost}, [{db_type,DBType}]}),
-    mnesia:dirty_write({local_config, {modules,Muchost}, [{mod_mam, [{db_type,DBType}]}]});
+    ets:insert(ejabberd_modules, {ejabberd_module, {mod_mam, Muchost},
+				  [{db_type,DBType}]}),
+    mnesia:dirty_write({local_config, {modules,Muchost},
+			[{mod_mam, [{db_type,DBType}]}]});
 init_db(mnesia, _Host) ->
     mnesia:create_table(archive_msg,
                         [{disc_only_copies, [node()]},
@@ -110,8 +112,8 @@ init_db(p1db, Host) ->
                                {dec_key, fun ?MODULE:dec_key/1},
                                {enc_val, fun ?MODULE:enc_prefs/2},
                                {dec_val, fun ?MODULE:dec_prefs/2}]}]);
-init_db(rest, _) ->
-    rest:start(),
+init_db(rest, Host) ->
+    rest:start(Host),
     ok;
 init_db(_, _) ->
     ok.
@@ -125,7 +127,8 @@ init_cache(_DBType, Opts) ->
     LifeTime = gen_mod:get_opt(cache_life_time, Opts,
                                fun(I) when is_integer(I), I>0 -> I end,
 			       timer:hours(1) div 1000),
-    cache_tab:new(archive_prefs, [{max_size, MaxSize}, {life_time, LifeTime}]).
+    cache_tab:new(archive_prefs, [{max_size, MaxSize},
+				  {life_time, LifeTime}]).
 
 stop(Host) ->
     ejabberd_hooks:delete(user_send_packet, Host, ?MODULE,
@@ -173,7 +176,8 @@ remove_user(LUser, LServer, p1db) ->
     end;
 remove_user(_LUser, _LServer, rest) ->
     {atomic, ok};
-remove_user(LUser, LServer, DBType) when DBType==odbc orelse DBType==sharding ->
+remove_user(LUser, LServer, DBType) when DBType==odbc orelse
+					 DBType==sharding ->
     SUser = ejabberd_odbc:escape(LUser),
     Key = case DBType of
 	      odbc -> undefined;
@@ -192,7 +196,8 @@ user_receive_packet(Pkt, C2SState, JID, Peer, _To) ->
     case should_archive(Pkt) of
         true ->
             NewPkt = strip_my_archived_tag(Pkt, LServer),
-            case store(C2SState, NewPkt, LUser, LServer, Peer, true, recv) of
+            case store(C2SState, NewPkt, LUser, LServer,
+		       Peer, true, recv) of
                 {ok, ID} ->
                     Archived = #xmlel{name = <<"archived">>,
                                       attrs = [{<<"by">>, LServer},
@@ -451,7 +456,8 @@ do_store(Pkt, LUser, LServer, Peer, Type, Dir, rest) ->
 	{ok, Code, _} when Code == 200 orelse Code == 201 ->
 	    {ok, ID};
 	Err ->
-	    ?ERROR_MSG("failed to store packet for user ~s and peer ~s: ~p.  Packet: ~p  direction: ~p",
+	    ?ERROR_MSG("failed to store packet for user ~s and peer ~s:"
+		       " ~p.  Packet: ~p  direction: ~p",
 		       [SUser, SPeer, Err, Pkt, Dir]),
 	    {error, Err}
     end;
@@ -544,7 +550,9 @@ get_prefs(LUser, LServer) ->
 		  get_prefs(LUser, LServer, DBType);
 	      _ ->
 		  cache_tab:lookup(archive_prefs, {LUser, LServer},
-				   fun() -> get_prefs(LUser, LServer, DBType) end)
+				   fun() -> get_prefs(LUser, LServer,
+						      DBType)
+				   end)
 	  end,
     case Res of
         {ok, Prefs} ->
@@ -669,12 +677,14 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
 		    []
 	    end,
     Params = User ++ Peer ++ After,
-    ArchivePath = ejabberd_config:get_option({ext_api_path_archive, LServer},
-					     fun(X) -> iolist_to_binary(X) end,
-					     <<"/archive">>),
-    ItemsPath = ejabberd_config:get_option({ext_api_path_items, LServer},
-					     fun(X) -> iolist_to_binary(X) end,
-					     <<"/archive/items">>),
+    ArchivePath =
+	ejabberd_config:get_option({ext_api_path_archive, LServer},
+				   fun(X) -> iolist_to_binary(X) end,
+				   <<"/archive">>),
+    ItemsPath =
+	ejabberd_config:get_option({ext_api_path_items, LServer},
+				   fun(X) -> iolist_to_binary(X) end,
+				   <<"/archive/items">>),
     StoreBody = gen_mod:get_module_opt(LServer, ?MODULE, store_body_only,
 				       fun(B) when is_boolean(B) -> B end,
 				       false),
@@ -685,8 +695,10 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
 	    {lists:flatmap(
 	       fun({Attrs}) ->
 		       try
-			   Pkt = build_xml_from_json(JidRequestor, Attrs, StoreBody),
-			   TS = proplists:get_value(<<"timestamp">>, Attrs, <<"">>),
+			   Pkt = build_xml_from_json(JidRequestor,
+						     Attrs, StoreBody),
+			   TS = proplists:get_value(<<"timestamp">>,
+						    Attrs, <<"">>),
 			   {_, _, _} = Now = jlib:datetime_string_to_timestamp(TS),
 			   ID = now_to_usec(Now),
 			   [{jlib:integer_to_binary(ID), ID,
@@ -697,7 +709,8 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
 			       []
 		       end end, ArchiveEls), Count};
 	Err ->
-	    ?ERROR_MSG("failed to select: ~p for user: ~p peer: ~p", [Err, JidRequestor, With]),
+	    ?ERROR_MSG("failed to select: ~p for user: ~p peer: ~p",
+		       [Err, JidRequestor, With]),
 	    {[], 0}
     end;
 select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
@@ -717,12 +730,14 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
                                  true ->
                                      #xmlel{} = Pkt =
                                          xml_stream:parse_element(
-                                           proplists:get_value(packet, Opts)),
+                                           proplists:get_value(packet,
+							       Opts)),
                                      [{jlib:integer_to_binary(TS), TS,
                                        msg_to_el(#archive_msg{
                                                     timestamp = Now,
                                                     peer = Peer,
-                                                    packet = Pkt}, JidRequestor)}];
+                                                    packet = Pkt},
+						 JidRequestor)}];
                                  false ->
                                      []
                              end
@@ -755,7 +770,10 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
                        Now = usec_to_now(jlib:binary_to_integer(TS)),
                        PeerJid = jlib:jid_tolower(jlib:string_to_jid(PeerBin)),
                        {TS, jlib:binary_to_integer(TS),
-                        msg_to_el(#archive_msg{timestamp = Now, packet = El, peer = PeerJid}, JidRequestor)}
+                        msg_to_el(#archive_msg{timestamp = Now,
+					       packet = El,
+					       peer = PeerJid},
+				  JidRequestor)}
                end, Res), jlib:binary_to_integer(Count)};
         _ ->
             {[], 0}
@@ -787,7 +805,8 @@ build_xml_from_json(User, Attrs, StoreBody) ->
 	    #xmlel{} = xml_stream:parse_element(XML)
     end.
 
-msg_to_el(#archive_msg{timestamp = TS, packet = Pkt1, peer = Peer}, JidRequestor) ->
+msg_to_el(#archive_msg{timestamp = TS, packet = Pkt1, peer = Peer},
+	  JidRequestor) ->
     Delay = jlib:now_to_utc_string(TS),
     Pkt = maybe_update_from_to(Pkt1, JidRequestor, Peer),
     #xmlel{name = <<"forwarded">>,
@@ -803,8 +822,11 @@ maybe_update_from_to(Pkt, _JIDRequestor, undefined) ->
 maybe_update_from_to(Pkt, JidRequestor, Peer) ->
     case xml:get_attr_s(<<"type">>, Pkt#xmlel.attrs) of
 	<<"groupchat">> ->
-	    Pkt2 = xml:replace_tag_attr(<<"to">>, jlib:jid_to_string(JidRequestor), Pkt),
-	    xml:replace_tag_attr(<<"from">>, jlib:jid_to_string(Peer), Pkt2);
+	    Pkt2 = xml:replace_tag_attr(<<"to">>,
+					jlib:jid_to_string(JidRequestor),
+					Pkt),
+	    xml:replace_tag_attr(<<"from">>, jlib:jid_to_string(Peer),
+				 Pkt2);
 	_ -> Pkt
     end.
 

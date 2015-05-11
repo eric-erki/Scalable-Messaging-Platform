@@ -41,7 +41,7 @@
 -include("jlib.hrl").
 
 start(Host, _Opts) ->
-    rest:start(),
+    rest:start(Host),
     ejabberd_hooks:add(offline_message_hook, Host, ?MODULE,
 		       offline_packet, 35),
     ejabberd_hooks:add(user_available_hook, Host,
@@ -157,7 +157,3 @@ get_opt(Host, Name) ->
               end
       end,
       none).
-
-
-
-

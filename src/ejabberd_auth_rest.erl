@@ -45,8 +45,8 @@
 %%%----------------------------------------------------------------------
 %%% API
 %%%----------------------------------------------------------------------
-start(_Host) ->
-    rest:start(),
+start(Host) ->
+    rest:start(Host),
     ok.
 
 test(Host, Pairs) when is_binary(Host), is_list(Pairs) ->
