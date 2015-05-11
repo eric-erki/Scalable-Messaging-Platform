@@ -339,7 +339,7 @@ expiration_time(TimeToLive) ->
 universaltime() ->
     erlang:universaltime().
 
--spec if_not_empty(string(), iolist()) -> iolist().
+-spec if_not_empty(string()|binary(), iolist()) -> iolist().
 if_not_empty("", _V)   -> "";
 if_not_empty(<<>>, _V) -> <<>>;
 if_not_empty(_, Value) -> Value.
