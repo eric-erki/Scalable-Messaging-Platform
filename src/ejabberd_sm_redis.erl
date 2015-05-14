@@ -17,7 +17,10 @@
 	 get_sessions/0,
 	 get_sessions/1,
 	 get_sessions/2,
-	 get_session/3]).
+	 get_session/3,
+         get_node_sessions/1,
+         delete_node/1,
+         get_sessions_number/0]).
 
 -include("ejabberd.hrl").
 -include("ejabberd_sm.hrl").
@@ -135,29 +138,30 @@ get_session(LUser, LServer, LResource) ->
 	    {error, notfound}
     end.
 
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
-iolist_to_list(IOList) ->
-    binary_to_list(iolist_to_binary(IOList)).
+get_node_sessions(Node) ->
+    lists:flatmap(
+      fun(LServer) ->
+	      ServKey = server_to_key(LServer),
+	      case eredis:q(?PROCNAME, ["HVALS", ServKey]) of
+		  {ok, []} ->
+		      [];
+		  {ok, Vals} ->
+		      lists:flatmap(
+                        fun(T) ->
+                                S = binary_to_term(T),
+                                SID = S#session.sid,
+                                if
+                                    node(element(2, SID)) == Node ->
+                                        [S];
+                                    true -> []
+                                end
+                        end, Vals);
+		  _Err ->
+                      []
+	      end
+      end, ?MYHOSTS).
 
-us_to_key({LUser, LServer}) ->
-    <<"ejabberd:sm:", LUser/binary, "@", LServer/binary>>.
-
-server_to_key(LServer) ->
-    <<"ejabberd:sm:", LServer/binary>>.
-
-usr_to_key({LUser, LServer, LResource}) ->
-    <<"ejabberd:sm:",
-     LUser/binary, "@", LServer/binary, "/", LResource/binary>>.
-
-decode_session_list([_, Val|T]) ->
-    [binary_to_term(Val)|decode_session_list(T)];
-decode_session_list([]) ->
-    [].
-
-clean_table() ->
-    ?INFO_MSG("Cleaning Redis SM table...", []),
+delete_node(Node) ->
     lists:foreach(
       fun(LServer) ->
 	      ServKey = server_to_key(LServer),
@@ -170,7 +174,7 @@ clean_table() ->
                                         S = binary_to_term(T),
                                         SID = S#session.sid,
 					if
-                                            node(element(2, SID)) == node() ->
+                                            node(element(2, SID)) == Node ->
                                                 [S];
                                             true -> []
                                         end
@@ -199,3 +203,40 @@ clean_table() ->
 				 "server ~s: ~p", [LServer, Err])
 	      end
       end, ?MYHOSTS).
+
+get_sessions_number() ->
+    lists:foldl(
+      fun(LServer, Acc) ->
+	      ServKey = server_to_key(LServer),
+	      case eredis:q(?PROCNAME, ["HLEN", ServKey]) of
+		  {ok, Count} ->
+                      jlib:binary_to_integer(Count);
+		  _Err ->
+                      0
+	      end + Acc
+      end, 0, ?MYHOSTS).
+
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
+iolist_to_list(IOList) ->
+    binary_to_list(iolist_to_binary(IOList)).
+
+us_to_key({LUser, LServer}) ->
+    <<"ejabberd:sm:", LUser/binary, "@", LServer/binary>>.
+
+server_to_key(LServer) ->
+    <<"ejabberd:sm:", LServer/binary>>.
+
+usr_to_key({LUser, LServer, LResource}) ->
+    <<"ejabberd:sm:",
+     LUser/binary, "@", LServer/binary, "/", LResource/binary>>.
+
+decode_session_list([_, Val|T]) ->
+    [binary_to_term(Val)|decode_session_list(T)];
+decode_session_list([]) ->
+    [].
+
+clean_table() ->
+    ?INFO_MSG("Cleaning Redis SM table...", []),
+    delete_node(node()).

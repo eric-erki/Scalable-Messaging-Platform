@@ -18,7 +18,10 @@
 	 delete_session/1,
 	 get_sessions/0,
 	 get_sessions/1,
-	 get_sessions/2]).
+	 get_sessions/2,
+         get_node_sessions/1,
+         delete_node/1,
+         get_sessions_number/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -75,6 +78,27 @@ get_sessions(LServer) ->
 get_sessions(LUser, LServer) ->
     mnesia:dirty_index_read(session, {LUser, LServer}, #session.us).
 
+get_node_sessions(Node) ->
+    ets:select(
+      session,
+      ets:fun2ms(
+        fun(#session{sid = {_, Pid}} = S)
+           when node(Pid) == Node ->
+                S
+        end)).
+
+delete_node(Node) ->
+    ets:select_delete(
+      session,
+      ets:fun2ms(
+	fun(#session{sid = {_, Pid}}) ->
+		node(Pid) == Node
+	end)),
+    ok.
+
+get_sessions_number() ->
+    ets:info(session, size).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -96,12 +120,7 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info({mnesia_system_event, {mnesia_down, Node}}, State) ->
-    ets:select_delete(
-      session,
-      ets:fun2ms(
-	fun(#session{sid = {_, Pid}}) ->
-		node(Pid) == Node
-	end)),
+    delete_node(Node),
     {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.

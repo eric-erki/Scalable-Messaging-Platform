@@ -17,7 +17,10 @@
 	 delete_session/1,
 	 get_sessions/0,
 	 get_sessions/1,
-	 get_sessions/2]).
+	 get_sessions/2,
+         get_node_sessions/1,
+         delete_node/1,
+         get_sessions_number/0]).
 
 -include("ejabberd.hrl").
 -include("ejabberd_sm.hrl").
@@ -121,6 +124,43 @@ get_session(LUser, LServer, LResource) ->
 	    ?ERROR_MSG("failed to select from 'sm' table: ~p", [Err]),
 	    {error, notfound}
     end.
+
+get_node_sessions(Node) ->
+    SNode = ejabberd_odbc:escape(jlib:atom_to_binary(Node)),
+    lists:flatmap(
+      fun(Host) ->
+              case ejabberd_odbc:sql_query(
+                     Host, [<<"select usec, pid, username, ">>,
+                            <<"resource, priority, info from sm ">>,
+                            <<"where node='">>, SNode, <<"'">>]) of
+                  {selected, _, Rows} ->
+                      [row_to_session(Host, Row) || Row <- Rows];
+		  Err ->
+                      ?ERROR_MSG("failed to select from 'sm' table: ~p", [Err]),
+		      []
+	      end
+      end, ?MYHOSTS).
+
+delete_node(Node) ->
+    SNode = ejabberd_odbc:escape(jlib:atom_to_binary(Node)),
+    lists:foreach(
+      fun(Host) ->
+	      ejabberd_odbc:sql_query(
+                Host, [<<"delete from sm where node='">>, SNode, <<"'">>])
+      end, ok, ?MYHOSTS).
+
+get_sessions_number() ->
+    lists:foldl(
+      fun(Host, Acc) ->
+              case ejabberd_odbc:sql_query(
+                     Host, [<<"select count(*) from sm">>]) of
+                  {selected, _, [[Count]]} ->
+                      jlib:binary_to_integer(Count);
+		  Err ->
+                      ?ERROR_MSG("failed to select from 'sm' table: ~p", [Err]),
+		      0
+	      end + Acc
+      end, 0, ?MYHOSTS).
 
 %%%===================================================================
 %%% Internal functions

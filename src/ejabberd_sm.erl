@@ -69,6 +69,9 @@
 -callback get_sessions() -> [#session{}].
 -callback get_sessions(binary()) -> [#session{}].
 -callback get_sessions(binary(), binary()) -> [#session{}].
+-callback get_node_sessions(atom()) -> [#session{}].
+-callback delete_node(atom()) -> ok.
+-callback get_sessions_number() -> integer().
 
 -record(state, {}).
 
@@ -427,26 +430,16 @@ handle_info({delete, SID, USR}, State) ->
     delete_session(SID, USR),
     {noreply, State};
 handle_info({node_up, Node}, State) ->
-    Ss = ets:select(
-	   session,
-	   ets:fun2ms(
-	     fun(#session{sid = {_, Pid}} = S)
-		when node(Pid) == node() ->
-		     S
-	     end)),
+    Mod = get_sm_backend(),
+    Ss = Mod:get_node_sessions(node()),
     lists:foreach(
       fun(S) ->
 	      ejabberd_cluster:send({?MODULE, Node}, {write, S})
       end, Ss),
     {noreply, State};
 handle_info({node_down, Node}, State) ->
-    ets:select_delete(
-      session,
-      ets:fun2ms(
-        fun(#session{sid = {_, Pid}})
-              when node(Pid) == Node ->
-                true
-        end)),
+    Mod = get_sm_backend(),
+    Mod:delete_node(Node),
     {noreply, State};
 handle_info(_Info, State) ->
     ?ERROR_MSG("got unexpected info: ~p", [_Info]),
@@ -898,7 +891,8 @@ connected_users() ->
 	      SUSRs).
 
 connected_users_number() ->
-    ets:info(session, size).
+    Mod = get_sm_backend(),
+    Mod:get_sessions_number().
 
 user_resources(User, Server) ->
     Resources = get_user_resources(User, Server),
