@@ -355,6 +355,8 @@ init([]) ->
     ejabberd_commands:register_commands(commands()),
     ejabberd_cluster:subscribe(),
     start_handlers(),
+    cache_tab:new(crls, [{max_size, 10000},
+			 {life_time, timer:minutes(1) div 1000}]),
     {ok, #state{}}.
 
 handle_call({write, Session}, _From, State) ->

@@ -4041,7 +4041,11 @@ get_crls(Cert, CAList) ->
       end, TBSCert#'OTPTBSCertificate'.extensions).
 
 fetch_crl(URI0) ->
-    URI = binary_to_list(iolist_to_binary(URI0)),
+    URI = iolist_to_binary(URI0),
+    cache_tab:dirty_lookup(crls, URI, fun() -> fetch_crl_http(URI) end).
+
+fetch_crl_http(URI0) ->
+    URI = binary_to_list(URI0),
     case http_p1:get(URI) of
 	{ok, 200, _, BinCRL} ->
 	    {ok, public_key:der_decode('CertificateList', BinCRL)};
