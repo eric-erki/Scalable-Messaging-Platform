@@ -3857,30 +3857,21 @@ maybe_add_delay(El, TZ, From, Desc, {_, _, _} = TimeStamp) ->
                     calendar:now_to_universal_time(TimeStamp));
 maybe_add_delay(#xmlel{children = Els} = El, TZ, From,
 		Desc, TimeStamp) ->
-    HasOldTS = lists:any(fun (#xmlel{name = <<"x">>,
-				     attrs = Attrs}) ->
-				 xml:get_attr_s(<<"xmlns">>, Attrs) ==
-				   (?NS_DELAY91);
-			     (_) -> false
-			 end,
-			 Els),
-    HasNewTS = lists:any(fun (#xmlel{name = <<"delay">>,
+    HasTS = lists:any(fun (#xmlel{name = <<"delay">>,
 				     attrs = Attrs}) ->
 				 xml:get_attr_s(<<"xmlns">>, Attrs) ==
 				   (?NS_DELAY);
 			     (_) -> false
 			 end,
 			 Els),
-    El1 = if not HasOldTS ->
-		 xml:append_subtags(El,
-				    [jlib:timestamp_to_xml(TimeStamp)]);
-	     true -> El
-	  end,
-    if not HasNewTS ->
-	   xml:append_subtags(El1,
-			      [jlib:timestamp_to_xml(TimeStamp, TZ, From,
-						     Desc)]);
-       true -> El1
+    if not HasTS ->
+	   {T_string, Tz_string} = jlib:timestamp_to_iso(TimeStamp, TZ),
+	   xml:append_subtags(El,
+		[#xmlel{name = <<"delay">>, attrs = [{<<"xmlns">>, ?NS_DELAY},
+			{<<"from">>, From},
+			{<<"stamp">>, <<T_string/binary, Tz_string/binary>>}],
+			children = [{xmlcdata, Desc}]}]);
+       true -> El
     end.
 
 send_from(StateData, El) ->

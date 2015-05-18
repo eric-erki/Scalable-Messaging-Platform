@@ -51,8 +51,7 @@
 	 iq_to_xml/1, parse_xdata_submit/1,
          add_delay_info/3, add_delay_info/4,
          timestamp_to_iso/1,
-	 timestamp_to_iso/2, timestamp_to_iso/3, timestamp_to_xml/4,
-	 timestamp_to_xml/1, now_to_utc_string/1,
+	 timestamp_to_iso/2, timestamp_to_iso/3, now_to_utc_string/1,
 	 now_to_local_string/1, datetime_string_to_timestamp/1,
 	 term_to_base64/1, base64_to_term/1,
 	 decode_base64/1, encode_base64/1, ip_to_list/1,
@@ -63,9 +62,6 @@
 	 l2i/1, i2l/1, i2l/2, expr_to_term/1, term_to_expr/1,
          string_to_usr/1, load_nif/0,
          queue_drop_while/2]).
-
-%% TODO: Remove once XEP-0091 is Obsolete
-%% TODO: Remove once XEP-0091 is Obsolete
 
 -include("ejabberd.hrl").
 -include("jlib.hrl").
@@ -601,10 +597,7 @@ add_delay_info(El, From, Time) ->
 		     binary()) -> xmlel().
 
 add_delay_info(El, From, Time, Desc) ->
-    %% TODO: Remove support for <x/>, XEP-0091 is obsolete.
-    El1 = add_delay_info(El, From, Time, Desc, <<"delay">>, ?NS_DELAY),
-    El2 = add_delay_info(El1, From, Time, Desc, <<"x">>, ?NS_DELAY91),
-    El2.
+    add_delay_info(El, From, Time, Desc, <<"delay">>, ?NS_DELAY).
 
 -spec add_delay_info(xmlel(), jid() | ljid() | binary(), erlang:timestamp(),
 		     binary(), binary(), binary()) -> xmlel().
@@ -641,20 +634,15 @@ add_delay_info(El, From, Time, Desc, Name, XMLNS) ->
 -spec create_delay_tag(erlang:timestamp(), jid() | ljid() | binary(), binary(),
 		       binary()) -> xmlel() | error.
 
-create_delay_tag(TimeStamp, FromJID, Desc, XMLNS) when is_tuple(FromJID) ->
+create_delay_tag(TimeStamp, FromJID, Desc, XMLNS) when is_tuple(FromJID)
+    and (XMLNS == ?NS_DELAY) ->
     From = jlib:jid_to_string(FromJID),
-    {Name, Stamp} = case XMLNS of
-		      ?NS_DELAY ->
-			  {<<"delay">>, now_to_utc_string(TimeStamp, 3)};
-		      ?NS_DELAY91 ->
-			  DateTime = calendar:now_to_universal_time(TimeStamp),
-			  {<<"x">>, timestamp_to_iso(DateTime)}
-		    end,
+    Stamp = now_to_utc_string(TimeStamp, 3),
     Children = case Desc of
 		 <<"">> -> [];
 		 _ -> [{xmlcdata, Desc}]
 	       end,
-    #xmlel{name = Name,
+    #xmlel{name = <<"delay">>,
 	   attrs =
 	       [{<<"xmlns">>, XMLNS}, {<<"from">>, From},
 		{<<"stamp">>, Stamp}],
@@ -706,33 +694,6 @@ timestamp_to_iso({{Year, Month, Day},
                   {Hour, Minute, Second}}) ->
     iolist_to_binary(io_lib:format("~4..0B~2..0B~2..0BT~2..0B:~2..0B:~2..0B",
                                    [Year, Month, Day, Hour, Minute, Second])).
-
--spec timestamp_to_xml(calendar:datetime(), tz(), jid(), binary()) -> xmlel().
-
-timestamp_to_xml(DateTime, Timezone, FromJID, Desc) ->
-    {T_string, Tz_string} = timestamp_to_iso(DateTime,
-					     Timezone),
-    Text = [{xmlcdata, Desc}],
-    From = jlib:jid_to_string(FromJID),
-%% TODO: Remove this function once XEP-0091 is Obsolete
-    #xmlel{name = <<"delay">>,
-	   attrs =
-	       [{<<"xmlns">>, ?NS_DELAY}, {<<"from">>, From},
-		{<<"stamp">>, <<T_string/binary, Tz_string/binary>>}],
-	   children = Text}.
-
--spec timestamp_to_xml(calendar:datetime()) -> xmlel().
-
-timestamp_to_xml({{Year, Month, Day},
-		  {Hour, Minute, Second}}) ->
-    #xmlel{name = <<"x">>,
-	   attrs =
-	       [{<<"xmlns">>, ?NS_DELAY91},
-		{<<"stamp">>,
-		 iolist_to_binary(io_lib:format("~4..0B~2..0B~2..0BT~2..0B:~2..0B:~2..0B",
-						[Year, Month, Day, Hour, Minute,
-						 Second]))}],
-	   children = []}.
 
 -spec now_to_utc_string(erlang:timestamp()) -> binary().
 

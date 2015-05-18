@@ -3234,7 +3234,11 @@ items_event_stanza(Node, Items) ->
 	[LastItem] ->
 	    {ModifNow, ModifUSR} = LastItem#pubsub_item.modification,
 	    DateTime = calendar:now_to_datetime(ModifNow),
-	    [jlib:timestamp_to_xml(DateTime, utc, ModifUSR, <<>>)];
+	    {T_string, Tz_string} = jlib:timestamp_to_iso(DateTime, utc),
+	    [#xmlel{name = <<"delay">>, attrs = [{<<"xmlns">>, ?NS_DELAY},
+			{<<"from">>, jlib:jid_to_string(ModifUSR)},
+			{<<"stamp">>, <<T_string/binary, Tz_string/binary>>}],
+		    children = [{xmlcdata, <<>>}]}];
 	_ ->
 	    []
     end,

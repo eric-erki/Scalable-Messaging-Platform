@@ -2051,17 +2051,19 @@ send_history(US, AgentLJID, History, StateData) ->
       fun({Now, Sender, Body}) ->
               SSender = jlib:jid_to_string(Sender),
               Text = <<"<", SSender/binary, "> ", Body/binary>>,
+              DateTime = calendar:now_to_universal_time(Now),
+              {T_string, Tz_string} = jlib:timestamp_to_iso(DateTime, utc),
+              Stamp = <<T_string/binary, Tz_string/binary>>,
               Packet =
                   #xmlel{name = <<"message">>,
                          attrs = [{<<"type">>, <<"chat">>}],
                          children =
                          [#xmlel{name = <<"body">>, attrs = [],
                                  children = [{xmlcdata, Text}]},
-                          jlib:timestamp_to_xml(
-                            calendar:now_to_universal_time(Now),
-                            utc,
-                            Sender,
-                            <<"Offline Storage">>)]},
+                          #xmlel{name = <<"delay">>, attrs = [{<<"xmlns">>, ?NS_DELAY},
+                                                              {<<"from">>, Sender},
+                                                              {<<"stamp">>, Stamp}],
+                                 children = [{xmlcdata, <<"Offline Storage">>}]}]},
               route_stanza(
                 make_chat_jid(US, StateData),
                 jlib:make_jid(AgentLJID),
@@ -2711,10 +2713,12 @@ add_message_to_history(FromNick, FromJID, Packet,
 		  true -> StateData#state.jid;
 		  false -> FromJID
 		end,
+    {T_string, Tz_string} = jlib:timestamp_to_iso(TimeStamp, utc),
     TSPacket = xml:append_subtags(Packet,
-				  [jlib:timestamp_to_xml(TimeStamp, utc,
-							 SenderJid, <<"">>),
-				   jlib:timestamp_to_xml(TimeStamp)]),
+	    [#xmlel{name = <<"delay">>, attrs = [{<<"xmlns">>, ?NS_DELAY},
+			{<<"from">>, SenderJid},
+			{<<"stamp">>, <<T_string/binary, Tz_string/binary>>}],
+		    children = [{xmlcdata, <<>>}]}]),
     SPacket =
 	jlib:replace_from_to(jlib:jid_replace_resource(StateData#state.jid,
 						       FromNick),
