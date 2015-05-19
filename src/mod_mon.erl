@@ -45,9 +45,8 @@
 -export([flush_log/3, sync_log/1]).
 %% administration commands
 -export([active_counters_command/1, flush_probe_command/2]).
-%-export([jabs_count_command/1, jabs_reset_command/1]).
 %% monitors
--export([process_queues/2, internal_queues/2, health_check/2]).
+-export([process_queues/2, internal_queues/2, health_check/2, jabs_count/1]).
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
@@ -275,19 +274,6 @@ commands() ->
                         module = ?MODULE, function = flush_probe_command,
                         args = [{server, binary}, {probe_name, binary}],
                         result = {probe_value, integer}}].
-% jabs temporary put out of mod_mon, see mod_jabs
-%     #ejabberd_commands{name = jabs_count,
-%                        tags = [stats],
-%                        desc = "Returns the current value of jabs counter",
-%                        module = ?MODULE, function = jabs_count_command,
-%                        args = [{server, binary}],
-%                        result = {probe_value, integer}},
-%     #ejabberd_commands{name = jabs_reset,
-%                        tags = [stats],
-%                        desc = "Reset jabs counter",
-%                        module = ?MODULE, function = jabs_reset_command,
-%                        args = [{server, binary}],
-%                        result = {probe_value, integer}}].
 
 active_counters_command(Host) ->
     [{jlib:atom_to_binary(Key), Val}
@@ -299,14 +285,6 @@ flush_probe_command(Host, Probe) ->
         N when is_integer(N) -> N;
         _ -> 0
     end.
-
-%jabs_count_command(Host) ->
-%    [{jlib:atom_to_binary(Key), Val}
-%     || {Key, Val} <- jabs_count(Host)].
-%
-%jabs_reset_command(Host) ->
-%    jabs_reset(Host),
-%    0.
 
 %%====================================================================
 %% Helper functions
@@ -450,7 +428,7 @@ user_send_packet(#xmlel{name=Name, attrs=Attrs} = Packet,
     cast(LServer, {inc, Hook}),
     %possible jabs computation. see mod_jabs
     %Size = erlang:external_size(Packet),
-    %cast(LServer, {inc, 'XPS', 1+(Size div 6000)}),
+    %gen_server:cast(mod_jabs:process(Host), {inc, 'XPS', 1+(Size div 6000)}),
     Packet.
 user_receive_packet(#xmlel{name=Name, attrs=Attrs} = Packet,
                     _C2SState, _JID, _From, #jid{lserver=LServer}) ->
@@ -754,28 +732,6 @@ push(_Host, Probes, statsd) ->
         end, Probes);
 push(_Host, _Probes, none) ->
     ok.
-
-%%====================================================================
-%% JABS api
-%%====================================================================
-
-% TODO put this on gen_server instead, to avoid need of mnesia
-% or create a dedicated jabs table for persistence cause actually
-% it works only with mnesia backend
-%jabs_count(Host) ->
-%    Table = gen_mod:get_module_proc(Host, mon),
-%    ets:foldl(fun(Mon, Acc) ->
-%                case proplists:get_value(Mon#mon.probe, ?JABS) of
-%                    undefined -> Acc;
-%                    Weight -> [{Mon#mon.probe, Mon#mon.value*Weight}|Acc]
-%                end
-%        end, [], Table).
-%
-%jabs_reset(Host) ->
-%    Table = gen_mod:get_module_proc(Host, mon),
-%    [mnesia:dirty_write(Table, Mon#mon{value = 0})
-%     || Mon <- ets:tab2list(Table),
-%        proplists:is_defined(Mon#mon.probe, ?JABS)].
 
 %%====================================================================
 %% Monitors helpers
