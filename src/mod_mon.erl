@@ -531,44 +531,29 @@ init_log(Host, true) ->
             proplists:get_value(hd(?HYPERLOGLOGS), Logs)
     end.
 
-cluster_log(Host, Nodes) ->
-    case rpc:multicall(Nodes, ?MODULE, value, [Host, log], 8000) of
-        {[], _} ->
-            undefined;
-        {Success, _Fail} ->
-            [Log|Logs] = [L || L <- Success, L =/= error],
-            lists:foldl(fun(Remote, Acc) when is_atom(Remote) -> Acc;
-                           (Remote, Acc) -> ehyperloglog:merge(Acc, Remote)
-                        end, Log, Logs)
-    end.
+cluster_log(Host) ->
+    {Logs, _} = ejabberd_cluster:multicall(?MODULE, value, [Host, log]),
+    lists:foldl(fun
+            ({hll,_,_}=L1, L2) -> ehyperloglog:merge(L2, L1);
+            (_, Acc) -> Acc
+        end, ehyperloglog:new(16), Logs).
 
 sync_log(Host) when is_binary(Host) ->
     % this process can safely run on its own, thanks to put/get hyperloglogs not using dictionary
     % it should be called at regular interval to keep logs consistency
-    % as timer is handled by main process handling the loop, we spawn here to not interfere with the loop
     spawn(fun() ->
-                Nodes = ejabberd_cluster:get_nodes(),
-                case cluster_log(Host, Nodes) of
-                    Error when is_atom(Error) ->
-                        Error;
-                    ClusterLog ->
-                        set(Host, log, ClusterLog),
-                        write_logs(Host, [{Key, merge_log(Host, Key, Val, ClusterLog)}
-                                          || {Key, Val} <- read_logs(Host)])
-                end
+                ClusterLog = cluster_log(Host),
+                set(Host, log, ClusterLog),
+                write_logs(Host, [{Key, merge_log(Host, Key, Val, ClusterLog)}
+                                  || {Key, Val} <- read_logs(Host)])
         end).
 
 flush_log(Host, Probe) ->
     % this process can safely run on its own, thanks to put/get hyperloglogs not using dictionary
     % it may be called at regular interval with timers or external cron
     spawn(fun() ->
-                Nodes = ejabberd_cluster:get_nodes(),
-                case cluster_log(Host, Nodes) of
-                    Error when is_atom(Error) ->
-                        Error;
-                    ClusterLog ->
-                        rpc:multicall(Nodes, ?MODULE, flush_log, [Host, Probe, ClusterLog])
-                end
+                ClusterLog = cluster_log(Host),
+                ejabberd_cluster:multicall(?MODULE, flush_log, [Host, Probe, ClusterLog])
         end).
 flush_log(Host, Probe, ClusterLog) when is_binary(Host), is_atom(Probe) ->
     set(Host, log, ehyperloglog:new(16)),
