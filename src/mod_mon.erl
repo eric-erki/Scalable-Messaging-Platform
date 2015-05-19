@@ -229,8 +229,7 @@ handle_cast(_Msg, State) ->
 handle_info(push, State) ->
     run_monitors(State#state.host, State#state.monitors),
     [compute_average(Probe) || Probe <- [backend_api_response_time]],
-    Probes = [{Key, Val} || {Key, Val} <- get(),
-                            is_integer(Val) and not proplists:is_defined(Key, ?JABS)],
+    Probes = [{Key, Val} || {Key, Val} <- get(), is_integer(Val)],
     [push(State#state.host, Probes, Backend) || Backend <- State#state.backends],
     [put(Key, 0) || {Key, Val} <- Probes,
                     Val =/= 0,
