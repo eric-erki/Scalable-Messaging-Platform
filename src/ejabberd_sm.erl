@@ -667,6 +667,8 @@ do_route1(From, To, Packet, Hops) ->
 		  <<"message">> ->
 		      case xml:get_attr_s(<<"type">>, Attrs) of
 			<<"chat">> -> route_message(From, To, Packet, chat);
+			<<"normal">> -> route_message(From, To, Packet, normal);
+			<<"">> -> route_message(From, To, Packet, normal);
 			<<"error">> -> ok;
 			_ ->
 			    Err = jlib:make_error_reply(Packet,
