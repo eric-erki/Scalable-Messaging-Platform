@@ -658,7 +658,8 @@ run_monitors(Host, Monitors) ->
         fun({I, M, F, A}) -> put(I, apply(M, F, A));
            ({I, M, F, A, Fun}) -> put(I, Fun(apply(M, F, A)));
            ({I, F, A}) -> put(I, apply(?MODULE, F, [Host, A]));
-           ({I, Spec}) -> put(I, eval_monitors(Probes, Spec, 0));
+           ({I, F}) when is_atom(F) -> put(I, apply(?MODULE, F, [Host]));
+           ({I, Spec}) when is_list(Spec) -> put(I, eval_monitors(Probes, Spec, 0));
            (_) -> ok
         end, Monitors).
 
@@ -858,6 +859,10 @@ health_check(Host, all) ->
           [{client_conn_time, <<"connection is slow">>, <<"service unavailable">>},
            {client_auth_time, <<"authentification is slow">>, <<"auth broken">>},
            {client_roster_time, <<"roster response is slow">>, <<"roster broken">>}]}]).
+
+jabs_count(Host) ->
+    {Count, _} = mod_jabs:value(Host),
+    Count.
 
 %%====================================================================
 %% Health check helpers

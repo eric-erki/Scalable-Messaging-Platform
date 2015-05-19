@@ -106,6 +106,7 @@
          {c2s_internal_queues, internal_queues, ejabberd_c2s_sup},
          {odbc_internal_queues, internal_queues, ejabberd_odbc_sup},
          {offline_internal_queues, internal_queues, mod_offline_pool},
+         {jabs, jabs_count},
          {sessions, mnesia, table_info, [session, size]},
          {memory, erlang, memory, [total]},
          {processes, erlang, system_info, [process_count]},
