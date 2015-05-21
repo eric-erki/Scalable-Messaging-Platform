@@ -28,6 +28,8 @@
 
 -author('stephen.roettger@googlemail.com').
 
+-protocol({rfc, 5802}).
+
 -export([start/1, stop/0, mech_new/6, mech_step/2]).
 
 -include("ejabberd.hrl").

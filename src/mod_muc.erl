@@ -27,6 +27,8 @@
 -module(mod_muc).
 
 -author('alexey@process-one.net').
+-protocol({xep, 45, '1.25'}).
+
 -define(GEN_SERVER, p1_server).
 -behaviour(?GEN_SERVER).
 
