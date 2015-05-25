@@ -379,6 +379,6 @@ CREATE TABLE sm (
     info text NOT NULL
 );
 
-CREATE UNIQUE INDEX i_sid ON sm USING btree (usec, pid);
-CREATE INDEX i_node ON sm USING btree (node);
-CREATE INDEX i_username ON sm USING btree (username);
+CREATE UNIQUE INDEX i_sm_sid ON sm USING btree (usec, pid);
+CREATE INDEX i_sm_node ON sm USING btree (node);
+CREATE INDEX i_sm_username ON sm USING btree (username);
