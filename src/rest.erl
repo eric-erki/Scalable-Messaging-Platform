@@ -91,6 +91,8 @@ request(Server, Method, Path, Params, Mime, Data) ->
             {ok, Code, []};
         {ok, Code, _, <<" ">>} ->
             {ok, Code, []};
+        {ok, Code, _, <<"\r\n">>} ->
+            {ok, Code, []};
         {ok, Code, _, Body} ->
             try jiffy:decode(Body) of
                 JSon ->
