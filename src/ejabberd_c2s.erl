@@ -316,6 +316,7 @@ init([{SockMod, Socket}, Opts, FSMLimitOpts]) ->
     TLSOpts1 = lists:filter(fun ({certfile, _}) -> true;
 				({ciphers, _}) -> true;
 				({cafile, _}) -> true;
+				({dhfile, _}) -> true;
 				(_) -> false
 			    end,
 			    Opts),
