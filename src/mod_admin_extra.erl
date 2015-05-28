@@ -70,7 +70,6 @@
 	 push_alltoall/2,
 	 %% mod_last
 	 get_last/2,
-	 set_last/4,
 	 %% mod_private
 	 private_get/4,
 	 private_set/3,
@@ -90,14 +89,12 @@
 	 stats/1, stats/2
 	]).
 
+
 -include("ejabberd.hrl").
 -include("ejabberd_commands.hrl").
 -include("mod_roster.hrl").
+-include("ejabberd_sm.hrl").
 -include("jlib.hrl").
-
-%% Copied from ejabberd_sm.erl
--record(session, {sid, usr, us, priority, info}).
-
 
 %%%
 %%% gen_mod
@@ -191,7 +188,7 @@ commands() ->
 			desc = "Check if the password hash is correct",
 			longdesc = "Allowed hash methods: md5, sha.",
 			module = ?MODULE, function = check_password_hash,
-			args = [{user, binary}, {host, binary}, {passwordhash, binary}, {hashmethod, binary}],
+			args = [{user, binary}, {host, binary}, {passwordhash, string}, {hashmethod, string}],
 			result = {res, rescode}},
      #ejabberd_commands{name = change_password, tags = [accounts],
 			desc = "Change the password of an account",
@@ -435,7 +432,7 @@ commands() ->
 			result = {res, rescode}},
 
      #ejabberd_commands{name = get_last, tags = [last],
-			desc = "Get last activity information",
+			desc = "Get last activity information (timestamp and status)",
 			longdesc = "Timestamp is the seconds since"
 			"1970-01-01 00:00:00 UTC, for example: date +%s",
 			module = ?MODULE, function = get_last,
@@ -445,8 +442,8 @@ commands() ->
 			desc = "Set last activity information",
 			longdesc = "Timestamp is the seconds since"
 			"1970-01-01 00:00:00 UTC, for example: date +%s",
-			module = ?MODULE, function = set_last,
-			args = [{user, string}, {host, string}, {timestamp, integer}, {status, string}],
+			module = mod_last, function = store_last_info,
+			args = [{user, binary}, {host, binary}, {timestamp, integer}, {status, binary}],
 			result = {res, rescode}},
 
      #ejabberd_commands{name = private_get, tags = [private],
@@ -680,7 +677,7 @@ delete_old_users(Days, Users) ->
 		    %% If it isnt
 		    [] ->
 			%% Look for his last_activity
-			case (get_lastactivity_module(LServer)):get_last_info(LUser, LServer) of
+			case mod_last:get_last_info(LUser, LServer) of
 			    %% If it is
 			    %% existent:
 			    {ok, TimeStamp, _Status} ->
@@ -713,13 +710,6 @@ delete_old_users(Days, Users) ->
     %% Apply the function to every user in the list
     Users_removed = lists:filter(F, Users),
     {removed, length(Users_removed), Users_removed}.
-
-get_lastactivity_module(Server) ->
-    case lists:member(mod_last, gen_mod:loaded_modules(Server)) of
-        true -> mod_last;
-        _ -> mod_last_odbc
-    end.
-
 
 %%
 %% Ban account
@@ -1076,7 +1066,7 @@ subscribe(LU, LS, User, Server, Nick, Group, Subscription, _Xattrs) ->
     mod_roster:set_items(
 	LU, LS,
 	{xmlel, <<"query">>,
-            [{<<"xmlns">>, <<"jabber:iq:roster">>}],
+            [{<<"xmlns">>, ?NS_ROSTER}],
             [ItemEl]}).
 
 delete_rosteritem(LocalUser, LocalServer, User, Server) ->
@@ -1093,7 +1083,7 @@ unsubscribe(LU, LS, User, Server) ->
     mod_roster:set_items(
 	LU, LS,
 	{xmlel, <<"query">>,
-            [{<<"xmlns">>, <<"jabber:iq:roster">>}],
+            [{<<"xmlns">>, ?NS_ROSTER}],
             [ItemEl]}).
 
 %% -----------------------------
@@ -1220,13 +1210,12 @@ build_broadcast(U, S, SubsAtom) when is_atom(SubsAtom) ->
 %%%
 
 get_last(User, Server) ->
-    Mod = get_lastactivity_module(Server),
     case ejabberd_sm:get_user_resources(User, Server) of
         [] ->
-            case Mod:get_last_info(User, Server) of
+            case mod_last:get_last_info(User, Server) of
                 not_found ->
                     "Never";
-                {ok, Shift, _Status} ->
+                {ok, Shift, Status} ->
                     TimeStamp = {Shift div 1000000,
                         Shift rem 1000000,
                         0},
@@ -1234,16 +1223,12 @@ get_last(User, Server) ->
                         calendar:now_to_local_time(TimeStamp),
                     lists:flatten(
                         io_lib:format(
-                            "~w-~.2.0w-~.2.0w ~.2.0w:~.2.0w:~.2.0w",
-                            [Year, Month, Day, Hour, Minute, Second]))
+                            "~w-~.2.0w-~.2.0w ~.2.0w:~.2.0w:~.2.0w ~s",
+                            [Year, Month, Day, Hour, Minute, Second, Status]))
             end;
         _ ->
             "Online"
     end.
-
-set_last(User, Server, Timestamp, Status) ->
-    Mod = get_lastactivity_module(Server),
-    Mod:store_last_info(User, Server, Timestamp, Status).
 
 %%%
 %%% Private Storage
@@ -1263,7 +1248,7 @@ private_get(Username, Host, Element, Ns) ->
 	   [{xmlel, Element, [{<<"xmlns">>, Ns}], []}]}},
     ResIq = mod_private:process_sm_iq(From, To, IQ),
     [{xmlel, <<"query">>,
-      [{<<"xmlns">>, <<"jabber:iq:private">>}],
+      [{<<"xmlns">>, ?NS_PRIVATE}],
       [SubEl]}] = ResIq#iq.sub_el,
     binary_to_list(xml:element_to_binary(SubEl)).
 

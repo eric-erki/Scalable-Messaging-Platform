@@ -66,32 +66,63 @@ json_to_rosteritems(LServer, LUser, {[{<<"roster">>, Roster}]}) ->
 fields_to_roster(_LServer, _LUser, Item, []) -> Item;
 fields_to_roster(LServer, LUser, Item,
                  [{<<"username">>, Username} | Rest]) ->
-    JID = jlib:make_jid(Username, LServer, <<>>),
-    US = {LUser, LServer},
-    USJ = {LUser, LServer, jlib:jid_tolower(JID)},
-    USR = {JID#jid.user, JID#jid.server, JID#jid.resource},
-    fields_to_roster(LServer, LUser,
-                     Item#roster{usj = USJ, us = US, jid = USR}, Rest);
+    case jlib:make_jid(Username, LServer, <<>>) of
+        error ->
+            ?ERROR_MSG("Invalid roster item for user ~s: username ~s", [LUser, Username]),
+            fields_to_roster(LServer, LUser, Item, Rest);
+        JID ->
+            US = {LUser, LServer},
+            USJ = {LUser, LServer, jlib:jid_tolower(JID)},
+            USR = {JID#jid.user, JID#jid.server, JID#jid.resource},
+            fields_to_roster(LServer, LUser,
+                             Item#roster{usj = USJ, us = US, jid = USR}, Rest)
+    end;
 fields_to_roster(LServer, LUser, Item,
                  [{<<"jid">>, JidBin} | Rest]) ->
-    JID = jlib:string_to_jid((JidBin)),
-    US = {LUser, LServer},
-    USJ = {LUser, LServer, jlib:jid_tolower(JID)},
-    USR = {JID#jid.user, JID#jid.server, JID#jid.resource},
-    fields_to_roster(LServer, LUser,
-                     Item#roster{usj = USJ, us = US, jid = USR}, Rest);
+    case jlib:string_to_jid((JidBin)) of
+        error ->
+            ?ERROR_MSG("Invalid roster item for user ~s: jid ~s", [LUser, JidBin]),
+            fields_to_roster(LServer, LUser, Item, Rest);
+        JID ->
+            US = {LUser, LServer},
+            USJ = {LUser, LServer, jlib:jid_tolower(JID)},
+            USR = {JID#jid.user, JID#jid.server, JID#jid.resource},
+            fields_to_roster(LServer, LUser,
+                             Item#roster{usj = USJ, us = US, jid = USR}, Rest)
+    end;
 fields_to_roster(LServer, LUser, Item,
-                 [{<<"subscription">>, Subscription} | Rest]) ->
-    Sub = list_to_atom(binary_to_list(Subscription)),
+                 [{<<"subscription">>, <<"both">>} | Rest]) ->
     fields_to_roster(LServer, LUser,
-                     Item#roster{subscription = Sub}, Rest);
+                     Item#roster{subscription = both}, Rest);
+fields_to_roster(LServer, LUser, Item,
+                 [{<<"subscription">>, <<"from">>} | Rest]) ->
+    fields_to_roster(LServer, LUser,
+                     Item#roster{subscription = from}, Rest);
+fields_to_roster(LServer, LUser, Item,
+                 [{<<"subscription">>, <<"to">>} | Rest]) ->
+    fields_to_roster(LServer, LUser,
+                     Item#roster{subscription = to}, Rest);
+fields_to_roster(LServer, LUser, Item,
+                 [{<<"subscription">>, <<"none">>} | Rest]) ->
+    fields_to_roster(LServer, LUser,
+                     Item#roster{subscription = none}, Rest);
+fields_to_roster(LServer, LUser, Item,
+                 [{<<"subscription">>, <<"remove">>} | Rest]) ->
+    fields_to_roster(LServer, LUser,
+                     Item#roster{subscription = remove}, Rest);
+fields_to_roster(LServer, LUser, Item,
+                 [{<<"subscription">>, Sub} | Rest]) ->
+    ?ERROR_MSG("Invalid roster item for user ~s: subscription ~s", [LUser, Sub]),
+    fields_to_roster(LServer, LUser, Item, Rest);
 fields_to_roster(LServer, LUser, Item,
                  [{<<"nick">>, Nick} | Rest]) ->
     fields_to_roster(LServer, LUser,
                      Item#roster{name = (Nick)}, Rest);
-fields_to_roster(_LServer, _LUser, _Item,
-                 [{Field, Value} | _Rest]) ->
-    throw({unknown_field, {Field, Value}}).
+fields_to_roster(LServer, LUser, Item,
+                 [{Field, Value} | Rest]) ->
+    ?ERROR_MSG("Invalid roster item for user ~s: unknown field ~s=~s", [LUser, Field, Value]),
+    fields_to_roster(LServer, LUser, Item, Rest).
+    %throw({unknown_field, {Field, Value}}).
 
 
 %%%----------------------------------------------------------------------

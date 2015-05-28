@@ -24,12 +24,11 @@
 %%%
 %%%----------------------------------------------------------------------
 
-%%% Implements most of XEP-0133: Service Administration Version 1.1
-%%% (2005-08-19)
-
 -module(mod_configure).
 
 -author('alexey@process-one.net').
+
+-protocol({xep, 133, '1.1'}).
 
 -behaviour(gen_mod).
 
@@ -2022,14 +2021,14 @@ stop_node(From, Host, ENode, Action, XData) ->
 				       #xmlel{name = <<"x">>,
 					      attrs =
 						  [{<<"xmlns">>,
-						    <<"jabber:x:data">>},
+						    ?NS_XDATA},
 						   {<<"type">>, <<"submit">>}],
 					      children = SubEls},
 				   others =
 				       [#xmlel{name = <<"x">>,
 					       attrs =
 						   [{<<"xmlns">>,
-						     <<"jabber:x:data">>},
+						     ?NS_XDATA},
 						    {<<"type">>, <<"submit">>}],
 					       children = SubEls}]},
 	  To = jlib:make_jid(<<"">>, Host, <<"">>),

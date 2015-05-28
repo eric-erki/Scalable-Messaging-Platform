@@ -45,9 +45,8 @@
 -export([flush_log/3, sync_log/1]).
 %% administration commands
 -export([active_counters_command/1, flush_probe_command/2]).
-%-export([jabs_count_command/1, jabs_reset_command/1]).
 %% monitors
--export([process_queues/2, internal_queues/2, health_check/2]).
+-export([process_queues/2, internal_queues/2, health_check/2, jabs_count/1]).
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
@@ -230,8 +229,7 @@ handle_cast(_Msg, State) ->
 handle_info(push, State) ->
     run_monitors(State#state.host, State#state.monitors),
     [compute_average(Probe) || Probe <- [backend_api_response_time]],
-    Probes = [{Key, Val} || {Key, Val} <- get(),
-                            is_integer(Val) and not proplists:is_defined(Key, ?JABS)],
+    Probes = [{Key, Val} || {Key, Val} <- get(), is_integer(Val)],
     [push(State#state.host, Probes, Backend) || Backend <- State#state.backends],
     [put(Key, 0) || {Key, Val} <- Probes,
                     Val =/= 0,
@@ -275,19 +273,6 @@ commands() ->
                         module = ?MODULE, function = flush_probe_command,
                         args = [{server, binary}, {probe_name, binary}],
                         result = {probe_value, integer}}].
-% jabs temporary put out of mod_mon, see mod_jabs
-%     #ejabberd_commands{name = jabs_count,
-%                        tags = [stats],
-%                        desc = "Returns the current value of jabs counter",
-%                        module = ?MODULE, function = jabs_count_command,
-%                        args = [{server, binary}],
-%                        result = {probe_value, integer}},
-%     #ejabberd_commands{name = jabs_reset,
-%                        tags = [stats],
-%                        desc = "Reset jabs counter",
-%                        module = ?MODULE, function = jabs_reset_command,
-%                        args = [{server, binary}],
-%                        result = {probe_value, integer}}].
 
 active_counters_command(Host) ->
     [{jlib:atom_to_binary(Key), Val}
@@ -299,14 +284,6 @@ flush_probe_command(Host, Probe) ->
         N when is_integer(N) -> N;
         _ -> 0
     end.
-
-%jabs_count_command(Host) ->
-%    [{jlib:atom_to_binary(Key), Val}
-%     || {Key, Val} <- jabs_count(Host)].
-%
-%jabs_reset_command(Host) ->
-%    jabs_reset(Host),
-%    0.
 
 %%====================================================================
 %% Helper functions
@@ -450,7 +427,7 @@ user_send_packet(#xmlel{name=Name, attrs=Attrs} = Packet,
     cast(LServer, {inc, Hook}),
     %possible jabs computation. see mod_jabs
     %Size = erlang:external_size(Packet),
-    %cast(LServer, {inc, 'XPS', 1+(Size div 6000)}),
+    %gen_server:cast(mod_jabs:process(Host), {inc, 'XPS', 1+(Size div 6000)}),
     Packet.
 user_receive_packet(#xmlel{name=Name, attrs=Attrs} = Packet,
                     _C2SState, _JID, _From, #jid{lserver=LServer}) ->
@@ -554,44 +531,29 @@ init_log(Host, true) ->
             proplists:get_value(hd(?HYPERLOGLOGS), Logs)
     end.
 
-cluster_log(Host, Nodes) ->
-    case rpc:multicall(Nodes, ?MODULE, value, [Host, log], 8000) of
-        {[], _} ->
-            undefined;
-        {Success, _Fail} ->
-            [Log|Logs] = [L || L <- Success, L =/= error],
-            lists:foldl(fun(Remote, Acc) when is_atom(Remote) -> Acc;
-                           (Remote, Acc) -> ehyperloglog:merge(Acc, Remote)
-                        end, Log, Logs)
-    end.
+cluster_log(Host) ->
+    {Logs, _} = ejabberd_cluster:multicall(?MODULE, value, [Host, log]),
+    lists:foldl(fun
+            ({hll,_,_}=L1, L2) -> ehyperloglog:merge(L2, L1);
+            (_, Acc) -> Acc
+        end, ehyperloglog:new(16), Logs).
 
 sync_log(Host) when is_binary(Host) ->
     % this process can safely run on its own, thanks to put/get hyperloglogs not using dictionary
     % it should be called at regular interval to keep logs consistency
-    % as timer is handled by main process handling the loop, we spawn here to not interfere with the loop
     spawn(fun() ->
-                Nodes = ejabberd_cluster:get_nodes(),
-                case cluster_log(Host, Nodes) of
-                    Error when is_atom(Error) ->
-                        Error;
-                    ClusterLog ->
-                        set(Host, log, ClusterLog),
-                        write_logs(Host, [{Key, merge_log(Host, Key, Val, ClusterLog)}
-                                          || {Key, Val} <- read_logs(Host)])
-                end
+                ClusterLog = cluster_log(Host),
+                set(Host, log, ClusterLog),
+                write_logs(Host, [{Key, merge_log(Host, Key, Val, ClusterLog)}
+                                  || {Key, Val} <- read_logs(Host)])
         end).
 
 flush_log(Host, Probe) ->
     % this process can safely run on its own, thanks to put/get hyperloglogs not using dictionary
     % it may be called at regular interval with timers or external cron
     spawn(fun() ->
-                Nodes = ejabberd_cluster:get_nodes(),
-                case cluster_log(Host, Nodes) of
-                    Error when is_atom(Error) ->
-                        Error;
-                    ClusterLog ->
-                        rpc:multicall(Nodes, ?MODULE, flush_log, [Host, Probe, ClusterLog])
-                end
+                ClusterLog = cluster_log(Host),
+                ejabberd_cluster:multicall(?MODULE, flush_log, [Host, Probe, ClusterLog])
         end).
 flush_log(Host, Probe, ClusterLog) when is_binary(Host), is_atom(Probe) ->
     set(Host, log, ehyperloglog:new(16)),
@@ -658,7 +620,8 @@ run_monitors(Host, Monitors) ->
         fun({I, M, F, A}) -> put(I, apply(M, F, A));
            ({I, M, F, A, Fun}) -> put(I, Fun(apply(M, F, A)));
            ({I, F, A}) -> put(I, apply(?MODULE, F, [Host, A]));
-           ({I, Spec}) -> put(I, eval_monitors(Probes, Spec, 0));
+           ({I, F}) when is_atom(F) -> put(I, apply(?MODULE, F, [Host]));
+           ({I, Spec}) when is_list(Spec) -> put(I, eval_monitors(Probes, Spec, 0));
            (_) -> ok
         end, Monitors).
 
@@ -755,28 +718,6 @@ push(_Host, _Probes, none) ->
     ok.
 
 %%====================================================================
-%% JABS api
-%%====================================================================
-
-% TODO put this on gen_server instead, to avoid need of mnesia
-% or create a dedicated jabs table for persistence cause actually
-% it works only with mnesia backend
-%jabs_count(Host) ->
-%    Table = gen_mod:get_module_proc(Host, mon),
-%    ets:foldl(fun(Mon, Acc) ->
-%                case proplists:get_value(Mon#mon.probe, ?JABS) of
-%                    undefined -> Acc;
-%                    Weight -> [{Mon#mon.probe, Mon#mon.value*Weight}|Acc]
-%                end
-%        end, [], Table).
-%
-%jabs_reset(Host) ->
-%    Table = gen_mod:get_module_proc(Host, mon),
-%    [mnesia:dirty_write(Table, Mon#mon{value = 0})
-%     || Mon <- ets:tab2list(Table),
-%        proplists:is_defined(Mon#mon.probe, ?JABS)].
-
-%%====================================================================
 %% Monitors helpers
 %%====================================================================
 
@@ -858,6 +799,10 @@ health_check(Host, all) ->
           [{client_conn_time, <<"connection is slow">>, <<"service unavailable">>},
            {client_auth_time, <<"authentification is slow">>, <<"auth broken">>},
            {client_roster_time, <<"roster response is slow">>, <<"roster broken">>}]}]).
+
+jabs_count(Host) ->
+    {Count, _} = mod_jabs:value(Host),
+    Count.
 
 %%====================================================================
 %% Health check helpers

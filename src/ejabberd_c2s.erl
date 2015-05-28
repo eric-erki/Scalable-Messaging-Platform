@@ -28,6 +28,10 @@
 
 -author('alexey@process-one.net').
 
+-protocol({xep, 78, '2.5'}).
+-protocol({xep, 138, '2.0'}).
+-protocol({xep, 198, '1.3'}).
+
 -update_info({update, 0}).
 
 -define(GEN_FSM, p1_fsm).
@@ -2419,7 +2423,7 @@ send_text(StateData, Text) when StateData#state.mgmt_state == active ->
     case catch (StateData#state.sockmod):send(StateData#state.socket, Text) of
       {'EXIT', _} ->
 	  (StateData#state.sockmod):close(StateData#state.socket),
-	  error;
+	  {error, closed};
       _ ->
 	  ok
     end;
@@ -2457,12 +2461,7 @@ send_stanza(StateData, Stanza) when StateData#state.csi_state == inactive ->
 send_stanza(StateData, Stanza) when StateData#state.mgmt_state == pending ->
     mgmt_queue_add(StateData, Stanza);
 send_stanza(StateData, Stanza) when StateData#state.mgmt_state == active ->
-    NewStateData = case send_stanza_and_ack_req(StateData, Stanza) of
-		     ok ->
-			 StateData;
-		     error ->
-			 StateData#state{mgmt_state = pending}
-		   end,
+    NewStateData = send_stanza_and_ack_req(StateData, Stanza),
     mgmt_queue_add(NewStateData, Stanza);
 send_stanza(StateData, Stanza) ->
     send_element(StateData, Stanza),
@@ -4330,8 +4329,13 @@ send_stanza_and_ack_req(StateData, Stanza) ->
     AckReq = #xmlel{name = <<"r">>,
 		    attrs = [{<<"xmlns">>, StateData#state.mgmt_xmlns}],
 		    children = []},
-    send_element(StateData, Stanza),
-    send_element(StateData, AckReq).
+    case send_element(StateData, Stanza) == ok andalso
+	 send_element(StateData, AckReq) == ok of
+      true ->
+	  StateData;
+      false ->
+	  StateData#state{mgmt_state = pending}
+    end.
 
 mgmt_queue_add(StateData, El) ->
     NewNum = case StateData#state.mgmt_stanzas_out of

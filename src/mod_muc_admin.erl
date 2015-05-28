@@ -18,10 +18,12 @@
 	 create_room/3, destroy_room/3,
 	 create_rooms_file/1, destroy_rooms_file/1,
 	 rooms_unused_list/2, rooms_unused_destroy/2,
+	 get_user_rooms/2,
 	 get_room_occupants/2,
 	 get_room_occupants_number/2,
 	 send_direct_invitation/4,
 	 change_room_option/4,
+	 get_room_options/2,
 	 set_room_affiliation/4,
 	 get_room_affiliations/2,
 	 web_menu_main/2, web_page_main/2, % Web Admin API
@@ -107,6 +109,12 @@ commands() ->
 		       args = [{host, binary}, {days, integer}],
 		       result = {rooms, {list, {room, string}}}},
 
+     #ejabberd_commands{name = get_user_rooms, tags = [muc],
+			desc = "Get the list of rooms where this user is occupant",
+			module = ?MODULE, function = get_user_rooms,
+			args = [{user, binary}, {host, binary}],
+		        result = {rooms, {list, {room, string}}}},
+
      #ejabberd_commands{name = get_room_occupants, tags = [muc_room],
 			desc = "Get the list of occupants of a MUC room",
 			module = ?MODULE, function = get_room_occupants,
@@ -138,6 +146,16 @@ commands() ->
 		       args = [{name, binary}, {service, binary},
 			       {option, binary}, {value, binary}],
 		       result = {res, rescode}},
+     #ejabberd_commands{name = get_room_options, tags = [muc_room],
+		        desc = "Get options from a MUC room",
+		        module = ?MODULE, function = get_room_options,
+		        args = [{name, binary}, {service, binary}],
+			result = {options, {list,
+						 {option, {tuple,
+								[{name, string},
+								 {value, string}
+								]}}
+						}}},
 
      #ejabberd_commands{name = set_room_affiliation, tags = [muc_room],
 		       desc = "Change an affiliation in a MUC room",
@@ -193,6 +211,15 @@ muc_unregister_nick(Nick) ->
 	    error
     end.
 
+get_user_rooms(LUser, LServer) ->
+    US = {LUser, LServer},
+    case catch ets:select(muc_online_users,
+                          [{#muc_online_users{us = US, room='$1', host='$2', _ = '_'}, [], [{{'$1', '$2'}}]}])
+        of
+      Res when is_list(Res) ->
+	[<<R/binary, "@", H/binary>> || {R, H} <- Res];
+      _ -> []
+    end.
 
 %%----------------------------
 %% Ad-hoc commands
@@ -524,7 +551,7 @@ rooms_unused_destroy(Host, Days) ->
 rooms_unused_report(Action, Host, Days) ->
     {NA, NP, RP} = muc_unused(Action, Host, Days),
     io:format("Unused rooms: ~p out of ~p~n", [NP, NA]),
-    [[R, <<"@">>, H] || {R, H, _P} <- RP].
+    [<<R/binary, "@", H/binary>> || {R, H, _P} <- RP].
 
 muc_unused(Action, ServerHost, Days) ->
     Host = find_host(ServerHost),
@@ -769,6 +796,7 @@ change_option(Option, Value, Config) ->
 	allow_query_users -> Config#config{allow_query_users = Value};
 	allow_user_invites -> Config#config{allow_user_invites = Value};
 	anonymous -> Config#config{anonymous = Value};
+	description -> Config#config{description = Value};
 	logging -> Config#config{logging = Value};
 	max_users -> Config#config{max_users = Value};
 	members_by_default -> Config#config{members_by_default = Value};
@@ -782,6 +810,22 @@ change_option(Option, Value, Config) ->
 	title -> Config#config{title = Value}
     end.
 
+%%----------------------------
+%% Get Room Options
+%%----------------------------
+
+get_room_options(Name, Service) ->
+    Pid = get_room_pid(Name, Service),
+    get_room_options(Pid).
+
+get_room_options(Pid) ->
+    Config = get_room_config(Pid),
+    get_options(Config).
+
+get_options(Config) ->
+    Fields = record_info(fields, config),
+    [config | Values] = tuple_to_list(Config),
+    lists:zip(Fields, Values).
 
 %%----------------------------
 %% Get Room Affiliations
@@ -825,22 +869,12 @@ set_room_affiliation(Name, Service, JID, AffiliationString) ->
 	[R] ->
 	    %% Get the PID for the online room so we can get the state of the room
 	    Pid = R#muc_online_room.pid,
-	    {ok, StateData} = gen_fsm:sync_send_all_state_event(Pid, get_state),
-	    SJID = jlib:string_to_jid(JID),
-	    LJID = jlib:jid_remove_resource(jlib:jid_tolower(SJID)),
-	    Affiliations = change_affiliation(Affiliation, LJID, StateData#state.affiliations),
-	    Res = StateData#state{affiliations = Affiliations},
-	    {ok, _State} = gen_fsm:sync_send_all_state_event(Pid, {change_state, Res}),
-	    mod_muc:store_room(Res#state.server_host, Res#state.host, Res#state.room, make_opts(Res)),
+	    {ok, StateData} = gen_fsm:sync_send_all_state_event(Pid, {process_item_change, {jlib:string_to_jid(JID), affiliation, Affiliation, <<"">>}, <<"">>}),
+	    mod_muc:store_room(StateData#state.server_host, StateData#state.host, StateData#state.room, make_opts(StateData)),
 	    ok;
 	[] ->
 	    error
     end.
-
-change_affiliation(none, LJID, Affiliations) ->
-    ?DICT:erase(LJID, Affiliations);
-change_affiliation(Affiliation, LJID, Affiliations) ->
-    ?DICT:store(LJID, Affiliation, Affiliations).
 
 -define(MAKE_CONFIG_OPT(Opt), {Opt, Config#config.Opt}).
 

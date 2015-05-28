@@ -28,6 +28,8 @@
 
 -author('xram@jabber.ru').
 
+-protocol({xep, 65, '1.8'}).
+
 -behaviour(gen_mod).
 
 -behaviour(supervisor).

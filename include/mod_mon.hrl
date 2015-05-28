@@ -106,32 +106,9 @@
          {c2s_internal_queues, internal_queues, ejabberd_c2s_sup},
          {odbc_internal_queues, internal_queues, ejabberd_odbc_sup},
          {offline_internal_queues, internal_queues, mod_offline_pool},
+         {jabs, jabs_count},
          {sessions, mnesia, table_info, [session, size]},
          {memory, erlang, memory, [total]},
          {processes, erlang, system_info, [process_count]},
          {health, health_check, all}
         ]).
-
-% Unit to mesure JABS counter
--define(JABS, [
- {'XPS', 1},        % Sending an XMPP Packet, cost of 6k payload (XMPP Packet Send)
- {'LOG', 10},       % Sending an authentication packet (Login)
- {'ROST50', 2},     % Receiving a roster of less than 50 contacts
- {'ROST100', 3},    % Receiving a roster of 50-100 contacts
- {'ROST200', 4},    % Receiving a roster of 100-200 contacts
- {'ROST1000', 7},   % Receiving a roster of 200-1000 contacts
- {'OFF', 4},        % Offline message
- {'EXT', 4},        % Receiving an external packet (S2S or component)
- {'MJN', 3},        % MUC join
- {'MJP10', 2},      % MUC presence broadcast up to to 10 users
- {'MJP100', 4},     % MUC presence broadcast to 10-100 users
- {'MJP200', 8},     % MUC presence broadcast to 100-200 users
- {'MJM10', 3},      % MUC message broadcast to 10 users
- {'MJM100', 6},     % MUC message broadcast to 10-100 users
- {'MJM200', 10},    % MUC message broadcast to 100-200 users
- {'PSB10', 3},      % Pubsub broadcast up to 10 users
- {'PSB100', 4},     % Pubsub broadcast to 10-100 users
- {'PSB500', 5},     % Pubsub broadcast to 100-500 users
- {'PSB2000', 6},    % Pubsub broadcast to 500-2000 users
- {'PSB2000+', 10}   % Pubsub broadcast to 2000+ users 10 jabs
-]).

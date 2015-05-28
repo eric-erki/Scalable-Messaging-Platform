@@ -28,6 +28,8 @@
 
 -author('alexey@process-one.net').
 
+-protocol({xep, 77, '2.4'}).
+
 -behaviour(gen_mod).
 
 -export([start/2, stop/1, stream_feature_register/2,
@@ -276,7 +278,7 @@ process_iq(From, To,
 				 [#xmlel{name = <<"query">>,
 					 attrs =
 					     [{<<"xmlns">>,
-					       <<"jabber:iq:register">>}],
+					       ?NS_REGISTER}],
 					 children =
 					     [TopInstrEl | CaptchaEls]}]};
 		   {error, limit} ->
@@ -298,7 +300,7 @@ process_iq(From, To,
 			   [#xmlel{name = <<"query">>,
 				   attrs =
 				       [{<<"xmlns">>,
-					 <<"jabber:iq:register">>}],
+					 ?NS_REGISTER}],
 				   children =
 				       [#xmlel{name = <<"instructions">>,
 					       attrs = [],
