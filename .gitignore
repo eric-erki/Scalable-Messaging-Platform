@@ -43,3 +43,4 @@ XmppAddr.hrl
 /test/*.beam
 /logs/
 /priv/sql
+mix.exs
