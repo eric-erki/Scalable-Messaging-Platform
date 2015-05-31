@@ -180,25 +180,29 @@ process(_Path, Request) ->
 handle(Call, [{_,_}|_] = Args) when is_binary(Call) ->
     case ejabberd_commands:get_command_format(jlib:binary_to_atom(Call)) of
         {ArgsSpec, _} when is_list(ArgsSpec) ->
+            Args2 = [{jlib:binary_to_atom(Key), Value} || {Key, Value} <- Args],
             Spec = lists:foldr(
                     fun ({Key, binary}, Acc) ->
-                            [{jlib:atom_to_binary(Key), <<>>}|Acc];
+                            [{Key, <<>>}|Acc];
                         ({Key, string}, Acc) ->
-                            [{jlib:atom_to_binary(Key), <<>>}|Acc];
+                            [{Key, <<>>}|Acc];
                         ({Key, integer}, Acc) ->
-                            [{jlib:atom_to_binary(Key), 0}|Acc];
+                            [{Key, 0}|Acc];
                         ({Key, {list, _}}, Acc) ->
-                            [{jlib:atom_to_binary(Key), []}|Acc];
+                            [{Key, []}|Acc];
                         ({Key, atom}, Acc) ->
-                            [{jlib:atom_to_binary(Key), undefined}|Acc]
+                            [{Key, undefined}|Acc]
                     end, [], ArgsSpec),
-            handle(Call, match(Args, Spec));
+            handle2(Call, match(Args2, Spec));
         Error ->
             Error
-    end;
-handle(Call, Args) when is_binary(Call), is_list(Args) ->
+    end.
+
+handle2(Call, Args) when is_binary(Call), is_list(Args) ->
     Fun = jlib:binary_to_atom(Call),
-    case ejabberd_command(Fun, Args, 400) of
+    {ArgsF, _ResultF} = ejabberd_commands:get_command_format(Fun),
+    ArgsFormatted = format_args(Args, ArgsF),
+    case ejabberd_command(Fun, ArgsFormatted, 400) of
         0 -> {200, <<"OK">>};
         1 -> {500, <<"500 Internal server error">>};
         400 -> {400, <<"400 Bad Request">>};
@@ -207,12 +211,81 @@ handle(Call, Args) when is_binary(Call), is_list(Args) ->
         Res -> {200, format_command_result(Fun, Res)}
     end.
 
+get_elem_delete(A, L) ->
+    case proplists:get_all_values(A, L) of
+      [Value] -> {Value, proplists:delete(A, L)};
+      [_, _ | _] ->
+	  %% Crash reporting the error
+	  exit({duplicated_attribute, A, L});
+      [] ->
+	  %% Report the error and then force a crash
+	  exit({attribute_not_found, A, L})
+    end.
+
+format_args(Args, ArgsFormat) ->
+    {ArgsRemaining, R} = lists:foldl(fun ({ArgName,
+					   ArgFormat},
+					  {Args1, Res}) ->
+					     {ArgValue, Args2} =
+						 get_elem_delete(ArgName,
+								 Args1),
+					     Formatted = format_arg(ArgValue,
+								    ArgFormat),
+					     {Args2, Res ++ [Formatted]}
+				     end,
+				     {Args, []}, ArgsFormat),
+    case ArgsRemaining of
+      [] -> R;
+      L when is_list(L) -> exit({additional_unused_args, L})
+    end.
+
+format_arg({array, Elements},
+	   {list, {ElementDefName, ElementDefFormat}})
+    when is_list(Elements) ->
+    lists:map(fun ({struct, [{ElementName, ElementValue}]}) when
+                        ElementDefName == ElementName ->
+		      format_arg(ElementValue, ElementDefFormat)
+	      end,
+	      Elements);
+format_arg({array, [{struct, Elements}]},
+	   {list, {ElementDefName, ElementDefFormat}})
+    when is_list(Elements) ->
+    lists:map(fun ({ElementName, ElementValue}) ->
+		      true = ElementDefName == ElementName,
+		      format_arg(ElementValue, ElementDefFormat)
+	      end,
+	      Elements);
+format_arg({array, [{struct, Elements}]},
+	   {tuple, ElementsDef})
+    when is_list(Elements) ->
+    FormattedList = format_args(Elements, ElementsDef),
+    list_to_tuple(FormattedList);
+format_arg({array, Elements}, {list, ElementsDef})
+    when is_list(Elements) and is_atom(ElementsDef) ->
+    [format_arg(Element, ElementsDef)
+     || Element <- Elements];
+format_arg(Arg, integer) when is_integer(Arg) -> Arg;
+format_arg(Arg, binary) when is_list(Arg) -> process_unicode_codepoints(Arg);
+format_arg(Arg, binary) when is_binary(Arg) -> Arg;
+format_arg(Arg, string) when is_list(Arg) -> process_unicode_codepoints(Arg);
+format_arg(Arg, string) when is_binary(Arg) -> Arg;
+format_arg(undefined, binary) -> <<>>;
+format_arg(undefined, string) -> <<>>;
+format_arg(Arg, Format) ->
+    ?ERROR_MSG("don't know how to format Arg ~p for format ~p", [Arg, Format]),
+    error.
+
+process_unicode_codepoints(Str) ->
+    iolist_to_binary(lists:map(fun(X) when X > 255 -> unicode:characters_to_binary([X]);
+                                  (Y) -> Y
+                               end, Str)).
+
 %% ----------------
 %% internal helpers
 %% ----------------
 
 match(Args, Spec) ->
-    [proplists:get_value(Key, Args, Default) || {Key, Default} <- Spec].
+    [{Key, proplists:get_value(Key, Args, Default)} || {Key, Default} <- Spec].
 
 ejabberd_command(Cmd, Args, Default) ->
     case catch ejabberd_commands:execute_command(Cmd, Args) of
