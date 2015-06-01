@@ -67,7 +67,7 @@ stop(Host) ->
 
 offline_packet(From, To, Packet) ->
     Host = To#jid.lserver,
-    case get_opt(Host, offline_message) of
+    case gen_mod:get_module_opt(Host, ?MODULE, offline_message, fun v_fun/1) of
         {URL, AuthToken} ->
             Type = xml:get_tag_attr_s(<<"type">>, Packet),
             Body = xml:get_path_s(Packet, [{elem, <<"body">>}, cdata]),
@@ -87,13 +87,13 @@ offline_packet(From, To, Packet) ->
                true ->
                     ok
             end;
-        none ->
+        undefined ->
             ok
     end.
 
 user_available(JID) ->
     Host = JID#jid.lserver,
-    case get_opt(Host, user_available) of
+    case gen_mod:get_module_opt(Host, ?MODULE, user_available, fun v_fun/1) of
         {URL, AuthToken} ->
             SJID = jlib:jid_to_string(JID),
             Params =
@@ -102,13 +102,13 @@ user_available(JID) ->
                  {"access_token", AuthToken}],
             send_notification(URL, Params),
             ok;
-        none ->
+        undefined ->
             ok
     end.
 
 set_presence(User, Server, Resource, _Presence) ->
     Host = jlib:nameprep(Server),
-    case get_opt(Host, set_presence) of
+    case gen_mod:get_module_opt(Host, ?MODULE, set_presence, fun v_fun/1) of
         {URL, AuthToken} ->
             JID = jlib:make_jid(User, Server, Resource),
             SJID = jlib:jid_to_string(JID),
@@ -118,13 +118,13 @@ set_presence(User, Server, Resource, _Presence) ->
                  {"access_token", AuthToken}],
             send_notification(URL, Params),
             ok;
-        none ->
+        undefined ->
             ok
     end.
 
 user_unavailable(User, Server, Resource, _Status) ->
     Host = jlib:nameprep(Server),
-    case get_opt(Host, unset_presence) of
+    case gen_mod:get_module_opt(Host, ?MODULE, unset_presence, fun v_fun/1) of
         {URL, AuthToken} ->
             JID = jlib:make_jid(User, Server, Resource),
             SJID = jlib:jid_to_string(JID),
@@ -134,7 +134,7 @@ user_unavailable(User, Server, Resource, _Status) ->
                  {"access_token", AuthToken}],
             send_notification(URL, Params),
             ok;
-        none ->
+        undefined ->
             ok
     end.
 
@@ -142,18 +142,12 @@ user_unavailable(User, Server, Resource, _Status) ->
 send_notification(URL, Params) ->
     rest:post(undefined, URL, Params, <<>>).
 
-
-get_opt(Host, Name) ->
-    gen_mod:get_module_opt(
-      Host, ?MODULE, Name,
-      fun(L) when is_list(L) ->
-              URL = proplists:get_value(url, L),
-              AuthToken = proplists:get_value(auth_token, L, ""),
-              if
-                  is_list(URL) ->
-                      {URL, AuthToken};
-                  is_binary(URL) ->
-                      {binary_to_list(URL), AuthToken}
-              end
-      end,
-      none).
+v_fun(L) when is_list(L) ->
+    URL = proplists:get_value(url, L),
+    AuthToken = proplists:get_value(auth_token, L, ""),
+    if
+	is_list(URL) ->
+	    {URL, AuthToken};
+	is_binary(URL) ->
+	    {binary_to_list(URL), AuthToken}
+    end.
