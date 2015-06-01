@@ -51,18 +51,11 @@
 
 -behaviour(gen_mod).
 
--export([
-	 start/2, stop/1, % gen_mod API
-	 muc_create_room/3,
-	 muc_delete_room/2,
-	 muc_add_member/3,
-	 muc_remove_member/3,
-	 muc_kick_user/3,
-	 muc_send_system_message/4,
-	 muc_purge_archive/2,
-         get_senderjid/1,
-	 kick_user/1
-	]).
+-export([start/2, stop/1, muc_create_room/3,
+	 muc_delete_room/2, muc_add_member/3,
+	 muc_remove_member/3, muc_kick_user/3,
+	 muc_send_system_message/4, muc_purge_archive/2,
+	 get_senderjid/1, kick_user/1, mod_opt_type/1]).
 
 %-include("ejabberd.hrl").
 -include("logger.hrl").
@@ -407,3 +400,6 @@ kick_user(JID) ->
 		  end,
 		  Resources),
     {ok, ""}.
+
+mod_opt_type(senderjid) -> fun (X) -> X end;
+mod_opt_type(_) -> [senderjid].

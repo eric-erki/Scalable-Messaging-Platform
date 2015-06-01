@@ -38,7 +38,7 @@
 
 -behaviour(gen_mod).
 
--export([start/2, stop/1, process/2]).
+-export([start/2, stop/1, process/2, mod_opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -140,3 +140,11 @@ migrate_database() ->
       false -> mnesia:delete_table(http_bind);
       _ -> ok
     end.
+
+mod_opt_type(max_inactivity) ->
+    fun (I) when is_integer(I), I > 0 -> I end;
+mod_opt_type(max_pause) ->
+    fun (I) when is_integer(I), I > 0 -> I end;
+mod_opt_type(prebind) ->
+    fun (B) when is_boolean(B) -> B end;
+mod_opt_type(_) -> [max_inactivity, max_pause, prebind].

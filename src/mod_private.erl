@@ -26,15 +26,18 @@
 
 -module(mod_private).
 
+-behaviour(ejabberd_config).
+
 -author('alexey@process-one.net').
 
 -protocol({xep, 49, '1.2'}).
 
 -behaviour(gen_mod).
 
--export([start/2, stop/1, process_sm_iq/3, import_info/0,
-	 enc_key/1, dec_key/1,
-	 remove_user/2, get_data/2, export/1, import/5, import_start/2]).
+-export([start/2, stop/1, process_sm_iq/3,
+	 import_info/0, enc_key/1, dec_key/1, remove_user/2,
+	 get_data/2, export/1, import/5, import_start/2,
+	 mod_opt_type/1, opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -408,3 +411,13 @@ import(LServer, {odbc, _}, p1db, <<"private_storage">>,
     p1db:async_insert(private_storage, USNKey, XML);
 import(_LServer, {odbc, _}, odbc, <<"private_storage">>, _) ->
     ok.
+
+mod_opt_type(db_type) -> fun gen_mod:v_db/1;
+mod_opt_type(iqdisc) -> fun gen_iq_handler:check_type/1;
+mod_opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+mod_opt_type(_) -> [db_type, iqdisc, p1db_group].
+
+opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+opt_type(_) -> [p1db_group].

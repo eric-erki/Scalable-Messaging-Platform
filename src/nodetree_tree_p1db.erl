@@ -36,6 +36,8 @@
 %%% improvements.</p>
 
 -module(nodetree_tree_p1db).
+
+-behaviour(ejabberd_config).
 -behaviour(gen_pubsub_nodetree).
 -author('christophe.romain@process-one.net').
 
@@ -48,7 +50,8 @@
     get_subnodes/3, get_subnodes_tree/3, create_node/6,
     delete_node/2]).
 
--export([enc_key/1, dec_key/1, enc_val/2, dec_val/2]).
+-export([enc_key/1, dec_key/1, enc_val/2, dec_val/2,
+	 mod_opt_type/1, opt_type/1]).
 
 init(_Host, ServerHost, Opts) ->
     Group = gen_mod:get_opt(p1db_group, Opts, fun(G) when is_atom(G) -> G end, 
@@ -240,3 +243,11 @@ dec_val(Key, Bin) ->
      N#pubsub_node.owners,
      N#pubsub_node.options].
 
+
+mod_opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+mod_opt_type(_) -> [p1db_group].
+
+opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+opt_type(_) -> [p1db_group].

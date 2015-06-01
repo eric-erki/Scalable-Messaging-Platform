@@ -32,7 +32,8 @@
 
 -behaviour(gen_mod).
 
--export([start/2, stop/1, process_local_iq/3]).
+-export([start/2, stop/1, process_local_iq/3,
+	 mod_opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -266,3 +267,6 @@ search_running_node(SNode, [Node | Nodes]) ->
       SNode -> Node;
       _ -> search_running_node(SNode, Nodes)
     end.
+
+mod_opt_type(iqdisc) -> fun gen_iq_handler:check_type/1;
+mod_opt_type(_) -> [iqdisc].

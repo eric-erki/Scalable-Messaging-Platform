@@ -14,8 +14,8 @@
 
 -behaviour(gen_mod).
 
-% module functions
--export([start/2, stop/1, process_iq/3]).
+-export([start/2, stop/1, process_iq/3,
+	 mod_opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -402,3 +402,14 @@ uuidv4(R1, R2, R3, R4) ->
 % @doc Returns the 32, 16, 16, 8, 8, 48 parts of a binary UUID.
 get_parts(<<TL:32, TM:16, THV:16, CSR:8, CSL:8, N:48>>) ->
     [TL, TM, THV, CSR, CSL, N].
+
+mod_opt_type(access_key_id) -> fun iolist_to_binary/1;
+mod_opt_type(bucket_name) -> fun iolist_to_binary/1;
+mod_opt_type(iqdisc) -> fun gen_iq_handler:check_type/1;
+mod_opt_type(secret_access_key) ->
+    fun iolist_to_binary/1;
+mod_opt_type(url_lifetime) ->
+    fun (I) when is_integer(I), I > 0 -> I end;
+mod_opt_type(_) ->
+    [access_key_id, bucket_name, iqdisc, secret_access_key,
+     url_lifetime].

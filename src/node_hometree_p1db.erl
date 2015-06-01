@@ -40,6 +40,8 @@
 %%% improvements.</p>
 
 -module(node_hometree_p1db).
+
+-behaviour(ejabberd_config).
 -behaviour(gen_pubsub_node).
 -author('christophe.romain@process-one.net').
 
@@ -61,7 +63,9 @@
     path_to_node/1, get_states_by_prefix/1]).
 
 -export([enc_state_key/1, dec_state_key/1, enc_state_val/2, dec_state_val/2]).
--export([enc_item_key/1, dec_item_key/1, enc_item_val/2, dec_item_val/2]).
+
+-export([enc_item_key/1, dec_item_key/1, enc_item_val/2,
+	 dec_item_val/2, mod_opt_type/1, opt_type/1]).
 
 init(Host, ServerHost, Opts) ->
     pubsub_subscription_p1db:init(Host, ServerHost, Opts),
@@ -912,3 +916,11 @@ dec_item_val(Key, Bin) ->
      I#pubsub_item.modification,
      I#pubsub_item.payload].
 
+
+mod_opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+mod_opt_type(_) -> [p1db_group].
+
+opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+opt_type(_) -> [p1db_group].

@@ -25,6 +25,8 @@
 %%% ====================================================================
 
 -module(mod_jabs).
+
+-behaviour(ejabberd_config).
 -author('christophe.romain@process-one.net').
 -behaviour(gen_mod).
 -behaviour(gen_server).
@@ -44,8 +46,8 @@
 %% handled ejabberd hooks
 -export([sm_register_connection_hook/3, user_send_packet/3, user_send_packet/4]).
 
-%% p1db exports
--export([enc_key/1, dec_key/1, enc_val/2, dec_val/2]).
+-export([enc_key/1, dec_key/1, enc_val/2, dec_val/2,
+	 mod_opt_type/1, opt_type/1]).
 
 -record(jabs, {host, counter, stamp, timer, ignore=[]}).
 
@@ -361,3 +363,14 @@ dec_val(Key, Bin) ->
      J#jabs.timer,
      J#jabs.ignore].
 
+
+mod_opt_type(db_type) -> fun gen_mod:v_db/1;
+mod_opt_type(ignore) ->
+    fun (L) when is_list(L) -> L end;
+mod_opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+mod_opt_type(_) -> [db_type, ignore, p1db_group].
+
+opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+opt_type(_) -> [p1db_group].

@@ -26,6 +26,8 @@
 
 -module(ejabberd_router).
 
+-behaviour(ejabberd_config).
+
 -author('alexey@process-one.net').
 
 -behaviour(gen_server).
@@ -39,9 +41,8 @@
 
 -export([start_link/0]).
 
-%% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
-	 handle_info/2, terminate/2, code_change/3]).
+	 handle_info/2, terminate/2, code_change/3, opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -510,3 +511,19 @@ update_tables() ->
       true -> mnesia:delete_table(local_route);
       false -> ok
     end.
+
+opt_type(domain_balancing) ->
+    fun (random) -> random;
+	(source) -> source;
+	(destination) -> destination;
+	(bare_source) -> bare_source;
+	(bare_destination) -> bare_destination;
+	(broadcast) -> broadcast
+    end;
+opt_type(domain_balancing_component_number) ->
+    fun (N) when is_integer(N), N > 1 -> N end;
+opt_type(host_access) ->
+    fun (A) when is_atom(A) -> A end;
+opt_type(_) ->
+    [domain_balancing, domain_balancing_component_number,
+     host_access].

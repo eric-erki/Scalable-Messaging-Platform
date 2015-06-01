@@ -38,9 +38,9 @@
 -export([start/2, stop/1, process/2, open_session/2,
 	 close_session/1, find_session/1]).
 
-%% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-	 terminate/2, code_change/3]).
+-export([init/1, handle_call/3, handle_cast/2,
+	 handle_info/2, terminate/2, code_change/3,
+	 mod_opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -295,3 +295,20 @@ get_type(Hdrs) ->
     catch _:_ ->
             xml
     end.
+
+mod_opt_type(json) ->
+    fun (false) -> false;
+	(true) -> true
+    end;
+mod_opt_type(max_concat) ->
+    fun (unlimited) -> unlimited;
+	(N) when is_integer(N), N > 0 -> N
+    end;
+mod_opt_type(max_inactivity) ->
+    fun (I) when is_integer(I), I > 0 -> I end;
+mod_opt_type(max_pause) ->
+    fun (I) when is_integer(I), I > 0 -> I end;
+mod_opt_type(prebind) ->
+    fun (B) when is_boolean(B) -> B end;
+mod_opt_type(_) ->
+    [json, max_concat, max_inactivity, max_pause, prebind].

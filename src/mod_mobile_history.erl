@@ -31,8 +31,8 @@
 -export([log_out/4, log_message_to_user/3,
 	 process_sm_iq/3, remove_user/2]).
 
--export([get_user_history/4,
-	 parse_read_notification/1]).
+-export([get_user_history/4, parse_read_notification/1,
+	 mod_opt_type/1]).
 
 -define(NS_P1_HISTORY, <<"p1:archive">>).
 
@@ -451,3 +451,19 @@ remove_user_history(Host) ->
 %ejabberd_odbc:sql_query(Host, "CALL set_read(JID, ID)");
 
 %"SELECT * from message_view where user=user and at >= date offset = ? limit = ?"
+
+mod_opt_type(connection_pool) -> fun to_binary/1;
+mod_opt_type(iqdisc) -> fun gen_iq_handler:check_type/1;
+mod_opt_type(proc_log_msg) -> fun (X) -> X end;
+mod_opt_type(proc_remove_conversation_history) ->
+    fun (X) -> X end;
+mod_opt_type(proc_remove_user_history) ->
+    fun (X) -> X end;
+mod_opt_type(proc_set_deliver_status) ->
+    fun (X) -> X end;
+mod_opt_type(proc_set_read) -> fun (X) -> X end;
+mod_opt_type(_) ->
+    [connection_pool, iqdisc, proc_log_msg,
+     proc_remove_conversation_history,
+     proc_remove_user_history, proc_set_deliver_status,
+     proc_set_read].

@@ -26,6 +26,8 @@
 
 -module(ejabberd_cluster).
 
+-behaviour(ejabberd_config).
+
 -behaviour(gen_fsm).
 
 %% API
@@ -37,10 +39,9 @@
 %% Backward compatibility
 -export([get_node/1]).
 
-%% gen_fsm callbacks
 -export([init/1, connected/2, connected/3,
-         handle_event/3, handle_sync_event/4, handle_info/3,
-         terminate/3, code_change/4]).
+	 handle_event/3, handle_sync_event/4, handle_info/3,
+	 terminate/3, code_change/4, opt_type/1]).
 
 -include("licence.hrl").
 -include("ejabberd.hrl").
@@ -473,3 +474,11 @@ get_nodes_from_epmd(true) ->
       end, Ss);
 get_nodes_from_epmd(false) ->
     [].
+
+opt_type(boot_from_epmd) ->
+    fun (true) -> true;
+	(false) -> false
+    end;
+opt_type(rpc_timeout) ->
+    fun (T) when is_integer(T), T > 0 -> T end;
+opt_type(_) -> [boot_from_epmd, rpc_timeout].

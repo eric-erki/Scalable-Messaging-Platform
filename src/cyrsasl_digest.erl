@@ -26,9 +26,12 @@
 
 -module(cyrsasl_digest).
 
+-behaviour(ejabberd_config).
+
 -author('alexey@sevcom.net').
 
--export([start/1, stop/0, mech_new/6, mech_step/2, parse/1]).
+-export([start/1, stop/0, mech_new/6, mech_step/2,
+	 parse/1, opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -260,3 +263,6 @@ response(KeyVals, User, Passwd, Nonce, AuthzId,
 	  ":", NC/binary, ":", CNonce/binary, ":", QOP/binary,
 	  ":", (hex((erlang:md5(A2))))/binary>>,
     hex((erlang:md5(T))).
+
+opt_type(fqdn) -> fun iolist_to_binary/1;
+opt_type(_) -> [fqdn].

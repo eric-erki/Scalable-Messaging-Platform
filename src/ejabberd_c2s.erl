@@ -26,6 +26,8 @@
 
 -module(ejabberd_c2s).
 
+-behaviour(ejabberd_config).
+
 -author('alexey@process-one.net').
 
 -protocol({xep, 78, '2.5'}).
@@ -49,18 +51,16 @@
 %% API:
 -export([add_rosteritem/3, del_rosteritem/2]).
 
-%% gen_fsm callbacks
 -export([init/1, wait_for_stream/2, wait_for_stream/3,
 	 wait_for_auth/2, wait_for_auth/3,
 	 wait_for_feature_request/2, wait_for_feature_request/3,
-	 wait_for_bind/2, wait_for_bind/3,
-	 wait_for_session/2, wait_for_session/3,
-	 wait_for_sasl_response/2, wait_for_sasl_response/3,
-	 wait_for_resume/2,
-	 session_established/2, session_established/3, handle_event/3,
-	 handle_sync_event/4, code_change/4, handle_info/3,
-	 terminate/3, print_state/1, migrate/3,
-	 migrate_shutdown/3]).
+	 wait_for_bind/2, wait_for_bind/3, wait_for_session/2,
+	 wait_for_session/3, wait_for_sasl_response/2,
+	 wait_for_sasl_response/3, wait_for_resume/2,
+	 session_established/2, session_established/3,
+	 handle_event/3, handle_sync_event/4, code_change/4,
+	 handle_info/3, terminate/3, print_state/1, migrate/3,
+	 migrate_shutdown/3, opt_type/1]).
 
 -include("licence.hrl").
 -include("ejabberd.hrl").
@@ -4671,3 +4671,16 @@ format_features([El | Els], N) ->
             true -> <<"\n">>
         end,
     [El, {xmlcdata, S} | format_features(Els, N + 1)].
+
+opt_type(c2s_tls_verify) ->
+    fun (B) when is_boolean(B) -> B end;
+opt_type(domain_certfile) -> fun iolist_to_binary/1;
+opt_type(flash_hack) ->
+    fun (B) when is_boolean(B) -> B end;
+opt_type(listen) -> fun (V) -> V end;
+opt_type(max_fsm_queue) ->
+    fun (I) when is_integer(I), I > 0 -> I end;
+opt_type(redirect_host) -> fun iolist_to_binary/1;
+opt_type(_) ->
+    [c2s_tls_verify, domain_certfile, flash_hack, listen,
+     max_fsm_queue, redirect_host].

@@ -28,6 +28,8 @@
 
 -module(ejabberd_auth).
 
+-behaviour(ejabberd_config).
+
 -author('alexey@process-one.net').
 
 %% External exports
@@ -49,7 +51,7 @@
 -record(passwd, {us = {<<"">>, <<"">>} :: {binary(), binary()} | '$1',
                  password = <<"">> :: binary() | scram() | '_'}).
 
--export([create_users/5]).
+-export([create_users/5, opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -509,3 +511,12 @@ create_users(UserPattern, PassPattern, Server, Total, DBType) ->
                       erlang:error(odbc_not_supported)
               end
       end, lists:seq(1, Total)).
+
+opt_type(auth_method) ->
+    fun (V) when is_list(V) ->
+	    true = lists:all(fun is_atom/1, V), V;
+	(V) when is_atom(V) -> [V]
+    end;
+opt_type(max_users) ->
+    fun (X) when is_integer(X) -> X end;
+opt_type(_) -> [auth_method, max_users].

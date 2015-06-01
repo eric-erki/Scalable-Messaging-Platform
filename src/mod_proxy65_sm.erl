@@ -34,9 +34,9 @@
 -export([init/1, handle_info/2, handle_call/3,
 	 handle_cast/2, terminate/2, code_change/3]).
 
-%% API.
 -export([start_link/2, register_stream/1,
-	 unregister_stream/1, activate_stream/4]).
+	 unregister_stream/1, activate_stream/4,
+	 mod_opt_type/1]).
 
 -record(state, {max_connections = infinity :: non_neg_integer() | infinity}).
 
@@ -181,3 +181,9 @@ update_tables() ->
       false -> mnesia:delete_table(bytestream);
       _ -> ok
     end.
+
+mod_opt_type(max_connections) ->
+    fun (I) when is_integer(I), I > 0 -> I;
+	(infinity) -> infinity
+    end;
+mod_opt_type(_) -> [max_connections].

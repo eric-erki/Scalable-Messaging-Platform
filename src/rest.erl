@@ -26,7 +26,10 @@
 
 -module(rest).
 
--export([start/1, stop/1, get/2, get/3, post/4, request/6, with_retry/4]).
+-behaviour(ejabberd_config).
+
+-export([start/1, stop/1, get/2, get/3, post/4,
+	 request/6, with_retry/4, opt_type/1]).
 
 -include("logger.hrl").
 
@@ -168,3 +171,9 @@ url(Server, Path, Params) ->
             || {Key, Value} <- Params],
     Tail = iolist_to_binary([ParHead | ParTail]),
     binary_to_list(<<Base/binary, $?, Tail/binary>>).
+
+opt_type(ext_api_http_pool_size) ->
+    fun (X) when is_integer(X), X > 0 -> X end;
+opt_type(ext_api_url) ->
+    fun (X) -> iolist_to_binary(X) end;
+opt_type(_) -> [ext_api_http_pool_size, ext_api_url].

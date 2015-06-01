@@ -26,6 +26,8 @@
 
 -module(ejabberd_http).
 
+-behaviour(ejabberd_config).
+
 -author('alexey@process-one.net').
 
 %% External exports
@@ -33,8 +35,7 @@
 	 socket_type/0, receive_headers/1, url_encode/1,
          transform_listen_option/2]).
 
-%% Callbacks
--export([init/2]).
+-export([init/2, mod_opt_type/1, opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -961,3 +962,31 @@ send_flash_policy(State) ->
            websocket_handlers = State#state.websocket_handlers}.
 
 %% -*- tab-width:8
+
+mod_opt_type(default_host) -> fun iolist_to_binary/1;
+mod_opt_type(request_handlers) ->
+    fun (Hs) ->
+	    [{str:tokens(iolist_to_binary(Path), <<"/">>), Mod}
+	     || {Path, Mod} <- Hs]
+    end;
+mod_opt_type(websocket_handlers) ->
+    fun (Hs) ->
+	    lists:map(fun ({Path, ModOpts}) ->
+			      PathList = str:tokens(iolist_to_binary(Path),
+						    <<"/">>),
+			      M = proplists:get_value(module, ModOpts,
+						      ejabberd_http_ws),
+			      O2 = proplists:get_value(options, ModOpts,
+						       [{protocol,
+							 <<"xmpp">>}]),
+			      {PathList, M, O2}
+		      end,
+		      Hs)
+    end;
+mod_opt_type(_) ->
+    [default_host, request_handlers, websocket_handlers].
+
+opt_type(listen) -> fun (V) -> V end;
+opt_type(trusted_proxies) ->
+    fun (TPs) -> [iolist_to_binary(TP) || TP <- TPs] end;
+opt_type(_) -> [listen, trusted_proxies].

@@ -26,6 +26,8 @@
 
 -module(mod_shared_roster).
 
+-behaviour(ejabberd_config).
+
 -author('alexey@process-one.net').
 
 -behaviour(gen_mod).
@@ -43,8 +45,9 @@
 	 add_user_to_group/3, remove_user_from_group/3]).
 
 -export([command_group_create/5, command_group_delete/2,
-         command_add_user/3, command_remove_user/3,
-         command_list_users/2, command_list_groups/1]).
+	 command_add_user/3, command_remove_user/3,
+	 command_list_users/2, command_list_groups/1,
+	 mod_opt_type/1, opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -1843,3 +1846,12 @@ command_list_users(Host, Id) ->
 command_list_groups(Host) ->
     Groups = mod_shared_roster:list_groups(Host),
     {{ok, ""}, Groups}.
+
+mod_opt_type(db_type) -> fun gen_mod:v_db/1;
+mod_opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+mod_opt_type(_) -> [db_type, p1db_group].
+
+opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+opt_type(_) -> [p1db_group].

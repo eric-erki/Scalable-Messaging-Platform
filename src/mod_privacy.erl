@@ -26,6 +26,8 @@
 
 -module(mod_privacy).
 
+-behaviour(ejabberd_config).
+
 -author('alexey@process-one.net').
 
 -protocol({xep, 16, '1.6'}).
@@ -40,16 +42,15 @@
 	 enc_key/1, dec_key/1, enc_val/2, dec_val/2,
          p1db_to_items/1, items_to_p1db/1, import_stop/2]).
 
-%% For mod_blocking
 -export([sql_add_privacy_list/2,
 	 sql_get_default_privacy_list/2,
 	 sql_get_default_privacy_list_t/1,
 	 sql_get_privacy_list_data/3,
 	 sql_get_privacy_list_data_by_id_t/1,
 	 sql_get_privacy_list_id_t/2,
-	 sql_set_default_privacy_list/2,
-	 sql_set_privacy_list/2, privacy_schema/0,
-         us_prefix/2, usn2key/3, key2name/2, default_key/2]).
+	 sql_set_default_privacy_list/2, sql_set_privacy_list/2,
+	 privacy_schema/0, us_prefix/2, usn2key/3, key2name/2,
+	 default_key/2, mod_opt_type/1, opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -1570,3 +1571,13 @@ import_next(DBType, {LUser, LServer} = US) ->
               end, Lists)
     end,
     import_next(DBType, ets:next(privacy_list_tmp, US)).
+
+mod_opt_type(db_type) -> fun gen_mod:v_db/1;
+mod_opt_type(iqdisc) -> fun gen_iq_handler:check_type/1;
+mod_opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+mod_opt_type(_) -> [db_type, iqdisc, p1db_group].
+
+opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+opt_type(_) -> [p1db_group].

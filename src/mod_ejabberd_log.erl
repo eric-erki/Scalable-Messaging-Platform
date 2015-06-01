@@ -47,9 +47,9 @@
 	 reopen_log/1,
 	 packet/4]).
 
-%% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-	 terminate/2, code_change/3]).
+-export([init/1, handle_call/3, handle_cast/2,
+	 handle_info/2, terminate/2, code_change/3,
+	 mod_opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("jlib.hrl").
@@ -312,3 +312,15 @@ formated_ip(IP) ->
         {{I1,I2,I3,I4,I5,I6,I7,I8}, _} -> io_lib:format("~.16b:~.16b:~.16b:~.16b:~.16b:~.16b:~.16b:~.16b", [I1,I2,I3,I4,I5,I6,I7,I8]);
         _ -> "unknown"
     end.
+
+mod_opt_type(dir) -> fun iolist_to_binary/1;
+mod_opt_type(disabled) ->
+    fun (L) ->
+	    lists:map(fun (chat) -> chat;
+			  (groupchat) -> groupchat;
+			  (conn) -> conn;
+			  (disc) -> disc
+		      end,
+		      L)
+    end;
+mod_opt_type(_) -> [dir, disabled].

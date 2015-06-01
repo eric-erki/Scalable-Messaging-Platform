@@ -26,6 +26,8 @@
 
 -module(mod_muc_log).
 
+-behaviour(ejabberd_config).
+
 -author('badlop@process-one.net').
 -define(GEN_SERVER, p1_server).
 -behaviour(?GEN_SERVER).
@@ -36,9 +38,9 @@
 -export([start_link/2, start/2, stop/1, transform_module_options/1,
 	 check_access_log/2, add_to_log/5, register_listener/2, whereis_proc/1, get_proc_name/1]).
 
-%% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
-	 handle_info/2, terminate/2, code_change/3]).
+	 handle_info/2, terminate/2, code_change/3,
+	 mod_opt_type/1, opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -1215,3 +1217,36 @@ calc_hour_offset(TimeHere) ->
 
 fjoin(FileList) ->
     list_to_binary(filename:join([binary_to_list(File) || File <- FileList])).
+
+mod_opt_type(access_log) ->
+    fun (A) when is_atom(A) -> A end;
+mod_opt_type(cssfile) -> fun iolist_to_binary/1;
+mod_opt_type(dirname) ->
+    fun (room_jid) -> room_jid;
+	(room_name) -> room_name
+    end;
+mod_opt_type(dirtype) ->
+    fun (subdirs) -> subdirs;
+	(plain) -> plain
+    end;
+mod_opt_type(file_format) ->
+    fun (html) -> html;
+	(plaintext) -> plaintext
+    end;
+mod_opt_type(outdir) -> fun iolist_to_binary/1;
+mod_opt_type(spam_prevention) ->
+    fun (B) when is_boolean(B) -> B end;
+mod_opt_type(timezone) ->
+    fun (local) -> local;
+	(universal) -> universal
+    end;
+mod_opt_type(top_link) ->
+    fun ([{S1, S2}]) ->
+	    {iolist_to_binary(S1), iolist_to_binary(S2)}
+    end;
+mod_opt_type(_) ->
+    [access_log, cssfile, dirname, dirtype, file_format,
+     outdir, spam_prevention, timezone, top_link].
+
+opt_type(language) -> fun iolist_to_binary/1;
+opt_type(_) -> [language].

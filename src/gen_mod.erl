@@ -26,14 +26,17 @@
 
 -module(gen_mod).
 
+-behaviour(ejabberd_config).
+
 -author('alexey@process-one.net').
 
--export([start/0, start_module/2, start_module/3, stop_module/2,
-	 stop_module_keep_config/2, get_opt/3, get_opt/4,
-	 get_opt_host/3, db_type/1, db_type/2, get_module_opt/5,
-	 get_module_opt_host/3, loaded_modules/1,
-	 loaded_modules_with_opts/1, get_hosts/2,
-	 get_module_proc/2, is_loaded/2, start_modules/1, default_db/1]).
+-export([start/0, start_module/2, start_module/3,
+	 stop_module/2, stop_module_keep_config/2, get_opt/3,
+	 get_opt/4, get_opt_host/3, db_type/1, db_type/2,
+	 get_module_opt/4, get_module_opt/5, get_module_opt_host/3,
+	 loaded_modules/1, loaded_modules_with_opts/1,
+	 get_hosts/2, get_module_proc/2, is_loaded/2,
+	 start_modules/1, default_db/1, v_db/1, opt_type/1]).
 
 %%-export([behaviour_info/1]).
 
@@ -88,7 +91,8 @@ start_module(Host, Module) ->
 
 -spec start_module(binary(), atom(), opts()) -> any().
 
-start_module(Host, Module, Opts) ->
+start_module(Host, Module, Opts0) ->
+    Opts = validate_opts(Module, Opts0),
     ets:insert(ejabberd_modules,
 	       #ejabberd_module{module_host = {Module, Host},
 				opts = Opts}),
@@ -184,6 +188,11 @@ get_opt(Opt, Opts, F, Default) ->
             ejabberd_config:prepare_opt_val(Opt, Val, F, Default)
     end.
 
+-spec get_module_opt(global | binary(), atom(), atom(), check_fun()) -> any().
+
+get_module_opt(Host, Module, Opt, F) ->
+    get_module_opt(Host, Module, Opt, F, undefined).
+
 -spec get_module_opt(global | binary(), atom(), atom(), check_fun(), any()) -> any().
 
 get_module_opt(global, Module, Opt, F, Default) ->
@@ -222,6 +231,36 @@ get_module_opt_host(Host, Module, Default) ->
 get_opt_host(Host, Opts, Default) ->
     Val = get_opt(host, Opts, fun iolist_to_binary/1, Default),
     ejabberd_regexp:greplace(Val, <<"@HOST@">>, Host).
+
+validate_opts(Module, Opts) ->
+    lists:filter(
+      fun({Opt, Val}) ->
+	      case catch Module:mod_opt_type(Opt) of
+		  VFun when is_function(VFun) ->
+		      case catch VFun(Val) of
+			  {'EXIT', _} ->
+			      ?ERROR_MSG("ignoring invalid value '~p' for "
+					 "option '~s' of module '~s'",
+					 [Val, Opt, Module]),
+			      false;
+			  _ ->
+			      true
+		      end;
+		  L when is_list(L) ->
+		      SOpts = str:join([[$', atom_to_list(A), $'] || A <- L], <<", ">>),
+		      ?ERROR_MSG("ignoring unknown option '~s' for module '~s',"
+				 " available options are: ~s", [Opt, Module, SOpts]),
+		      false;
+		  {'EXIT', {undef, _}} ->
+		      ?WARNING_MSG("module '~s' doesn't export mod_opt_type/1",
+				   [Module]),
+		      true
+	      end;
+	 (Junk) ->
+	      ?ERROR_MSG("failed to understand option ~p for module '~s'",
+			 [Junk, Module]),
+	      false
+      end, Opts).
 
 -spec v_db(db_type() | internal) -> db_type().
 
@@ -295,3 +334,7 @@ get_module_proc(Host, Base) ->
 
 is_loaded(Host, Module) ->
     ets:member(ejabberd_modules, {Module, Host}).
+
+opt_type(default_db) -> fun v_db/1;
+opt_type(modules) -> fun (L) when is_list(L) -> L end;
+opt_type(_) -> [default_db, modules].

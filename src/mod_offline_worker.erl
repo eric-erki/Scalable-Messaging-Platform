@@ -31,9 +31,9 @@
 
 -export([start_link/2]).
 
-%% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
-	 handle_info/2, terminate/2, code_change/3]).
+	 handle_info/2, terminate/2, code_change/3,
+	 mod_opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -99,3 +99,8 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
+
+mod_opt_type(access_max_user_messages) ->
+    fun (A) when is_atom(A) -> A end;
+mod_opt_type(db_type) -> fun gen_mod:v_db/1;
+mod_opt_type(_) -> [access_max_user_messages, db_type].

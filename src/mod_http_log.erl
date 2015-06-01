@@ -42,11 +42,8 @@
 
 -behaviour(gen_mod).
 
--export([start/2, stop/1,
-         socket_handoff/6,
-         send_packet/4,
-	 receive_packet/5
-]).
+-export([start/2, stop/1, socket_handoff/6,
+	 send_packet/4, receive_packet/5, mod_opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("jlib.hrl").
@@ -206,3 +203,7 @@ loop(SockMod, Socket) ->
             loop(SockMod, Socket)
     end.
 
+
+mod_opt_type(access) ->
+    fun (A) when is_atom(A) -> A end;
+mod_opt_type(_) -> [access].

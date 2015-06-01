@@ -34,7 +34,7 @@
 -behaviour(gen_mod).
 
 -export([start/2, stop/1, process_local_iq90/3,
-	 process_local_iq/3]).
+	 process_local_iq/3, mod_opt_type/1]).
 
                                % TODO: Remove once XEP-0090 is Obsolete
 
@@ -110,3 +110,6 @@ process_local_iq(_From, _To,
 
 sign(N) when N < 0 -> <<"-">>;
 sign(_) -> <<"+">>.
+
+mod_opt_type(iqdisc) -> fun gen_iq_handler:check_type/1;
+mod_opt_type(_) -> [iqdisc].

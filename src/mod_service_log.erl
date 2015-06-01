@@ -31,7 +31,7 @@
 -behaviour(gen_mod).
 
 -export([start/2, stop/1, log_user_send/4,
-	 log_user_receive/5]).
+	 log_user_receive/5, mod_opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -96,3 +96,14 @@ log_packet(From, To,
 							   [FixedPacket]})
 		  end,
 		  Loggers).
+
+mod_opt_type(loggers) ->
+    fun (L) ->
+	    lists:map(fun (S) ->
+			      B = iolist_to_binary(S),
+			      N = jlib:nameprep(B),
+			      if N /= error -> N end
+		      end,
+		      L)
+    end;
+mod_opt_type(_) -> [loggers].

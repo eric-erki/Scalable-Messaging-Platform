@@ -26,6 +26,8 @@
 
 -module(mod_irc).
 
+-behaviour(ejabberd_config).
+
 -author('alexey@process-one.net').
 
 -behaviour(gen_server).
@@ -38,9 +40,9 @@
 	 enc_key/1, dec_key/1, enc_val/2, dec_val/2,
          import_start/2]).
 
-%% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
-	 handle_info/2, terminate/2, code_change/3]).
+	 handle_info/2, terminate/2, code_change/3,
+	 mod_opt_type/1, opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -1419,3 +1421,18 @@ import(_LServer, {odbc, _}, riak, <<"irc_custom">>,
       irc_custom_schema());
 import(_LServer, {odbc, _}, odbc, <<"irc_custom">>, _) ->
     ok.
+
+mod_opt_type(access) ->
+    fun (A) when is_atom(A) -> A end;
+mod_opt_type(db_type) -> fun gen_mod:v_db/1;
+mod_opt_type(default_encoding) ->
+    fun iolist_to_binary/1;
+mod_opt_type(host) -> fun iolist_to_binary/1;
+mod_opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+mod_opt_type(_) ->
+    [access, db_type, default_encoding, host, p1db_group].
+
+opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+opt_type(_) -> [p1db_group].

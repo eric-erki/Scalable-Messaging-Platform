@@ -27,6 +27,8 @@
 
 -module(mod_caps).
 
+-behaviour(ejabberd_config).
+
 -author('henoch@dtek.chalmers.se').
 
 -protocol({xep, 115, '1.5'}).
@@ -48,10 +50,9 @@
 -export([init/1, handle_info/2, handle_call/3,
 	 handle_cast/2, terminate/2, code_change/3]).
 
-%% hook handlers
 -export([user_send_packet/4, user_receive_packet/5,
 	 c2s_presence_in/2, c2s_broadcast_recipients/6,
-	 c2s_filter_packet/6]).
+	 c2s_filter_packet/6, mod_opt_type/1, opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -858,3 +859,17 @@ import_next(LServer, DBType, NodePair) ->
             ok
     end,
     import_next(LServer, DBType, ets:next(caps_features_tmp, NodePair)).
+
+mod_opt_type(cache_life_time) ->
+    fun (I) when is_integer(I), I > 0 -> I end;
+mod_opt_type(cache_size) ->
+    fun (I) when is_integer(I), I > 0 -> I end;
+mod_opt_type(db_type) -> fun gen_mod:v_db/1;
+mod_opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+mod_opt_type(_) ->
+    [cache_life_time, cache_size, db_type, p1db_group].
+
+opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+opt_type(_) -> [p1db_group].

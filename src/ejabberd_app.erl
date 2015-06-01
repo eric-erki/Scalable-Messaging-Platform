@@ -25,11 +25,14 @@
 %%%----------------------------------------------------------------------
 
 -module(ejabberd_app).
+
+-behaviour(ejabberd_config).
 -author('alexey@process-one.net').
 
 -behaviour(application).
 
--export([start_modules/0,start/2, prep_stop/1, stop/1, init/0]).
+-export([start_modules/0, start/2, prep_stop/1, stop/1,
+	 init/0, opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -237,3 +240,14 @@ start_apps() ->
     http_p1:start(),
     p1db_start(),
     ejabberd:start_app(p1_cache_tab).
+
+opt_type(loglevel) ->
+    fun (P) when P >= 0, P =< 5 -> P end;
+opt_type(modules) ->
+    fun (Mods) ->
+	    lists:map(fun ({M, A}) when is_atom(M), is_list(A) ->
+			      {M, A}
+		      end,
+		      Mods)
+    end;
+opt_type(_) -> [loglevel, modules].

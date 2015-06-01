@@ -35,8 +35,7 @@
 %% gen_mod callbacks
 -export([start/2, stop/1]).
 
-%% request_handlers callbacks
--export([process/2]).
+-export([process/2, mod_opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -377,3 +376,20 @@ content_type(Filename, DefaultContentType,
 last_modified(FileInfo) ->
     Then = FileInfo#file_info.mtime,
     httpd_util:rfc1123_date(Then).
+
+mod_opt_type(accesslog) -> fun iolist_to_binary/1;
+mod_opt_type(content_types) ->
+    fun (L) when is_list(L) -> L end;
+mod_opt_type(custom_headers) ->
+    fun (L) when is_list(L) -> L end;
+mod_opt_type(default_content_type) ->
+    fun iolist_to_binary/1;
+mod_opt_type(directory_indices) ->
+    fun (L) when is_list(L) -> L end;
+mod_opt_type(docroot) -> fun iolist_to_binary/1;
+mod_opt_type(serve_gzip) ->
+    fun (B) when is_boolean(B) -> B end;
+mod_opt_type(_) ->
+    [accesslog, content_types, custom_headers,
+     default_content_type, directory_indices, docroot,
+     serve_gzip].

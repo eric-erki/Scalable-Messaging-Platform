@@ -36,9 +36,9 @@
 %% API
 -export([start_link/2, start/2, stop/1]).
 
-%% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
-	 handle_info/2, terminate/2, code_change/3]).
+	 handle_info/2, terminate/2, code_change/3,
+	 mod_opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("jlib.hrl").
@@ -573,3 +573,14 @@ exp_backoff(#state{prev_attempts = Attempts}) ->
 
 iolist_to_string(S) ->
     binary_to_list(iolist_to_binary(S)).
+
+mod_opt_type(apikey) -> fun iolist_to_string/1;
+mod_opt_type(gateway) -> fun iolist_to_string/1;
+mod_opt_type(host) -> fun iolist_to_binary/1;
+mod_opt_type(hosts) ->
+    fun (L) when is_list(L) ->
+	    [{iolist_to_binary(H), O} || {H, O} <- L]
+    end;
+mod_opt_type(sound_file) -> fun iolist_to_binary/1;
+mod_opt_type(_) ->
+    [apikey, gateway, host, hosts, sound_file].

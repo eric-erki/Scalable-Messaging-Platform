@@ -26,6 +26,8 @@
 
 -module(mod_offline).
 
+-behaviour(ejabberd_config).
+
 -author('alexey@process-one.net').
 
 -protocol({xep, 22, '1.4'}).
@@ -56,9 +58,9 @@
 %% For debuging
 -export([status/1]).
 
-%% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
-	 handle_info/2, terminate/2, code_change/3]).
+	 handle_info/2, terminate/2, code_change/3,
+	 mod_opt_type/1, opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -1273,3 +1275,20 @@ import(LServer, {odbc, _}, DBType, <<"spool">>,
         odbc ->
             ok
     end.
+
+mod_opt_type(access_max_user_messages) ->
+    fun (A) when is_atom(A) -> A end;
+mod_opt_type(db_type) -> fun gen_mod:v_db/1;
+mod_opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+mod_opt_type(pool_size) ->
+    fun (N) when is_integer(N) -> N end;
+mod_opt_type(store_empty_body) ->
+    fun (V) when is_boolean(V) -> V end;
+mod_opt_type(_) ->
+    [access_max_user_messages, db_type, p1db_group,
+     pool_size, store_empty_body].
+
+opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+opt_type(_) -> [p1db_group].

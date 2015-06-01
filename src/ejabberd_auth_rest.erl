@@ -25,19 +25,19 @@
 
 -module(ejabberd_auth_rest).
 
+-behaviour(ejabberd_config).
+
 -behaviour(ejabberd_auth).
 
-%% External exports
 -export([start/1, set_password/3, check_password/3,
-         check_password/5, try_register/3,
-         dirty_get_registered_users/0, get_vh_registered_users/1,
-         get_vh_registered_users/2,
-         get_vh_registered_users_number/1,
-         get_vh_registered_users_number/2, get_password/2,
-         get_password_s/2, is_user_exists/2, remove_user/2,
-         remove_user/3, store_type/0,
-         plain_password_required/0,
-         test/2]).
+	 check_password/5, try_register/3,
+	 dirty_get_registered_users/0, get_vh_registered_users/1,
+	 get_vh_registered_users/2,
+	 get_vh_registered_users_number/1,
+	 get_vh_registered_users_number/2, get_password/2,
+	 get_password_s/2, is_user_exists/2, remove_user/2,
+	 remove_user/3, store_type/0, plain_password_required/0,
+	 test/2, opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -148,3 +148,9 @@ path(Server, user) ->
 			       <<"/user">>);
 path(_Server, Method) when is_binary(Method) orelse is_list(Method)->
     Method.
+
+opt_type(ext_api_path_auth) ->
+    fun (X) -> iolist_to_binary(X) end;
+opt_type(ext_api_path_user) ->
+    fun (X) -> iolist_to_binary(X) end;
+opt_type(_) -> [ext_api_path_auth, ext_api_path_user].

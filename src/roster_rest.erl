@@ -23,8 +23,11 @@
 %%%----------------------------------------------------------------------
 
 -module(roster_rest).
+-behaviour(ejabberd_config).
 
--export([start/2, stop/1, get_user_roster/2, get_jid_info/3]).
+-export([start/2, stop/1, get_user_roster/2,
+	 get_jid_info/3, opt_type/1]).
+
 
 -include("jlib.hrl").
 -include("ejabberd.hrl").
@@ -133,3 +136,7 @@ path(Server) ->
     ejabberd_config:get_option({ext_api_path_roster, Server},
 			       fun(X) -> iolist_to_binary(X) end,
 			       <<"/roster">>).
+
+opt_type(ext_api_path_roster) ->
+    fun (X) -> iolist_to_binary(X) end;
+opt_type(_) -> [ext_api_path_roster].

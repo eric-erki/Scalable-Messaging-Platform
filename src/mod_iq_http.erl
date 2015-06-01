@@ -16,8 +16,7 @@
 % module functions
 -export([start/2, stop/1]).
 
-% iq handler
--export([process_iq/3]).
+-export([process_iq/3, mod_opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -113,3 +112,7 @@ get_url(Host) ->
 	    URL;
 	_ -> error
     end.
+
+mod_opt_type(iqdisc) -> fun gen_iq_handler:check_type/1;
+mod_opt_type(url) -> fun iolist_to_binary/1;
+mod_opt_type(_) -> [iqdisc, url].

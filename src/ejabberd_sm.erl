@@ -26,6 +26,8 @@
 
 -module(ejabberd_sm).
 
+-behaviour(ejabberd_config).
+
 -author('alexey@process-one.net').
 -define(GEN_SERVER, p1_server).
 -behaviour(?GEN_SERVER).
@@ -49,9 +51,8 @@
 	 get_session_pid/3, get_user_info/3, get_user_ip/3,
 	 get_proc_num/0, kick_user/2]).
 
-%% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
-	 handle_info/2, terminate/2, code_change/3]).
+	 handle_info/2, terminate/2, code_change/3, opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -940,3 +941,16 @@ kick_user(User, Server) ->
 		PID ! kick
 	end, Resources),
     length(Resources).
+
+opt_type(resource_conflict) ->
+    fun (closeold) -> acceptnew;
+	(closenew) -> closenew;
+	(acceptnew) -> acceptnew
+    end;
+opt_type(sm_db_type) ->
+    fun (mnesia) -> mnesia;
+	(internal) -> mnesia;
+	(odbc) -> odbc;
+	(redis) -> redis
+    end;
+opt_type(_) -> [resource_conflict, sm_db_type].

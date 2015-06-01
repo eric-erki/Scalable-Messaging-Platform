@@ -30,8 +30,7 @@
 %% API
 -export([start/2, stop/1, get_worker_for/2, status/1]).
 
-%% Supervisor callbacks
--export([start_link/2, init/1]).
+-export([start_link/2, init/1, mod_opt_type/1]).
 
 -define(SERVER, ?MODULE).
 
@@ -104,3 +103,7 @@ get_worker_for(Host, Term) ->
     PoolSize = get_pool_size(Host),
     WorkerName = gen_mod:get_module_proc(Host, mod_offline_worker),
     ejabberd_pool:get_proc_by_hash(WorkerName, PoolSize, Term).
+
+mod_opt_type(pool_size) ->
+    fun (N) when is_integer(N) -> N end;
+mod_opt_type(_) -> [pool_size].

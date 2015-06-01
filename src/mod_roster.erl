@@ -35,6 +35,8 @@
 
 -module(mod_roster).
 
+-behaviour(ejabberd_config).
+
 -protocol({xep, 237, '1.3'}).
 -protocol({xep, 321, '0.1'}).
 
@@ -55,8 +57,7 @@
 	 record_to_string/1, groups_to_string/1, import_stop/2,
 	 invalidate_roster_cache/2]).
 
-%% For benchmarking
--export([create_rosters/4]).
+-export([create_rosters/4, mod_opt_type/1, opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -2129,3 +2130,30 @@ create_rosters(UserPattern, Server, Total, DBType) ->
                         end
                 end, Range)
       end, lists:seq(1, Total)).
+
+mod_opt_type(access) ->
+    fun (A) when is_atom(A) -> A end;
+mod_opt_type(cache_life_time) ->
+    fun (I) when is_integer(I), I > 0 -> I end;
+mod_opt_type(cache_size) ->
+    fun (I) when is_integer(I), I > 0 -> I end;
+mod_opt_type(db_type) -> fun gen_mod:v_db/1;
+mod_opt_type(iqdisc) -> fun gen_iq_handler:check_type/1;
+mod_opt_type(managers) ->
+    fun (B) when is_list(B) -> B end;
+mod_opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+mod_opt_type(store_current_id) ->
+    fun (B) when is_boolean(B) -> B end;
+mod_opt_type(use_cache) ->
+    fun (B) when is_boolean(B) -> B end;
+mod_opt_type(versioning) ->
+    fun (B) when is_boolean(B) -> B end;
+mod_opt_type(_) ->
+    [access, cache_life_time, cache_size, db_type, iqdisc,
+     managers, p1db_group, store_current_id, use_cache,
+     versioning].
+
+opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+opt_type(_) -> [p1db_group].

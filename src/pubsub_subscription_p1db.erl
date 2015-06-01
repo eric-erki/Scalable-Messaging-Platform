@@ -22,6 +22,8 @@
 
 -module(pubsub_subscription_p1db).
 
+-behaviour(ejabberd_config).
+
 -author("cromain@process-one.net").
 
 %% API
@@ -31,9 +33,9 @@
 
 -export([enc_key/1, dec_key/1, enc_val/2, dec_val/2]).
 
-% Internal function also exported for use in transactional bloc from pubsub plugins
 -export([add_subscription/3, delete_subscription/3,
-    read_subscription/3, write_subscription/4]).
+	 read_subscription/3, write_subscription/4,
+	 mod_opt_type/1, opt_type/1]).
 
 -include("pubsub.hrl").
 
@@ -378,3 +380,11 @@ enc_key(SubId) when is_binary(SubId) -> SubId.
 dec_key(SubId) when is_binary(SubId) -> SubId.
 enc_val(_, [Options]) -> opts_to_p1db(Options).
 dec_val(_, Bin) -> [p1db_to_opts(Bin)].
+
+mod_opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+mod_opt_type(_) -> [p1db_group].
+
+opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+opt_type(_) -> [p1db_group].

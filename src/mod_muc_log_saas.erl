@@ -29,8 +29,7 @@
 %% API
 -export([start_link/2, start/2, stop/1]).
 
-%% Internal export
--export([check_proc_running/2]).
+-export([check_proc_running/2, mod_opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -59,3 +58,5 @@ start(Host, Opts) ->
 
 stop(Host) ->
     mod_muc_log:stop(Host).
+
+mod_opt_type(_) -> [].

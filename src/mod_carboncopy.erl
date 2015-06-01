@@ -26,6 +26,8 @@
 %%%
 %%%----------------------------------------------------------------------
 -module (mod_carboncopy).
+
+-behaviour(ejabberd_config).
 -author ('ecestari@process-one.net').
 -protocol({xep, 280, '0.8'}).
 
@@ -35,16 +37,10 @@
 -export([start/2,
          stop/1]).
 
-%% Hooks:
--export([user_send_packet/4,
-	 user_receive_packet/5,
-	 iq_handler2/3,
-	 iq_handler1/3,
-	 remove_connection/4,
-	 enc_key/1,
-	 dec_key/1,
-	 enable/5,
-	 is_carbon_copy/1]).
+-export([user_send_packet/4, user_receive_packet/5,
+	 iq_handler2/3, iq_handler1/3, remove_connection/4,
+	 enc_key/1, dec_key/1, enable/5, is_carbon_copy/1,
+	 mod_opt_type/1, opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -375,3 +371,13 @@ dec_key(Key) ->
     binary:split(Key, <<0>>, [global]).
 dec_key(Key, Part) ->
     lists:nth(Part, dec_key(Key)).
+
+mod_opt_type(db_type) -> fun gen_mod:v_db/1;
+mod_opt_type(iqdisc) -> fun gen_iq_handler:check_type/1;
+mod_opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+mod_opt_type(_) -> [db_type, iqdisc, p1db_group].
+
+opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+opt_type(_) -> [p1db_group].

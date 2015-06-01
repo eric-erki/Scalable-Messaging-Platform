@@ -26,6 +26,8 @@
 
 -module(mod_support_room).
 
+-behaviour(ejabberd_config).
+
 -author('alexey@process-one.net').
 
 -define(GEN_FSM, p1_fsm).
@@ -39,10 +41,9 @@
          expand_opts/1, encode_opts/2, decode_opts/2,
          config_fields/0]).
 
-%% gen_fsm callbacks
 -export([init/1, normal_state/2, handle_event/3,
 	 handle_sync_event/4, handle_info/3, terminate/3,
-	 print_state/1, code_change/4]).
+	 print_state/1, code_change/4, opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -4642,3 +4643,7 @@ has_body_or_subject(Packet) ->
 
 treap_size(Queue) ->
     treap:fold(fun(_, Acc) -> Acc+1 end, 0, Queue).
+
+opt_type(max_fsm_queue) ->
+    fun (I) when is_integer(I), I > 0 -> I end;
+opt_type(_) -> [max_fsm_queue].

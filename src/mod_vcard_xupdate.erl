@@ -7,15 +7,16 @@
 
 -module(mod_vcard_xupdate).
 
+-behaviour(ejabberd_config).
+
 -behaviour(gen_mod).
 
 %% gen_mod callbacks
 -export([start/2, stop/1]).
 
-%% hooks
 -export([update_presence/3, vcard_set/3, export/1,
-	 enc_key/1, dec_key/1,
-         import_info/0, import/5, import_start/2]).
+	 enc_key/1, dec_key/1, import_info/0, import/5,
+	 import_start/2, mod_opt_type/1, opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -280,3 +281,12 @@ import(LServer, {odbc, _}, riak, <<"vcard_xupdate">>,
       vcard_xupdate_schema());
 import(_LServer, {odbc, _}, odbc, <<"vcard_xupdate">>, _) ->
     ok.
+
+mod_opt_type(db_type) -> fun gen_mod:v_db/1;
+mod_opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+mod_opt_type(_) -> [db_type, p1db_group].
+
+opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+opt_type(_) -> [p1db_group].

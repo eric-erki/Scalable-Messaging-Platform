@@ -41,9 +41,8 @@
 -export([logged/0, logged/1, rules/0]).
 
 -export([process_local_iq/3]).
+-export([filter_packet/1, mod_opt_type/1]).
 
-% handled ejabberd hooks
--export([filter_packet/1]).
 
 -include("ejabberd.hrl").
 
@@ -454,3 +453,8 @@ process_local_iq(From, #jid{lserver = VH} = _To,
 		IQ#iq{type = error, sub_el = [SubEl, ?ERR_NOT_ALLOWED]}
 	  end
     end.
+
+mod_opt_type(pattern) ->
+    fun (A) when is_binary(A) -> A end;
+mod_opt_type(scope) -> fun (A) when is_atom(A) -> A end;
+mod_opt_type(_) -> [pattern, scope].

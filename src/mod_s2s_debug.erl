@@ -37,8 +37,7 @@
 %% API:
 -export([start/2, init/1, stop/1]).
 
-%% Hooks:
--export([reopen_log/0, s2s_connect/2]).
+-export([reopen_log/0, s2s_connect/2, mod_opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -108,3 +107,6 @@ template(date) ->
     <<"~p-~2.2.0w-~2.2.0w ~2.2.0w:~2.2.0w:~2.2.0w">>.
 
 % TODO: call mod_c2s_debug:timestamp instead
+
+mod_opt_type(filename) -> fun iolist_to_binary/1;
+mod_opt_type(_) -> [filename].

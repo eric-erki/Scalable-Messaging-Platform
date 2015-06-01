@@ -43,7 +43,7 @@
 
 -behaviour(gen_mod).
 
--export([start/2, stop/1, process/2]).
+-export([start/2, stop/1, process/2, mod_opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("jlib.hrl").
@@ -354,3 +354,5 @@ json_response(Code, Body) when is_integer(Code) ->
 log(Call, Args, {Addr, Port}) ->
     AddrS = jlib:ip_to_list({Addr, Port}),
     ?INFO_MSG("Admin call ~s ~p from ~s:~p", [Call, Args, AddrS, Port]).
+
+mod_opt_type(_) -> [].

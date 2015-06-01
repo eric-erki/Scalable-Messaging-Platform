@@ -25,6 +25,8 @@
 %%% ====================================================================
 
 -module(mod_mon).
+
+-behaviour(ejabberd_config).
 -author('christophe.romain@process-one.net').
 -behaviour(gen_mod).
 -behaviour(gen_server).
@@ -50,39 +52,20 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
-%% handled ejabberd hooks
--export([
-         offline_message_hook/3,
-         resend_offline_messages_hook/3,
-         sm_register_connection_hook/3,
-         sm_remove_connection_hook/3,
-         roster_in_subscription/6,
-         roster_out_subscription/4,
-         user_available_hook/1,
-         unset_presence_hook/4,
-         set_presence_hook/4,
-         user_send_packet/4,
-         user_receive_packet/5,
-         c2s_replaced/1,
-         s2s_send_packet/3,
-         s2s_receive_packet/3,
-         privacy_iq_set/4,
-         privacy_iq_get/5,
-         remove_user/2,
-         register_user/2,
-         backend_api_call/3,
-         backend_api_response_time/4,
-         backend_api_timeout/3,
-         backend_api_error/3,
-         backend_api_badauth/3,
-         %muc_create/4,
-         %muc_destroy/3,
-         %muc_user_join/4,
-         %muc_user_leave/4,
-         %muc_message/6,
-         pubsub_create_node/5,
-         pubsub_delete_node/4,
-         pubsub_publish_item/6 ]).
+-export([offline_message_hook/3,
+	 resend_offline_messages_hook/3,
+	 sm_register_connection_hook/3,
+	 sm_remove_connection_hook/3, roster_in_subscription/6,
+	 roster_out_subscription/4, user_available_hook/1,
+	 unset_presence_hook/4, set_presence_hook/4,
+	 user_send_packet/4, user_receive_packet/5,
+	 c2s_replaced/1, s2s_send_packet/3, s2s_receive_packet/3,
+	 privacy_iq_set/4, privacy_iq_get/5, remove_user/2,
+	 register_user/2, backend_api_call/3,
+	 backend_api_response_time/4, backend_api_timeout/3,
+	 backend_api_error/3, backend_api_badauth/3,
+	 pubsub_create_node/5, pubsub_delete_node/4,
+	 pubsub_publish_item/6, mod_opt_type/1, opt_type/1]).
          %pubsub_broadcast_stanza/4 ]).
 
 % dictionary command overrided for better control
@@ -890,3 +873,14 @@ info(Host) when is_binary(Host) ->
     [{Key, Val} || {Key, Val} <- Probes,
                    lists:member(Key, [c2s_receive, c2s_send, s2s_receive, s2s_send])].
 
+
+mod_opt_type(active_count) ->
+    fun (A) when is_atom(A) -> A end;
+mod_opt_type(backends) ->
+    fun (List) when is_list(List) -> List end;
+mod_opt_type(monitors) ->
+    fun (L) when is_list(L) -> L end;
+mod_opt_type(_) -> [active_count, backends, monitors].
+
+opt_type(health) -> fun (V) when is_list(V) -> V end;
+opt_type(_) -> [health].

@@ -29,12 +29,9 @@
 
 -behaviour(gen_mod).
 
--export([start/2,
-	 stop/1,
-         offline_packet/3,
-         user_available/1,
-         set_presence/4,
-         user_unavailable/4]).
+-export([start/2, stop/1, offline_packet/3,
+	 user_available/1, set_presence/4, user_unavailable/4,
+	 mod_opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -151,3 +148,5 @@ v_fun(L) when is_list(L) ->
 	is_binary(URL) ->
 	    {binary_to_list(URL), AuthToken}
     end.
+
+mod_opt_type(_) -> [].

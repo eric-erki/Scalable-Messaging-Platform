@@ -25,6 +25,8 @@
 %%%----------------------------------------------------------------------
 
 -module(mod_applepush).
+
+-behaviour(ejabberd_config).
 -author('alexey@process-one.net').
 
 -behaviour(gen_mod).
@@ -60,7 +62,8 @@
 
 %% Debug commands
 -export([get_tokens_by_jid/1]).
--export([odbc_to_p1db/2]).
+
+-export([odbc_to_p1db/2, mod_opt_type/1, opt_type/1]).
 
 
 -include("ejabberd.hrl").
@@ -1400,3 +1403,47 @@ transform_module_options(Opts) ->
          (Opt) ->
               Opt
       end, Opts).
+
+mod_opt_type(db_type) -> fun gen_mod:v_db/1;
+mod_opt_type(default_service) ->
+    fun (S) when is_binary(S) -> S end;
+mod_opt_type(default_services) ->
+    fun (L) when is_list(L) -> L end;
+mod_opt_type(iqdisc) -> fun gen_iq_handler:check_type/1;
+mod_opt_type(multiple_accounts_per_device) ->
+    fun (true) -> true;
+	(false) -> false
+    end;
+mod_opt_type(offline_default) ->
+    fun (true) -> true;
+	(false) -> false
+    end;
+mod_opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+mod_opt_type(push_services) ->
+    fun (L) when is_list(L) -> L end;
+mod_opt_type(send_body_default) ->
+    fun (all) -> all;
+	(first_per_user) -> first_per_user;
+	(first) -> first;
+	(none) -> none
+    end;
+mod_opt_type(send_from_default) ->
+    fun (jid) -> jid;
+	(username) -> username;
+	(name) -> name;
+	(none) -> none
+    end;
+mod_opt_type(send_groupchat_default) ->
+    fun (true) -> true;
+	(false) -> false
+    end;
+mod_opt_type(_) ->
+    [db_type, default_service, default_services, iqdisc,
+     multiple_accounts_per_device, offline_default,
+     p1db_group, push_services, send_body_default,
+     send_from_default, send_groupchat_default].
+
+opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+opt_type(_) -> [p1db_group].

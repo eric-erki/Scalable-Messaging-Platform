@@ -33,9 +33,9 @@
 %% API
 -export([start_link/2, start/2, stop/1]).
 
-%% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-	 terminate/2, code_change/3]).
+-export([init/1, handle_call/3, handle_cast/2,
+	 handle_info/2, terminate/2, code_change/3,
+	 mod_opt_type/1]).
 
 
 -include("ejabberd.hrl").
@@ -725,3 +725,21 @@ parse_feedback_buf(Buf, State) ->
 
 iolist_to_string(S) ->
     binary_to_list(iolist_to_binary(S)).
+
+mod_opt_type(certfile) -> fun iolist_to_string/1;
+mod_opt_type(failure_script) -> fun iolist_to_string/1;
+mod_opt_type(feedback) -> fun iolist_to_string/1;
+mod_opt_type(feedback_port) ->
+    fun (I) when is_integer(I), I > 0, I < 65536 -> I end;
+mod_opt_type(gateway) -> fun iolist_to_string/1;
+mod_opt_type(host) -> fun iolist_to_binary/1;
+mod_opt_type(hosts) ->
+    fun (L) when is_list(L) ->
+	    [{iolist_to_binary(H), O} || {H, O} <- L]
+    end;
+mod_opt_type(port) ->
+    fun (I) when is_integer(I), I > 0, I < 65536 -> I end;
+mod_opt_type(sound_file) -> fun iolist_to_binary/1;
+mod_opt_type(_) ->
+    [certfile, failure_script, feedback, feedback_port,
+     gateway, host, hosts, port, sound_file].

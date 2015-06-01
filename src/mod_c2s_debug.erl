@@ -48,9 +48,9 @@
 -export([start/2, start_link/2, stop/1, debug_start/3,
 	 debug_stop/2, log_packet/4, log_packet/5]).
 
-%% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
-	 handle_info/2, terminate/2, code_change/3]).
+	 handle_info/2, terminate/2, code_change/3,
+	 mod_opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -254,3 +254,14 @@ make_dir_rec(Dir) ->
 	  make_dir_rec(filename:join(DirR)),
 	  file:make_dir(Dir)
     end.
+
+mod_opt_type(host) -> fun iolist_to_binary/1;
+mod_opt_type(logdir) ->
+    fun (S) ->
+	    case iolist_to_binary(S) of <<_, _/binary>> = B -> B end
+    end;
+mod_opt_type(users) ->
+    fun ([S | _]) ->
+	    case jlib:string_to_jid(S) of #jid{} = J -> J end
+    end;
+mod_opt_type(_) -> [host, logdir, users].

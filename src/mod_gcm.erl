@@ -25,6 +25,8 @@
 %%%----------------------------------------------------------------------
 
 -module(mod_gcm).
+
+-behaviour(ejabberd_config).
 -author('alexey@process-one.net').
 
 -behaviour(gen_mod).
@@ -52,9 +54,8 @@
 	 dec_val/2,
     set_local_badge/3]).
 
-
-%% Debug commands
--export([get_tokens_by_jid/1]).
+-export([get_tokens_by_jid/1, mod_opt_type/1,
+	 opt_type/1]).
 
 
 -include("ejabberd.hrl").
@@ -1151,3 +1152,21 @@ transform_module_options(Opts) ->
          (Opt) ->
               Opt
       end, Opts).
+
+mod_opt_type(db_type) -> fun gen_mod:v_db/1;
+mod_opt_type(default_service) ->
+    fun (S) when is_binary(S) -> S end;
+mod_opt_type(default_services) ->
+    fun (L) when is_list(L) -> L end;
+mod_opt_type(iqdisc) -> fun gen_iq_handler:check_type/1;
+mod_opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+mod_opt_type(push_services) ->
+    fun (L) when is_list(L) -> L end;
+mod_opt_type(_) ->
+    [db_type, default_service, default_services, iqdisc,
+     p1db_group, push_services].
+
+opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+opt_type(_) -> [p1db_group].

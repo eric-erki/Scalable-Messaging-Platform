@@ -28,27 +28,18 @@
 %%% Version 1.1 (2005-08-19)
 
 -module(mod_announce).
+
+-behaviour(ejabberd_config).
 -author('alexey@process-one.net').
 
 -behaviour(gen_mod).
 
--export([start/2,
-	 init/0,
-	 stop/1,
-	 export/1,
-         import_info/0,
-         import_start/2,
-         import/5,
-	 announce/3,
-	 send_motd/1,
-	 disco_identity/5,
-	 disco_features/5,
-	 disco_items/5,
-	 send_announcement_to_all/3,
-	 announce_commands/4,
-	 enc_key/1,
-	 dec_key/1,
-	 announce_items/4]).
+-export([start/2, init/0, stop/1, export/1,
+	 import_info/0, import_start/2, import/5, announce/3,
+	 send_motd/1, disco_identity/5, disco_features/5,
+	 disco_items/5, send_announcement_to_all/3,
+	 announce_commands/4, enc_key/1, dec_key/1,
+	 announce_items/4, mod_opt_type/1, opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -1258,3 +1249,14 @@ import(LServer, {odbc, _}, riak, <<"motd">>, [LUser, <<>>, _TimeStamp]) ->
 		      [{'2i', [{<<"server">>, LServer}]}]);
 import(_LServer, {odbc, _}, odbc, <<"motd">>, _) ->
     ok.
+
+mod_opt_type(access) ->
+    fun (A) when is_atom(A) -> A end;
+mod_opt_type(db_type) -> fun gen_mod:v_db/1;
+mod_opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+mod_opt_type(_) -> [access, db_type, p1db_group].
+
+opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+opt_type(_) -> [p1db_group].

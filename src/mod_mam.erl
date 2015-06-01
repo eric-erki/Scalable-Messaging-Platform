@@ -26,14 +26,17 @@
 %%%-------------------------------------------------------------------
 -module(mod_mam).
 
+-behaviour(ejabberd_config).
+
 -behaviour(gen_mod).
 
 %% API
 -export([start/2, stop/1]).
+
 -export([user_send_packet/4, user_receive_packet/5,
-	 enc_key/1, dec_key/1, enc_val/2, dec_val/2,
-	 enc_prefs/2, dec_prefs/2,
-         process_iq/3, remove_user/2]).
+	 enc_key/1, dec_key/1, enc_val/2, dec_val/2, enc_prefs/2,
+	 dec_prefs/2, process_iq/3, remove_user/2,
+	 mod_opt_type/1, opt_type/1]).
 
 -include_lib("stdlib/include/ms_transform.hrl").
 -include("jlib.hrl").
@@ -1135,3 +1138,31 @@ dec_prefs(_, Bin) ->
     [jlib:atom_to_binary(Prefs#archive_prefs.default),
      jlib:term_to_expr(Prefs#archive_prefs.always),
      jlib:term_to_expr(Prefs#archive_prefs.never)].
+
+mod_opt_type(cache_life_time) ->
+    fun (I) when is_integer(I), I > 0 -> I end;
+mod_opt_type(cache_size) ->
+    fun (I) when is_integer(I), I > 0 -> I end;
+mod_opt_type(db_type) -> fun gen_mod:v_db/1;
+mod_opt_type(default) ->
+    fun (always) -> always;
+	(never) -> never;
+	(roster) -> roster
+    end;
+mod_opt_type(iqdisc) -> fun gen_iq_handler:check_type/1;
+mod_opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+mod_opt_type(store_body_only) ->
+    fun (B) when is_boolean(B) -> B end;
+mod_opt_type(_) ->
+    [cache_life_time, cache_size, db_type, default, iqdisc,
+     p1db_group, store_body_only].
+
+opt_type(ext_api_path_archive) ->
+    fun (X) -> iolist_to_binary(X) end;
+opt_type(ext_api_path_items) ->
+    fun (X) -> iolist_to_binary(X) end;
+opt_type(p1db_group) ->
+    fun (G) when is_atom(G) -> G end;
+opt_type(_) ->
+    [ext_api_path_archive, ext_api_path_items, p1db_group].
