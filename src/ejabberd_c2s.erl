@@ -3868,7 +3868,7 @@ maybe_add_delay(#xmlel{children = Els} = El, TZ, From,
 	   {T_string, Tz_string} = jlib:timestamp_to_iso(TimeStamp, TZ),
 	   xml:append_subtags(El,
 		[#xmlel{name = <<"delay">>, attrs = [{<<"xmlns">>, ?NS_DELAY},
-			{<<"from">>, From},
+			{<<"from">>, jlib:jid_to_string(From)},
 			{<<"stamp">>, <<T_string/binary, Tz_string/binary>>}],
 			children = [{xmlcdata, Desc}]}]);
        true -> El
