@@ -59,4 +59,5 @@ start(Host, Opts) ->
 stop(Host) ->
     mod_muc_log:stop(Host).
 
-mod_opt_type(_) -> [].
+mod_opt_type(Opt) ->
+    mod_muc_log:mod_opt_type(Opt).
