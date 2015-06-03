@@ -26,13 +26,23 @@
 
 %% Example config:
 %%
+%%  in access section
+%%    http_admin:
+%%      admin:
+%%        - register
+%%        - connected_users
+%%        - status
+%%      all:
+%%        - status
+%%
 %%  in ejabberd_http listener
 %%    request_handlers:
 %%      "api": mod_http_admin
 %%
 %%  in module section
 %%    mod_http_admin:
-%%      access: admin
+%%      access: http_admin
+%%
 %%
 %% Then to perform an action, send a POST request to the following URL:
 %% http://localhost:5280/api/<call_name>
@@ -95,42 +105,35 @@ stop(_Host) ->
 %% basic auth
 %% ----------
 
-%get_auth_admin(Auth) ->
-%    case Auth of
-%        {SJID, Pass} ->
-%            AccessRule =
-%                gen_mod:get_module_opt(
-%                  ?MYNAME, ?MODULE, access,
-%                  fun(A) when is_atom(A) -> A end, none),
-%            case jlib:string_to_jid(SJID) of
-%                error -> {unauthorized, <<"badformed-jid">>};
-%                #jid{user = <<"">>, server = User} ->
-%                    get_auth_account(?MYNAME, AccessRule, User, ?MYNAME, Pass);
-%                #jid{user = User, server = Server} ->
-%                    get_auth_account(?MYNAME, AccessRule, User, Server, Pass)
-%            end;
-%        undefined ->
-%            {unauthorized, <<"no-auth-provided">>}
-%    end.
-%
-%get_auth_account(HostOfRule, AccessRule, User, Server, Pass) ->
-%    case ejabberd_auth:check_password(User, Server, Pass) of
-%        true ->
-%            case is_acl_match(HostOfRule, AccessRule,
-%                              jlib:make_jid(User, Server, <<"">>)) of
-%                false -> {unauthorized, <<"unprivileged-account">>};
-%                true -> {ok, {User, Server}}
-%            end;
-%        false ->
-%            case ejabberd_auth:is_user_exists(User, Server) of
-%                true -> {unauthorized, <<"bad-password">>};
-%                false -> {unauthorized, <<"inexistent-account">>}
-%            end
-%    end.
-%
-%is_acl_match(Host, Rule, JID) ->
-%    allow == acl:match_rule(Host, Rule, JID).
-
+check_permissions(#request{auth={SJID, Pass}}, Command) ->
+    case jlib:string_to_jid(SJID) of
+        #jid{user = User, server = Server} = JID ->
+            Access = gen_mod:get_module_opt(Server, ?MODULE, access,
+                                                 mod_opt_type(access),
+                                                 none),
+            case ejabberd_auth:check_password(User, Server, Pass) of
+                true ->
+                    Res = acl:match_rule(Server, Access, JID),
+                    case Res of
+                        all ->
+                            allowed;
+                        [all] ->
+                            allowed;
+                        allow ->
+                            allowed;
+                        Commands when is_list(Commands) ->
+                            case lists:member(jlib:binary_to_atom(Command), Commands) of
+                                true -> allowed;
+                                _ -> unauthorized_response()
+                            end;
+                        _ ->
+                        unauthorized_response()
+                    end;
+                false ->
+                    unauthorized_response()
+            end;
+        _ -> unauthorized_response()
+    end.
 
 %% ------------------
 %% command processing
@@ -139,7 +142,7 @@ stop(_Host) ->
 process(_, #request{method = 'POST', data = <<>>}) ->
     ?DEBUG("Bad Request: no data", []),
     badrequest_response();
-process([Call], #request{method = 'POST', data = Data, ip = IP}) ->
+process([Call], #request{method = 'POST', data = Data, ip = IP} = Req) ->
     try
         Args = case jiffy:decode(Data) of
             List when is_list(List) -> List;
@@ -147,23 +150,33 @@ process([Call], #request{method = 'POST', data = Data, ip = IP}) ->
             Other -> [Other]
         end,
         log(Call, Args, IP),
-        {Code, Result} = handle(Call, Args),
-        json_response(Code, jiffy:encode(Result))
+        case check_permissions(Req, Call) of
+            allowed ->
+                {Code, Result} = handle(Call, Args),
+                json_response(Code, jiffy:encode(Result));
+            ErrorResponse ->
+                ErrorResponse
+        end
     catch Error ->
-        ?DEBUG("Bad Request: ~p", [element(2, Error)]),
+        ?DEBUG("Bad Request: ~p", Error),
         badrequest_response()
     end;
-process([Call], #request{method = 'GET', q = Data, ip = IP}) ->
+process([Call], #request{method = 'GET', q = Data, ip = IP} = Req) ->
     try
         Args = case Data of
             [{nokey, <<>>}] -> [];
             _ -> Data
         end,
         log(Call, Args, IP),
-        {Code, Result} = handle(Call, Args),
-        json_response(Code, jiffy:encode(Result))
+        case check_permissions(Req, Call) of
+            allowed ->
+                {Code, Result} = handle(Call, Args),
+                json_response(Code, jiffy:encode(Result));
+            ErrorResponse ->
+                ErrorResponse
+        end
     catch Error ->
-        ?DEBUG("Bad Request: ~p", [element(2, Error)]),
+        ?DEBUG("Bad Request: ~p", Error),
         badrequest_response()
     end;
 process([], #request{method = 'OPTIONS', data = <<>>}) ->
@@ -177,7 +190,7 @@ process(_Path, Request) ->
 %% ----------------
 
 % generic ejabberd command handler
-handle(Call, [{_,_}|_] = Args) when is_binary(Call) ->
+handle(Call, Args) when is_binary(Call), is_list(Args) ->
     case ejabberd_commands:get_command_format(jlib:binary_to_atom(Call)) of
         {ArgsSpec, _} when is_list(ArgsSpec) ->
             Args2 = [{jlib:binary_to_atom(Key), Value} || {Key, Value} <- Args],
@@ -344,6 +357,11 @@ format_result(Tuple, {Name, {tuple, Def}}) ->
 format_result(404, {_Name, _}) ->
     "not_found".
 
+unauthorized_response() ->
+    {401, ?HEADER(?CT_XML),
+     #xmlel{name = <<"h1">>, attrs = [],
+            children = [{xmlcdata, <<"401 Unauthorized">>}]}}.
+
 badrequest_response() ->
     {400, ?HEADER(?CT_XML),
      #xmlel{name = <<"h1">>, attrs = [],
@@ -355,4 +373,6 @@ log(Call, Args, {Addr, Port}) ->
     AddrS = jlib:ip_to_list({Addr, Port}),
     ?INFO_MSG("Admin call ~s ~p from ~s:~p", [Call, Args, AddrS, Port]).
 
-mod_opt_type(_) -> [].
+mod_opt_type(access) ->
+    fun(Access) when is_atom(Access) -> Access end;
+mod_opt_type(_) -> [access].
