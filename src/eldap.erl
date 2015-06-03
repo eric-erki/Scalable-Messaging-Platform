@@ -85,7 +85,7 @@
 	 wait_bind_response/3, active/3, active_bind/3,
 	 wait_starttls_response/3, handle_event/3,
 	 handle_sync_event/4, handle_info/3, terminate/3,
-	 code_change/4, mod_opt_type/1]).
+	 code_change/4]).
 
 -export_type([filter/0]).
 
@@ -1240,29 +1240,3 @@ activate_socket(#eldap{sockmod = SockMod, fd = Sock}) ->
        true ->
             SockMod:setopts(Sock, [{active, once}])
     end.
-
-mod_opt_type(encrypt) ->
-    fun (tls) -> tls;
-	(starttls) -> starttls;
-	(none) -> none
-    end;
-mod_opt_type(tls_cacertfile) ->
-    fun (S) when is_binary(S) -> binary_to_list(S);
-	(undefined) -> undefined
-    end;
-mod_opt_type(tls_certfile) ->
-    fun (S) when is_binary(S) -> binary_to_list(S);
-	(undefined) -> undefined
-    end;
-mod_opt_type(tls_depth) ->
-    fun (I) when is_integer(I), I >= 0 -> I;
-	(undefined) -> undefined
-    end;
-mod_opt_type(tls_verify) ->
-    fun (hard) -> hard;
-	(soft) -> soft;
-	(false) -> false
-    end;
-mod_opt_type(_) ->
-    [encrypt, tls_cacertfile, tls_certfile, tls_depth,
-     tls_verify].
