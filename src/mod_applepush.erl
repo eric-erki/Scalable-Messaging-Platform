@@ -274,7 +274,10 @@ build_and_customize_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, Custo
     end.
 
 build_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields) ->
-    Badge = jlib:integer_to_binary(Unread),
+    Badge = case Unread of
+                none -> <<"">>;
+                _ -> jlib:integer_to_binary(Unread)
+            end,
     SSound =
         if
             Sound -> <<"true">>;
@@ -375,21 +378,22 @@ do_send_offline_packet_notification(From, To, Packet, ID, AppID, SendBody, SendF
         PushService = get_push_service(Host, To, AppID),
         ServiceJID = jlib:make_jid(<<"">>, PushService, <<"">>),
         if
-            Body == <<"">>;
             Pushed ->
                 ok;
             true ->
                 BFrom = jlib:jid_remove_resource(From),
                 SFrom = jlib:jid_to_string(BFrom),
                 IncludeBody =
-                    case SendBody of
-                        all ->
+                    case {Body, SendBody} of
+                        {<<"">>, _} ->
+                            false;
+                        {_, all} ->
                             true;
-                        first_per_user ->
+                        {_, first_per_user} ->
                             BadgeCount == 1;
-                        first ->
+                        {_, first} ->
                             BadgeCount == 1;
-                        none ->
+                        {_, none} ->
                             false
                     end,
                 Msg =
@@ -425,7 +429,10 @@ do_send_offline_packet_notification(From, To, Packet, ID, AppID, SendBody, SendF
                                                        false
                                                end, Packet#xmlel.children),
                 DeviceID = jlib:integer_to_binary(ID, 16),
-                PushPacket = build_and_customize_push_packet(DeviceID, Msg, BadgeCount, IncludeBody, SFrom, To, CustomFields),
+                Badge = if Body == <<"">> -> none;
+                           true -> BadgeCount
+                        end,
+                PushPacket = build_and_customize_push_packet(DeviceID, Msg, Badge, IncludeBody, SFrom, To, CustomFields),
                 case PushPacket of
                     skip ->
                         ok;

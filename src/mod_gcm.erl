@@ -385,7 +385,10 @@ do_send_offline_packet_notification(From, To, Packet, ID, AppID, SendBody, SendF
                                                   (_) ->
                                                        false
                                                end, Packet#xmlel.children),
-                PushPacket = build_and_customize_push_packet(ID, Msg, BadgeCount, IncludeBody, SFrom, To, CustomFields),
+                Badge = if Body == <<"">> -> none;
+                           true -> BadgeCount
+                        end,
+                PushPacket = build_and_customize_push_packet(ID, Msg, Badge, IncludeBody, SFrom, To, CustomFields),
                 case PushPacket of
                     skip ->
                         ok;

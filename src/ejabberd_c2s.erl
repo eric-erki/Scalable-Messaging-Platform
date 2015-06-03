@@ -3262,22 +3262,25 @@ send_out_of_reception_message(StateData, From, To,
 		    false -> Body1
 		  end,
 	   Pushed = check_x_pushed(Packet),
-	   if Body == <<"">>; Pushed -> StateData;
+	   if Pushed -> StateData;
 	      true ->
 		  BFrom = jlib:jid_remove_resource(From),
 		  LBFrom = jlib:jid_tolower(BFrom),
-		  UnreadUsers = (?SETS):add_element(LBFrom,
-						    StateData#state.oor_unread_users),
-		  IncludeBody = case StateData#state.oor_send_body of
-				  all -> true;
-				  first_per_user ->
+		  UnreadUsers = if Body == <<"">> -> StateData#state.oor_unread_users;
+                                   true ->(?SETS):add_element(LBFrom,
+                                                              StateData#state.oor_unread_users)
+                                end,
+		  IncludeBody = case {Body, StateData#state.oor_send_body} of
+				  {<<"">>, _} -> false;
+				  {_, all} -> true;
+				  {_, first_per_user} ->
 				      not
 					(?SETS):is_element(LBFrom,
 							   StateData#state.oor_unread_users);
-				  first -> StateData#state.oor_unread == 0;
-				  none -> false
+				  {_, first} -> StateData#state.oor_unread == 0;
+				  {_, none} -> false
 				end,
-		  Unread = StateData#state.oor_unread + 1,
+		  Unread = StateData#state.oor_unread + if Body == <<"">> -> 0; true -> 1 end,
 		  SFrom = jlib:jid_to_string(BFrom),
 		  Msg = if IncludeBody ->
 			       CBody = utf8_cut(Body, 100),
@@ -3308,13 +3311,15 @@ send_out_of_reception_message(StateData, From, To,
                                                end, Packet#xmlel.children),
 		  Sound = IncludeBody,
 		  AppID = StateData#state.oor_appid,
+                  Badge = if Body == <<"">> -> none;
+                             true -> Unread + StateData#state.oor_unread_client
+                          end,
 		  ejabberd_hooks:run(p1_push_notification_custom,
 				     StateData#state.server,
 				     [StateData#state.server,
 				      StateData#state.jid,
 				      StateData#state.oor_notification, Msg,
-				      Unread +
-					StateData#state.oor_unread_client,
+				      Badge,
 				      Sound, AppID, SFrom, CustomFields]),
 		  ejabberd_hooks:run(delayed_message_hook,
 				     StateData#state.server,
