@@ -712,9 +712,17 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
 		       catch error:{badmatch, _} ->
 			       []
 		       end end, ArchiveEls), Count};
-	Err ->
+	{{ok, 404, _}, _} = _Err ->
+	    ?INFO_MSG("failed to select: ~p for user: ~p peer: ~p",
+		       [_Err, JidRequestor, With]),
+	    {[], 0};	    
+	{_, {ok, 404, _}} = _Err ->
+	    ?INFO_MSG("failed to select: ~p for user: ~p peer: ~p",
+		       [_Err, JidRequestor, With]),
+	    {[], 0};	    
+	_Err ->
 	    ?ERROR_MSG("failed to select: ~p for user: ~p peer: ~p",
-		       [Err, JidRequestor, With]),
+		       [_Err, JidRequestor, With]),
 	    {[], 0}
     end;
 select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
