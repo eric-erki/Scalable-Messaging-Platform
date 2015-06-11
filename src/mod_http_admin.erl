@@ -227,8 +227,10 @@ handle(Call, Args) when is_binary(Call), is_list(Args) ->
                             [{Key, undefined}|Acc]
                     end, [], ArgsSpec),
             handle2(Call, match(Args2, Spec));
+        {error, Msg} ->
+            {400, Msg};
         Error ->
-            Error
+            {400, <<"Error">>}
     end.
 
 handle2(Call, Args) when is_binary(Call), is_list(Args) ->
@@ -239,9 +241,7 @@ handle2(Call, Args) when is_binary(Call), is_list(Args) ->
         0 -> {200, <<"OK">>};
         1 -> {500, <<"500 Internal server error">>};
         400 -> {400, <<"400 Bad Request">>};
-        {Code, Text} when is_integer(Code) -> format_command_result(Fun, {Code, Text});
-        {Code, Text} when is_atom(Code) -> format_command_result(Fun, {Code, Text});
-        Res -> {200, format_command_result(Fun, Res)}
+        Res -> format_command_result(Fun, Res)
     end.
 
 get_elem_delete(A, L) ->
@@ -329,50 +329,56 @@ ejabberd_command(Cmd, Args, Default) ->
 
 format_command_result(Cmd, Result) ->
     {_, ResultFormat} = ejabberd_commands:get_command_format(Cmd),
-    case format_result(Result, ResultFormat) of
-        {res, Object} when is_list(Object) -> {Object};
-        {res, Object} -> Object;
-        Object when is_list(Object) -> {Object};
-        Object -> Object
+    case {ResultFormat, Result} of
+        {{_, rescode}, V} when V == true; V == ok ->
+            {200, <<"">>};
+        {{_, rescode}, _} ->
+            {500, <<"">>};
+        {{_, restuple}, {V1, Text1}} when V1 == true; V1 == ok ->
+            {200, iolist_to_binary(Text1)};
+        {{_, restuple}, {_, Text2}} ->
+            {500, iolist_to_binary(Text2)};
+        {{_, {list, _}}, V} ->
+            {_, L} = format_result(Result, ResultFormat),
+            {200, L};
+        {{_, {tuple, _}}, V} ->
+            {_, T} = format_result(Result, ResultFormat),
+            {200, T};
+        _ ->
+            {200, {[format_result(Result, ResultFormat)]}}
     end.
 
 format_result(Atom, {Name, atom}) ->
-    {Name, Atom};
+    {jlib:atom_to_binary(Name), jlib:atom_to_binary(Atom)};
 
 format_result(Int, {Name, integer}) ->
-    {Name, Int};
+    {jlib:atom_to_binary(Name), Int};
 
 format_result(String, {Name, string}) ->
-    {Name, iolist_to_binary(String)};
+    {jlib:atom_to_binary(Name), iolist_to_binary(String)};
 
-format_result(Code, {_Name, rescode}) ->
-    Code;
+format_result(Code, {Name, rescode}) ->
+    {jlib:atom_to_binary(Name), Code == true orelse Code == ok};
 
-format_result({Code, List}, {Name, restuple})
-        when is_list(List) ->
-    Text = iolist_to_binary(lists:flatten(List)),
-    format_result({Code, Text}, {Name, restuple});
-format_result({ok, Text}, {_Name, restuple}) ->
-    {200, Text};
-format_result({Code, Text}, {_Name, restuple})
-        when is_atom(Code) ->
-    {500, Text};
-format_result({Code, Text}, {_Name, restuple})
-        when is_integer(Code) ->
-    {Code, Text};
+format_result({Code, Text}, {Name, restuple}) ->
+    {jlib:atom_to_binary(Name),
+     {[{<<"res">>, Code == true orelse Code == ok},
+       {<<"text">>, iolist_to_binary(Text)}]}};
+
+format_result(Els, {Name, {list, {_, {tuple, [{_, atom}, _]}} = Fmt}}) ->
+    {jlib:atom_to_binary(Name), {[format_result(El, Fmt) || El <- Els]}};
 
 format_result(Els, {Name, {list, Def}}) ->
-    {Name, {[format_result(El, Def) || El <- Els]}};
+    {jlib:atom_to_binary(Name), [element(2, format_result(El, Def)) || El <- Els]};
 
-format_result({Key, Val}, {_Name, {tuple, [{_, atom}, {_, integer}]}})
-        when is_atom(Key), is_integer(Val) ->
-    {Key, Val};
-format_result({Key, Val}, {_Name, {tuple, [{_, atom}, {_, string}]}})
-        when is_atom(Key), is_binary(Val) ->
-    {Key, Val};
+format_result(Tuple, {Name, {tuple, [{_, atom}, ValFmt]}}) ->
+    {Name2, Val} = Tuple,
+    {_, Val2} = format_result(Val, ValFmt),
+    {jlib:atom_to_binary(Name2), Val2};
+
 format_result(Tuple, {Name, {tuple, Def}}) ->
     Els = lists:zip(tuple_to_list(Tuple), Def),
-    {Name, [format_result(El, ElDef) || {El, ElDef} <- Els]};
+    {jlib:atom_to_binary(Name), {[format_result(El, ElDef) || {El, ElDef} <- Els]}};
 
 format_result(404, {_Name, _}) ->
     "not_found".
