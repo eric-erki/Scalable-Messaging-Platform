@@ -133,6 +133,26 @@ check_permissions(#request{auth={SJID, Pass}}, Command) ->
                     unauthorized_response()
             end;
         _ -> unauthorized_response()
+    end;
+check_permissions(#request{ip={IP, _Port}}, Command) ->
+    Access = gen_mod:get_module_opt(global, ?MODULE, access,
+                                    mod_opt_type(access),
+                                    none),
+    Res = acl:match_rule(global, Access, IP),
+    case Res of
+        all ->
+            allowed;
+        [all] ->
+            allowed;
+        allow ->
+            allowed;
+        Commands when is_list(Commands) ->
+            case lists:member(jlib:binary_to_atom(Command), Commands) of
+                true -> allowed;
+                _ -> unauthorized_response()
+            end;
+        _ ->
+            unauthorized_response()
     end.
 
 %% ------------------
