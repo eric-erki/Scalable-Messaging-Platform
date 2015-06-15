@@ -55,7 +55,7 @@ start(normal, _Args) ->
     ejabberd_admin:start(),
     gen_mod:start(),
     ejabberd_config:start(),
-    set_loglevel_from_config(),
+    set_settings_from_config(),
     Sup = ejabberd_sup:start_link(),
     ejabberd_rdbms:start(),
     ejabberd_riak_sup:start(),
@@ -211,12 +211,17 @@ delete_pid_file() ->
 	    file:delete(PidFilename)
     end.
 
-set_loglevel_from_config() ->
+set_settings_from_config() ->
     Level = ejabberd_config:get_option(
               loglevel,
               fun(P) when P>=0, P=<5 -> P end,
               4),
-    ejabberd_logger:set(Level).
+    ejabberd_logger:set(Level),
+    Ticktime = ejabberd_config:get_option(
+                 net_ticktime,
+                 opt_type(net_ticktime),
+                 60),
+    net_kernel:set_net_ticktime(Ticktime).
 
 -ifdef(p1db).
 p1db_start() ->
@@ -241,6 +246,8 @@ start_apps() ->
     p1db_start(),
     ejabberd:start_app(p1_cache_tab).
 
+opt_type(net_ticktime) ->
+    fun (P) when is_integer(P), P > 0 -> P end;
 opt_type(loglevel) ->
     fun (P) when P >= 0, P =< 5 -> P end;
 opt_type(modules) ->
@@ -250,4 +257,4 @@ opt_type(modules) ->
 		      end,
 		      Mods)
     end;
-opt_type(_) -> [loglevel, modules].
+opt_type(_) -> [loglevel, modules, net_ticktime].
