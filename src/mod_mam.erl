@@ -66,9 +66,13 @@ start(Host, Opts) ->
     init_db(DBType, Host),
     init_cache(DBType, Opts),
     gen_iq_handler:add_iq_handler(ejabberd_local, Host,
-        			  ?NS_MAM, ?MODULE, process_iq, IQDisc),
+        			  ?NS_MAM_TMP, ?MODULE, process_iq, IQDisc),
     gen_iq_handler:add_iq_handler(ejabberd_sm, Host,
-        			  ?NS_MAM, ?MODULE, process_iq, IQDisc),
+        			  ?NS_MAM_TMP, ?MODULE, process_iq, IQDisc),
+    gen_iq_handler:add_iq_handler(ejabberd_local, Host,
+        			  ?NS_MAM_0, ?MODULE, process_iq, IQDisc),
+    gen_iq_handler:add_iq_handler(ejabberd_sm, Host,
+        			  ?NS_MAM_0, ?MODULE, process_iq, IQDisc),
     ejabberd_hooks:add(user_receive_packet, Host, ?MODULE,
                        user_receive_packet, 500),
     ejabberd_hooks:add(user_send_packet, Host, ?MODULE,
@@ -138,8 +142,10 @@ stop(Host) ->
 			  user_send_packet, 500),
     ejabberd_hooks:delete(user_receive_packet, Host, ?MODULE,
 			  user_receive_packet, 500),
-    gen_iq_handler:remove_iq_handler(ejabberd_local, Host, ?NS_MAM),
-    gen_iq_handler:remove_iq_handler(ejabberd_sm, Host, ?NS_MAM),
+    gen_iq_handler:remove_iq_handler(ejabberd_local, Host, ?NS_MAM_TMP),
+    gen_iq_handler:remove_iq_handler(ejabberd_sm, Host, ?NS_MAM_TMP),
+    gen_iq_handler:remove_iq_handler(ejabberd_local, Host, ?NS_MAM_0),
+    gen_iq_handler:remove_iq_handler(ejabberd_sm, Host, ?NS_MAM_0),
     ejabberd_hooks:delete(remove_user, Host, ?MODULE,
 			  remove_user, 50),
     ejabberd_hooks:delete(anonymous_purge_hook, Host,
@@ -204,7 +210,7 @@ user_receive_packet(Pkt, C2SState, JID, Peer, _To) ->
                 {ok, ID} ->
                     Archived = #xmlel{name = <<"archived">>,
                                       attrs = [{<<"by">>, LServer},
-                                               {<<"xmlns">>, ?NS_MAM},
+                                               {<<"xmlns">>, ?NS_MAM_TMP},
                                                {<<"id">>, ID}]},
                     NewEls = [Archived|NewPkt#xmlel.children],
                     NewPkt#xmlel{children = NewEls};
@@ -233,7 +239,7 @@ user_send_packet(Pkt, C2SState, JID, Peer) ->
                 {ok, ID} ->
 		    By = jlib:jid_to_string(Peer),
 		    Archived = #xmlel{name = <<"archived">>,
-			    attrs = [{<<"by">>, By}, {<<"xmlns">>, ?NS_MAM},
+			    attrs = [{<<"by">>, By}, {<<"xmlns">>, ?NS_MAM_TMP},
 			    {<<"id">>, ID}]},
 		    NewEls = [Archived|NewPkt#xmlel.children],
 		    NewPkt#xmlel{children = NewEls};
@@ -247,44 +253,63 @@ user_send_packet(Pkt, C2SState, JID, Peer) ->
 process_iq(#jid{lserver = LServer} = From,
            #jid{lserver = LServer} = To,
            #iq{type = get, sub_el = #xmlel{name = <<"query">>} = SubEl} = IQ) ->
+    NS = xml:get_tag_attr_s(<<"xmlns">>, SubEl),
+    Fs = case NS of
+	     ?NS_MAM_TMP ->
+		 lists:flatmap(
+		   fun(#xmlel{name = <<"start">>} = El) ->
+			   [{<<"start">>, [xml:get_tag_cdata(El)]}];
+		      (#xmlel{name = <<"end">>} = El) ->
+			   [{<<"end">>, [xml:get_tag_cdata(El)]}];
+		      (#xmlel{name = <<"with">>} = El) ->
+			   [{<<"with">>, [xml:get_tag_cdata(El)]}];
+		      (#xmlel{name = <<"withroom">>} = El) ->
+			   [{<<"withroom">>, [xml:get_tag_cdata(El)]}];
+		      (#xmlel{name = <<"withtext">>} = El) ->
+			   [{<<"withtext">>, [xml:get_tag_cdata(El)]}];
+		      (#xmlel{name = <<"set">>}) ->
+			   [{<<"set">>, SubEl}];
+		      (_) ->
+			   []
+		   end, SubEl#xmlel.children);
+	     ?NS_MAM_0 ->
+		 case {xml:get_subtag_with_xmlns(SubEl, <<"x">>, ?NS_XDATA),
+		       xml:get_subtag_with_xmlns(SubEl, <<"set">>, ?NS_RSM)} of
+		     {#xmlel{} = XData, false} ->
+			 jlib:parse_xdata_submit(XData);
+		     {#xmlel{} = XData, #xmlel{}} ->
+			 [{<<"set">>, SubEl} | jlib:parse_xdata_submit(XData)];
+		     {false, #xmlel{}} ->
+			 [{<<"set">>, SubEl}];
+		     {false, false} ->
+			 []
+		 end
+	 end,
     case catch lists:foldl(
-                 fun(#xmlel{name = <<"start">>} = El, {_, End, With, RSM}) ->
-                         {{_, _, _} =
-                              jlib:datetime_string_to_timestamp(
-                                xml:get_tag_cdata(El)),
+                 fun({<<"start">>, [Data|_]}, {_, End, With, RSM}) ->
+                         {{_, _, _} = jlib:datetime_string_to_timestamp(Data),
                           End, With, RSM};
-                    (#xmlel{name = <<"end">>} = El, {Start, _, With, RSM}) ->
+                    ({<<"end">>, [Data|_]}, {Start, _, With, RSM}) ->
                          {Start,
-                          {_, _, _} =
-                              jlib:datetime_string_to_timestamp(
-                                xml:get_tag_cdata(El)),
+                          {_, _, _} = jlib:datetime_string_to_timestamp(Data),
                           With, RSM};
-                    (#xmlel{name = <<"with">>} = El, {Start, End, _, RSM}) ->
+                    ({<<"with">>, [Data|_]}, {Start, End, _, RSM}) ->
+                         {Start, End, jlib:jid_tolower(jlib:string_to_jid(Data)), RSM};
+                    ({<<"withroom">>, [Data|_]}, {Start, End, _, RSM}) ->
                          {Start, End,
-                          jlib:jid_tolower(
-                            jlib:string_to_jid(xml:get_tag_cdata(El))),
+                          {room, jlib:jid_tolower(jlib:string_to_jid(Data))},
                           RSM};
-                    (#xmlel{name = <<"withroom">>} = El, {Start, End, _, RSM}) ->
-                         {Start, End,
-                          {room, jlib:jid_tolower(
-                            jlib:string_to_jid(xml:get_tag_cdata(El)))},
-                          RSM};
-                    (#xmlel{name = <<"withtext">>} = El, {Start, End, _, RSM}) ->
-                         {Start, End,
-                          {text, xml:get_tag_cdata(El)},
-                          RSM};
-                    (#xmlel{name = <<"set">>}, {Start, End, With, _}) ->
-                         {Start, End, With, jlib:rsm_decode(SubEl)};
+                    ({<<"withtext">>, [Data|_]}, {Start, End, _, RSM}) ->
+                         {Start, End, {text, Data}, RSM};
+                    ({<<"set">>, El}, {Start, End, With, _}) ->
+                         {Start, End, With, jlib:rsm_decode(El)};
                     (_, Acc) ->
                          Acc
-                 end, {none, [], none, none},
-                 SubEl#xmlel.children) of
+                 end, {none, [], none, none}, Fs) of
         {'EXIT', _} ->
             IQ#iq{type = error, sub_el = [SubEl, ?ERR_BAD_REQUEST]};
         {Start, End, With, RSM} ->
-            QID = xml:get_tag_attr_s(<<"queryid">>, SubEl),
-            RSMOut = select_and_send(From, To, Start, End, With, RSM, QID),
-            IQ#iq{type = result, sub_el = RSMOut}
+            select_and_send(From, To, Start, End, With, RSM, IQ)	    
     end;
 process_iq(#jid{luser = LUser, lserver = LServer},
            #jid{lserver = LServer},
@@ -613,20 +638,20 @@ get_prefs(LUser, LServer, DBType)
     end.
 
 select_and_send(#jid{lserver = LServer} = From,
-                To, Start, End, With, RSM, QID) ->
+                To, Start, End, With, RSM, IQ) ->
     DBType = case gen_mod:db_type(LServer, ?MODULE) of
 		 odbc -> {odbc, LServer};
 		 sharding -> {sharding, LServer};
 		 DB -> DB
 	     end,
-    select_and_send(From, To, Start, End, With, RSM, QID,
+    select_and_send(From, To, Start, End, With, RSM, IQ,
                     DBType).
 
-select_and_send(From, To, Start, End, With, RSM, QID, DBType) ->
+select_and_send(From, To, Start, End, With, RSM, IQ, DBType) ->
     {Msgs, Count} = select_and_start(From, To, Start, End, With,
 				     RSM, DBType),
     SortedMsgs = lists:keysort(2, Msgs),
-    send(From, To, SortedMsgs, RSM, Count, QID).
+    send(From, To, SortedMsgs, RSM, Count, IQ).
 
 select_and_start(From, _To, StartUser, End, With, RSM, DB) ->
     {JidRequestor, Start, With2} = case With of
@@ -842,34 +867,60 @@ maybe_update_from_to(Pkt, JidRequestor, Peer) ->
 	_ -> Pkt
     end.
 
-send(From, To, Msgs, RSM, Count, QID) ->
+send(From, To, Msgs, RSM, Count, #iq{sub_el = SubEl} = IQ) ->
+    QID = xml:get_tag_attr_s(<<"queryid">>, SubEl),
+    NS = xml:get_tag_attr_s(<<"xmlns">>, SubEl),
     QIDAttr = if QID /= <<>> ->
                       [{<<"queryid">>, QID}];
                  true ->
                     []
               end,
-    lists:foreach(
-      fun({ID, _IDInt, El}) ->
-              ejabberd_router:route(
-                To, From,
-                #xmlel{name = <<"message">>,
-                       children = [#xmlel{name = <<"result">>,
-                                          attrs = [{<<"xmlns">>, ?NS_MAM},
-                                                   {<<"id">>, ID}|QIDAttr],
-                                          children = [El]}]})
-      end, Msgs),
-    make_rsm_out(Msgs, RSM, Count, QIDAttr).
+    Els = lists:map(
+	    fun({ID, _IDInt, El}) ->
+		    #xmlel{name = <<"message">>,
+			   children = [#xmlel{name = <<"result">>,
+					      attrs = [{<<"xmlns">>, NS},
+						       {<<"id">>, ID}|QIDAttr],
+					      children = [El]}]}
+	    end, Msgs),
+    RSMOut = make_rsm_out(Msgs, RSM, Count, QIDAttr, NS),
+    case NS of
+	?NS_MAM_TMP ->
+	    lists:foreach(
+	      fun(El) ->
+		      ejabberd_router:route(To, From, El)
+	      end, Els),
+	    IQ#iq{type = result, sub_el = RSMOut};
+	?NS_MAM_0 ->
+	    ejabberd_router:route(
+	      To, From, jlib:iq_to_xml(IQ#iq{type = result, sub_el = []})),
+	    lists:foreach(
+	      fun(El) ->
+		      ejabberd_router:route(To, From, El)
+	      end, Els),
+	    ejabberd_router:route(
+	      To, From, #xmlel{name = <<"message">>,
+			       children = RSMOut}),
+	    ignore
+    end.
 
-make_rsm_out(_Msgs, none, _Count, _QIDAttr) ->
+
+make_rsm_out(_Msgs, none, _Count, _QIDAttr, ?NS_MAM_TMP) ->
     [];
-make_rsm_out([], #rsm_in{}, Count, QIDAttr) ->
-    [#xmlel{name = <<"query">>,
-            attrs = [{<<"xmlns">>, ?NS_MAM}|QIDAttr],
+make_rsm_out(_Msgs, none, _Count, QIDAttr, ?NS_MAM_0) ->
+    [#xmlel{name = <<"fin">>, attrs = [{<<"xmlns">>, ?NS_MAM_0}|QIDAttr]}];
+make_rsm_out([], #rsm_in{}, Count, QIDAttr, NS) ->
+    Tag = if NS == ?NS_MAM_TMP -> <<"query">>;
+	     true -> <<"fin">>
+	  end,
+    [#xmlel{name = Tag, attrs = [{<<"xmlns">>, NS}|QIDAttr],
             children = jlib:rsm_encode(#rsm_out{count = Count})}];
-make_rsm_out([{FirstID, _, _}|_] = Msgs, #rsm_in{}, Count, QIDAttr) ->
+make_rsm_out([{FirstID, _, _}|_] = Msgs, #rsm_in{}, Count, QIDAttr, NS) ->
     {LastID, _, _} = lists:last(Msgs),
-    [#xmlel{name = <<"query">>,
-            attrs = [{<<"xmlns">>, ?NS_MAM}|QIDAttr],
+    Tag = if NS == ?NS_MAM_TMP -> <<"query">>;
+	     true -> <<"fin">>
+	  end,
+    [#xmlel{name = Tag, attrs = [{<<"xmlns">>, NS}|QIDAttr],
             children = jlib:rsm_encode(
                          #rsm_out{first = FirstID, count = Count,
                                   last = LastID})}].

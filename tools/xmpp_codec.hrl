@@ -9,7 +9,8 @@
 
 -record(sasl_success, {text :: any()}).
 
--record(mam_result, {queryid :: binary(),
+-record(mam_result, {xmlns :: binary(),
+                     queryid :: binary(),
                      id :: binary(),
                      sub_els = [] :: [any()]}).
 
@@ -69,7 +70,6 @@
                     xmlns :: binary()}).
 
 -record(p1_rebind_failure, {reason :: binary()}).
--record(chatstate_gone, {}).
 
 -record(starttls_failure, {}).
 
@@ -184,7 +184,8 @@
 
 -record(shim, {headers = [] :: [{binary(),'undefined' | binary()}]}).
 
--record(mam_prefs, {default :: 'always' | 'never' | 'roster',
+-record(mam_prefs, {xmlns :: binary(),
+                    default :: 'always' | 'never' | 'roster',
                     always = [] :: [any()],
                     never = [] :: [any()]}).
 
@@ -294,11 +295,8 @@
                   last :: binary(),
                   max :: non_neg_integer()}).
 
--record(mam_query, {id :: binary(),
-                    start :: any(),
-                    'end' :: any(),
-                    with :: any(),
-                    rsm :: #rsm_set{}}).
+-record(mam_fin, {id :: binary(),
+                  rsm :: #rsm_set{}}).
 
 -record(vcard_tel, {home = false :: boolean(),
                     work = false :: boolean(),
@@ -381,6 +379,14 @@
                 reported :: [#xdata_field{}],
                 items = [] :: [[#xdata_field{}]],
                 fields = [] :: [#xdata_field{}]}).
+
+-record(mam_query, {xmlns :: binary(),
+                    id :: binary(),
+                    start :: any(),
+                    'end' :: any(),
+                    with :: any(),
+                    rsm :: #rsm_set{},
+                    xdata :: #xdata{}}).
 
 -record(muc_owner, {destroy :: #muc_owner_destroy{},
                     config :: #xdata{}}).

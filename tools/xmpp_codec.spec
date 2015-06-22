@@ -2210,13 +2210,16 @@
 
 -xml(mam_query,
      #elem{name = <<"query">>,
-           xmlns = <<"urn:xmpp:mam:tmp">>,
-           result = {mam_query, '$id', '$start', '$end', '$with', '$rsm'},
-           attrs = [#attr{name = <<"queryid">>, label = '$id'}],
+           xmlns = [<<"urn:xmpp:mam:0">>, <<"urn:xmpp:mam:tmp">>],
+           result = {mam_query, '$xmlns', '$id', '$start', '$end', '$with',
+		     '$rsm', '$xdata'},
+           attrs = [#attr{name = <<"queryid">>, label = '$id'},
+		    #attr{name = <<"xmlns">>}],
            refs = [#ref{name = mam_start, min = 0, max = 1, label = '$start'},
                    #ref{name = mam_end, min = 0, max = 1, label = '$end'},
                    #ref{name = mam_with, min = 0, max = 1, label = '$with'},
-                   #ref{name = rsm_set, min = 0, max = 1, label = '$rsm'}]}).
+                   #ref{name = rsm_set, min = 0, max = 1, label = '$rsm'},
+		   #ref{name = xdata, min = 0, max = 1, label = '$xdata'}]}).
 
 -xml(mam_archived,
      #elem{name = <<"archived">>,
@@ -2230,9 +2233,10 @@
 
 -xml(mam_result,
      #elem{name = <<"result">>,
-           xmlns = <<"urn:xmpp:mam:tmp">>,
-           result = {mam_result, '$queryid', '$id', '$_els'},
+           xmlns = [<<"urn:xmpp:mam:0">>, <<"urn:xmpp:mam:tmp">>],
+           result = {mam_result, '$xmlns', '$queryid', '$id', '$_els'},
            attrs = [#attr{name = <<"queryid">>},
+		    #attr{name = <<"xmlns">>},
                     #attr{name = <<"id">>}]}).
 
 -xml(mam_jid,
@@ -2257,15 +2261,23 @@
 
 -xml(mam_prefs,
      #elem{name = <<"prefs">>,
-           xmlns = <<"urn:xmpp:mam:tmp">>,
-           result = {mam_prefs, '$default', '$always', '$never'},
+           xmlns = [<<"urn:xmpp:mam:0">>, <<"urn:xmpp:mam:tmp">>],
+           result = {mam_prefs, '$xmlns', '$default', '$always', '$never'},
            attrs = [#attr{name = <<"default">>,
                           dec = {dec_enum, [[always, never, roster]]},
-                          enc = {enc_enum, []}}],
+                          enc = {enc_enum, []}},
+		    #attr{name = <<"xmlns">>}],
            refs = [#ref{name = mam_always, label = '$always',
                         min = 0, max = 1, default = []},
                    #ref{name = mam_never, label = '$never',
                         min = 0, max = 1, default = []}]}).
+
+-xml(mam_fin,
+     #elem{name = <<"fin">>,
+	   xmlns = <<"urn:xmpp:mam:0">>,
+	   result = {mam_fin, '$id', '$rsm'},
+	   attrs = [#attr{name = <<"queryid">>, label = '$id'}],
+	   refs = [#ref{name = rsm_set, min = 0, max = 1, label = '$rsm'}]}).
 
 -xml(forwarded,
      #elem{name = <<"forwarded">>,
