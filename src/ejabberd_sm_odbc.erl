@@ -147,7 +147,7 @@ delete_node(Node) ->
       fun(Host) ->
 	      ejabberd_odbc:sql_query(
                 Host, [<<"delete from sm where node='">>, SNode, <<"'">>])
-      end, ok, ?MYHOSTS).
+      end, ?MYHOSTS).
 
 get_sessions_number() ->
     lists:foldl(

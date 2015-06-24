@@ -287,7 +287,7 @@ dirty_get_sessions_list() ->
     Mod = get_sm_backend(),
     [S#session.usr || S <- Mod:get_sessions()].
 
--spec dirty_get_my_sessions_list() -> [ljid()].
+-spec dirty_get_my_sessions_list() -> [#session{}].
 
 dirty_get_my_sessions_list() ->
     Mod = get_sm_backend(),

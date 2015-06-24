@@ -80,8 +80,7 @@ set_session(Session) ->
 	    ?ERROR_MSG("failed to set session for redis: ~p", [Err])
     end.
 
--spec delete_session({binary(), binary(), binary()}) ->
-			    {ok, #session{}} | {error, notfound}.
+-spec delete_session({binary(), binary(), binary()}) -> ok.
 delete_session({LUser, LServer, LResource}) ->
     USKey = us_to_key({LUser, LServer}),
     ServKey = server_to_key(LServer),
