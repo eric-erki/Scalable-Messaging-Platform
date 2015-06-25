@@ -27,6 +27,8 @@
 
 -module(cyrsasl_anonymous).
 
+-protocol({xep, 175, '1.2'}).
+
 -export([start/1, stop/0, mech_new/6, mech_step/2]).
 
 -behaviour(cyrsasl).
