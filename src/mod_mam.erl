@@ -26,6 +26,8 @@
 %%%-------------------------------------------------------------------
 -module(mod_mam).
 
+-protocol({xep, 313, '0.3'}).
+
 -behaviour(ejabberd_config).
 
 -behaviour(gen_mod).
