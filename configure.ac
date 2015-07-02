@@ -73,6 +73,9 @@ esac
 AC_ERLANG_SUBST_ROOT_DIR
 # AC_ERLANG_SUBST_LIB_DIR
 
+AC_ERLANG_CHECK_LIB(public_key, [public_key_dir=$ERLANG_LIB_DIR_public_key],
+				[AC_MSG_ERROR([public_key was not found])])
+
 #locating escript
 AC_PATH_PROG([ESCRIPT], [escript], [], [$ERLANG_ROOT_DIR/bin])
 
@@ -349,6 +352,7 @@ AC_SUBST(debug)
 AC_SUBST(pubsub_ng)
 AC_SUBST(http)
 AC_SUBST(lager)
+AC_SUBST(public_key_dir)
 AC_SUBST(tools)
 AC_SUBST(airbrake)
 

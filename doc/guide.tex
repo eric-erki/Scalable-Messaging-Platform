@@ -919,7 +919,7 @@ The available modules, their purpose and the options allowed by each one are:
   \titem{\texttt{ejabberd\_c2s}}
     Handles c2s connections.\\
     Options: \texttt{access}, \texttt{certfile}, \texttt{ciphers},
-    \texttt{protocol\_options}, \texttt{cafile}, \texttt{tls\_verify},
+    \texttt{protocol\_options}, \texttt{cafile}, \texttt{tls\_verify}, \texttt{ocsp},
     \texttt{max\_ack\_queue}, \texttt{max\_fsm\_queue},
     \texttt{max\_stanza\_size}, \texttt{resend\_on\_timeout},
     \texttt{resume\_timeout}, \texttt{shaper},
@@ -986,6 +986,9 @@ This is a detailed description of each option allowed by the listening modules:
     immediately). Default value is 5.
   \titem{cafile: Path} Full path to a file containing root CA certificates in PEM format.
   This option is only used in conjunction with \option{tls\_verify} option.
+  \titem{ocsp: true|false} If \option{tls\_verify} is enabled, this option enables SASL EXTERNAL
+  authentication via OCSP protocol (RFC6960) in favor of CRL protocol (RFC5280). The default is \term{false},
+  meaning that CRL protocol is in use by default.
   \titem{captcha: true|false} \ind{options!http-captcha}
     Simple web page that allows a user to fill a CAPTCHA challenge (see section \ref{captcha}).
   \titem{certfile: Path} Full path to a file containing the default SSL certificate.

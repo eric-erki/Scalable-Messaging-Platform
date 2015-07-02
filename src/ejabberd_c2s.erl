@@ -66,6 +66,7 @@
 -include("ejabberd.hrl").
 -include("logger.hrl").
 -include_lib("public_key/include/public_key.hrl").
+-include("OCSP.hrl").
 -include("jlib.hrl").
 
 -include("mod_privacy.hrl").
@@ -316,6 +317,7 @@ init([{SockMod, Socket}, Opts, FSMLimitOpts]) ->
     TLSOpts1 = lists:filter(fun ({certfile, _}) -> true;
 				({ciphers, _}) -> true;
 				({cafile, _}) -> true;
+				({ocsp, _}) -> true;
 				({dhfile, _}) -> true;
 				(_) -> false
 			    end,
@@ -3952,12 +3954,17 @@ get_cert_file(_StateData, _Mech) ->
 verify_cert(StateData, Cert) ->
     case lists:keyfind(cafile, 1, StateData#state.tls_options) of
 	false ->
-	    case (StateData#state.sockmod):get_verify_result(
-		   StateData#state.socket) of
-		0 ->
-		    true;
+	    case lists:keyfind(ocsp, 1, StateData#state.tls_options) of
+		{ocsp, true} ->
+		    verify_via_ocsp(StateData, Cert);
 		_ ->
-		    {false, <<"unknown certificate issuer">>}
+		    case (StateData#state.sockmod):get_verify_result(
+			   StateData#state.socket) of
+			0 ->
+			    true;
+			_ ->
+			    {false, <<"unknown certificate issuer">>}
+		    end
 	    end;
 	{cafile, Path} ->
 	    case file:read_file(Path) of
@@ -3999,6 +4006,67 @@ is_verification_enabled(StateData) ->
 	    not proplists:get_bool(verify_none, StateData#state.tls_options);
 	IsEnabled ->
 	    IsEnabled
+    end.
+
+verify_via_ocsp(StateData, Cert) ->
+    TBSCert = Cert#'OTPCertificate'.tbsCertificate,
+    URIs = lists:flatmap(
+	     fun(#'Extension'{extnID = ?'id-pe-authorityInfoAccess',
+			      extnValue = AccessInfo}) when is_list(AccessInfo) ->
+		     lists:flatmap(
+		       fun(#'AccessDescription'{
+			      accessMethod = ?'id-pkix-ocsp',
+			      accessLocation = {uniformResourceIdentifier, URI}}) ->
+			       [URI];
+			  (_) ->
+			       []
+		       end, AccessInfo);
+		(_) ->
+		     []
+	     end, TBSCert#'OTPTBSCertificate'.extensions),
+    case URIs of
+	[URI|_] ->
+	    make_ocsp_request(iolist_to_binary(URI), Cert);
+	[] ->
+	    {false, <<"no OCSP URI found in certificate">>}
+    end.
+
+make_ocsp_request(URI0, Cert) ->
+    URI = binary_to_list(URI0),
+    TBSCert = Cert#'OTPCertificate'.tbsCertificate,
+    SerialNumber = TBSCert#'OTPTBSCertificate'.serialNumber,
+    SubjPubKeyInfo = TBSCert#'OTPTBSCertificate'.subjectPublicKeyInfo,
+    RSAPubKey = SubjPubKeyInfo#'OTPSubjectPublicKeyInfo'.subjectPublicKey,
+    IssuerDN = public_key:pkix_encode(
+		 'Name', TBSCert#'OTPTBSCertificate'.issuer, otp),
+    IssuerPubKey = public_key:pkix_encode('RSAPublicKey', RSAPubKey, otp),
+    AlgoID = #'AlgorithmIdentifier'{algorithm = ?'id-sha1'},
+    CertID = #'CertID'{hashAlgorithm = AlgoID,
+		       issuerNameHash = crypto:sha(IssuerDN),
+		       issuerKeyHash = crypto:sha(IssuerPubKey),
+		       serialNumber = SerialNumber},
+    TBSReq = #'TBSRequest'{requestList = [#'Request'{reqCert = CertID}]},
+    Request = #'OCSPRequest'{tbsRequest = TBSReq},
+    {ok, Body} = 'OCSP':encode('OCSPRequest', Request),
+    case http_p1:post(URI, [{<<"content-type">>,
+			     <<"application/ocsp-request">>}], Body) of
+	{ok, 200, _, Response} ->
+	    case 'OCSP':decode('OCSPResponse', Response) of
+		{ok, #'OCSPResponse'{responseStatus = Status}} ->
+		    case Status of
+			successful ->
+			    true;
+			_ ->
+			    {false, <<"rejected by OCSP server">>}
+		    end;
+		Err ->
+		    ?ERROR_MSG("failed to decode response from OCSP server: ~p",
+			       [Err]),
+		    {false, <<"failed to decode response from OCSP server">>}
+	    end;
+	Err ->
+	    ?ERROR_MSG("OCSP server HTTP error: ~p", [Err]),
+	    {false, <<"request to OCSP server failed">>}
     end.
 
 get_crls(Cert, CAList) ->
