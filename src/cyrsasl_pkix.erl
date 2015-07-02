@@ -27,6 +27,8 @@
 -module(cyrsasl_pkix).
 -author('alexey@process-one.net').
 
+-protocol({xep, 178, '1.1'}).
+
 -export([start/1, stop/0, mech_new/6, mech_step/2]).
 
 -behaviour(cyrsasl).

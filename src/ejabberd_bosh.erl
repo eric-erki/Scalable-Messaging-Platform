@@ -25,6 +25,9 @@
 %%%-------------------------------------------------------------------
 -module(ejabberd_bosh).
 
+-protocol({xep, 124, '1.11'}).
+-protocol({xep, 206, '1.4'}).
+
 -define(GEN_FSM, p1_fsm).
 
 -behaviour(?GEN_FSM).
@@ -64,7 +67,7 @@
 
 -endif.
 
--define(BOSH_VERSION, <<"1.10">>).
+-define(BOSH_VERSION, <<"1.11">>).
 
 -define(NS_CLIENT, <<"jabber:client">>).
 

@@ -106,7 +106,7 @@
 
 -endif.
 
--define(BOSH_VERSION, <<"1.8">>).
+-define(BOSH_VERSION, <<"1.11">>).
 
 -define(NS_CLIENT, <<"jabber:client">>).
 

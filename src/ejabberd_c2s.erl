@@ -32,6 +32,7 @@
 
 -protocol({xep, 78, '2.5'}).
 -protocol({xep, 138, '2.0'}).
+-protocol({xep, 178, '1.1'}).
 -protocol({xep, 198, '1.3'}).
 
 -update_info({update, 0}).
