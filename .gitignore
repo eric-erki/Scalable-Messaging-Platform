@@ -32,11 +32,16 @@
 /ejabberd.init
 /ejabberdctl.example
 XmppAddr.hrl
+OCSP.hrl
 /rel/ejabberd/
 /src/XmppAddr.asn1db
 /src/XmppAddr.erl
 /src/ejabberd.app.src
 /src/eldap_filter_yecc.erl
+/src/OCSP.erl
+/src/OCSP.asn1db
+/src/PKIX1Explicit88.asn1db
+/src/PKIX1Implicit88.asn1db
 /vars.config
 /priv/lib
 /c_src/*.o
