@@ -2439,7 +2439,7 @@ send_text(StateData, Text) ->
 	       true -> Text
 	    end,
     (StateData#state.sockmod):send(StateData#state.socket,
-                                   Text1)),
+                                   Text1).
 
 -spec send_element(c2s_state(), xmlel()) -> any().
 
