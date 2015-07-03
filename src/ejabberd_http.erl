@@ -937,19 +937,16 @@ transform_listen_option(Opt, Opts) ->
 
 send_flash_policy(State) ->
     Listen = ejabberd_config:get_option(listen, fun(V) -> V end),
-    Ports = lists:foldr(fun({{Port, _, _}, Handler, _Opts}, Acc) when
-                                  Handler == ejabberd_c2s orelse
-                                  Handler == ejabberd_http ->
-                                case Acc of
-                                    [] ->
-                                        [integer_to_list(Port)];
-                                    _ ->
-                                        [integer_to_list(Port), <<",">>, Acc]
-                                end;
-                           (_, Acc) ->
-                                Acc
-                        end, [], Listen),
-    PortsString = iolist_to_binary(Ports),
+    Ports = lists:filtermap(fun(Opt) ->
+                                    case {lists:keyfind(module, 1, Opt), lists:keyfind(port, 1, Opt)} of
+                                        {{module, M}, {port, P}} when M == ejabberd_c2s;
+                                                                      M == ejabberd_http ->
+                                            {true, integer_to_list(P)};
+                                        _ ->
+                                            false
+                                    end
+                            end, Listen),
+    PortsString = iolist_to_binary(string:join(Ports, ",")),
 
     send_text(State,<<"<?xml version=\"1.0\"?>\n"
       "<!DOCTYPE cross-domain-policy SYSTEM "

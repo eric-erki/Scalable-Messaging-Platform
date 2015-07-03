@@ -2439,7 +2439,7 @@ send_text(StateData, Text) ->
 	       true -> Text
 	    end,
     (StateData#state.sockmod):send(StateData#state.socket,
-				   Text1).
+                                   Text1)),
 
 -spec send_element(c2s_state(), xmlel()) -> any().
 
@@ -4664,13 +4664,16 @@ pack(S) -> S.
 
 flash_policy_string() ->
     Listen = ejabberd_config:get_option(listen, fun(V) -> V end),
-    ClientPortsDeep = [<<",",
-			 (iolist_to_binary(integer_to_list(Port)))/binary>>
-		       || {{Port, _, _}, ejabberd_c2s, _Opts} <- Listen],
-    ToPortsString = case iolist_to_binary(lists:flatten(ClientPortsDeep)) of
-		      <<",", Tail/binary>> -> Tail;
-		      _ -> <<>>
-		    end,
+    Ports = lists:filtermap(fun(Opt) ->
+                                    case {lists:keyfind(module, 1, Opt), lists:keyfind(port, 1, Opt)} of
+                                        {{module, M}, {port, P}} when M == ejabberd_c2s;
+                                                                      M == ejabberd_http ->
+                                            {true, integer_to_list(P)};
+                                        _ ->
+                                            false
+                                    end
+                            end, Listen),
+    ToPortsString = iolist_to_binary(string:join(Ports, ",")),
     <<"<?xml version=\"1.0\"?>\n<!DOCTYPE cross-doma"
       "in-policy SYSTEM \"http://www.macromedia.com/"
       "xml/dtds/cross-domain-policy.dtd\">\n<cross-d"
