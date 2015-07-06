@@ -3953,21 +3953,25 @@ get_cert_file(_StateData, _Mech) ->
     undefined.
 
 verify_cert(StateData, Cert) ->
-    case lists:keyfind(ocsp, 1, StateData#state.tls_options) of
-	{ocsp, true} ->
-	    case verify_issuer(StateData, Cert) of
-		{true, _CAList} ->
-		    verify_via_ocsp(Cert);
-		{false, _} = Err ->
-		    Err
+    case verify_issuer(StateData, Cert) of
+	{true, CAList} ->
+	    {OCSPURIs, CRLURIs} = get_verify_methods(Cert),
+	    OCSPEnabled = proplists:get_bool(ocsp, StateData#state.tls_options),
+	    CRLEnabled = proplists:get_bool(crl, StateData#state.tls_options),
+	    if OCSPEnabled andalso not CRLEnabled ->
+		    verify_via_ocsp(OCSPURIs, Cert);
+	       CRLEnabled andalso not OCSPEnabled ->
+		    verify_via_crl(CRLURIs, Cert, CAList);
+	       true ->
+		    case verify_via_ocsp(OCSPURIs, Cert) of
+			{false, _} ->
+			    verify_via_crl(CRLURIs, Cert, CAList);
+			true ->
+			    true
+		    end
 	    end;
-	_ ->
-	    case verify_issuer(StateData, Cert) of
-		{true, CAList} ->
-		    verify_via_crl(Cert, CAList);
-		{false, _} = Err ->
-		    Err
-	    end
+	{false, _} = Err ->
+	    Err
     end.
 
 is_verification_enabled(#state{tls_enabled = false}) ->
@@ -4009,41 +4013,71 @@ verify_issuer(StateData, Cert) ->
 	    end
     end.
 
-verify_via_ocsp(Cert) ->
+verify_via_ocsp(URIs, Cert) ->
+    lists:foldl(
+      fun(_, true) ->
+	      true;
+	 (URI, {false, _Reason}) ->
+	      make_ocsp_request(iolist_to_binary(URI), Cert)
+      end, {false, <<"no OCSP URIs found in certificate">>}, URIs).
+
+verify_via_crl(URIs, Cert, CAList) ->
+    lists:foldl(
+      fun(_, true) ->
+	      true;
+	 (URI, {false, _Reason}) ->
+	      case make_crl_request(URI) of
+		  {ok, CRL} ->
+		      case is_known_issuer(CRL, CAList) of
+			  true ->
+			      case is_revoked(Cert, CRL) of
+				  true ->
+				      {false, <<"certificate is revoked">>};
+				  false ->
+				      true
+			      end;
+			  false ->
+			      ?ERROR_MSG("CRL from ~s is signed by unknown CA",
+					 [URI]),
+			      {false, <<"CRL is signed by unknown CA">>}
+		      end;
+		  error ->
+		      {false, <<"failed to fetch CRL file">>}
+	      end
+      end, {false, <<"no CRL URIs found in certificate">>}, URIs).
+
+get_verify_methods(Cert) ->
     TBSCert = Cert#'OTPCertificate'.tbsCertificate,
-    URIs = lists:flatmap(
-	     fun(#'Extension'{extnID = ?'id-pe-authorityInfoAccess',
-			      extnValue = AccessInfo}) when is_list(AccessInfo) ->
-		     lists:flatmap(
+    lists:foldl(
+      fun(#'Extension'{extnID = ?'id-pe-authorityInfoAccess', extnValue = AccessInfo},
+	  {OCSPURIs, CRLURIs}) when is_list(AccessInfo) ->
+	      URIs = lists:flatmap(
 		       fun(#'AccessDescription'{
 			      accessMethod = ?'id-pkix-ocsp',
 			      accessLocation = {uniformResourceIdentifier, URI}}) ->
 			       [URI];
 			  (_) ->
 			       []
-		       end, AccessInfo);
-		(_) ->
-		     []
-	     end, TBSCert#'OTPTBSCertificate'.extensions),
-    case URIs of
-	[URI|_] ->
-	    make_ocsp_request(iolist_to_binary(URI), Cert);
-	[] ->
-	    {false, <<"no OCSP URI found in certificate">>}
-    end.
-
-verify_via_crl(Cert, CAList) ->
-    case get_crls(Cert, CAList) of
-	[] ->
-	    true;
-	CRLs ->
-	    IsRevoked = lists:any(fun(CRL) -> is_revoked(Cert, CRL) end, CRLs),
-	    if IsRevoked ->
-		    {false, <<"certificate is revoked">>};
-	       true ->
-		    true
-	    end
-    end.
+		       end, AccessInfo),
+	      {URIs ++ OCSPURIs, CRLURIs};
+	 (#'Extension'{extnID = ?'id-ce-cRLDistributionPoints', extnValue = DistPoints},
+	  {OCSPURIs, CRLURIs}) when is_list(DistPoints) ->
+	      URIs = lists:flatmap(
+		       fun(#'DistributionPoint'{
+			      distributionPoint = {fullName, GenNames}}) ->
+			       lists:flatmap(
+				 fun({uniformResourceIdentifier, URI}) ->
+					 [URI];
+				    (_) ->
+					 []
+				 end, GenNames);
+			  (_) ->
+			       []
+		       end, DistPoints),
+	      {OCSPURIs, URIs ++ CRLURIs};
+	 (_, Acc) ->
+	      Acc
+      end, {[], []}, TBSCert#'OTPTBSCertificate'.extensions).
 
 make_ocsp_request(URI0, Cert) ->
     URI = binary_to_list(URI0),
@@ -4083,44 +4117,7 @@ make_ocsp_request(URI0, Cert) ->
 	    {false, <<"request to OCSP server failed">>}
     end.
 
-get_crls(_Cert, []) ->
-    [];
-get_crls(Cert, CAList) ->
-    TBSCert = Cert#'OTPCertificate'.tbsCertificate,
-    lists:flatmap(
-      fun(#'Extension'{extnID = ?'id-ce-cRLDistributionPoints',
-		       extnValue = DistPoints}) when is_list(DistPoints) ->
-	      lists:flatmap(
-		fun(#'DistributionPoint'{
-		       distributionPoint = {fullName, GenNames}}) ->
-			lists:flatmap(
-			      fun({uniformResourceIdentifier, URI}) ->
-				      case fetch_crl(URI) of
-					  {ok, CRL} ->
-					      case is_known_issuer(CRL, CAList) of
-						  true ->
-						      [CRL];
-						  false ->
-						      ?ERROR_MSG(
-							 "CRL from ~s is signed"
-							 " by unknown CA",
-							 [URI]),
-						      []
-					      end;
-					  error ->
-					      []
-				      end;
-				 (_) ->
-				      []
-			      end, GenNames);
-		   (_) ->
-			[]
-		end, DistPoints);
-	 (_) ->
-	      []
-      end, TBSCert#'OTPTBSCertificate'.extensions).
-
-fetch_crl(URI0) ->
+make_crl_request(URI0) ->
     URI = iolist_to_binary(URI0),
     cache_tab:dirty_lookup(crls, URI, fun() -> fetch_crl_http(URI) end).
 
@@ -4144,6 +4141,8 @@ is_revoked(Cert, CRL) ->
 	      SerialNumber == N
       end, RevokedCerts).
 
+is_known_issuer(_Cert, []) ->
+    true;
 is_known_issuer(Cert, CAList) ->
     lists:any(
       fun({'Certificate', Issuer, _}) ->

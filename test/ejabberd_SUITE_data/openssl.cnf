@@ -208,6 +208,7 @@ authorityKeyIdentifier=keyid,issuer
 #nsSslServerName
 
 crlDistributionPoints = URI:http://localhost:5280/data/crl.der
+authorityInfoAccess = OCSP;URI:http://localhost:5280/ocsp
 
 [ v3_req ]
 
@@ -215,6 +216,7 @@ crlDistributionPoints = URI:http://localhost:5280/data/crl.der
 
 basicConstraints = CA:FALSE
 keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+extendedKeyUsage = OCSPSigning
 subjectAltName          = @alt_names
 
 [alt_names]
