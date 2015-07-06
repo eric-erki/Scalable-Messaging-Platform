@@ -3953,47 +3953,20 @@ get_cert_file(_StateData, _Mech) ->
     undefined.
 
 verify_cert(StateData, Cert) ->
-    case lists:keyfind(cafile, 1, StateData#state.tls_options) of
-	false ->
-	    case lists:keyfind(ocsp, 1, StateData#state.tls_options) of
-		{ocsp, true} ->
-		    verify_via_ocsp(StateData, Cert);
-		_ ->
-		    case (StateData#state.sockmod):get_verify_result(
-			   StateData#state.socket) of
-			0 ->
-			    true;
-			_ ->
-			    {false, <<"unknown certificate issuer">>}
-		    end
+    case lists:keyfind(ocsp, 1, StateData#state.tls_options) of
+	{ocsp, true} ->
+	    case verify_issuer(StateData, Cert) of
+		{true, _CAList} ->
+		    verify_via_ocsp(Cert);
+		{false, _} = Err ->
+		    Err
 	    end;
-	{cafile, Path} ->
-	    case file:read_file(Path) of
-		{ok, PemBin} ->
-		    CAList = public_key:pem_decode(PemBin),
-		    case is_known_issuer(Cert, CAList) of
-			true ->
-			    case get_crls(Cert, CAList) of
-				[] ->
-				    true;
-				CRLs ->
-				    IsRevoked =
-					lists:any(
-					  fun(CRL) -> is_revoked(Cert, CRL) end,
-					  CRLs),
-				    if IsRevoked ->
-					    {false, <<"certificate is revoked">>};
-				       true ->
-					    true
-				    end
-			    end;
-			false ->
-			    {false, <<"unknown certificate issuer">>}
-		    end;
-		{error, Why} ->
-		    ?ERROR_MSG("Failed to read file ~s: ~s",
-			       [Path, file:format_error(Why)]),
-		    {false, <<"unknown certificate issuer">>}
+	_ ->
+	    case verify_issuer(StateData, Cert) of
+		{true, CAList} ->
+		    verify_via_crl(Cert, CAList);
+		{false, _} = Err ->
+		    Err
 	    end
     end.
 
@@ -4009,7 +3982,34 @@ is_verification_enabled(StateData) ->
 	    IsEnabled
     end.
 
-verify_via_ocsp(StateData, Cert) ->
+verify_issuer(StateData, Cert) ->
+    case lists:keyfind(cafile, 1, StateData#state.tls_options) of
+	false ->
+	    case (StateData#state.sockmod):get_verify_result(
+		   StateData#state.socket) of
+		0 ->
+		    {true, []};
+		_ ->
+		    {false, <<"unknown certificate issuer">>}
+	    end;
+	{cafile, Path} ->
+	    case file:read_file(Path) of
+		{ok, PemBin} ->
+		    CAList = public_key:pem_decode(PemBin),
+		    case is_known_issuer(Cert, CAList) of
+			true ->
+			    {true, CAList};
+			false ->
+			    {false, <<"unknown certificate issuer">>}
+		    end;
+		{error, Why} ->
+		    ?ERROR_MSG("Failed to read file ~s: ~s",
+			       [Path, file:format_error(Why)]),
+		    {false, <<"unknown certificate issuer">>}
+	    end
+    end.
+
+verify_via_ocsp(Cert) ->
     TBSCert = Cert#'OTPCertificate'.tbsCertificate,
     URIs = lists:flatmap(
 	     fun(#'Extension'{extnID = ?'id-pe-authorityInfoAccess',
@@ -4030,6 +4030,19 @@ verify_via_ocsp(StateData, Cert) ->
 	    make_ocsp_request(iolist_to_binary(URI), Cert);
 	[] ->
 	    {false, <<"no OCSP URI found in certificate">>}
+    end.
+
+verify_via_crl(Cert, CAList) ->
+    case get_crls(Cert, CAList) of
+	[] ->
+	    true;
+	CRLs ->
+	    IsRevoked = lists:any(fun(CRL) -> is_revoked(Cert, CRL) end, CRLs),
+	    if IsRevoked ->
+		    {false, <<"certificate is revoked">>};
+	       true ->
+		    true
+	    end
     end.
 
 make_ocsp_request(URI0, Cert) ->
@@ -4070,6 +4083,8 @@ make_ocsp_request(URI0, Cert) ->
 	    {false, <<"request to OCSP server failed">>}
     end.
 
+get_crls(_Cert, []) ->
+    [];
 get_crls(Cert, CAList) ->
     TBSCert = Cert#'OTPCertificate'.tbsCertificate,
     lists:flatmap(
