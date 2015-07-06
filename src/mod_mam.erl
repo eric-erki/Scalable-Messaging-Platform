@@ -37,7 +37,7 @@
 
 -export([user_send_packet/4, user_receive_packet/5,
 	 enc_key/1, dec_key/1, enc_val/2, dec_val/2, enc_prefs/2,
-	 dec_prefs/2, process_iq/3, remove_user/2,
+	 dec_prefs/2, process_iq_v0_2/3, process_iq_v0_3/3, remove_user/2,
 	 mod_opt_type/1, opt_type/1]).
 
 -include_lib("stdlib/include/ms_transform.hrl").
@@ -45,40 +45,40 @@
 -include("logger.hrl").
 
 -record(archive_msg,
-        {us = {<<"">>, <<"">>}                :: {binary(), binary()} | '$2',
-         id = <<>>                            :: binary() | '_',
-         timestamp = now()                    :: erlang:timestamp() | '_' | '$1',
-         peer = {<<"">>, <<"">>, <<"">>}      :: ljid() | '_' | '$3',
-         bare_peer = {<<"">>, <<"">>, <<"">>} :: ljid() | '_' | '$3',
-         packet = #xmlel{}                    :: xmlel() | '_'}).
+	{us = {<<"">>, <<"">>}                :: {binary(), binary()} | '$2',
+	 id = <<>>                            :: binary() | '_',
+	 timestamp = now()                    :: erlang:timestamp() | '_' | '$1',
+	 peer = {<<"">>, <<"">>, <<"">>}      :: ljid() | '_' | '$3',
+	 bare_peer = {<<"">>, <<"">>, <<"">>} :: ljid() | '_' | '$3',
+	 packet = #xmlel{}                    :: xmlel() | '_'}).
 
 -record(archive_prefs,
-        {us = {<<"">>, <<"">>} :: {binary(), binary()},
-         default = never       :: never | always | roster,
-         always = []           :: [ljid()],
-         never = []            :: [ljid()]}).
+	{us = {<<"">>, <<"">>} :: {binary(), binary()},
+	 default = never       :: never | always | roster,
+	 always = []           :: [ljid()],
+	 never = []            :: [ljid()]}).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 start(Host, Opts) ->
     IQDisc = gen_mod:get_opt(iqdisc, Opts, fun gen_iq_handler:check_type/1,
-                             one_queue),
+			     one_queue),
     DBType = gen_mod:db_type(Host, Opts),
     init_db(DBType, Host),
     init_cache(DBType, Opts),
     gen_iq_handler:add_iq_handler(ejabberd_local, Host,
-        			  ?NS_MAM_TMP, ?MODULE, process_iq, IQDisc),
+				  ?NS_MAM_TMP, ?MODULE, process_iq_v0_2, IQDisc),
     gen_iq_handler:add_iq_handler(ejabberd_sm, Host,
-        			  ?NS_MAM_TMP, ?MODULE, process_iq, IQDisc),
+				  ?NS_MAM_TMP, ?MODULE, process_iq_v0_2, IQDisc),
     gen_iq_handler:add_iq_handler(ejabberd_local, Host,
-        			  ?NS_MAM_0, ?MODULE, process_iq, IQDisc),
+				  ?NS_MAM_0, ?MODULE, process_iq_v0_3, IQDisc),
     gen_iq_handler:add_iq_handler(ejabberd_sm, Host,
-        			  ?NS_MAM_0, ?MODULE, process_iq, IQDisc),
+				  ?NS_MAM_0, ?MODULE, process_iq_v0_3, IQDisc),
     ejabberd_hooks:add(user_receive_packet, Host, ?MODULE,
-                       user_receive_packet, 500),
+		       user_receive_packet, 500),
     ejabberd_hooks:add(user_send_packet, Host, ?MODULE,
-                       user_send_packet, 500),
+		       user_send_packet, 500),
     ejabberd_hooks:add(remove_user, Host, ?MODULE,
 		       remove_user, 50),
     ejabberd_hooks:add(anonymous_purge_hook, Host, ?MODULE,
@@ -87,19 +87,19 @@ start(Host, Opts) ->
 
 init_db(DBType, Host) when DBType==odbc orelse DBType==sharding ->
     Muchost = gen_mod:get_module_opt_host(Host, mod_muc,
-                                         <<"conference.@HOST@">>),
+					 <<"conference.@HOST@">>),
     ets:insert(ejabberd_modules, {ejabberd_module, {mod_mam, Muchost},
 				  [{db_type,DBType}]}),
     mnesia:dirty_write({local_config, {modules,Muchost},
 			[{mod_mam, [{db_type,DBType}]}]});
 init_db(mnesia, _Host) ->
     mnesia:create_table(archive_msg,
-                        [{disc_only_copies, [node()]},
-                         {type, bag},
-                         {attributes, record_info(fields, archive_msg)}]),
+			[{disc_only_copies, [node()]},
+			 {type, bag},
+			 {attributes, record_info(fields, archive_msg)}]),
     mnesia:create_table(archive_prefs,
-                        [{disc_only_copies, [node()]},
-                         {attributes, record_info(fields, archive_prefs)}]);
+			[{disc_only_copies, [node()]},
+			 {attributes, record_info(fields, archive_prefs)}]);
 init_db(p1db, Host) ->
     Group = gen_mod:get_module_opt(
 	      Host, ?MODULE, p1db_group, fun(G) when is_atom(G) -> G end,
@@ -107,20 +107,20 @@ init_db(p1db, Host) ->
 		{p1db_group, Host}, fun(G) when is_atom(G) -> G end)),
     p1db:open_table(archive_msg,
 		    [{group, Group}, {nosync, true},
-                     {schema, [{keys, [server, user, timestamp]},
-                               {vals, [peer, packet]},
-                               {enc_key, fun ?MODULE:enc_key/1},
-                               {dec_key, fun ?MODULE:dec_key/1},
-                               {enc_val, fun ?MODULE:enc_val/2},
-                               {dec_val, fun ?MODULE:dec_val/2}]}]),
+		     {schema, [{keys, [server, user, timestamp]},
+			       {vals, [peer, packet]},
+			       {enc_key, fun ?MODULE:enc_key/1},
+			       {dec_key, fun ?MODULE:dec_key/1},
+			       {enc_val, fun ?MODULE:enc_val/2},
+			       {dec_val, fun ?MODULE:dec_val/2}]}]),
     p1db:open_table(archive_prefs,
 		    [{group, Group}, {nosync, true},
-                     {schema, [{keys, [server, user]},
-                               {vals, [default, always, never]},
-                               {enc_key, fun ?MODULE:enc_key/1},
-                               {dec_key, fun ?MODULE:dec_key/1},
-                               {enc_val, fun ?MODULE:enc_prefs/2},
-                               {dec_val, fun ?MODULE:dec_prefs/2}]}]);
+		     {schema, [{keys, [server, user]},
+			       {vals, [default, always, never]},
+			       {enc_key, fun ?MODULE:enc_key/1},
+			       {dec_key, fun ?MODULE:dec_key/1},
+			       {enc_val, fun ?MODULE:enc_prefs/2},
+			       {dec_val, fun ?MODULE:dec_prefs/2}]}]);
 init_db(rest, Host) ->
     rest:start(Host),
     ok;
@@ -131,10 +131,10 @@ init_cache(p1db, _Opts) ->
     ok;
 init_cache(_DBType, Opts) ->
     MaxSize = gen_mod:get_opt(cache_size, Opts,
-                              fun(I) when is_integer(I), I>0 -> I end,
-                              1000),
+			      fun(I) when is_integer(I), I>0 -> I end,
+			      1000),
     LifeTime = gen_mod:get_opt(cache_life_time, Opts,
-                               fun(I) when is_integer(I), I>0 -> I end,
+			       fun(I) when is_integer(I), I>0 -> I end,
 			       timer:hours(1) div 1000),
     cache_tab:new(archive_prefs, [{max_size, MaxSize},
 				  {life_time, LifeTime}]).
@@ -163,27 +163,27 @@ remove_user(User, Server) ->
 remove_user(LUser, LServer, mnesia) ->
     US = {LUser, LServer},
     F = fun () ->
-                mnesia:delete({archive_msg, US}),
-                mnesia:delete({archive_prefs, US})
-        end,
+		mnesia:delete({archive_msg, US}),
+		mnesia:delete({archive_prefs, US})
+	end,
     mnesia:transaction(F);
 remove_user(LUser, LServer, p1db) ->
     USKey = us2key(LUser, LServer),
     USPrefix = us_prefix(LUser, LServer),
     case p1db:get_by_prefix(archive_msg, USPrefix) of
-        {ok, L} ->
-            DelRes = p1db:delete(archive_prefs, USKey),
-            if DelRes == ok; DelRes == {error, notfound} ->
-                    lists:foreach(
-                      fun({Key, _, _}) ->
-                              p1db:async_delete(archive_msg, Key)
-                      end, L),
-                    {atomic, ok};
-               true ->
-                    {aborted, DelRes}
-            end;
-        {error, _} = Err ->
-            {aborted, Err}
+	{ok, L} ->
+	    DelRes = p1db:delete(archive_prefs, USKey),
+	    if DelRes == ok; DelRes == {error, notfound} ->
+		    lists:foreach(
+		      fun({Key, _, _}) ->
+			      p1db:async_delete(archive_msg, Key)
+		      end, L),
+		    {atomic, ok};
+	       true ->
+		    {aborted, DelRes}
+	    end;
+	{error, _} = Err ->
+	    {aborted, Err}
     end;
 remove_user(_LUser, _LServer, rest) ->
     {atomic, ok};
@@ -205,229 +205,241 @@ user_receive_packet(Pkt, C2SState, JID, Peer, _To) ->
     LUser = JID#jid.luser,
     LServer = JID#jid.lserver,
     case should_archive(Pkt) of
-        true ->
-            NewPkt = strip_my_archived_tag(Pkt, LServer),
-            case store(C2SState, NewPkt, LUser, LServer,
+	true ->
+	    NewPkt = strip_my_archived_tag(Pkt, LServer),
+	    case store(C2SState, NewPkt, LUser, LServer,
 		       Peer, true, recv) of
-                {ok, ID} ->
-                    Archived = #xmlel{name = <<"archived">>,
-                                      attrs = [{<<"by">>, LServer},
-                                               {<<"xmlns">>, ?NS_MAM_TMP},
-                                               {<<"id">>, ID}]},
-                    NewEls = [Archived|NewPkt#xmlel.children],
-                    NewPkt#xmlel{children = NewEls};
-                _ ->
-                    NewPkt
-            end;
-        muc ->
-            Pkt;
-        false ->
-            Pkt
+		{ok, ID} ->
+		    Archived = #xmlel{name = <<"archived">>,
+				      attrs = [{<<"by">>, LServer},
+					       {<<"xmlns">>, ?NS_MAM_TMP},
+					       {<<"id">>, ID}]},
+		    NewEls = [Archived|NewPkt#xmlel.children],
+		    NewPkt#xmlel{children = NewEls};
+		_ ->
+		    NewPkt
+	    end;
+	muc ->
+	    Pkt;
+	false ->
+	    Pkt
     end.
 
 user_send_packet(Pkt, C2SState, JID, Peer) ->
     LUser = JID#jid.luser,
     LServer = JID#jid.lserver,
     case should_archive(Pkt) of
-        S when (S==true) ->
-            NewPkt = strip_my_archived_tag(Pkt, LServer),
-            store0(C2SState, jlib:replace_from_to(JID, Peer, NewPkt),
-                  LUser, LServer, Peer, S, send),
-            NewPkt;
-        S when (S==muc) ->
-            NewPkt = strip_my_archived_tag(Pkt, LServer),
-            case store0(C2SState, jlib:replace_from_to(JID, Peer, NewPkt),
-                  LUser, LServer, Peer, S, send) of
-                {ok, ID} ->
+	S when (S==true) ->
+	    NewPkt = strip_my_archived_tag(Pkt, LServer),
+	    store0(C2SState, jlib:replace_from_to(JID, Peer, NewPkt),
+		  LUser, LServer, Peer, S, send),
+	    NewPkt;
+	S when (S==muc) ->
+	    NewPkt = strip_my_archived_tag(Pkt, LServer),
+	    case store0(C2SState, jlib:replace_from_to(JID, Peer, NewPkt),
+		  LUser, LServer, Peer, S, send) of
+		{ok, ID} ->
 		    By = jlib:jid_to_string(Peer),
 		    Archived = #xmlel{name = <<"archived">>,
 			    attrs = [{<<"by">>, By}, {<<"xmlns">>, ?NS_MAM_TMP},
 			    {<<"id">>, ID}]},
 		    NewEls = [Archived|NewPkt#xmlel.children],
 		    NewPkt#xmlel{children = NewEls};
-                _ ->
-                    NewPkt
-            end;
-        false ->
-            Pkt
+		_ ->
+		    NewPkt
+	    end;
+	false ->
+	    Pkt
     end.
 
-process_iq(#jid{lserver = LServer} = From,
-           #jid{lserver = LServer} = To,
-           #iq{type = get, sub_el = #xmlel{name = <<"query">>} = SubEl} = IQ) ->
-    NS = xml:get_tag_attr_s(<<"xmlns">>, SubEl),
-    Fs = case NS of
-	     ?NS_MAM_TMP ->
-		 lists:flatmap(
-		   fun(#xmlel{name = <<"start">>} = El) ->
-			   [{<<"start">>, [xml:get_tag_cdata(El)]}];
-		      (#xmlel{name = <<"end">>} = El) ->
-			   [{<<"end">>, [xml:get_tag_cdata(El)]}];
-		      (#xmlel{name = <<"with">>} = El) ->
-			   [{<<"with">>, [xml:get_tag_cdata(El)]}];
-		      (#xmlel{name = <<"withroom">>} = El) ->
-			   [{<<"withroom">>, [xml:get_tag_cdata(El)]}];
-		      (#xmlel{name = <<"withtext">>} = El) ->
-			   [{<<"withtext">>, [xml:get_tag_cdata(El)]}];
-		      (#xmlel{name = <<"set">>}) ->
-			   [{<<"set">>, SubEl}];
-		      (_) ->
-			   []
-		   end, SubEl#xmlel.children);
-	     ?NS_MAM_0 ->
-		 case {xml:get_subtag_with_xmlns(SubEl, <<"x">>, ?NS_XDATA),
-		       xml:get_subtag_with_xmlns(SubEl, <<"set">>, ?NS_RSM)} of
-		     {#xmlel{} = XData, false} ->
-			 jlib:parse_xdata_submit(XData);
-		     {#xmlel{} = XData, #xmlel{}} ->
-			 [{<<"set">>, SubEl} | jlib:parse_xdata_submit(XData)];
-		     {false, #xmlel{}} ->
-			 [{<<"set">>, SubEl}];
-		     {false, false} ->
-			 []
-		 end
+% Query archive v0.2
+process_iq_v0_2(#jid{lserver = LServer} = From,
+	       #jid{lserver = LServer} = To,
+	       #iq{type = get, sub_el = #xmlel{name = <<"query">>} = SubEl} = IQ) ->
+    Fs = lists:flatmap(
+	   fun(#xmlel{name = <<"start">>} = El) ->
+		   [{<<"start">>, [xml:get_tag_cdata(El)]}];
+	      (#xmlel{name = <<"end">>} = El) ->
+		   [{<<"end">>, [xml:get_tag_cdata(El)]}];
+	      (#xmlel{name = <<"with">>} = El) ->
+		   [{<<"with">>, [xml:get_tag_cdata(El)]}];
+	      (#xmlel{name = <<"withroom">>} = El) ->
+		   [{<<"withroom">>, [xml:get_tag_cdata(El)]}];
+	      (#xmlel{name = <<"withtext">>} = El) ->
+		   [{<<"withtext">>, [xml:get_tag_cdata(El)]}];
+	      (#xmlel{name = <<"set">>}) ->
+		   [{<<"set">>, SubEl}];
+	      (_) ->
+		   []
+	   end, SubEl#xmlel.children),
+    process_iq(From, To, IQ, SubEl, Fs);
+process_iq_v0_2(From, To, IQ) ->
+    process_iq(From, To, IQ).
+
+% Query archive v0.3
+process_iq_v0_3(#jid{lserver = LServer} = From,
+	   #jid{lserver = LServer} = To,
+	   #iq{type = set, sub_el = #xmlel{name = <<"query">>} = SubEl} = IQ) ->
+    Fs = case {xml:get_subtag_with_xmlns(SubEl, <<"x">>, ?NS_XDATA),
+	       xml:get_subtag_with_xmlns(SubEl, <<"set">>, ?NS_RSM)} of
+	     {#xmlel{} = XData, false} ->
+		 jlib:parse_xdata_submit(XData);
+	     {#xmlel{} = XData, #xmlel{}} ->
+		 [{<<"set">>, SubEl} | jlib:parse_xdata_submit(XData)];
+	     {false, #xmlel{}} ->
+		 [{<<"set">>, SubEl}];
+	     {false, false} ->
+		 []
 	 end,
-    case catch lists:foldl(
-                 fun({<<"start">>, [Data|_]}, {_, End, With, RSM}) ->
-                         {{_, _, _} = jlib:datetime_string_to_timestamp(Data),
-                          End, With, RSM};
-                    ({<<"end">>, [Data|_]}, {Start, _, With, RSM}) ->
-                         {Start,
-                          {_, _, _} = jlib:datetime_string_to_timestamp(Data),
-                          With, RSM};
-                    ({<<"with">>, [Data|_]}, {Start, End, _, RSM}) ->
-                         {Start, End, jlib:jid_tolower(jlib:string_to_jid(Data)), RSM};
-                    ({<<"withroom">>, [Data|_]}, {Start, End, _, RSM}) ->
-                         {Start, End,
-                          {room, jlib:jid_tolower(jlib:string_to_jid(Data))},
-                          RSM};
-                    ({<<"withtext">>, [Data|_]}, {Start, End, _, RSM}) ->
-                         {Start, End, {text, Data}, RSM};
-                    ({<<"set">>, El}, {Start, End, With, _}) ->
-                         {Start, End, With, jlib:rsm_decode(El)};
-                    (_, Acc) ->
-                         Acc
-                 end, {none, [], none, none}, Fs) of
-        {'EXIT', _} ->
-            IQ#iq{type = error, sub_el = [SubEl, ?ERR_BAD_REQUEST]};
-        {Start, End, With, RSM} ->
-            select_and_send(From, To, Start, End, With, RSM, IQ)	    
-    end;
-process_iq(#jid{luser = LUser, lserver = LServer},
-           #jid{lserver = LServer},
-           #iq{type = set, sub_el = #xmlel{name = <<"prefs">>} = SubEl} = IQ) ->
-    try {case xml:get_tag_attr_s(<<"default">>, SubEl) of
-             <<"always">> -> always;
-             <<"never">> -> never;
-             <<"roster">> -> roster
-         end,
-         lists:foldl(
-           fun(#xmlel{name = <<"always">>, children = Els}, {A, N}) ->
-                   {get_jids(Els) ++ A, N};
-              (#xmlel{name = <<"never">>, children = Els}, {A, N}) ->
-                   {A, get_jids(Els) ++ N};
-              (_, {A, N}) ->
-                   {A, N}
-           end, {[], []}, SubEl#xmlel.children)} of
-        {Default, {Always, Never}} ->
-            case write_prefs(LUser, LServer, LServer, Default,
-                             lists:usort(Always), lists:usort(Never)) of
-                ok ->
-                    IQ#iq{type = result, sub_el = []};
-                _Err ->
-                    IQ#iq{type = error,
-                          sub_el = [SubEl, ?ERR_INTERNAL_SERVER_ERROR]}
-            end
-    catch _:_ ->
-            IQ#iq{type = error, sub_el = [SubEl, ?ERR_BAD_REQUEST]}
-    end;
-process_iq(_, _, #iq{sub_el = SubEl} = IQ) ->
-    IQ#iq{type = error, sub_el = [SubEl, ?ERR_NOT_ALLOWED]}.
+    process_iq(From, To, IQ, SubEl, Fs);
+process_iq_v0_3(From, To, IQ) ->
+    process_iq(From, To, IQ).
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+% Preference setting (both v0.2 & v0.3)
+process_iq(#jid{luser = LUser, lserver = LServer},
+	   #jid{lserver = LServer},
+	   #iq{type = set, sub_el = #xmlel{name = <<"prefs">>} = SubEl} = IQ) ->
+    try {case xml:get_tag_attr_s(<<"default">>, SubEl) of
+	     <<"always">> -> always;
+	     <<"never">> -> never;
+	     <<"roster">> -> roster
+	 end,
+	 lists:foldl(
+	   fun(#xmlel{name = <<"always">>, children = Els}, {A, N}) ->
+		   {get_jids(Els) ++ A, N};
+	      (#xmlel{name = <<"never">>, children = Els}, {A, N}) ->
+		   {A, get_jids(Els) ++ N};
+	      (_, {A, N}) ->
+		   {A, N}
+	   end, {[], []}, SubEl#xmlel.children)} of
+	{Default, {Always, Never}} ->
+	    case write_prefs(LUser, LServer, LServer, Default,
+			     lists:usort(Always), lists:usort(Never)) of
+		ok ->
+		    IQ#iq{type = result, sub_el = []};
+		_Err ->
+		    IQ#iq{type = error,
+			  sub_el = [SubEl, ?ERR_INTERNAL_SERVER_ERROR]}
+	    end
+    catch _:_ ->
+	    IQ#iq{type = error, sub_el = [SubEl, ?ERR_BAD_REQUEST]}
+    end;
+process_iq(_, _, #iq{sub_el = SubEl} = IQ) ->
+    IQ#iq{type = error, sub_el = [SubEl, ?ERR_NOT_ALLOWED]}.
+
+process_iq(From, To, IQ, SubEl, Fs) ->
+    case catch lists:foldl(
+		 fun({<<"start">>, [Data|_]}, {_, End, With, RSM}) ->
+			 {{_, _, _} = jlib:datetime_string_to_timestamp(Data),
+			  End, With, RSM};
+		    ({<<"end">>, [Data|_]}, {Start, _, With, RSM}) ->
+			 {Start,
+			  {_, _, _} = jlib:datetime_string_to_timestamp(Data),
+			  With, RSM};
+		    ({<<"with">>, [Data|_]}, {Start, End, _, RSM}) ->
+			 {Start, End, jlib:jid_tolower(jlib:string_to_jid(Data)), RSM};
+		    ({<<"withroom">>, [Data|_]}, {Start, End, _, RSM}) ->
+			 {Start, End,
+			  {room, jlib:jid_tolower(jlib:string_to_jid(Data))},
+			  RSM};
+		    ({<<"withtext">>, [Data|_]}, {Start, End, _, RSM}) ->
+			 {Start, End, {text, Data}, RSM};
+		    ({<<"set">>, El}, {Start, End, With, _}) ->
+			 {Start, End, With, jlib:rsm_decode(El)};
+		    (_, Acc) ->
+			 Acc
+		 end, {none, [], none, none}, Fs) of
+	{'EXIT', _} ->
+	    IQ#iq{type = error, sub_el = [SubEl, ?ERR_BAD_REQUEST]};
+	{Start, End, With, RSM} ->
+	    select_and_send(From, To, Start, End, With, RSM, IQ)
+    end.
+
 should_archive(#xmlel{name = <<"message">>} = Pkt) ->
     case {xml:get_attr_s(<<"type">>, Pkt#xmlel.attrs),
-          xml:get_subtag_cdata(Pkt, <<"body">>)} of
-        {<<"error">>, _} ->
-            false;
-        {<<"groupchat">>, _} ->
+	  xml:get_subtag_cdata(Pkt, <<"body">>)} of
+	{<<"error">>, _} ->
+	    false;
+	{<<"groupchat">>, _} ->
 	    To = xml:get_attr_s(<<"to">>, Pkt#xmlel.attrs),
 	    case (jlib:string_to_jid(To))#jid.resource of
 		<<"">> -> muc;
 		_ -> false
 	    end;
-        {_, <<>>} ->
-            %% Empty body
-            false;
-        _ ->
-            true
+	{_, <<>>} ->
+	    %% Empty body
+	    false;
+	_ ->
+	    true
     end;
 should_archive(#xmlel{}) ->
     false.
 
 strip_my_archived_tag(Pkt, LServer) ->
     NewEls = lists:filter(
-               fun(#xmlel{name = <<"archived">>,
-                          attrs = Attrs}) ->
-                       case catch jlib:nameprep(
-                                    xml:get_attr_s(
-                                      <<"by">>, Attrs)) of
-                           LServer ->
-                               false;
-                           _ ->
-                               true
-                       end;
-                  (_) ->
-                       true
-               end, Pkt#xmlel.children),
+	       fun(#xmlel{name = <<"archived">>,
+			  attrs = Attrs}) ->
+		       case catch jlib:nameprep(
+				    xml:get_attr_s(
+				      <<"by">>, Attrs)) of
+			   LServer ->
+			       false;
+			   _ ->
+			       true
+		       end;
+		  (_) ->
+		       true
+	       end, Pkt#xmlel.children),
     Pkt#xmlel{children = NewEls}.
 
 should_archive_peer(C2SState,
-                    #archive_prefs{default = Default,
-                                   always = Always,
-                                   never = Never},
-                    Peer) ->
+		    #archive_prefs{default = Default,
+				   always = Always,
+				   never = Never},
+		    Peer) ->
     LPeer = jlib:jid_tolower(Peer),
     case lists:member(LPeer, Always) of
-        true ->
-            true;
-        false ->
-            case lists:member(LPeer, Never) of
-                true ->
-                    false;
-                false ->
-                    case Default of
-                        always -> true;
-                        never -> false;
-                        roster ->
-                            case ejabberd_c2s:get_subscription(
-                                   LPeer, C2SState) of
-                                both -> true;
-                                from -> true;
-                                to -> true;
-                                _ -> false
-                            end
-                    end
-            end
+	true ->
+	    true;
+	false ->
+	    case lists:member(LPeer, Never) of
+		true ->
+		    false;
+		false ->
+		    case Default of
+			always -> true;
+			never -> false;
+			roster ->
+			    case ejabberd_c2s:get_subscription(
+				   LPeer, C2SState) of
+				both -> true;
+				from -> true;
+				to -> true;
+				_ -> false
+			    end
+		    end
+	    end
     end.
 
 store0(C2SState, Pkt, LUser, LServer, Peer, Type, Dir) ->
     case Type of
 	muc -> store(C2SState, Pkt, Peer#jid.luser, LServer,
 		    jlib:jid_replace_resource(Peer, LUser), Type, Dir);
-        true -> store(C2SState, Pkt, LUser, LServer, Peer, Type, Dir)
+	true -> store(C2SState, Pkt, LUser, LServer, Peer, Type, Dir)
     end.
 
 store(C2SState, Pkt, LUser, LServer, Peer, Type, Dir) ->
     Prefs = get_prefs(LUser, LServer),
     case should_archive_peer(C2SState, Prefs, Peer) of
-        true ->
-            do_store(Pkt, LUser, LServer, Peer, Type, Dir,
-                     gen_mod:db_type(LServer, ?MODULE));
-        false ->
-            pass
+	true ->
+	    do_store(Pkt, LUser, LServer, Peer, Type, Dir,
+		     gen_mod:db_type(LServer, ?MODULE));
+	false ->
+	    pass
     end.
 
 do_store(Pkt, LUser, LServer, Peer, Type, _Dir, mnesia) ->
@@ -436,16 +448,16 @@ do_store(Pkt, LUser, LServer, Peer, Type, _Dir, mnesia) ->
     TS = now(),
     ID = jlib:integer_to_binary(now_to_usec(TS)),
     case mnesia:dirty_write(
-           #archive_msg{us = {LUser, LServer2},
-                        id = ID,
-                        timestamp = TS,
-                        peer = LPeer,
-                        bare_peer = {PUser, PServer, <<>>},
-                        packet = Pkt}) of
-        ok ->
-            {ok, ID};
-        Err ->
-            Err
+	   #archive_msg{us = {LUser, LServer2},
+			id = ID,
+			timestamp = TS,
+			peer = LPeer,
+			bare_peer = {PUser, PServer, <<>>},
+			packet = Pkt}) of
+	ok ->
+	    {ok, ID};
+	Err ->
+	    Err
     end;
 do_store(Pkt, LUser, LServer, Peer, Type, _Dir, p1db) ->
     Now = now(),
@@ -453,13 +465,13 @@ do_store(Pkt, LUser, LServer, Peer, Type, _Dir, p1db) ->
     USNKey = usn2key(LUser, LServer2, Now),
     XML = xml:element_to_binary(Pkt),
     Val = term_to_binary([{peer, Peer},
-                          {packet, XML}]),
+			  {packet, XML}]),
     case p1db:insert(archive_msg, USNKey, Val) of
-        ok ->
-            ID = jlib:integer_to_binary(now_to_usec(Now)),
-            {ok, ID};
-        {error, _} = Err ->
-            Err
+	ok ->
+	    ID = jlib:integer_to_binary(now_to_usec(Now)),
+	    {ok, ID};
+	{error, _} = Err ->
+	    Err
     end;
 do_store(Pkt, LUser, LServer, Peer, Type, Dir, rest) ->
     Now = now(),
@@ -497,10 +509,10 @@ do_store(Pkt, LUser, LServer, Peer, _Type, _Dir, DBType)
     TSinteger = now_to_usec(now()),
     ID = TS = jlib:integer_to_binary(TSinteger),
     BarePeer = jlib:jid_to_string(
-                 jlib:jid_tolower(
-                   jlib:jid_remove_resource(Peer))),
+		 jlib:jid_tolower(
+		   jlib:jid_remove_resource(Peer))),
     LPeer = jlib:jid_to_string(
-              jlib:jid_tolower(Peer)),
+	      jlib:jid_tolower(Peer)),
     XML = xml:element_to_binary(Pkt),
     Body = xml:get_subtag_cdata(Pkt, <<"body">>),
     Key = case DBType of
@@ -508,19 +520,19 @@ do_store(Pkt, LUser, LServer, Peer, _Type, _Dir, DBType)
 	      sharding -> LUser
 	  end,
     case ejabberd_odbc:sql_query(
-           LServer, Key,
-           [<<"insert into archive (username, timestamp, "
-              "peer, bare_peer, xml, txt) values (">>,
-            <<"'">>, ejabberd_odbc:escape(LUser), <<"', ">>,
-            <<"'">>, TS, <<"', ">>,
-            <<"'">>, ejabberd_odbc:escape(LPeer), <<"', ">>,
-            <<"'">>, ejabberd_odbc:escape(BarePeer), <<"', ">>,
-            <<"'">>, ejabberd_odbc:escape(XML), <<"', ">>,
-            <<"'">>, ejabberd_odbc:escape(Body), <<"');">>]) of
-        {updated, _} ->
-            {ok, ID};
-        Err ->
-            Err
+	   LServer, Key,
+	   [<<"insert into archive (username, timestamp, "
+	      "peer, bare_peer, xml, txt) values (">>,
+	    <<"'">>, ejabberd_odbc:escape(LUser), <<"', ">>,
+	    <<"'">>, TS, <<"', ">>,
+	    <<"'">>, ejabberd_odbc:escape(LPeer), <<"', ">>,
+	    <<"'">>, ejabberd_odbc:escape(BarePeer), <<"', ">>,
+	    <<"'">>, ejabberd_odbc:escape(XML), <<"', ">>,
+	    <<"'">>, ejabberd_odbc:escape(Body), <<"');">>]) of
+	{updated, _} ->
+	    {ok, ID};
+	Err ->
+	    Err
     end.
 
 write_prefs(LUser, LServer, Host, Default, Always, Never) ->
@@ -530,9 +542,9 @@ write_prefs(LUser, LServer, Host, Default, Always, Never) ->
 		 DB -> DB
 	     end,
     Prefs = #archive_prefs{us = {LUser, LServer},
-                           default = Default,
-                           always = Always,
-                           never = Never},
+			   default = Default,
+			   always = Always,
+			   never = Never},
     case DBType of
 	p1db ->
 	    %% No need to cache as P1DB takes care of it
@@ -552,9 +564,9 @@ write_prefs(LUser, LServer, Prefs, p1db) ->
 write_prefs(_LUser, _LServer, _Prefs, rest) ->
     {error, unsupported_database};
 write_prefs(LUser, _LServer, #archive_prefs{default = Default,
-                                           never = Never,
-                                           always = Always},
-            {DBType, Host}) ->
+					   never = Never,
+					   always = Always},
+	    {DBType, Host}) ->
     SUser = ejabberd_odbc:escape(LUser),
     SDefault = erlang:atom_to_binary(Default, utf8),
     SAlways = ejabberd_odbc:encode_term(Always),
@@ -564,13 +576,13 @@ write_prefs(LUser, _LServer, #archive_prefs{default = Default,
 	      sharding -> LUser
     end,
     case update(Host, Key, <<"archive_prefs">>,
-                [<<"username">>, <<"def">>, <<"always">>, <<"never">>],
-                [SUser, SDefault, SAlways, SNever],
-                [<<"username='">>, SUser, <<"'">>]) of
-        {updated, _} ->
-            ok;
-        Err ->
-            Err
+		[<<"username">>, <<"def">>, <<"always">>, <<"never">>],
+		[SUser, SDefault, SAlways, SNever],
+		[<<"username='">>, SUser, <<"'">>]) of
+	{updated, _} ->
+	    ok;
+	Err ->
+	    Err
     end.
 
 get_prefs(LUser, LServer) ->
@@ -586,32 +598,32 @@ get_prefs(LUser, LServer) ->
 				   end)
 	  end,
     case Res of
-        {ok, Prefs} ->
-            Prefs;
-        error ->
-            Default = gen_mod:get_module_opt(
-                        LServer, ?MODULE, default,
-                        fun(always) -> always;
-                           (never) -> never;
-                           (roster) -> roster
-                        end, never),
-            #archive_prefs{us = {LUser, LServer}, default = Default}
+	{ok, Prefs} ->
+	    Prefs;
+	error ->
+	    Default = gen_mod:get_module_opt(
+			LServer, ?MODULE, default,
+			fun(always) -> always;
+			   (never) -> never;
+			   (roster) -> roster
+			end, never),
+	    #archive_prefs{us = {LUser, LServer}, default = Default}
     end.
 
 get_prefs(LUser, LServer, mnesia) ->
     case mnesia:dirty_read(archive_prefs, {LUser, LServer}) of
-        [Prefs] ->
-            {ok, Prefs};
-        _ ->
-            error
+	[Prefs] ->
+	    {ok, Prefs};
+	_ ->
+	    error
     end;
 get_prefs(LUser, LServer, p1db) ->
     USKey = us2key(LUser, LServer),
     case p1db:get(archive_prefs, USKey) of
-        {ok, Val, _} ->
-            {ok, p1db_to_prefs({LUser, LServer}, Val)};
-        {error, _} ->
-            error
+	{ok, Val, _} ->
+	    {ok, p1db_to_prefs({LUser, LServer}, Val)};
+	{error, _} ->
+	    error
     end;
 get_prefs(_LUser, _LServer, rest) ->
     %% Unsupported so far
@@ -627,27 +639,27 @@ get_prefs(LUser, LServer, DBType)
 	   [<<"select def, always, never from archive_prefs ">>,
 	    <<"where username='">>,
 	    ejabberd_odbc:escape(LUser), <<"';">>]) of
-        {selected, _, [[SDefault, SAlways, SNever]]} ->
-            Default = erlang:binary_to_existing_atom(SDefault, utf8),
-            Always = ejabberd_odbc:decode_term(SAlways),
-            Never = ejabberd_odbc:decode_term(SNever),
-            {ok, #archive_prefs{us = {LUser, LServer},
-                                default = Default,
-                                always = Always,
-                                never = Never}};
-        _ ->
-            error
+	{selected, _, [[SDefault, SAlways, SNever]]} ->
+	    Default = erlang:binary_to_existing_atom(SDefault, utf8),
+	    Always = ejabberd_odbc:decode_term(SAlways),
+	    Never = ejabberd_odbc:decode_term(SNever),
+	    {ok, #archive_prefs{us = {LUser, LServer},
+				default = Default,
+				always = Always,
+				never = Never}};
+	_ ->
+	    error
     end.
 
 select_and_send(#jid{lserver = LServer} = From,
-                To, Start, End, With, RSM, IQ) ->
+		To, Start, End, With, RSM, IQ) ->
     DBType = case gen_mod:db_type(LServer, ?MODULE) of
 		 odbc -> {odbc, LServer};
 		 sharding -> {sharding, LServer};
 		 DB -> DB
 	     end,
     select_and_send(From, To, Start, End, With, RSM, IQ,
-                    DBType).
+		    DBType).
 
 select_and_send(From, To, Start, End, With, RSM, IQ, DBType) ->
     {Msgs, Count} = select_and_start(From, To, Start, End, With,
@@ -674,9 +686,9 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
     Count = length(Msgs),
     {lists:map(
        fun(Msg) ->
-               {Msg#archive_msg.id,
-                jlib:binary_to_integer(Msg#archive_msg.id),
-                msg_to_el(Msg, JidRequestor)}
+	       {Msg#archive_msg.id,
+		jlib:binary_to_integer(Msg#archive_msg.id),
+		msg_to_el(Msg, JidRequestor)}
        end, FilteredMsgs), Count};
 select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
        Start, _End, With, RSM, rest) ->
@@ -742,11 +754,11 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
 	{{ok, 404, _}, _} = _Err ->
 	    ?INFO_MSG("failed to select: ~p for user: ~p peer: ~p",
 		       [_Err, JidRequestor, With]),
-	    {[], 0};	    
+	    {[], 0};
 	{_, {ok, 404, _}} = _Err ->
 	    ?INFO_MSG("failed to select: ~p for user: ~p peer: ~p",
 		       [_Err, JidRequestor, With]),
-	    {[], 0};	    
+	    {[], 0};
 	_Err ->
 	    ?ERROR_MSG("failed to select: ~p for user: ~p peer: ~p",
 		       [_Err, JidRequestor, With]),
@@ -756,66 +768,66 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
        Start, End, With, RSM, p1db) ->
     USPrefix = us_prefix(LUser, LServer),
     case p1db:get_by_prefix(archive_msg, USPrefix) of
-        {ok, L} ->
-            Msgs = lists:flatmap(
-                     fun({Key, Val, _}) ->
-                             TS = get_suffix(USPrefix, Key),
-                             Now = usec_to_now(TS),
-                             Opts = binary_to_term(Val),
-                             Peer = proplists:get_value(peer, Opts),
-                             case match_interval(Now, Start, End) and
-                                 match_with(Peer, With) and
-                                 match_rsm(Now, RSM) of
-                                 true ->
-                                     #xmlel{} = Pkt =
-                                         xml_stream:parse_element(
-                                           proplists:get_value(packet,
+	{ok, L} ->
+	    Msgs = lists:flatmap(
+		     fun({Key, Val, _}) ->
+			     TS = get_suffix(USPrefix, Key),
+			     Now = usec_to_now(TS),
+			     Opts = binary_to_term(Val),
+			     Peer = proplists:get_value(peer, Opts),
+			     case match_interval(Now, Start, End) and
+				 match_with(Peer, With) and
+				 match_rsm(Now, RSM) of
+				 true ->
+				     #xmlel{} = Pkt =
+					 xml_stream:parse_element(
+					   proplists:get_value(packet,
 							       Opts)),
-                                     [{jlib:integer_to_binary(TS), TS,
-                                       msg_to_el(#archive_msg{
-                                                    timestamp = Now,
-                                                    peer = Peer,
-                                                    packet = Pkt},
+				     [{jlib:integer_to_binary(TS), TS,
+				       msg_to_el(#archive_msg{
+						    timestamp = Now,
+						    peer = Peer,
+						    packet = Pkt},
 						 JidRequestor)}];
-                                 false ->
-                                     []
-                             end
-                     end, L),
-            case RSM of
-                #rsm_in{max = Max, direction = before} ->
-                    {filter_by_max(lists:reverse(Msgs), Max), length(L)};
-                #rsm_in{max = Max} ->
-                    {filter_by_max(Msgs, Max), length(L)};
-                _ ->
-                    {Msgs, length(L)}
-            end;
-        {error, _} ->
-            {[], 0}
+				 false ->
+				     []
+			     end
+		     end, L),
+	    case RSM of
+		#rsm_in{max = Max, direction = before} ->
+		    {filter_by_max(lists:reverse(Msgs), Max), length(L)};
+		#rsm_in{max = Max} ->
+		    {filter_by_max(Msgs, Max), length(L)};
+		_ ->
+		    {Msgs, length(L)}
+	    end;
+	{error, _} ->
+	    {[], 0}
     end;
 select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
        Start, End, With, RSM, {DBType, Host}) ->
-        {Query, CountQuery} = make_sql_query(LUser, LServer,
+	{Query, CountQuery} = make_sql_query(LUser, LServer,
 					     Start, End, With, RSM),
     Key = case DBType of
 	      odbc -> undefined;
 	      sharding -> LUser
 	  end,
     case {ejabberd_odbc:sql_query(Host, Key, Query),
-          ejabberd_odbc:sql_query(Host, Key, CountQuery)} of
-        {{selected, _, Res}, {selected, _, [[Count]]}} ->
-            {lists:map(
-               fun([TS, XML, PeerBin]) ->
-                       #xmlel{} = El = xml_stream:parse_element(XML),
-                       Now = usec_to_now(jlib:binary_to_integer(TS)),
-                       PeerJid = jlib:jid_tolower(jlib:string_to_jid(PeerBin)),
-                       {TS, jlib:binary_to_integer(TS),
-                        msg_to_el(#archive_msg{timestamp = Now,
+	  ejabberd_odbc:sql_query(Host, Key, CountQuery)} of
+	{{selected, _, Res}, {selected, _, [[Count]]}} ->
+	    {lists:map(
+	       fun([TS, XML, PeerBin]) ->
+		       #xmlel{} = El = xml_stream:parse_element(XML),
+		       Now = usec_to_now(jlib:binary_to_integer(TS)),
+		       PeerJid = jlib:jid_tolower(jlib:string_to_jid(PeerBin)),
+		       {TS, jlib:binary_to_integer(TS),
+			msg_to_el(#archive_msg{timestamp = Now,
 					       packet = El,
 					       peer = PeerJid},
 				  JidRequestor)}
-               end, Res), jlib:binary_to_integer(Count)};
-        _ ->
-            {[], 0}
+	       end, Res), jlib:binary_to_integer(Count)};
+	_ ->
+	    {[], 0}
     end.
 
 build_xml_from_json(User, Attrs, StoreBody) ->
@@ -849,12 +861,12 @@ msg_to_el(#archive_msg{timestamp = TS, packet = Pkt1, peer = Peer},
     Delay = jlib:now_to_utc_string(TS),
     Pkt = maybe_update_from_to(Pkt1, JidRequestor, Peer),
     #xmlel{name = <<"forwarded">>,
-           attrs = [{<<"xmlns">>, ?NS_FORWARD}],
-           children = [#xmlel{name = <<"delay">>,
-                              attrs = [{<<"xmlns">>, ?NS_DELAY},
-                                       {<<"stamp">>, Delay}]},
-                       xml:replace_tag_attr(
-                         <<"xmlns">>, <<"jabber:client">>, Pkt)]}.
+	   attrs = [{<<"xmlns">>, ?NS_FORWARD}],
+	   children = [#xmlel{name = <<"delay">>,
+			      attrs = [{<<"xmlns">>, ?NS_DELAY},
+				       {<<"stamp">>, Delay}]},
+		       xml:replace_tag_attr(
+			 <<"xmlns">>, <<"jabber:client">>, Pkt)]}.
 
 maybe_update_from_to(Pkt, _JIDRequestor, undefined) ->
     Pkt;
@@ -873,10 +885,10 @@ send(From, To, Msgs, RSM, Count, #iq{sub_el = SubEl} = IQ) ->
     QID = xml:get_tag_attr_s(<<"queryid">>, SubEl),
     NS = xml:get_tag_attr_s(<<"xmlns">>, SubEl),
     QIDAttr = if QID /= <<>> ->
-                      [{<<"queryid">>, QID}];
-                 true ->
-                    []
-              end,
+		      [{<<"queryid">>, QID}];
+		 true ->
+		    []
+	      end,
     Els = lists:map(
 	    fun({ID, _IDInt, El}) ->
 		    #xmlel{name = <<"message">>,
@@ -916,16 +928,16 @@ make_rsm_out([], #rsm_in{}, Count, QIDAttr, NS) ->
 	     true -> <<"fin">>
 	  end,
     [#xmlel{name = Tag, attrs = [{<<"xmlns">>, NS}|QIDAttr],
-            children = jlib:rsm_encode(#rsm_out{count = Count})}];
+	    children = jlib:rsm_encode(#rsm_out{count = Count})}];
 make_rsm_out([{FirstID, _, _}|_] = Msgs, #rsm_in{}, Count, QIDAttr, NS) ->
     {LastID, _, _} = lists:last(Msgs),
     Tag = if NS == ?NS_MAM_TMP -> <<"query">>;
 	     true -> <<"fin">>
 	  end,
     [#xmlel{name = Tag, attrs = [{<<"xmlns">>, NS}|QIDAttr],
-            children = jlib:rsm_encode(
-                         #rsm_out{first = FirstID, count = Count,
-                                  last = LastID})}].
+	    children = jlib:rsm_encode(
+			 #rsm_out{first = FirstID, count = Count,
+				  last = LastID})}].
 
 filter_by_rsm(Msgs, none) ->
     Msgs;
@@ -933,21 +945,21 @@ filter_by_rsm(_Msgs, #rsm_in{max = Max}) when Max =< 0 ->
     [];
 filter_by_rsm(Msgs, #rsm_in{max = Max, direction = Direction, id = ID}) ->
     NewMsgs = case Direction of
-                  aft ->
-                      lists:filter(
-                        fun(#archive_msg{id = I}) ->
-                                I > ID
-                        end, Msgs);
-                  before ->
-                      lists:foldl(
-                        fun(#archive_msg{id = I} = Msg, Acc) when I < ID ->
-                                [Msg|Acc];
-                           (_, Acc) ->
-                                Acc
-                        end, [], Msgs);
-                  _ ->
-                      Msgs
-              end,
+		  aft ->
+		      lists:filter(
+			fun(#archive_msg{id = I}) ->
+				I > ID
+			end, Msgs);
+		  before ->
+		      lists:foldl(
+			fun(#archive_msg{id = I} = Msg, Acc) when I < ID ->
+				[Msg|Acc];
+			   (_, Acc) ->
+				Acc
+			end, [], Msgs);
+		  _ ->
+		      Msgs
+	      end,
     filter_by_max(NewMsgs, Max).
 
 filter_by_max(Msgs, undefined) ->
@@ -977,97 +989,97 @@ match_rsm(_Now, _) ->
 make_matchspec(LUser, LServer, Start, End, {_, _, <<>>} = With) ->
     ets:fun2ms(
       fun(#archive_msg{timestamp = TS,
-                       us = US,
-                       bare_peer = BPeer} = Msg)
-            when Start =< TS, End >= TS,
-                 US == {LUser, LServer},
-                 BPeer == With ->
-              Msg
+		       us = US,
+		       bare_peer = BPeer} = Msg)
+	    when Start =< TS, End >= TS,
+		 US == {LUser, LServer},
+		 BPeer == With ->
+	      Msg
       end);
 make_matchspec(LUser, LServer, Start, End, {_, _, _} = With) ->
     ets:fun2ms(
       fun(#archive_msg{timestamp = TS,
-                       us = US,
-                       peer = Peer} = Msg)
-            when Start =< TS, End >= TS,
-                 US == {LUser, LServer},
-                 Peer == With ->
-              Msg
+		       us = US,
+		       peer = Peer} = Msg)
+	    when Start =< TS, End >= TS,
+		 US == {LUser, LServer},
+		 Peer == With ->
+	      Msg
       end);
 make_matchspec(LUser, LServer, Start, End, none) ->
     ets:fun2ms(
       fun(#archive_msg{timestamp = TS,
-                       us = US,
-                       peer = Peer} = Msg)
-            when Start =< TS, End >= TS,
-                 US == {LUser, LServer} ->
-              Msg
+		       us = US,
+		       peer = Peer} = Msg)
+	    when Start =< TS, End >= TS,
+		 US == {LUser, LServer} ->
+	      Msg
       end).
 
 make_sql_query(LUser, _LServer, Start, End, With, RSM) ->
     {Max, Direction, ID} = case RSM of
-                               #rsm_in{} ->
-                                   {RSM#rsm_in.max,
-                                    RSM#rsm_in.direction,
-                                    RSM#rsm_in.id};
-                               none ->
-                                   {none, none, none}
-                           end,
+			       #rsm_in{} ->
+				   {RSM#rsm_in.max,
+				    RSM#rsm_in.direction,
+				    RSM#rsm_in.id};
+			       none ->
+				   {none, none, none}
+			   end,
     LimitClause = if is_integer(Max), Max >= 0 ->
-                          [<<" limit ">>, jlib:integer_to_binary(Max)];
-                     true ->
-                          []
-                  end,
+			  [<<" limit ">>, jlib:integer_to_binary(Max)];
+		     true ->
+			  []
+		  end,
     WithClause = case With of
-                     {text, <<>>} ->
-                         [];
-                     {text, Txt} ->
-                         [<<" and match (txt) against ('">>,
-                          ejabberd_odbc:escape(Txt), <<"')">>];
-                     {_, _, <<>>} ->
-                         [<<" and bare_peer='">>,
-                          ejabberd_odbc:escape(jlib:jid_to_string(With)),
-                          <<"'">>];
-                     {_, _, _} ->
-                         [<<" and peer='">>,
-                          ejabberd_odbc:escape(jlib:jid_to_string(With)),
-                          <<"'">>];
-                     none ->
-                         []
-                 end,
+		     {text, <<>>} ->
+			 [];
+		     {text, Txt} ->
+			 [<<" and match (txt) against ('">>,
+			  ejabberd_odbc:escape(Txt), <<"')">>];
+		     {_, _, <<>>} ->
+			 [<<" and bare_peer='">>,
+			  ejabberd_odbc:escape(jlib:jid_to_string(With)),
+			  <<"'">>];
+		     {_, _, _} ->
+			 [<<" and peer='">>,
+			  ejabberd_odbc:escape(jlib:jid_to_string(With)),
+			  <<"'">>];
+		     none ->
+			 []
+		 end,
     DirectionClause = case catch jlib:binary_to_integer(ID) of
-                          I when is_integer(I), I >= 0 ->
-                              case Direction of
-                                  before ->
-                                      [<<" and timestamp < ">>, ID,
-                                       <<" order by timestamp desc">>];
-                                  aft ->
-                                      [<<" and timestamp > ">>, ID,
-                                       <<" order by timestamp asc">>];
-                                  _ ->
-                                      []
-                              end;
-                          _ ->
-                              []
-                      end,
+			  I when is_integer(I), I >= 0 ->
+			      case Direction of
+				  before ->
+				      [<<" and timestamp < ">>, ID,
+				       <<" order by timestamp desc">>];
+				  aft ->
+				      [<<" and timestamp > ">>, ID,
+				       <<" order by timestamp asc">>];
+				  _ ->
+				      []
+			      end;
+			  _ ->
+			      []
+		      end,
     StartClause = case Start of
-                      {_, _, _} ->
-                          [<<" and timestamp >= ">>,
-                           jlib:integer_to_binary(now_to_usec(Start))];
-                      _ ->
-                          []
-                  end,
+		      {_, _, _} ->
+			  [<<" and timestamp >= ">>,
+			   jlib:integer_to_binary(now_to_usec(Start))];
+		      _ ->
+			  []
+		  end,
     EndClause = case End of
-                    {_, _, _} ->
-                        [<<" and timestamp <= ">>,
-                         jlib:integer_to_binary(now_to_usec(End))];
-                    _ ->
-                        []
-                end,
+		    {_, _, _} ->
+			[<<" and timestamp <= ">>,
+			 jlib:integer_to_binary(now_to_usec(End))];
+		    _ ->
+			[]
+		end,
     SUser = ejabberd_odbc:escape(LUser),
     {[<<"select timestamp, xml, peer from archive where username='">>,
       SUser, <<"'">>] ++ WithClause ++ StartClause ++ EndClause ++
-         DirectionClause ++ LimitClause ++ [<<";">>],
+	 DirectionClause ++ LimitClause ++ [<<";">>],
      [<<"select count(*) from archive where username='">>,
       SUser, <<"'">>] ++ WithClause ++ StartClause ++ EndClause ++ [<<";">>]}.
 
@@ -1089,11 +1101,11 @@ now_to_iso({_, _, USec} = Now) ->
 get_jids(Els) ->
     lists:flatmap(
       fun(#xmlel{name = <<"jid">>} = El) ->
-              J = jlib:string_to_jid(xml:get_tag_cdata(El)),
-              [jlib:jid_tolower(jlib:jid_remove_resource(J)),
-               jlib:jid_tolower(J)];
-         (_) ->
-              []
+	      J = jlib:string_to_jid(xml:get_tag_cdata(El)),
+	      [jlib:jid_tolower(jlib:jid_remove_resource(J)),
+	       jlib:jid_tolower(J)];
+	 (_) ->
+	      []
       end, Els).
 
 update(LServer, Key, Table, Fields, Vals, Where) ->
@@ -1137,25 +1149,25 @@ prefs_to_p1db(Prefs) ->
     Keys = record_info(fields, archive_prefs),
     DefPrefs = #archive_prefs{us = Prefs#archive_prefs.us},
     {_, PropList} =
-        lists:foldl(
-          fun(Key, {Pos, L}) ->
-                  Val = element(Pos, Prefs),
-                  DefVal = element(Pos, DefPrefs),
-                  if Val == DefVal ->
-                          {Pos+1, L};
-                     true ->
-                          {Pos+1, [{Key, Val}|L]}
-                  end
-          end, {2, []}, Keys),
+	lists:foldl(
+	  fun(Key, {Pos, L}) ->
+		  Val = element(Pos, Prefs),
+		  DefVal = element(Pos, DefPrefs),
+		  if Val == DefVal ->
+			  {Pos+1, L};
+		     true ->
+			  {Pos+1, [{Key, Val}|L]}
+		  end
+	  end, {2, []}, Keys),
     term_to_binary(PropList).
 
 p1db_to_prefs({LUser, LServer}, Bin) ->
     Prefs = #archive_prefs{us = {LUser, LServer}},
     lists:foldl(
       fun({default, Default}, P) -> P#archive_prefs{default = Default};
-         ({always, Always}, P) -> P#archive_prefs{always = Always};
-         ({never, Never}, P) -> P#archive_prefs{never = Never};
-         (_, P) -> P
+	 ({always, Always}, P) -> P#archive_prefs{always = Always};
+	 ({never, Never}, P) -> P#archive_prefs{never = Never};
+	 (_, P) -> P
       end, Prefs, binary_to_term(Bin)).
 
 %% P1DB/SQL schema
@@ -1170,17 +1182,17 @@ dec_key(Key) ->
     SLen = str:chr(Key, 0) - 1,
     <<Server:SLen/binary, 0, UKey/binary>> = Key,
     case str:chr(UKey, 0) of
-        0 ->
-            [Server, UKey];
-        L ->
-            ULen = L - 1,
-            <<User:ULen/binary, 0, TS:64>> = UKey,
-            [Server, User, TS]
+	0 ->
+	    [Server, UKey];
+	L ->
+	    ULen = L - 1,
+	    <<User:ULen/binary, 0, TS:64>> = UKey,
+	    [Server, User, TS]
     end.
 
 enc_val(_, [SPeer, XML]) ->
     term_to_binary([{peer, #jid{} = jlib:string_to_jid(SPeer)},
-                    {packet, XML}]).
+		    {packet, XML}]).
 
 dec_val(_, Bin) ->
     Opts = binary_to_term(Bin),
@@ -1190,9 +1202,9 @@ dec_val(_, Bin) ->
 
 enc_prefs(_, [Default, Always, Never]) ->
     prefs_to_p1db(#archive_prefs{
-                     default = jlib:binary_to_atom(Default),
-                     always = jlib:expr_to_term(Always),
-                     never = jlib:expr_to_term(Never)}).
+		     default = jlib:binary_to_atom(Default),
+		     always = jlib:expr_to_term(Always),
+		     never = jlib:expr_to_term(Never)}).
 
 dec_prefs(_, Bin) ->
     Prefs = p1db_to_prefs({<<>>, <<>>}, Bin),
