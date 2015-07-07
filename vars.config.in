@@ -34,7 +34,6 @@
 {http, @http@}.
 {elixir, @elixir@}.
 {lager, @lager@}.
-{public_key_dir, "@public_key_dir@"}.
 {iconv, @iconv@}.
 {airbrake, @airbrake@}.
 {p1db, @p1db@}.

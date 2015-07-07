@@ -2439,7 +2439,7 @@ send_text(StateData, Text) ->
 	       true -> Text
 	    end,
     (StateData#state.sockmod):send(StateData#state.socket,
-				   Text1).
+                                   Text1).
 
 -spec send_element(c2s_state(), xmlel()) -> any().
 
@@ -3953,48 +3953,25 @@ get_cert_file(_StateData, _Mech) ->
     undefined.
 
 verify_cert(StateData, Cert) ->
-    case lists:keyfind(cafile, 1, StateData#state.tls_options) of
-	false ->
-	    case lists:keyfind(ocsp, 1, StateData#state.tls_options) of
-		{ocsp, true} ->
-		    verify_via_ocsp(StateData, Cert);
-		_ ->
-		    case (StateData#state.sockmod):get_verify_result(
-			   StateData#state.socket) of
-			0 ->
-			    true;
-			_ ->
-			    {false, <<"unknown certificate issuer">>}
+    case verify_issuer(StateData, Cert) of
+	{true, CAList} ->
+	    {OCSPURIs, CRLURIs} = get_verify_methods(Cert),
+	    OCSPEnabled = proplists:get_bool(ocsp, StateData#state.tls_options),
+	    CRLEnabled = proplists:get_bool(crl, StateData#state.tls_options),
+	    if OCSPEnabled andalso not CRLEnabled ->
+		    verify_via_ocsp(OCSPURIs, Cert);
+	       CRLEnabled andalso not OCSPEnabled ->
+		    verify_via_crl(CRLURIs, Cert, CAList);
+	       true ->
+		    case verify_via_ocsp(OCSPURIs, Cert) of
+			{false, _} ->
+			    verify_via_crl(CRLURIs, Cert, CAList);
+			true ->
+			    true
 		    end
 	    end;
-	{cafile, Path} ->
-	    case file:read_file(Path) of
-		{ok, PemBin} ->
-		    CAList = public_key:pem_decode(PemBin),
-		    case is_known_issuer(Cert, CAList) of
-			true ->
-			    case get_crls(Cert, CAList) of
-				[] ->
-				    true;
-				CRLs ->
-				    IsRevoked =
-					lists:any(
-					  fun(CRL) -> is_revoked(Cert, CRL) end,
-					  CRLs),
-				    if IsRevoked ->
-					    {false, <<"certificate is revoked">>};
-				       true ->
-					    true
-				    end
-			    end;
-			false ->
-			    {false, <<"unknown certificate issuer">>}
-		    end;
-		{error, Why} ->
-		    ?ERROR_MSG("Failed to read file ~s: ~s",
-			       [Path, file:format_error(Why)]),
-		    {false, <<"unknown certificate issuer">>}
-	    end
+	{false, _} = Err ->
+	    Err
     end.
 
 is_verification_enabled(#state{tls_enabled = false}) ->
@@ -4009,28 +3986,98 @@ is_verification_enabled(StateData) ->
 	    IsEnabled
     end.
 
-verify_via_ocsp(StateData, Cert) ->
+verify_issuer(StateData, Cert) ->
+    case lists:keyfind(cafile, 1, StateData#state.tls_options) of
+	false ->
+	    case (StateData#state.sockmod):get_verify_result(
+		   StateData#state.socket) of
+		0 ->
+		    {true, []};
+		_ ->
+		    {false, <<"unknown certificate issuer">>}
+	    end;
+	{cafile, Path} ->
+	    case file:read_file(Path) of
+		{ok, PemBin} ->
+		    CAList = public_key:pem_decode(PemBin),
+		    case is_known_issuer(Cert, CAList) of
+			true ->
+			    {true, CAList};
+			false ->
+			    {false, <<"unknown certificate issuer">>}
+		    end;
+		{error, Why} ->
+		    ?ERROR_MSG("Failed to read file ~s: ~s",
+			       [Path, file:format_error(Why)]),
+		    {false, <<"unknown certificate issuer">>}
+	    end
+    end.
+
+verify_via_ocsp(URIs, Cert) ->
+    lists:foldl(
+      fun(_, true) ->
+	      true;
+	 (URI, {false, _Reason}) ->
+	      make_ocsp_request(iolist_to_binary(URI), Cert)
+      end, {false, <<"no OCSP URIs found in certificate">>}, URIs).
+
+verify_via_crl(URIs, Cert, CAList) ->
+    lists:foldl(
+      fun(_, true) ->
+	      true;
+	 (URI, {false, _Reason}) ->
+	      case make_crl_request(URI) of
+		  {ok, CRL} ->
+		      case is_known_issuer(CRL, CAList) of
+			  true ->
+			      case is_revoked(Cert, CRL) of
+				  true ->
+				      {false, <<"certificate is revoked">>};
+				  false ->
+				      true
+			      end;
+			  false ->
+			      ?ERROR_MSG("CRL from ~s is signed by unknown CA",
+					 [URI]),
+			      {false, <<"CRL is signed by unknown CA">>}
+		      end;
+		  error ->
+		      {false, <<"failed to fetch CRL file">>}
+	      end
+      end, {false, <<"no CRL URIs found in certificate">>}, URIs).
+
+get_verify_methods(Cert) ->
     TBSCert = Cert#'OTPCertificate'.tbsCertificate,
-    URIs = lists:flatmap(
-	     fun(#'Extension'{extnID = ?'id-pe-authorityInfoAccess',
-			      extnValue = AccessInfo}) when is_list(AccessInfo) ->
-		     lists:flatmap(
+    lists:foldl(
+      fun(#'Extension'{extnID = ?'id-pe-authorityInfoAccess', extnValue = AccessInfo},
+	  {OCSPURIs, CRLURIs}) when is_list(AccessInfo) ->
+	      URIs = lists:flatmap(
 		       fun(#'AccessDescription'{
 			      accessMethod = ?'id-pkix-ocsp',
 			      accessLocation = {uniformResourceIdentifier, URI}}) ->
 			       [URI];
 			  (_) ->
 			       []
-		       end, AccessInfo);
-		(_) ->
-		     []
-	     end, TBSCert#'OTPTBSCertificate'.extensions),
-    case URIs of
-	[URI|_] ->
-	    make_ocsp_request(iolist_to_binary(URI), Cert);
-	[] ->
-	    {false, <<"no OCSP URI found in certificate">>}
-    end.
+		       end, AccessInfo),
+	      {URIs ++ OCSPURIs, CRLURIs};
+	 (#'Extension'{extnID = ?'id-ce-cRLDistributionPoints', extnValue = DistPoints},
+	  {OCSPURIs, CRLURIs}) when is_list(DistPoints) ->
+	      URIs = lists:flatmap(
+		       fun(#'DistributionPoint'{
+			      distributionPoint = {fullName, GenNames}}) ->
+			       lists:flatmap(
+				 fun({uniformResourceIdentifier, URI}) ->
+					 [URI];
+				    (_) ->
+					 []
+				 end, GenNames);
+			  (_) ->
+			       []
+		       end, DistPoints),
+	      {OCSPURIs, URIs ++ CRLURIs};
+	 (_, Acc) ->
+	      Acc
+      end, {[], []}, TBSCert#'OTPTBSCertificate'.extensions).
 
 make_ocsp_request(URI0, Cert) ->
     URI = binary_to_list(URI0),
@@ -4070,42 +4117,7 @@ make_ocsp_request(URI0, Cert) ->
 	    {false, <<"request to OCSP server failed">>}
     end.
 
-get_crls(Cert, CAList) ->
-    TBSCert = Cert#'OTPCertificate'.tbsCertificate,
-    lists:flatmap(
-      fun(#'Extension'{extnID = ?'id-ce-cRLDistributionPoints',
-		       extnValue = DistPoints}) when is_list(DistPoints) ->
-	      lists:flatmap(
-		fun(#'DistributionPoint'{
-		       distributionPoint = {fullName, GenNames}}) ->
-			lists:flatmap(
-			      fun({uniformResourceIdentifier, URI}) ->
-				      case fetch_crl(URI) of
-					  {ok, CRL} ->
-					      case is_known_issuer(CRL, CAList) of
-						  true ->
-						      [CRL];
-						  false ->
-						      ?ERROR_MSG(
-							 "CRL from ~s is signed"
-							 " by unknown CA",
-							 [URI]),
-						      []
-					      end;
-					  error ->
-					      []
-				      end;
-				 (_) ->
-				      []
-			      end, GenNames);
-		   (_) ->
-			[]
-		end, DistPoints);
-	 (_) ->
-	      []
-      end, TBSCert#'OTPTBSCertificate'.extensions).
-
-fetch_crl(URI0) ->
+make_crl_request(URI0) ->
     URI = iolist_to_binary(URI0),
     cache_tab:dirty_lookup(crls, URI, fun() -> fetch_crl_http(URI) end).
 
@@ -4129,6 +4141,8 @@ is_revoked(Cert, CRL) ->
 	      SerialNumber == N
       end, RevokedCerts).
 
+is_known_issuer(_Cert, []) ->
+    true;
 is_known_issuer(Cert, CAList) ->
     lists:any(
       fun({'Certificate', Issuer, _}) ->
@@ -4664,13 +4678,16 @@ pack(S) -> S.
 
 flash_policy_string() ->
     Listen = ejabberd_config:get_option(listen, fun(V) -> V end),
-    ClientPortsDeep = [<<",",
-			 (iolist_to_binary(integer_to_list(Port)))/binary>>
-		       || {{Port, _, _}, ejabberd_c2s, _Opts} <- Listen],
-    ToPortsString = case iolist_to_binary(lists:flatten(ClientPortsDeep)) of
-		      <<",", Tail/binary>> -> Tail;
-		      _ -> <<>>
-		    end,
+    Ports = lists:filtermap(fun(Opt) ->
+                                    case {lists:keyfind(module, 1, Opt), lists:keyfind(port, 1, Opt)} of
+                                        {{module, M}, {port, P}} when M == ejabberd_c2s;
+                                                                      M == ejabberd_http ->
+                                            {true, integer_to_list(P)};
+                                        _ ->
+                                            false
+                                    end
+                            end, Listen),
+    ToPortsString = iolist_to_binary(string:join(Ports, ",")),
     <<"<?xml version=\"1.0\"?>\n<!DOCTYPE cross-doma"
       "in-policy SYSTEM \"http://www.macromedia.com/"
       "xml/dtds/cross-domain-policy.dtd\">\n<cross-d"

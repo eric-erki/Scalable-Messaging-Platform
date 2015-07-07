@@ -115,13 +115,21 @@ start() ->
     LogRotateCount = get_integer_env(log_rotate_count, 1),
     LogRateLimit = get_integer_env(log_rate_limit, 100),
     application:set_env(lager, error_logger_hwm, LogRateLimit),
+    Handlers = case get_string_env(syslog, undefined) of
+        undefined ->
+            [{lager_file_backend, [{file, ConsoleLog}, {level, info},
+                                   {date, LogRotateDate},
+                                   {count, LogRotateCount},
+                                   {size, LogRotateSize}]},
+             {lager_file_backend, [{file, ErrorLog}, {level, error},
+                                   {date, LogRotateDate},
+                                   {count, LogRotateCount},
+                                   {size, LogRotateSize}]}];
+        Facility ->
+            [{lager_syslog_backend, ["ejabberd", iolist_to_binary(Facility), info]}]
+    end,
     application:set_env(
-      lager, handlers,
-      [{lager_console_backend, info},
-       {lager_file_backend, [{file, ConsoleLog}, {level, info}, {date, LogRotateDate},
-                             {count, LogRotateCount}, {size, LogRotateSize}]},
-       {lager_file_backend, [{file, ErrorLog}, {level, error}, {date, LogRotateDate},
-                             {count, LogRotateCount}, {size, LogRotateSize}]}]),
+        lager, handlers, [{lager_console_backend, info} | Handlers]),
     application:set_env(lager, crash_log, CrashLog),
     application:set_env(lager, crash_log_date, LogRotateDate),
     application:set_env(lager, crash_log_size, LogRotateSize),
@@ -178,6 +186,8 @@ set(LogLevel) when is_integer(LogLevel) ->
                       lager:set_loglevel(H, LagerLogLevel);
                  ({lager_file_backend, File} = H) when File == ErrorLog ->
                       lager:set_loglevel(H, ErrorLogLevel);
+                 (lager_syslog_backend = H) ->
+                      lager:set_loglevel(H, LagerLogLevel);
                  (lager_console_backend = H) ->
                       lager:set_loglevel(H, LagerLogLevel);
                  (_) ->

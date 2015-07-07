@@ -124,7 +124,7 @@ CfgDeps = lists:flatmap(
                ({http, true}) ->
                     [{lhttpc, ".*", {git, "https://github.com/processone/lhttpc.git"}}];
                ({lager, true}) ->
-                    [{lager, ".*", {git, "git://github.com/basho/lager"}}];
+                    [{lager_syslog, ".*", {git, "git://github.com/basho/lager_syslog"}}];
                ({lager, false}) ->
                     [{p1_logger, ".*", {git, "git://github.com/processone/p1_logger"}}];
                ({airbrake, true}) ->
@@ -133,8 +133,8 @@ CfgDeps = lists:flatmap(
                     [{p1db, ".*", {git, "ssh://git@git.process-one.net:7999/ebe/p1db.git"}}];
                ({tools, true}) ->
                     [{meck, "0.*", {git, "https://github.com/eproxus/meck"}}];
-	       ({redis, true}) ->
-		    [{eredis, ".*", {git, "git://github.com/wooga/eredis"}}];
+               ({redis, true}) ->
+                    [{eredis, ".*", {git, "git://github.com/wooga/eredis"}}];
                (_) ->
                     []
             end, Cfg),
@@ -174,9 +174,9 @@ CfgXrefs = lists:flatmap(
                      ["(\"iconv\":_/_)"];
                 ({odbc, false}) ->
                      ["(\"odbc\":_/_)"];
-		({sqlite, false}) ->
+                ({sqlite, false}) ->
                      ["(\"sqlite3\":_/_)"];
-		({redis, false}) ->
+                ({redis, false}) ->
                      ["(\"eredis\":_/_)"];
                 (_) ->
                      []
@@ -190,8 +190,6 @@ ElixirConfig = case lists:keysearch(elixir, 1, Cfg) of
                        []
                end,
 
-{value, {_, PublicKeyDir}} = lists:keysearch(public_key_dir, 1, Cfg),
-
 {ok, Cwd} = file:get_cwd(),
 
 TestConfigFile = filename:join([Cwd, "test", "config.ctc"]),
@@ -204,7 +202,6 @@ TestConfig = case file:read_file_info(TestConfigFile) of
 
 Config = [{erl_opts, Macros ++ HiPE ++ DebugInfo ++
                [{src_dirs, [asn1, src | SrcDirs]}]},
-	  {asn1_opts, [{i, filename:join(PublicKeyDir, "asn1")}]},
           {sub_dirs, ["rel"]},
           {keep_build_info, true},
           {ct_extra_params, "-ct_hooks cth_surefire "

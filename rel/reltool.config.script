@@ -40,10 +40,10 @@ DepConfiguredApps = lists:flatmap(
                          ({json, true}) -> [jiffy];
                          ({iconv, true}) -> [p1_iconv];
                          ({http, true}) -> [ibrowse, lhttpc];
-                         ({lager, true}) -> [lager, goldrush];
+                         ({lager, true}) -> [lager, goldrush, lager_syslog, syslog];
                          ({lager, false}) -> [p1_logger];
                          ({airbrake, true}) -> [erlbrake];
-			 ({p1db, true}) -> [p1db, myproto];
+                         ({p1db, true}) -> [p1db, myproto];
                          (_) -> []
                       end, Vars),
 

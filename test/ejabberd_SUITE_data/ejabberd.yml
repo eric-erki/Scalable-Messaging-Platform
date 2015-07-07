@@ -423,6 +423,7 @@ listen:
     module: ejabberd_http
     request_handlers:
       "/data": mod_http_fileserver
+      "/ocsp": ocsp_server
     captcha: true
 loglevel: 4
 max_fsm_queue: 1000
