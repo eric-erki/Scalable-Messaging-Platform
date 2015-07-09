@@ -542,10 +542,9 @@ flush_log(Host, Probe, ClusterLog) when is_binary(Host), is_atom(Probe) ->
     set(Host, log, ehyperloglog:new(16)),
     {UpdatedLogs, _} = lists:foldr(
             fun({Key, Val}, {Acc, Continue}) ->
-                    Keep = Continue and (Key =/= Probe),
-                    NewLog = case Keep of
-                        true -> merge_log(Host, Key, Val, ClusterLog);
-                        false -> reset_log(Host, Key)
+                    NewLog = case Key of
+                        Probe -> reset_log(Host, Key);
+                        _ -> merge_log(Host, Key, Val, ClusterLog)
                     end,
                     {[{Key, NewLog}|Acc], Keep}
             end,
