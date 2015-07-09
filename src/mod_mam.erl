@@ -951,18 +951,20 @@ filter_by_rsm(_Msgs, #rsm_in{max = Max}) when Max =< 0 ->
     [];
 filter_by_rsm(Msgs, #rsm_in{max = Max, direction = Direction, id = ID}) ->
     NewMsgs = case Direction of
-		  aft ->
+		  aft when ID /= <<"">> ->
 		      lists:filter(
 			fun(#archive_msg{id = I}) ->
 				I > ID
 			end, Msgs);
-		  before ->
+		  before when ID /= <<"">> ->
 		      lists:foldl(
 			fun(#archive_msg{id = I} = Msg, Acc) when I < ID ->
 				[Msg|Acc];
 			   (_, Acc) ->
 				Acc
 			end, [], Msgs);
+		  before when ID == <<"">> ->
+		      lists:reverse(Msgs);
 		  _ ->
 		      Msgs
 	      end,
@@ -983,10 +985,10 @@ match_with({U, S, _}, {U, S, <<"">>}) -> true;
 match_with(_, none) -> true;
 match_with(Peer, With) -> Peer == With.
 
-match_rsm(Now, #rsm_in{id = ID, direction = aft}) ->
+match_rsm(Now, #rsm_in{id = ID, direction = aft}) when ID /= <<"">> ->
     Now1 = (catch usec_to_now(jlib:binary_to_integer(ID))),
     Now > Now1;
-match_rsm(Now, #rsm_in{id = ID, direction = before}) ->
+match_rsm(Now, #rsm_in{id = ID, direction = before}) when ID /= <<"">> ->
     Now1 = (catch usec_to_now(jlib:binary_to_integer(ID))),
     Now < Now1;
 match_rsm(_Now, _) ->
