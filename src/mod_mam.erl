@@ -691,7 +691,7 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
 		msg_to_el(Msg, JidRequestor)}
        end, FilteredMsgs), Count};
 select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
-       Start, _End, With, RSM, rest) ->
+       Start, End, With, RSM, rest) ->
     Peer = case With of
 	       {U, _S, _R} when U /= <<"">> -> [{<<"peer">>, U}];
 	       _ -> []
@@ -704,37 +704,48 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
 	   end,
     User = [{<<"username">>, LUser}],
     After = case RSM of
-		#rsm_in{direction = aft, id = I} ->
+		#rsm_in{direction = aft, id = <<>>} ->
+		    [];
+		#rsm_in{direction = aft, id = TS1} ->
 		    [{<<"after">>, now_to_iso(
 				     usec_to_now(
-				       jlib:binary_to_integer(I)))}];
+				       jlib:binary_to_integer(TS1)))}];
 		_ when Start /= none ->
 		    [{<<"after">>, now_to_iso(Start)}];
 		_ ->
 		    []
 	    end,
+    Before = case RSM of
+		 #rsm_in{direction = before, id = <<>>} ->
+		     [{<<"before">>, <<"last">>}];
+		 #rsm_in{direction = before, id = TS2} ->
+		     [{<<"before">>, now_to_iso(
+				       usec_to_now(
+					 jlib:binary_to_integer(TS2)))}];
+		 _ when End /= none andalso End /= [] ->
+		     [{<<"before">>, now_to_iso(End)}];
+		 _ ->
+		     []
+	     end,
     Limit = case RSM of
 		#rsm_in{max = Max} when is_integer(Max) ->
 		    [{<<"limit">>, jlib:integer_to_binary(Max)}];
 		_ ->
 		    []
 	    end,
-    Params = User ++ Peer ++ After,
+    Params = User ++ Peer ++ After ++ Before,
     ArchivePath =
 	ejabberd_config:get_option({ext_api_path_archive, LServer},
 				   fun(X) -> iolist_to_binary(X) end,
 				   <<"/archive">>),
-    ItemsPath =
-	ejabberd_config:get_option({ext_api_path_items, LServer},
-				   fun(X) -> iolist_to_binary(X) end,
-				   <<"/archive/items">>),
     StoreBody = gen_mod:get_module_opt(LServer, ?MODULE, store_body_only,
 				       fun(B) when is_boolean(B) -> B end,
 				       false),
-    case {rest:get(LServer, ArchivePath, Params ++ Page ++ Limit),
-	  rest:get(LServer, ItemsPath, Params)} of
-	{{ok, 200, {Archive}}, {ok, 200, Count}} when is_integer(Count) ->
+    case rest:get(LServer, ArchivePath, Params ++ Page ++ Limit) of
+	{ok, 200, {Archive}} ->
 	    ArchiveEls = proplists:get_value(<<"archive">>, Archive, []),
+	    Count = jlib:binary_to_integer(
+		      proplists:get_value(<<"count">>, Archive, 0)),
 	    {lists:flatmap(
 	       fun({Attrs}) ->
 		       try
