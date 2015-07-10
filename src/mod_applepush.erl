@@ -33,13 +33,12 @@
 
 -export([start/2,
 	 stop/1,
-	 push_notification/8,
-	 push_notification_with_custom_fields/9,
+	 push_from_message/11,
 	 enable_offline_notification/5,
 	 disable_notification/3,
 	 receive_offline_packet/3,
          %% other clients may be online, but we still want to push to this one
-         send_offline_packet_notification/5, 
+         send_offline_packet_notification/5,
 	 resend_badge/1,
 	 multi_resend_badge/1,
 	 offline_resend_badge/0,
@@ -85,10 +84,8 @@ start(Host, Opts) ->
     case init_host(Host) of
 	true ->
             init_db(gen_mod:db_type(Host, Opts), Host),
-	    ejabberd_hooks:add(p1_push_notification, Host,
-			       ?MODULE, push_notification, 50),
-	    ejabberd_hooks:add(p1_push_notification_custom, Host,
-			       ?MODULE, push_notification_with_custom_fields, 50),
+            ejabberd_hooks:add(p1_push_from_message, Host,
+                               ?MODULE, push_from_message, 50),
 	    ejabberd_hooks:add(p1_push_enable_offline, Host,
 			       ?MODULE, enable_offline_notification, 50),
 	    ejabberd_hooks:add(p1_push_disable, Host,
@@ -127,8 +124,8 @@ start(Host, Opts) ->
             gen_iq_handler:add_iq_handler(ejabberd_sm, Host, ?NS_P1_PUSH_CUSTOMIZE,
                                           ?MODULE, process_customization_iq, IQDisc);
 	false ->
-	    ?ERROR_MSG("Cannot start ~s on host ~s. 
-               Check you had the correct license for the domain and # of 
+	    ?ERROR_MSG("Cannot start ~s on host ~s.
+               Check you had the correct license for the domain and # of
                registered users", [?MODULE, Host]),
 	    ok
     end.
@@ -167,10 +164,8 @@ init_db(_, _) ->
     ok.
 
 stop(Host) ->
-    ejabberd_hooks:delete(p1_push_notification, Host,
-			  ?MODULE, push_notification, 50),
-    ejabberd_hooks:delete(p1_push_notification_custom, Host,
-			  ?MODULE, push_notification_with_custom_fields, 50),
+    ejabberd_hooks:delete(p1_push_from_message, Host,
+                          ?MODULE, push_from_message, 50),
     ejabberd_hooks:delete(p1_push_enable_offline, Host,
                           ?MODULE, enable_offline_notification, 50),
     ejabberd_hooks:delete(p1_push_disable, Host,
@@ -226,7 +221,7 @@ set_local_badge_sql(#jid{luser =LUser, lserver=LServer}, DeviceID, Count) ->
     Username = ejabberd_odbc:escape(LUser),
     SDeviceID = erlang:integer_to_list(DeviceID, 16),
     case ejabberd_odbc:sql_query(LServer,
-      [<<"UPDATE applepush_cache SET local_badge =">>, integer_to_list(Count), <<" WHERE" 
+      [<<"UPDATE applepush_cache SET local_badge =">>, integer_to_list(Count), <<" WHERE"
         " username='">>, Username, <<"' and ">>, <<"device_id='">>, SDeviceID, <<"';">>]) of
         {updated, 1} ->
             ok;
@@ -234,85 +229,29 @@ set_local_badge_sql(#jid{luser =LUser, lserver=LServer}, DeviceID, Count) ->
             {error, device_not_found}  %%same contract than set_local_badge_mnesia
     end.
 
-push_notification(Host, JID, Notification, Msg, Unread, Sound, AppID, Sender) ->
-    push_notification_with_custom_fields(Host, JID, Notification, Msg, Unread, Sound, AppID, Sender, []).
-
-push_notification_with_custom_fields(Host, JID, Notification, Msg, Unread, Sound, AppID, Sender, CustomFields) ->
+push_from_message(Val, From, To, Packet, Notification, AppID, SendBody, SendFrom, Badge, First, FirstFromUser) ->
     Type = xml:get_path_s(Notification, [{elem, <<"type">>}, cdata]),
     case Type of
 	<<"applepush">> ->
 	    DeviceID = xml:get_path_s(Notification, [{elem, <<"id">>}, cdata]),
-            PushPacket = build_and_customize_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields),
-            case PushPacket of
+            SilentPushEnabled = gen_mod:get_module_opt(
+                                  To#jid.lserver, ?MODULE,
+                                  silent_push_enabled,
+                                  mod_opt_type(silent_push_enabled),
+                                  false),
+            case ejabberd_push:build_push_packet_from_message(From, To, Packet, DeviceID, AppID,
+                                                              SendBody, SendFrom, Badge,
+                                                              First, FirstFromUser,
+                                                              SilentPushEnabled) of
                 skip ->
-                    ok;
-                _ ->
-                    route_push_notification(Host, JID, AppID, PushPacket)
-            end,
-	    stop;
-	_ ->
-	    ok
-    end.
-
-build_and_customize_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields) ->
-    LServer = JID#jid.lserver,
-    case gen_mod:db_type(LServer, ?MODULE) of
-        odbc ->
-            LUser = ejabberd_odbc:escape(JID#jid.luser),
-            SJID = jlib:jid_remove_resource(jlib:jid_tolower(jlib:string_to_jid(Sender))),
-            LSender = ejabberd_odbc:escape(jlib:jid_to_string(SJID)),
-            case ejabberd_odbc:sql_query(LServer,
-                                         [<<"SELECT mute FROM push_customizations WHERE username = '">>, LUser,
-                                          <<"' AND match_jid = '">>, LSender, <<"';">>]) of
-                {selected, _, [_|_]} ->
-                    skip;
-                _ ->
-                    build_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields)
+                    {stop, skipped};
+                {V, Silent} ->
+                    route_push_notification(To#jid.lserver, To, AppID, V),
+                    {stop, if Silent -> sent_silent; true -> sent end}
             end;
         _ ->
-            build_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields)
+            Val
     end.
-
-build_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields) ->
-    Badge = case Unread of
-                none -> <<"">>;
-                _ -> jlib:integer_to_binary(Unread)
-            end,
-    SSound =
-        if
-            Sound -> <<"true">>;
-            true -> <<"false">>
-        end,
-    Receiver = jlib:jid_to_string(JID),
-    #xmlel{name = <<"message">>,
-           attrs = [],
-           children =
-           [#xmlel{name = <<"push">>, attrs = [{<<"xmlns">>, ?NS_P1_PUSH}],
-                   children =
-                   [#xmlel{name = <<"id">>, attrs = [],
-                           children = [{xmlcdata, DeviceID}]},
-                    #xmlel{name = <<"msg">>, attrs = [],
-                           children = [{xmlcdata, Msg}]},
-                    #xmlel{name = <<"badge">>, attrs = [],
-                           children = [{xmlcdata, Badge}]},
-                    #xmlel{name = <<"sound">>, attrs = [],
-                           children = [{xmlcdata, SSound}]},
-                    #xmlel{name = <<"from">>, attrs = [],
-                           children = [{xmlcdata, Sender}]},
-                    #xmlel{name = <<"to">>, attrs = [],
-                           children = [{xmlcdata, Receiver}]}] ++
-                   build_custom(CustomFields)
-                  }
-           ]}.
-
-build_custom([]) -> [];
-build_custom(Fields) ->
-    [#xmlel{name = <<"custom">>, attrs = [], 
-            children =
-            [#xmlel{name = <<"field">>, attrs = [{<<"name">>, Name}], 
-                    children =
-                    [{xmlcdata, Value}]} || {Name, Value} <- Fields]}].
-
 
 route_push_notification(Host, JID, AppId, PushPacket) ->
     PushService = get_push_service(Host, JID, AppId),
@@ -361,85 +300,14 @@ disable_notification(JID, Notification, _AppID) ->
     end.
 
 do_send_offline_packet_notification(From, To, Packet, ID, AppID, SendBody, SendFrom, BadgeCount) ->
-        Host = To#jid.lserver,
-        Body1 = xml:get_path_s(Packet, [{elem, <<"body">>}, cdata]),
-        Body =
-            case check_x_attachment(Packet) of
-                true ->
-                    case Body1 of
-                        <<"">> -> <<238, 128, 136>>;
-                        _ ->
-                            <<238, 128, 136, 32, Body1/binary>>
-                    end;
-                false ->
-                    Body1
-            end,
-        Pushed = check_x_pushed(Packet),
-        PushService = get_push_service(Host, To, AppID),
-        ServiceJID = jlib:make_jid(<<"">>, PushService, <<"">>),
-        if
-            Pushed ->
-                ok;
-            true ->
-                BFrom = jlib:jid_remove_resource(From),
-                SFrom = jlib:jid_to_string(BFrom),
-                IncludeBody =
-                    case {Body, SendBody} of
-                        {<<"">>, _} ->
-                            false;
-                        {_, all} ->
-                            true;
-                        {_, first_per_user} ->
-                            BadgeCount == 1;
-                        {_, first} ->
-                            BadgeCount == 1;
-                        {_, none} ->
-                            false
-                    end,
-                Msg =
-                    if
-                        IncludeBody ->
-                            CBody = utf8_cut(Body, 100),
-                            case SendFrom of
-                                jid ->
-                                    prepend_sender(SFrom, CBody);
-                                username ->
-                                    UnescapedFrom = unescape(BFrom#jid.user),
-                                    prepend_sender(
-                                      UnescapedFrom, CBody); 
-                                name ->
-                                    Name = get_roster_name(
-                                             To, BFrom),
-                                    prepend_sender(Name, CBody);
-                                _ -> CBody
-                            end;
-                        true ->
-                            <<"">>
-                    end,
-                CustomFields = lists:filtermap(fun(#xmlel{name = <<"x">>} = E) ->
-                                                       case {xml:get_tag_attr_s(<<"xmlns">>, E),
-                                                             xml:get_tag_attr_s(<<"key">>, E),
-                                                             xml:get_tag_attr_s(<<"value">>, E)} of
-                                                           {?NS_P1_PUSH_CUSTOM, K, V} when K /= <<"">> ->
-                                                               {true, {K, V}};
-                                                           _ ->
-                                                               false
-                                                       end;
-                                                  (_) ->
-                                                       false
-                                               end, Packet#xmlel.children),
-                DeviceID = jlib:integer_to_binary(ID, 16),
-                Badge = if Body == <<"">> -> none;
-                           true -> BadgeCount
-                        end,
-                PushPacket = build_and_customize_push_packet(DeviceID, Msg, Badge, IncludeBody, SFrom, To, CustomFields),
-                case PushPacket of
-                    skip ->
-                        ok;
-                    _ ->
-                        ejabberd_router:route(To, ServiceJID, PushPacket)
-                end
-        end.
+    case ejabberd_push:build_push_packet_from_message(From, To, Packet, ID, AppID,
+                                                      SendBody, SendFrom, BadgeCount,
+                                                      BadgeCount == 0, BadgeCount == 0) of
+        skip ->
+            ok;
+        V ->
+            route_push_notification(To#jid.lserver, To, AppID, V)
+    end.
 
 send_offline_packet_notification(From, To, Packet, SDeviceID, BadgeCount) ->
     DeviceID =
@@ -455,7 +323,7 @@ send_offline_packet_notification(From, To, Packet, SDeviceID, BadgeCount) ->
                 _ ->
                     ok
             end;
-        _ -> 
+        _ ->
             ok
     end.
 receive_offline_packet(From, To, Packet) ->
@@ -523,7 +391,8 @@ process_customization_iq(From, To, #iq{type = Type, sub_el = SubEl} = IQ) ->
                                  From2 = xml:get_attr_s(<<"from">>, Attrs),
                                  Mute = xml:get_attr_s(<<"mute">>, Attrs),
                                  Delete = xml:get_attr_s(<<"delete">>, Attrs),
-                                 {true, {From2, Mute == <<"true">>, Delete == <<"true">>}};
+                                 Sound = xml:get_attr_s(<<"Sound">>, Attrs),
+                                 {true, {From2, Mute == <<"true">>, Delete == <<"true">>, Sound}};
                             (_) ->
                                  false
                          end, Items),
@@ -550,7 +419,12 @@ process_customization_iq(From, To, #iq{type = Type, sub_el = SubEl} = IQ) ->
                 error ->
                     IQ#iq{type = error, sub_el = [SubEl, ?ERR_INTERNAL_SERVER_ERROR]};
                 Res ->
-                    ResX = [#xmlel{name = <<"item">>, attrs = [{<<"from">>, R}, {<<"mute">>, <<"true">>}]} || R <- Res],
+                    Res2 = lists:map(fun([R,M,S]) ->
+                                             [{<<"from">>, R},
+                                              {<<"mute">>, if M == 1 -> <<"true">>; true -> <<"false">> end}] ++
+                                                 if S == <<"">> -> []; true -> [{<<"sound">>, S}] end
+                                     end, Res),
+                    ResX = [#xmlel{name = <<"item">>, attrs = Attrs} || Attrs <- Res2],
                     IQ#iq{type = result, sub_el = ResX}
             end;
         _ ->
@@ -562,7 +436,7 @@ change_customizations(odbc, User, Items) ->
     LUser = ejabberd_odbc:escape(User#jid.luser),
     F = fun() ->
                 lists:map(
-                  fun({From, IsMute, IsDelete}) ->
+                  fun({From, IsMute, IsDelete, Sound}) ->
                           SJID = jlib:jid_remove_resource(jlib:jid_tolower(jlib:string_to_jid(From))),
                           LSender = ejabberd_odbc:escape(jlib:jid_to_string(SJID)),
 
@@ -572,6 +446,10 @@ change_customizations(odbc, User, Items) ->
                           if not IsDelete andalso IsMute ->
                                   ejabberd_odbc:sql_query_t([<<"INSERT INTO push_customizations(username, match_jid, mute) VALUES ('">>,
                                                                      LUser, <<"', '">>, LSender, <<"', true);">>]);
+                             IsDelete andalso Sound /= <<"">> ->
+                                  ejabberd_odbc:sql_query_t([<<"INSERT INTO push_customizations(username, match_jid, mute, sound) VALUES ('">>,
+                                                             LUser, <<"', '">>, LSender, <<"', false, '">>,
+                                                             ejabberd_odbc:escape(Sound) ,<<"');">>]);
                              true ->
                                   ok
                           end
@@ -587,10 +465,10 @@ get_customizations(odbc, User, Items) ->
     LUser = ejabberd_odbc:escape(User#jid.luser),
     Query = case Items of
                 [] ->
-                    [<<"SELECT match_jid FROM push_customizations WHERE username = '">>, LUser, <<"';">>];
+                    [<<"SELECT match_jid, mute, sound FROM push_customizations WHERE username = '">>, LUser, <<"';">>];
                 [F|T] ->
                     ItemsP = [[<<",'">>, ejabberd_odbc:escape(I), <<"'">>] || I <- T],
-                    [<<"SELECT match_jid FROM push_customizations WHERE username = '">>, LUser, <<"'">>,
+                    [<<"SELECT match_jid, mute, sound FROM push_customizations WHERE username = '">>, LUser, <<"'">>,
                      <<" AND match_jid IN ('">>, ejabberd_odbc:escape(F), <<"'">>, ItemsP, <<");">>]
             end,
     case ejabberd_odbc:sql_query(LServer, Query) of
@@ -788,9 +666,9 @@ do_lookup_cache_sql(LServer, Query) ->
                               <<"N">> -> name;
                               _ -> none
                           end,
-                      LocalBadge = 
-                        if 
-                            is_binary(LocalBadgeStr) -> 
+                      LocalBadge =
+                        if
+                            is_binary(LocalBadgeStr) ->
                                 jlib:binary_to_integer(LocalBadgeStr);
                             true ->
                                 0  %%is null
@@ -831,16 +709,16 @@ store_cache_mnesia(JID, DeviceID, Options) ->
    case mnesia:dirty_match_object({applepush_cache, LUS, DeviceID, '_'}) of
         [] ->
             %%no previous entry, just write the new record
-            mnesia:dirty_write(R);  
+            mnesia:dirty_write(R);
 
         [R] ->
             %%previous entry exists but is equal, don't do anything
-            ok; 
+            ok;
 
         [#applepush_cache{options = OldOptions} = OldRecord] ->
             case lists:keyfind(local_badge, 1, OldOptions) of
                 false ->
-                    %% There was no local_badge set in previous record. 
+                    %% There was no local_badge set in previous record.
                     %% As the record don't match anyway, write the new one
                     mnesia:dirty_delete_object(OldRecord),
                     mnesia:dirty_write(R);
@@ -933,7 +811,7 @@ store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom) ->
                             %% Something changed,  use the new values (but keep the previous local_badge)
                             ejabberd_odbc:sql_query_t(
                               [<<"UPDATE applepush_cache SET app_id ='">>, SAppID, <<"', send_body='">>,
-                                SSendBody, <<"', send_from='">>, SSendFrom, <<"' WHERE" 
+                                SSendBody, <<"', send_from='">>, SSendFrom, <<"' WHERE"
                                 " username='">>, Username, <<"' and ">>, <<"device_id='">>, SDeviceID, <<"';">>]);
 
                         {selected, _Fields, []} ->
@@ -1020,103 +898,6 @@ delete_cache_sql(JID) ->
 
 remove_user(User, Server) ->
     delete_cache(jlib:make_jid(User, Server, <<"">>)).
-
-
-prepend_sender(<<"">>, Body) ->
-    Body;
-prepend_sender(From, Body) ->
-    <<From/binary, ": ", Body/binary>>.
-
-utf8_cut(S, Bytes) -> utf8_cut(S, <<>>, <<>>, Bytes + 1).
-
-utf8_cut(_S, _Cur, Prev, 0) -> Prev;
-utf8_cut(<<>>, Cur, _Prev, _Bytes) -> Cur;
-utf8_cut(<<C, S/binary>>, Cur, Prev, Bytes) ->
-    if C bsr 6 == 2 ->
-	   utf8_cut(S, <<Cur/binary, C>>, Prev, Bytes - 1);
-       true -> utf8_cut(S, <<Cur/binary, C>>, Cur, Bytes - 1)
-    end.
-
--include("mod_roster.hrl").
-
-get_roster_name(To, JID) ->
-    User = To#jid.luser,
-    Server = To#jid.lserver,
-    RosterItems = ejabberd_hooks:run_fold(
-                    roster_get, Server, [], [{User, Server}]),
-    JUser = JID#jid.luser,
-    JServer = JID#jid.lserver,
-    Item =
-        lists:foldl(
-          fun(_, Res = #roster{}) ->
-                  Res;
-             (I, false) ->
-                  case I#roster.jid of
-                      {JUser, JServer, _} ->
-                          I;
-                      _ ->
-                          false
-                  end
-          end, false, RosterItems),
-    case Item of
-        false ->
-            unescape(JID#jid.user);
-        #roster{} ->
-            Item#roster.name
-    end.
-
-unescape(<<"">>) -> <<"">>;
-unescape(<<"\\20", S/binary>>) ->
-    <<"\s", (unescape(S))/binary>>;
-unescape(<<"\\22", S/binary>>) ->
-    <<"\"", (unescape(S))/binary>>;
-unescape(<<"\\26", S/binary>>) ->
-    <<"&", (unescape(S))/binary>>;
-unescape(<<"\\27", S/binary>>) ->
-    <<"'", (unescape(S))/binary>>;
-unescape(<<"\\2f", S/binary>>) ->
-    <<"/", (unescape(S))/binary>>;
-unescape(<<"\\3a", S/binary>>) ->
-    <<":", (unescape(S))/binary>>;
-unescape(<<"\\3c", S/binary>>) ->
-    <<"<", (unescape(S))/binary>>;
-unescape(<<"\\3e", S/binary>>) ->
-    <<">", (unescape(S))/binary>>;
-unescape(<<"\\40", S/binary>>) ->
-    <<"@", (unescape(S))/binary>>;
-unescape(<<"\\5c", S/binary>>) ->
-    <<"\\", (unescape(S))/binary>>;
-unescape(<<C, S/binary>>) -> <<C, (unescape(S))/binary>>.
-
-check_x_pushed(#xmlel{children = Els}) ->
-    check_x_pushed1(Els).
-
-check_x_pushed1([]) ->
-    false;
-check_x_pushed1([{xmlcdata, _} | Els]) ->
-    check_x_pushed1(Els);
-check_x_pushed1([El | Els]) ->
-    case xml:get_tag_attr_s(<<"xmlns">>, El) of
-	?NS_P1_PUSHED ->
-	    true;
-	_ ->
-	    check_x_pushed1(Els)
-    end.
-
-check_x_attachment(#xmlel{children = Els}) ->
-    check_x_attachment1(Els).
-
-check_x_attachment1([]) ->
-    false;
-check_x_attachment1([{xmlcdata, _} | Els]) ->
-    check_x_attachment1(Els);
-check_x_attachment1([El | Els]) ->
-    case xml:get_tag_attr_s(<<"xmlns">>, El) of
-	?NS_P1_ATTACHMENT ->
-	    true;
-	_ ->
-	    check_x_attachment1(Els)
-    end.
 
 
 get_push_service(Host, JID, AppID) ->
@@ -1390,7 +1171,7 @@ get_tokens_by_jid(JIDString) when is_binary(JIDString) ->
 	get_tokens_by_jid(jlib:string_to_jid(JIDString));
 get_tokens_by_jid(#jid{luser = LUser, lserver = LServer}) ->
     LUS = {LUser, LServer},
-    [erlang:integer_to_list(I, 16) || {applepush_cache,_,I,_} <- 
+    [erlang:integer_to_list(I, 16) || {applepush_cache,_,I,_} <-
        mnesia:dirty_read(applepush_cache, LUS)].
 
 transform_module_options(Opts) ->
@@ -1445,11 +1226,14 @@ mod_opt_type(send_groupchat_default) ->
     fun (true) -> true;
 	(false) -> false
     end;
+mod_opt_type(silent_push_enabled) ->
+    fun (L) when is_boolean(L) -> L end;
 mod_opt_type(_) ->
     [db_type, default_service, default_services, iqdisc,
      multiple_accounts_per_device, offline_default,
      p1db_group, push_services, send_body_default,
-     send_from_default, send_groupchat_default].
+     send_from_default, send_groupchat_default,
+     silent_push_enabled].
 
 opt_type(p1db_group) ->
     fun (G) when is_atom(G) -> G end;

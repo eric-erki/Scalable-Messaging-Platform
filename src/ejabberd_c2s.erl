@@ -2374,15 +2374,17 @@ terminate(_Reason, StateName, StateData) ->
 	    _ ->
 		if not StateData#state.reception,
 		   not StateData#state.oor_offline ->
-		       SFrom = jlib:jid_to_string(StateData#state.jid),
-		       ejabberd_hooks:run(p1_push_notification,
-					  StateData#state.server,
-					  [StateData#state.server,
-					   StateData#state.jid,
-					   StateData#state.oor_notification,
-					   <<"Instant messaging session expired">>,
-					   0, false, StateData#state.oor_appid,
-					   SFrom]);
+		       Pkt = #xmlel{name = <<"message">>,
+                                    children=[#xmlel{name = <<"body">>, children = [<<"Instant messaging session expired">>]},
+                                              #xmlel{name = <<"customize">>, attrs = [{<<"xmlns">>, <<"p1:push:customize">>},                                                                                         {<<"sound">>, <<"false">>}]}]},
+		       ejabberd_hooks:run_fold(p1_push_from_message,
+                                               jlib:make_jid(<<"">>, StateData#state.server, <<"">>),
+                                               sent,
+                                               [StateData#state.server,
+                                                StateData#state.jid, Pkt,
+                                                StateData#state.oor_notification,
+                                                StateData#state.oor_appid,
+                                                all, none, 0, true, true]);
 		   true -> ok
 		end,
 		lists:foreach(fun ({_Counter, From, To, FixedPacket}) ->
@@ -3251,86 +3253,40 @@ send_out_of_reception_message(StateData, From, To,
 			      #xmlel{name = <<"message">>} = Packet) ->
     Type = xml:get_tag_attr_s(<<"type">>, Packet),
     if (Type == <<"normal">>) or (Type == <<"">>) or
-	 (Type == <<"chat">>)
-	 or
-	 StateData#state.oor_send_groupchat and
-	   (Type == <<"groupchat">>) ->
-	   Body1 = xml:get_path_s(Packet,
-				  [{elem, <<"body">>}, cdata]),
-	   Body = case check_x_attachment(Packet) of
-		    true ->
-			case Body1 of
-			  <<"">> -> <<238, 128, 136>>;
-			  _ -> <<238, 128, 136, 32, Body1/binary>>
-			end;
-		    false -> Body1
-		  end,
-	   Pushed = check_x_pushed(Packet),
-	   if Pushed -> StateData;
-	      true ->
-		  BFrom = jlib:jid_remove_resource(From),
-		  LBFrom = jlib:jid_tolower(BFrom),
-		  UnreadUsers = if Body == <<"">> -> StateData#state.oor_unread_users;
-                                   true ->(?SETS):add_element(LBFrom,
-                                                              StateData#state.oor_unread_users)
-                                end,
-		  IncludeBody = case {Body, StateData#state.oor_send_body} of
-				  {<<"">>, _} -> false;
-				  {_, all} -> true;
-				  {_, first_per_user} ->
-				      not
-					(?SETS):is_element(LBFrom,
-							   StateData#state.oor_unread_users);
-				  {_, first} -> StateData#state.oor_unread == 0;
-				  {_, none} -> false
-				end,
-		  Unread = StateData#state.oor_unread + if Body == <<"">> -> 0; true -> 1 end,
-		  SFrom = jlib:jid_to_string(BFrom),
-		  Msg = if IncludeBody ->
-			       CBody = utf8_cut(Body, 100),
-			       case StateData#state.oor_send_from of
-				 jid -> <<SFrom/binary, ": ", (iolist_to_binary(CBody))/binary>>;
-				 username ->
-				     UnescapedFrom = unescape(BFrom#jid.user),
-				     <<UnescapedFrom/binary, ": ",
-				       (iolist_to_binary(CBody))/binary>>;
-				 name ->
-				     Name = get_roster_name(StateData, BFrom),
-				     <<Name/binary, ": ", (iolist_to_binary(CBody))/binary>>;
-				 _ -> <<(iolist_to_binary(CBody))/binary>>
-			       end;
-			   true -> <<"">>
-			end,
-                CustomFields = lists:filtermap(fun(#xmlel{name = <<"x">>} = E) ->
-                                                       case {xml:get_tag_attr_s(<<"xmlns">>, E),
-                                                             xml:get_tag_attr_s(<<"key">>, E),
-                                                             xml:get_tag_attr_s(<<"value">>, E)} of
-                                                           {?NS_P1_PUSH_CUSTOM, K, V} when K /= <<"">> ->
-                                                               {true, {K, V}};
-                                                           _ ->
-                                                               false
-                                                       end;
-                                                  (_) ->
-                                                       false
-                                               end, Packet#xmlel.children),
-		  Sound = IncludeBody,
-		  AppID = StateData#state.oor_appid,
-                  Badge = if Body == <<"">> -> none;
-                             true -> Unread + StateData#state.oor_unread_client
-                          end,
-		  ejabberd_hooks:run(p1_push_notification_custom,
-				     StateData#state.server,
-				     [StateData#state.server,
-				      StateData#state.jid,
-				      StateData#state.oor_notification, Msg,
-				      Badge,
-				      Sound, AppID, SFrom, CustomFields]),
-		  ejabberd_hooks:run(delayed_message_hook,
-				     StateData#state.server,
-				     [From, To, Packet]),
-		  StateData#state{oor_unread = Unread,
-				  oor_unread_users = UnreadUsers}
-	   end;
+       (Type == <<"chat">>)
+       or
+       StateData#state.oor_send_groupchat and
+       (Type == <<"groupchat">>) ->
+            BFrom = jlib:jid_remove_resource(From),
+            LBFrom = jlib:jid_tolower(BFrom),
+            Badge = StateData#state.oor_unread + StateData#state.oor_unread_client + 1,
+            R = ejabberd_hooks:run_fold(p1_push_from_message,
+                                        StateData#state.server,
+                                        sent,
+                                        [From, To, Packet,
+                                         StateData#state.oor_notification,
+                                         StateData#state.oor_appid,
+                                         StateData#state.oor_send_body,
+                                         StateData#state.oor_send_from,
+                                         Badge,
+                                         StateData#state.oor_unread == 0,
+                                         not (?SETS):is_element(LBFrom, StateData#state.oor_unread_users)]),
+            case R of
+                skipped ->
+                    StateData;
+                sent ->
+                    ejabberd_hooks:run(delayed_message_hook,
+                                       StateData#state.server,
+                                       [From, To, Packet]),
+                    UnreadUsers = (?SETS):add_element(LBFrom, StateData#state.oor_unread_users),
+                    StateData#state{oor_unread = StateData#state.oor_unread + 1,
+                                    oor_unread_users = UnreadUsers};
+                sent_silent ->
+                    ejabberd_hooks:run(delayed_message_hook,
+                                       StateData#state.server,
+                                       [From, To, Packet]),
+                    StateData
+            end;
        true -> StateData
     end;
 send_out_of_reception_message(StateData, _From, _To,
@@ -3354,61 +3310,6 @@ make_oor_presence(StateData, PresenceAttrs,
 		 [#xmlel{name = <<"status">>, attrs = [],
 			 children = [{xmlcdata, StateData#state.oor_status}]}]
 		   ++ PresenceEls}.
-
-utf8_cut(S, Bytes) -> utf8_cut(S, <<>>, <<>>, Bytes + 1).
-
-utf8_cut(_S, _Cur, Prev, 0) -> Prev;
-utf8_cut(<<>>, Cur, _Prev, _Bytes) -> Cur;
-utf8_cut(<<C, S/binary>>, Cur, Prev, Bytes) ->
-    if C bsr 6 == 2 ->
-	   utf8_cut(S, <<Cur/binary, C>>, Prev, Bytes - 1);
-       true -> utf8_cut(S, <<Cur/binary, C>>, Cur, Bytes - 1)
-    end.
-
--include("mod_roster.hrl").
-
-get_roster_name(StateData, JID) ->
-    User = StateData#state.user,
-    Server = StateData#state.server,
-    RosterItems = ejabberd_hooks:run_fold(roster_get,
-					  Server, [], [{User, Server}]),
-    JUser = JID#jid.luser,
-    JServer = JID#jid.lserver,
-    Item = lists:foldl(fun (_, Res = #roster{}) -> Res;
-			   (I, false) ->
-			       case I#roster.jid of
-				 {JUser, JServer, _} -> I;
-				 _ -> false
-			       end
-		       end,
-		       false, RosterItems),
-    case Item of
-      false -> unescape(JID#jid.user);
-      #roster{} -> Item#roster.name
-    end.
-
-unescape(<<"">>) -> <<"">>;
-unescape(<<"\\20", S/binary>>) ->
-    <<"\s", (unescape(S))/binary>>;
-unescape(<<"\\22", S/binary>>) ->
-    <<"\"", (unescape(S))/binary>>;
-unescape(<<"\\26", S/binary>>) ->
-    <<"&", (unescape(S))/binary>>;
-unescape(<<"\\27", S/binary>>) ->
-    <<"'", (unescape(S))/binary>>;
-unescape(<<"\\2f", S/binary>>) ->
-    <<"/", (unescape(S))/binary>>;
-unescape(<<"\\3a", S/binary>>) ->
-    <<":", (unescape(S))/binary>>;
-unescape(<<"\\3c", S/binary>>) ->
-    <<"<", (unescape(S))/binary>>;
-unescape(<<"\\3e", S/binary>>) ->
-    <<">", (unescape(S))/binary>>;
-unescape(<<"\\40", S/binary>>) ->
-    <<"@", (unescape(S))/binary>>;
-unescape(<<"\\5c", S/binary>>) ->
-    <<"\\", (unescape(S))/binary>>;
-unescape(<<C, S/binary>>) -> <<C, (unescape(S))/binary>>.
 
 cancel_timer(Timer) ->
     erlang:cancel_timer(Timer),
@@ -3832,30 +3733,6 @@ process_push_iq(From, To,
 	    end,
     ejabberd_router:route(To, From, jlib:iq_to_xml(IQRes)),
     NewStateData.
-
-check_x_pushed(#xmlel{children = Els}) ->
-    check_x_pushed1(Els).
-
-check_x_pushed1([]) -> false;
-check_x_pushed1([{xmlcdata, _} | Els]) ->
-    check_x_pushed1(Els);
-check_x_pushed1([El | Els]) ->
-    case xml:get_tag_attr_s(<<"xmlns">>, El) of
-      ?NS_P1_PUSHED -> true;
-      _ -> check_x_pushed1(Els)
-    end.
-
-check_x_attachment(#xmlel{children = Els}) ->
-    check_x_attachment1(Els).
-
-check_x_attachment1([]) -> false;
-check_x_attachment1([{xmlcdata, _} | Els]) ->
-    check_x_attachment1(Els);
-check_x_attachment1([El | Els]) ->
-    case xml:get_tag_attr_s(<<"xmlns">>, El) of
-      ?NS_P1_ATTACHMENT -> true;
-      _ -> check_x_attachment1(Els)
-    end.
 
 maybe_add_delay(El, TZ, From, Desc) ->
     maybe_add_delay(El, TZ, From, Desc,

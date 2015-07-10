@@ -461,12 +461,15 @@ make_payload(State, Msg, Badge, Sound, Sender, CustomFields) ->
 		<<"\"badge\":", Badge/binary>>;
 	    _ -> <<"">>
 	end,
-    SoundPayload = 
+    SoundPayload =
     	case Sound of
-	    <<"true">> ->
-		SoundFile = State#state.soundfile,
-		<<"\"sound\":\"", (json_escape(SoundFile))/binary, "\"">>;
-	    _ -> <<"">>
+            <<"false">> -> <<"">>;
+	    _ ->
+		SoundFile = case Sound of
+                                <<"true">> -> State#state.soundfile;
+                                _ -> Sound
+                            end,
+		<<"\"sound\":\"", (json_escape(SoundFile))/binary, "\"">>
 	end,
     ContentAvailablePayload = <<"\"content-available\":1">>,
 

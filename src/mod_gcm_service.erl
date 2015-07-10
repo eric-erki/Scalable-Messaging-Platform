@@ -421,7 +421,8 @@ make_payload(State, Msg, Badge, Sound, Sender,
 	     CustomFields) ->
     SoundPayload = case Sound of
 		     <<"true">> -> State#state.soundfile;
-		     _ -> <<"">>
+                     <<"false">> -> <<"">>;
+		     _ -> Sound
 		   end,
     AppsPayloadList = [{alert, iolist_to_binary(Msg)},
 		       {badge, jlib:binary_to_integer(Badge)},
