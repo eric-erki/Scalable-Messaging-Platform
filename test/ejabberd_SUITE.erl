@@ -1779,7 +1779,7 @@ mam_query_all(Config, NS) ->
     if NS == ?NS_MAM_TMP ->
 	    ?recv1(#iq{type = result, id = I, sub_els = []});
        true ->
-	    ?recv1(#message{sub_els = [#mam_fin{id = QID}]})
+	    ?recv1(#message{sub_els = [#mam_fin{complete = true, id = QID}]})
     end.
 
 mam_query_with(Config, JID, NS) ->
@@ -1815,7 +1815,7 @@ mam_query_with(Config, JID, NS) ->
     if NS == ?NS_MAM_TMP ->
 	    ?recv1(#iq{type = result, id = I, sub_els = []});
        true ->
-	    ?recv1(#message{sub_els = [#mam_fin{}]})
+	    ?recv1(#message{sub_els = [#mam_fin{complete = true}]})
     end.
 
 maybe_recv_iq_result(?NS_MAM_0, I1) ->
@@ -1856,6 +1856,7 @@ mam_query_rsm(Config, NS) ->
 					     rsm = #rsm_set{last = Last, count = 5}}]});
        true ->
 	    ?recv1(#message{sub_els = [#mam_fin{
+					  complete = false,
 					  rsm = #rsm_set{last = Last, count = 10}}]})
     end,
     %% Get the next items starting from the `Last`.
@@ -1891,15 +1892,16 @@ mam_query_rsm(Config, NS) ->
        true ->
 	    ?recv1(#message{
 		      sub_els = [#mam_fin{
+				    complete = false,
 				    rsm = #rsm_set{
 					      count = 10,
 					      first = #rsm_first{data = First}}}]})
     end,
-    %% Paging back. Should receive 2 elements: 2, 3.
+    %% Paging back. Should receive 3 elements: 1, 2, 3.
     I3 = send(Config,
               #iq{type = Type,
                   sub_els = [#mam_query{xmlns = NS,
-					rsm = #rsm_set{max = 2,
+					rsm = #rsm_set{max = 3,
                                                        before = First}}]}),
     maybe_recv_iq_result(NS, I3),
     lists:foreach(
@@ -1916,13 +1918,14 @@ mam_query_rsm(Config, NS) ->
                                            [#message{
                                                from = MyJID, to = Peer,
                                                body = [Text]}]}]}]})
-      end, lists:seq(2, 3)),
+      end, lists:seq(1, 3)),
     if NS == ?NS_MAM_TMP ->
 	    ?recv1(#iq{type = result, id = I3,
 		       sub_els = [#mam_query{xmlns = NS, rsm = #rsm_set{count = 5}}]});
        true ->
 	    ?recv1(#message{
-		      sub_els = [#mam_fin{rsm = #rsm_set{count = 10}}]})
+		      sub_els = [#mam_fin{complete = true,
+					  rsm = #rsm_set{count = 10}}]})
     end,
     %% Getting the item count. Should be 5 (or 10).
     I4 = send(Config,
@@ -1940,6 +1943,7 @@ mam_query_rsm(Config, NS) ->
        true ->
 	    ?recv1(#message{
 		      sub_els = [#mam_fin{
+				    complete = false,
 				    rsm = #rsm_set{count = 10,
 						   first = undefined,
 						   last = undefined}}]})
@@ -1971,7 +1975,8 @@ mam_query_rsm(Config, NS) ->
 		       sub_els = [#mam_query{xmlns = NS, rsm = #rsm_set{count = 5}}]});
        true ->
 	    ?recv1(#message{
-		      sub_els = [#mam_fin{rsm = #rsm_set{count = 10}}]})
+		      sub_els = [#mam_fin{complete = false,
+					  rsm = #rsm_set{count = 10}}]})
     end.
 
 client_state_master(Config) ->
