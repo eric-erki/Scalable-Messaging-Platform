@@ -391,7 +391,7 @@ process_customization_iq(From, To, #iq{type = Type, sub_el = SubEl} = IQ) ->
                                  From2 = xml:get_attr_s(<<"from">>, Attrs),
                                  Mute = xml:get_attr_s(<<"mute">>, Attrs),
                                  Delete = xml:get_attr_s(<<"delete">>, Attrs),
-                                 Sound = xml:get_attr_s(<<"Sound">>, Attrs),
+                                 Sound = xml:get_attr_s(<<"sound">>, Attrs),
                                  {true, {From2, Mute == <<"true">>, Delete == <<"true">>, Sound}};
                             (_) ->
                                  false
