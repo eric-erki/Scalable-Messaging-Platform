@@ -297,7 +297,7 @@ make_xhtml(Els, Host, Node, Lang, JID) ->
      #xmlel{name = <<"html">>,
 	    attrs =
 		[{<<"xmlns">>, <<"http://www.w3.org/1999/xhtml">>},
-		 {<<"xml:lang">>, Lang}, {<<"lang">>, Lang}],
+		 {<<"xml:lang">>, Lang}, {<<"lang">>, Lang}]++direction(Lang),
 	    children =
 		[#xmlel{name = <<"head">>, attrs = [],
 			children =
@@ -346,6 +346,10 @@ make_xhtml(Els, Host, Node, Lang, JID) ->
 				   ?C(<<" (c) 2002-2015 ">>),
 				   ?AC(<<"https://www.process-one.net/">>, <<"ProcessOne">>)]
                                  )])])])]}}.
+
+direction(ltr) -> [{<<"dir">>, <<"ltr">>}];
+direction(<<"he">>) -> [{<<"dir">>, <<"rtl">>}];
+direction(_) -> [].
 
 get_base_path(global, cluster) -> <<"/admin/">>;
 get_base_path(Host, cluster) ->
@@ -514,7 +518,7 @@ css(Host) ->
       "0px;\n}\n\nh3 {\n  color: #000044;\n "
       " font-family: Verdana, Arial, Helvetica, "
       "sans-serif; \n  font-size: 10pt;\n  "
-      "font-weight: bold;\n  text-align: left;\n "
+      "font-weight: bold;\n "
       " padding-top: 20px;\n  padding-bottom: "
       "2px;\n  margin-top: 0px;\n  margin-bottom: "
       "0px;\n}\n\n#content a:link {\n  color: "
@@ -672,7 +676,7 @@ process_admin(Host,
 		 end
 		   ++
 		   [?XAE(<<"form">>,
-			 [{<<"action">>, <<"">>}, {<<"method">>, <<"post">>}],
+			 [{<<"action">>, <<"">>}, {<<"method">>, <<"post">>}]++direction(ltr),
 			 [?TEXTAREA(<<"acls">>,
 				    (iolist_to_binary(integer_to_list(lists:max([16,
 										 NumLines])))),
@@ -709,7 +713,7 @@ process_admin(Host,
 		   ++
 		   [?XAE(<<"p">>, direction(ltr), [?ACT(<<"../acls-raw/">>, <<"Raw">>)])] ++
 		     [?XAE(<<"form">>,
-			   [{<<"action">>, <<"">>}, {<<"method">>, <<"post">>}],
+			   [{<<"action">>, <<"">>}, {<<"method">>, <<"post">>}]++direction(ltr),
 			   [acls_to_xhtml(ACLs), ?BR,
 			    ?INPUTT(<<"submit">>, <<"delete">>,
 				    <<"Delete Selected">>),
@@ -774,7 +778,7 @@ process_admin(Host,
 		 end
 		   ++
 		   [?XAE(<<"form">>,
-			 [{<<"action">>, <<"">>}, {<<"method">>, <<"post">>}],
+			 [{<<"action">>, <<"">>}, {<<"method">>, <<"post">>}]++direction(ltr),
 			 [?TEXTAREA(<<"access">>,
 				    (iolist_to_binary(integer_to_list(lists:max([16,
 										 NumLines])))),
@@ -809,7 +813,7 @@ process_admin(Host,
 		   [?XAE(<<"p">>, direction(ltr), [?ACT(<<"../access-raw/">>, <<"Raw">>)])]
 		     ++
 		     [?XAE(<<"form">>,
-			   [{<<"action">>, <<"">>}, {<<"method">>, <<"post">>}],
+			   [{<<"action">>, <<"">>}, {<<"method">>, <<"post">>}]++direction(ltr),
 			   [access_rules_to_xhtml(AccessRules, Lang), ?BR,
 			    ?INPUTT(<<"submit">>, <<"delete">>,
 				    <<"Delete Selected">>)])],
@@ -2425,7 +2429,7 @@ node_ports_to_xhtml(Ports, Lang) ->
 					  [?INPUTS(<<"text">>,
 						   <<"module", SSPort/binary>>,
 						   SModule, <<"15">>)]),
-				      ?XE(<<"td">>,
+				      ?XAE(<<"td">>, direction(ltr),
 					  [?TEXTAREA(<<"opts", SSPort/binary>>,
 						     (iolist_to_binary(integer_to_list(NumLines))),
 						     <<"35">>, SOptsClean)]),
@@ -2451,7 +2455,7 @@ node_ports_to_xhtml(Ports, Lang) ->
 		       ?XE(<<"td">>,
 			   [?INPUTS(<<"text">>, <<"modulenew">>, <<"">>,
 				    <<"15">>)]),
-		       ?XE(<<"td">>,
+		       ?XAE(<<"td">>, direction(ltr),
 			   [?TEXTAREA(<<"optsnew">>, <<"2">>, <<"35">>,
 				      <<"[]">>)]),
 		       ?XAE(<<"td">>, [{<<"colspan">>, <<"2">>}],
@@ -2568,7 +2572,7 @@ node_modules_to_xhtml(Modules, Lang) ->
 								       40),
 				 ?XE(<<"tr">>,
 				     [?XC(<<"td">>, SModule),
-				      ?XE(<<"td">>,
+				      ?XAE(<<"td">>, direction(ltr),
 					  [?TEXTAREA(<<"opts", SModule/binary>>,
 						     (iolist_to_binary(integer_to_list(NumLines))),
 						     <<"40">>, SOpts)]),
@@ -2587,7 +2591,7 @@ node_modules_to_xhtml(Modules, Lang) ->
 		 [?XE(<<"tr">>,
 		      [?XE(<<"td">>,
 			   [?INPUT(<<"text">>, <<"modulenew">>, <<"">>)]),
-		       ?XE(<<"td">>,
+		       ?XAE(<<"td">>, direction(ltr),
 			   [?TEXTAREA(<<"optsnew">>, <<"2">>, <<"40">>,
 				      <<"[]">>)]),
 		       ?XAE(<<"td">>, [{<<"colspan">>, <<"2">>}],
