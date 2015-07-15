@@ -98,48 +98,53 @@ build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom,
                         true ->
                             <<"">>
                     end,
-                CSound = lists:filtermap(fun(#xmlel{name = <<"customize">>} = E) ->
-                                                 case {xml:get_tag_attr_s(<<"xmlns">>, E),
-                                                       xml:get_tag_attr_s(<<"sound">>, E)} of
-                                                     {?NS_P1_PUSH_CUSTOMIZE, S} when S /= <<"">> ->
-                                                         {true, S};
-                                                     _ ->
+                Customizations = lists:filtermap(fun(#xmlel{name = <<"customize">>} = E) ->
+                                                         case xml:get_tag_attr_s(<<"xmlns">>, E) of
+                                                             ?NS_P1_PUSH_CUSTOMIZE ->
+                                                                 {true, {
+                                                                    xml:get_tag_attr_s(<<"mute">>, E) == <<"true">>,
+                                                                    xml:get_tag_attr_s(<<"sound">>, E)
+                                                                   }};
+                                                             _ ->
+                                                                 false
+                                                         end;
+                                                    (_) ->
                                                          false
-                                                 end;
-                                            (_) ->
-                                                 false
-                                         end, Packet#xmlel.children),
-                CustomFields = lists:filtermap(fun(#xmlel{name = <<"x">>} = E) ->
-                                                       case {xml:get_tag_attr_s(<<"xmlns">>, E),
-                                                             xml:get_tag_attr_s(<<"key">>, E),
-                                                             xml:get_tag_attr_s(<<"value">>, E)} of
-                                                           {?NS_P1_PUSH_CUSTOM, K, V} when K /= <<"">> ->
-                                                               {true, {K, V}};
-                                                           _ ->
-                                                               false
-                                                       end;
-                                                  (_) ->
-                                                       false
-                                               end, Packet#xmlel.children),
-                DeviceID = if is_integer(ID) -> jlib:integer_to_binary(ID, 16);
-                              true -> ID
-                           end,
-                Badge = if Body == <<"">> -> none;
-                           true -> BadgeCount
-                        end,
-                Sound = case {IncludeBody, CSound} of
-                            {false, _} -> false;
-                            {_, [<<"false">>|_]} -> false;
-                            {_, [S|_]} when S /= <<"">> -> S;
-                            _ -> true
-                        end,
-                case build_and_customize_push_packet(DeviceID, Msg, Badge, Sound, SFrom, To, CustomFields) of
-                    skip ->
-                        ?DEBUG("SKIP PUSH", []),
+                                                 end, Packet#xmlel.children),
+                case Customizations of
+                    [{true, _}|_] ->
                         skip;
-                    V ->
-                        ?DEBUG("SEND PUSH ~p", [V]),
-                        {V, Body == <<"">>}
+                    _ ->
+                        CustomFields = lists:filtermap(fun(#xmlel{name = <<"x">>} = E) ->
+                                                               case {xml:get_tag_attr_s(<<"xmlns">>, E),
+                                                                     xml:get_tag_attr_s(<<"key">>, E),
+                                                                     xml:get_tag_attr_s(<<"value">>, E)} of
+                                                                   {?NS_P1_PUSH_CUSTOM, K, V} when K /= <<"">> ->
+                                                                       {true, {K, V}};
+                                                                   _ ->
+                                                                       false
+                                                               end;
+                                                          (_) ->
+                                                               false
+                                                       end, Packet#xmlel.children),
+                        DeviceID = if is_integer(ID) -> jlib:integer_to_binary(ID, 16);
+                                      true -> ID
+                                   end,
+                        Badge = if Body == <<"">> -> none;
+                                   true -> BadgeCount
+                                end,
+                        Sound = case {IncludeBody, Customizations} of
+                                    {false, _} -> false;
+                                    {_, [{_, <<"false">>}|_]} -> false;
+                                    {_, [{_, S}|_]} when S /= <<"">> -> S;
+                                    _ -> true
+                                end,
+                        case build_and_customize_push_packet(DeviceID, Msg, Badge, Sound, SFrom, To, CustomFields) of
+                            skip ->
+                                skip;
+                            V ->
+                                {V, Body == <<"">>}
+                        end
                 end
         end.
 
