@@ -60,9 +60,7 @@ build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom,
     if
         Pushed ->
             skip;
-        Composing /= false ->
-            skip;
-        Body == <<"">> andalso not SilentPushesEnabled ->
+        Body == <<"">> andalso (not SilentPushesEnabled orelse Composing /= false) ->
             skip;
         true ->
             BFrom = jlib:jid_remove_resource(From),
