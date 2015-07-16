@@ -12,8 +12,7 @@ host_config:
       mod_announce: 
         db_type: odbc
         access: local
-      mod_blocking: 
-        db_type: odbc
+      mod_blocking: []
       mod_caps: 
         db_type: odbc
       mod_last: 
@@ -68,8 +67,7 @@ Welcome to this XMPP server."
       mod_announce: 
         db_type: odbc
         access: local
-      mod_blocking: 
-        db_type: odbc
+      mod_blocking: []
       mod_caps: 
         db_type: odbc
       mod_last: 
@@ -130,8 +128,7 @@ Welcome to this XMPP server."
       mod_announce: 
         db_type: odbc
         access: local
-      mod_blocking: 
-        db_type: odbc
+      mod_blocking: []
       mod_caps: 
         db_type: odbc
       mod_last: 
@@ -185,8 +182,7 @@ Welcome to this XMPP server."
       mod_announce: 
         db_type: p1db
         access: local
-      mod_blocking: 
-        db_type: p1db
+      mod_blocking: []
       mod_caps: 
         db_type: p1db
       mod_last: 
@@ -240,8 +236,7 @@ Welcome to this XMPP server."
       mod_announce: 
         db_type: internal
         access: local
-      mod_blocking: 
-        db_type: internal
+      mod_blocking: []
       mod_caps: 
         db_type: internal
       mod_last: 
@@ -294,8 +289,7 @@ Welcome to this XMPP server."
       mod_announce: 
         db_type: riak
         access: local
-      mod_blocking: 
-        db_type: riak
+      mod_blocking: []
       mod_caps: 
         db_type: riak
       mod_last: 
