@@ -258,9 +258,15 @@ disable_notification(JID, Notification, _AppID) ->
     end.
 
 do_send_offline_packet_notification(From, To, Packet, ID, AppID, SendBody, SendFrom, BadgeCount) ->
+    SilentPushEnabled = gen_mod:get_module_opt(
+                          To#jid.lserver, ?MODULE,
+                          silent_push_enabled,
+                          mod_opt_type(silent_push_enabled),
+                          false),
     case ejabberd_push:build_push_packet_from_message(From, To, Packet, ID, AppID,
                                                       SendBody, SendFrom, BadgeCount,
-                                                      BadgeCount == 0, BadgeCount == 0) of
+                                                      BadgeCount == 0, BadgeCount == 0,
+                                                      SilentPushEnabled) of
         skip ->
             ok;
         V ->
