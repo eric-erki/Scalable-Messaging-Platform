@@ -680,6 +680,10 @@ handle_event(destroy, StateName, StateData) ->
     ?INFO_MSG("Destroyed SUPPORT room ~s",
 	      [jlib:jid_to_string(StateData#state.jid)]),
     handle_event({destroy, none}, StateName, StateData);
+handle_event({set_affiliation, JID, Affiliation},
+	     StateName, StateData) ->
+    NewStateData = set_affiliation(JID, Affiliation, StateData),
+    {next_state, StateName, NewStateData};
 handle_event({set_affiliations, Affiliations},
 	     StateName, StateData) ->
     NewStateData = set_affiliations(Affiliations, StateData),

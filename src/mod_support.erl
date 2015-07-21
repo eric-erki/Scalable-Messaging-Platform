@@ -53,10 +53,13 @@
 	 handle_info/2, terminate/2, code_change/3,
 	 mod_opt_type/1, opt_type/1]).
 
+-export([register_support_channel/3, register_support_agent/3]).
+
 -include("ejabberd.hrl").
 -include("logger.hrl").
 -include_lib("stdlib/include/ms_transform.hrl").
 -include("jlib.hrl").
+-include("ejabberd_commands.hrl").
 
 -record(support_room, {name_host = {<<"">>, <<"">>} :: {binary(), binary()} |
                                                    {'_', binary()},
@@ -92,6 +95,7 @@ start(Host, Opts) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     ChildSpec = {Proc, {?MODULE, start_link, [Host, Opts]},
 		 temporary, 1000, worker, [?MODULE]},
+    ejabberd_commands:register_commands(commands()),
     supervisor:start_child(ejabberd_sup, ChildSpec).
 
 stop(Host) ->
@@ -99,8 +103,23 @@ stop(Host) ->
     stop_supervisor(Host),
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     ?GEN_SERVER:call(Proc, stop),
+    ejabberd_commands:unregister_commands(commands()),
     supervisor:delete_child(ejabberd_sup, Proc),
     {wait, Rooms}.
+
+commands() ->
+    [#ejabberd_commands{name = register_support_channel,
+                        tags = [support],
+                        desc = "Register new support channel on server",
+                        module = ?MODULE, function = register_support_channel,
+                        args = [{channel, binary}, {host, binary}, {owner_jid, binary}],
+                        result = {res, restuple}},
+     #ejabberd_commands{name = register_support_agent,
+                        tags = [support],
+                        desc = "Register new support agent for channel",
+                        module = ?MODULE, function = register_support_agent,
+                        args = [{jid, binary},{channel, binary}, {host, binary}],
+                        result = {res, restuple}}].
 
 shutdown_rooms(Host) ->
     MyHost = gen_mod:get_module_opt_host(Host, mod_support,
@@ -1693,6 +1712,23 @@ import(_LServer, {odbc, _}, p1db, <<"support_registered">>,
     p1db:async_insert(support_user, USHKey, Nick);
 import(_LServer, {odbc, _}, odbc, _, _) ->
     ok.
+
+register_support_channel(Channel, Host, AdminJid) ->
+    case create_room(Host, Channel, jlib:string_to_jid(AdminJid),
+                     <<"admin">>, [{persistent, true}]) of
+        _ -> {ok, <<"">>}
+    end.
+register_support_agent(Jid, Channel, Host) ->
+    MyHost = gen_mod:get_module_opt_host(Host, mod_support,
+					 <<"support.@HOST@">>),
+    case mnesia:dirty_read(support_online_room, {Channel, MyHost}) of
+      [] -> {error, <<"Support room not found">>};
+      [R] ->
+	  Pid = R#support_online_room.pid,
+            gen_fsm:send_all_state_event(Pid,
+                                         {set_affiliation, jlib:string_to_jid(Jid), member}),
+            {ok, <<"">>}
+    end.
 
 mod_opt_type(access) ->
     fun (A) when is_atom(A) -> A end;
