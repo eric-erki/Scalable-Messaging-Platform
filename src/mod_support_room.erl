@@ -59,7 +59,7 @@
 
 -record(lqueue,
 {
-    queue :: queue(),
+    queue :: ?TQUEUE,
     len :: integer(),
     max :: integer()
 }).
@@ -93,7 +93,7 @@
     logging                              = false :: boolean(),
     vcard                                = <<"">> :: binary(),
     hibernate_time                       = 0 :: non_neg_integer(),
-    captcha_whitelist                    = (?SETS):empty() :: gb_set()
+    captcha_whitelist                    = (?SETS):empty() :: ?TGB_SET
 }).
 
 -type config() :: #config{}.
@@ -107,7 +107,9 @@
     ts,
     nick :: binary(),
     role :: role(),
-    last_presence :: xmlel()
+    last_presence :: xmlel(),
+    is_available = false :: boolean(),
+    push_info
 }).
 
 -record(activity,
@@ -128,13 +130,13 @@
     access                  = {none,none,none,none} :: {atom(), atom(), atom(), atom()},
     jid                     = #jid{} :: jid(),
     config                  = #config{} :: config(),
-    users                   = (?DICT):new() :: dict(),
+    users                   = (?DICT):new() :: ?TDICT,
     last_voice_request_time = treap:empty() :: treap:treap(),
-    robots                  = (?DICT):new() :: dict(),
-    nicks                   = (?DICT):new() :: dict(),
-    affiliations            = (?DICT):new() :: dict(),
-    agent_status            = (?DICT):new() :: dict(),
-    user_status             = (?DICT):new() :: dict(),
+    robots                  = (?DICT):new() :: ?TDICT,
+    nicks                   = (?DICT):new() :: ?TDICT,
+    affiliations            = (?DICT):new() :: ?TDICT,
+    agent_status            = (?DICT):new() :: ?TDICT,
+    user_status             = (?DICT):new() :: ?TDICT,
     available_agents        = treap:empty() :: treap:treap(),
     user_queue              = treap:empty() :: treap:treap(),
     ringing_queue           = treap:empty() :: treap:treap(),
@@ -147,7 +149,7 @@
     hibernate_timer         = make_ref() :: reference(),
     room_shaper             = none :: shaper:shaper(),
     shutdown_reason         :: atom(),
-    room_queue              = queue:new() :: queue()
+    room_queue              = queue:new() :: ?TQUEUE
 }).
 
 -record(support_online_users, {us = {<<>>, <<>>} :: {binary(), binary()},
@@ -298,23 +300,38 @@ init([StateName,
     {ok, StateName, StateData1}.
 
 normal_state({route, From, <<"">>,
-	      #xmlel{name = <<"message">>,
+	      #xmlel{name = <<"message">>, attrs = Attrs,
 		     children = Els} = MPacket},
 	     StateData) ->
-    case is_agent(From, StateData) of
-        true ->
-
+    PushInfo = xml:get_subtag(#xmlel{children=Els}, <<"push_info">>),
+    case {is_agent(From, StateData), xml:get_attr_s(<<"type">>, Attrs), PushInfo} of
+        {true, _, _} ->
             {next_state, normal_state, StateData};
-        false ->
+        {_, <<"error">>, _} ->
+            {next_state, normal_state, StateData};
+        {_, _, #xmlel{}} ->
+            US = {From#jid.luser, From#jid.lserver},
+            case (?DICT):find(US, StateData#state.user_status) of
+                {ok, Data} ->
+                    Product = xml:get_tag_attr_s(<<"product">>, PushInfo),
+                    Push = xml:get_tag_attr_s(<<"push">>, PushInfo),
+                    Alias = xml:get_tag_attr_s(<<"alias">>, PushInfo),
+                    Data1 = Data#user{push_info = {Product, Push, Alias}},
+                    UserStatus = (?DICT):store(US, Data1,
+                                               StateData#state.user_status),
+
+                    {next_state, normal_state, StateData#state{user_status=UserStatus}};
+                _ ->
+                    {next_state, normal_state, StateData}
+            end;
+        _ ->
             US = {From#jid.luser, From#jid.lserver},
             TS = now(),
             add_history(US, From, MPacket, StateData),
             StateData1 =
                 case (?DICT):find(US, StateData#state.user_status) of
-                    {ok, Data} ->
+                    {ok, Data} when Data#user.status /= offline andalso Data#user.status /= waiting ->
                         case Data#user.status of
-                            waiting ->
-                                StateData;
                             {connecting, _AgentLJID} ->
                                 StateData;
                             {talking, AgentLJID} ->
@@ -328,10 +345,17 @@ normal_state({route, From, <<"">>,
                                   Packet),
                                 StateData
                         end;
-                    error ->
-                        Data = #user{jid = From,
-                                     status = waiting,
-                                     ts = TS},
+                    Val ->
+                        Data = case Val of
+                                   error ->
+                                       #user{jid = From,
+                                             status = waiting,
+                                             ts = TS};
+                                   {ok, DataX} ->
+                                       DataX#user{jid = From,
+                                                  status = waiting,
+                                                  ts = TS}
+                               end,
                         UserStatus = (?DICT):store(US, Data,
                                                    StateData#state.user_status),
                         UserQueue = queue_insert(US, Data#user.ts, ok,
@@ -436,6 +460,10 @@ normal_state({route, From, Resource,
                         case (?DICT):find(US, StateData#state.user_status) of
                             {ok, UserData} ->
                                 case UserData#user.status of
+                                    offline ->
+                                        handle_agent_message(
+                                          US, UserData, AgentLJID, Els,
+                                          StateData);
                                     waiting ->
                                         Text = <<"The user is in the waiting queue">>,
                                         Packet =
@@ -783,8 +811,10 @@ handle_info({timeout, Timer, {ring, AgentLJID, US}}, StateName,
 	    StateData) ->
     case (?DICT):find(AgentLJID, StateData#state.agent_status) of
         {ok, Statuses} ->
-            case lists:keysearch(US, 2, Statuses) of
-                {value, {{connecting, Timer}, _}} ->
+            case {lists:keysearch(US, 2, Statuses),
+                  treap:is_empty(StateData#state.available_agents) orelse
+                  treap:is_empty(StateData#state.user_queue)} of
+                {{value, {{connecting, Timer}, _}}, false} ->
                     Packet = #xmlel{name = <<"message">>,
                                     attrs = [{<<"type">>, <<"chat">>}],
                                     children =
@@ -805,6 +835,13 @@ handle_info({timeout, Timer, {ring, AgentLJID, US}}, StateName,
                     SD3 = move_user_to_queue(US, SD2),
                     SD4 = try_connect(SD3),
                     {next_state, StateName, SD4};
+                {{value, {{connecting, Timer}, _}}, true} ->
+                    RingTimer = erlang:start_timer(?RING_TIMEOUT,
+                                                   self(), {ring, AgentLJID, US}),
+                    StateData2 = change_agent_status(AgentLJID,
+                                                     {connecting, RingTimer}, US,
+                                                     StateData),
+                    {next_state, StateName, StateData2};
                 _ ->
                     {next_state, StateName, StateData}
             end;
@@ -1146,7 +1183,66 @@ process_presence(From, _Nick,
                 end,
             {next_state, normal_state, StateData1};
         false ->
-            {next_state, normal_state, StateData}
+            Type = xml:get_attr_s(<<"type">>, Attrs),
+            %Lang = xml:get_attr_s(<<"xml:lang">>, Attrs),
+            US = {From#jid.luser, From#jid.lserver},
+            Data1 = case (?DICT):find(US, StateData#state.user_status) of
+                        {ok, Data} ->
+                            Data;
+                        _ ->
+                            TS = now(),
+                            Data = #user{jid = From,
+                                         status = waiting,
+                                         ts = TS}
+                    end,
+            NS =
+                if
+                    Type == <<"unavailable">>;
+                    Type == <<"error">> ->
+                        ?DEBUG("UNAV: ~p ~p", [Data1#user.status, Data1]),
+                        case Data1#user.status of
+                            {Mode, AgentLJID} when Mode == connecting orelse Mode == talking ->
+                                Text = <<"User closed session">>,
+                                Packet =
+                                    #xmlel{name = <<"message">>,
+                                           attrs = [{<<"type">>, <<"chat">>}],
+                                           children =
+                                               [#xmlel{name = <<"body">>,
+                                                       attrs = [],
+                                                       children =
+                                                           [{xmlcdata, Text}]}]},
+                                route_stanza(
+                                  make_chat_jid(US, StateData),
+                                  jlib:make_jid(AgentLJID),
+                                  Packet),
+                                SD1 = change_agent_status(AgentLJID, waiting, US, StateData),
+                                SD2 = update_agent_queue(AgentLJID, SD1),
+                                SD3 = case Mode of
+                                          connecting ->
+                                              SD2#state{ringing_queue = treap:delete(US,  SD2#state.ringing_queue)};
+                                          _ ->
+                                              SD2
+                                      end,
+
+                                Dict = (?DICT):store(
+                                         US, Data1#user{is_available = false, status = offline},
+                                         SD3#state.user_status),
+                                SD3#state{user_status = Dict};
+                            waiting ->
+                                StateData;
+                            _ ->
+                                Dict = (?DICT):store(
+                                         US, Data1#user{is_available = false, status = offline},
+                                         StateData#state.user_status),
+                                StateData#state{user_status = Dict}
+                        end;
+                    Type == <<"">> ->
+                        Dict = (?DICT):store(
+                                 US, Data1#user{is_available = true},
+                                 StateData#state.user_status),
+                        StateData#state{user_status = Dict}
+                end,
+            {next_state, normal_state, NS}
     end.
 
 is_user_online(JID, StateData) ->
@@ -1753,6 +1849,13 @@ io:format("asd ~p~n", [{StateData#state.available_agents, StateData#state.user_q
                 treap:delete_root(StateData#state.available_agents),
             RingingQueue = case (?DICT):find(US, StateData#state.user_status) of
                                {ok, Data} ->
+                                   History =
+                                       get_history(
+                                         US, Data#user.ts,
+                                         StateData),
+                                   send_history(
+                                     US, AgentLJID, History,
+                                     StateData),
                                    queue_insert(US, Data#user.ts, ok,
                                                 StateData#state.ringing_queue);
                                error ->
@@ -1846,13 +1949,39 @@ direct_connect(US, AgentLJID, StateData) ->
             end
     end.
 
-send_to_user(AgentLJID, US, Els, StateData) ->
+get_agent_nick_and_avatar(AgentLJID) ->
+    IQ = mod_vcard:process_sm_iq(<<"">>, jlib:make_jid(AgentLJID), #iq{type=get}),
+    {N,A} = case IQ#iq.sub_el of
+                [#xmlel{name = <<"vCard">>}=El|_] ->
+                    {xml:get_path_s(El, [{elem, <<"NICKNAME">>}, cdata]),
+                     binary:replace(xml:get_path_s(El, [{elem, <<"PHOTO">>}, {elem, <<"BINVAL">>}, cdata]),
+                                    [<<" ">>, <<"\n">>], <<"">>, {global})};
+                _ ->
+                    {<<"">>, <<"">>}
+            end,
+    case N of
+        <<"">> ->
+            {AgentId, _, _} = AgentLJID,
+            {AgentId, A};
+        _ ->
+            {N, A}
+    end.
+
+send_to_user(AgentLJID, US, Els, StateData, First) ->
     case (?DICT):find(US, StateData#state.user_status) of
         {ok, Data} ->
             JID = Data#user.jid,
+            {Nick, Avatar} = get_agent_nick_and_avatar(AgentLJID),
+            Attrs = case First of
+                        true ->
+                            [{<<"name">>, Nick}, {<<"avatar">>, Avatar}];
+                        _ ->
+                            [{<<"name">>, Nick}]
+                    end,
             Packet = #xmlel{name = <<"message">>,
                             attrs = [{<<"type">>, <<"chat">>}],
-                            children = Els},
+                            children = [#xmlel{name = <<"agent">>,
+                                               attrs = Attrs} | Els]},
             add_history(US, jlib:make_jid(AgentLJID), Packet, StateData),
             route_stanza(
               StateData#state.jid,
@@ -1867,6 +1996,7 @@ handle_agent_message(US, UserData, AgentLJID, Els, StateData) ->
     case (?DICT):find(AgentLJID,
                       StateData#state.agent_status) of
         {ok, Statuses} ->
+            ?DEBUG("HAM: ~p ~p", [lists:keysearch(US, 2, Statuses), UserData]),
             case lists:keysearch(US, 2, Statuses) of
                 {value, {{connecting, _Timer}, _}} ->
                     case get_el_xmlns(Els) of
@@ -1874,14 +2004,14 @@ handle_agent_message(US, UserData, AgentLJID, Els, StateData) ->
                          ?NS_SUPPORT} ->
                             handle_accept_event(StateData, UserData, AgentLJID, US);
                         _ ->
-                            case xml:get_path_s(#xmlel{children=Els}, [{elem, <<"body">>}, cdata]) of
-                                <<"">> ->
-                                    StateData;
-                                _ ->
-                                    SD1 = handle_accept_event(StateData, UserData, AgentLJID, US),
+                            case check_for_push_message(US, UserData, AgentLJID, Els, StateData) of
+                                {StD1, false} ->
+                                    StD2 = handle_accept_event(StD1, UserData, AgentLJID, US),
                                     send_to_user(AgentLJID, US,
-                                                 Els, SD1),
-                                    SD1
+                                                 Els, StD2, true),
+                                    StD2;
+                                {StD3, true} ->
+                                    StD3
                             end
                     end;
                 {value, {talking, _}} ->
@@ -1909,16 +2039,105 @@ handle_agent_message(US, UserData, AgentLJID, Els, StateData) ->
                                     handle_done_event(StateData, UserData, AgentLJID, US);
                                 _ ->
                                     send_to_user(AgentLJID, US,
-                                                 Els, StateData),
+                                                 Els, StateData, false),
                                     StateData
                             end
                     end;
                 false ->
-                    StateData;
+                    case check_for_push_message(US, UserData, AgentLJID, Els, StateData) of
+                        {SD1, _} ->
+                            SD1
+                    end;
                 _ ->
                     ?ERROR_MSG("Internal error: ~p not consistent~n", [{US, AgentLJID}])
             end;
         error -> StateData
+    end.
+
+check_for_push_message(US, UserData, AgentLJID, Els, StateData) ->
+    case {xml:get_path_s(#xmlel{children=Els}, [{elem, <<"body">>}, cdata]), UserData#user.is_available, UserData#user.push_info /= unavailable} of
+        {<<":push ",Tail/binary>>, _, false} ->
+            Text = <<"This user don't have push information stored">>,
+            Packet =
+                #xmlel{name = <<"message">>,
+                       attrs = [{<<"type">>, <<"chat">>}],
+                       children =
+                           [#xmlel{name = <<"body">>,
+                                   attrs = [],
+                                   children =
+                                       [{xmlcdata, Text}]}]},
+            route_stanza(
+              make_chat_jid(US, StateData),
+              jlib:make_jid(AgentLJID),
+              Packet),
+            {StateData, true};
+        {<<":push ",Tail/binary>>, Avail, true} ->
+            case Avail of
+                true ->
+                    Text = <<"User is currently available, not sending push">>,
+                    Packet =
+                        #xmlel{name = <<"message">>,
+                               attrs = [{<<"type">>, <<"chat">>}],
+                               children =
+                                   [#xmlel{name = <<"body">>,
+                                           attrs = [],
+                                           children =
+                                               [{xmlcdata, Text}]}]},
+                    route_stanza(
+                      make_chat_jid(US, StateData),
+                      jlib:make_jid(AgentLJID),
+                      Packet);
+                false ->
+                    Text = send_push(US, UserData, AgentLJID, Tail),
+                    Packet =
+                        #xmlel{name = <<"message">>,
+                               attrs = [{<<"type">>, <<"chat">>}],
+                               children =
+                                   [#xmlel{name = <<"body">>,
+                                           attrs = [],
+                                           children =
+                                               [{xmlcdata, Text}]}]},
+                    route_stanza(
+                      make_chat_jid(US, StateData),
+                      jlib:make_jid(AgentLJID),
+                      Packet)
+            end,
+            {StateData, true};
+        {<<"">>, _, _} ->
+            {StateData, true};
+        {_, false, false} ->
+            Text = <<"User is not currently available">>,
+            Packet =
+                #xmlel{name = <<"message">>,
+                       attrs = [{<<"type">>, <<"chat">>}],
+                       children =
+                           [#xmlel{name = <<"body">>,
+                                   attrs = [],
+                                   children =
+                                       [{xmlcdata, Text}]}]},
+            route_stanza(
+              make_chat_jid(US, StateData),
+              jlib:make_jid(AgentLJID),
+              Packet),
+            {StateData, true};
+        {_, false, true} ->
+            ?DEBUG("Unavilable user ~p", [[AgentLJID, UserData]]),
+            Text = <<"User is not currently available, to send push message send ':push <message>'">>,
+            Packet =
+                #xmlel{name = <<"message">>,
+                       attrs = [{<<"type">>, <<"chat">>}],
+                       children =
+                           [#xmlel{name = <<"body">>,
+                                   attrs = [],
+                                   children =
+                                       [{xmlcdata, Text}]}]},
+            route_stanza(
+              make_chat_jid(US, StateData),
+              jlib:make_jid(AgentLJID),
+              Packet),
+            {StateData, true};
+        _ ->
+            {StateData, false}
     end.
 
 update_queue_pos_after_user_removal(US, StateData) ->
@@ -1949,13 +2168,13 @@ handle_accept_event(StateData, UserData, AgentLJID, US) ->
             SD1),
     update_queue_pos_after_user_removal(US, SD2),
     SD3 = SD2#state{ringing_queue = treap:delete(US, SD2#state.ringing_queue)},
-    History =
-        get_history(
-          US, UserData#user.ts,
-          StateData),
-    send_history(
-      US, AgentLJID, History,
-      StateData),
+%    History =
+%        get_history(
+%          US, UserData#user.ts,
+%          StateData),
+%    send_history(
+%      US, AgentLJID, History,
+%      StateData),
     SD3.
 
 handle_done_event(StateData, UserData, AgentLJID, US) ->
@@ -1981,10 +2200,8 @@ handle_done_event(StateData, UserData, AgentLJID, US) ->
             waiting, US,
             StateData),
     SD2 = update_agent_queue(AgentLJID, SD1),
-    UserStatus =
-        (?DICT):erase(
-          US,
-          SD2#state.user_status),
+    UserStatus = (?DICT):store(US, UserData#user{status = offline, is_available = false},
+                               StateData#state.user_status),
     SD3 = SD2#state{user_status =
                         UserStatus},
     try_connect(SD3).
@@ -2002,6 +2219,34 @@ send_system_msg_to_user(US, Els, StateData) ->
               Packet);
         error ->
             ok
+    end.
+
+shell_quote(L) ->
+    shell_quote(L, [$\"]).
+
+cmd(Argv) ->
+    os:cmd(cmd_string(Argv)).
+
+cmd_string(Argv) ->
+    string:join([shell_quote(X) || X <- Argv], " ").
+
+shell_quote([], Acc) ->
+    lists:reverse([$\" | Acc]);
+shell_quote([C | Rest], Acc) when C =:= $\" orelse C =:= $\` orelse
+                                  C =:= $\\ orelse C =:= $\$ ->
+    shell_quote(Rest, [C, $\\ | Acc]);
+shell_quote([C | Rest], Acc) ->
+    shell_quote(Rest, [C | Acc]).
+
+send_push(US, UserData, AgentLJID, Message) ->
+    case UserData#user.push_info of
+        {Product, Push, Alias} ->
+            cmd(["boxcar_chat_support.py", binary_to_list(Product),
+                 binary_to_list(Push), binary_to_list(Alias),
+                 binary_to_list(Message)]),
+            <<"Push sent">>;
+        _ ->
+            <<"Client don't have push enabled">>
     end.
 
 queue_insert(US, {MSecs, Secs, MicroSecs}, Data,
@@ -2051,19 +2296,18 @@ send_history(US, AgentLJID, History, StateData) ->
       fun({Now, Sender, Body}) ->
               SSender = jlib:jid_to_string(Sender),
               Text = <<"<", SSender/binary, "> ", Body/binary>>,
-              DateTime = calendar:now_to_universal_time(Now),
-              {T_string, Tz_string} = jlib:timestamp_to_iso(DateTime, utc),
-              Stamp = <<T_string/binary, Tz_string/binary>>,
+              {T_string, Tz_string} = jlib:timestamp_to_iso(calendar:now_to_universal_time(Now), utc),
+              Delay = #xmlel{name = <<"delay">>, attrs = [{<<"xmlns">>, ?NS_DELAY},
+                                                          {<<"from">>, SSender},
+                                                          {<<"stamp">>, <<T_string/binary, Tz_string/binary>>}],
+                             children = [{xmlcdata, <<"Offline Storage">>}]},
               Packet =
                   #xmlel{name = <<"message">>,
                          attrs = [{<<"type">>, <<"chat">>}],
                          children =
                          [#xmlel{name = <<"body">>, attrs = [],
                                  children = [{xmlcdata, Text}]},
-                          #xmlel{name = <<"delay">>, attrs = [{<<"xmlns">>, ?NS_DELAY},
-                                                              {<<"from">>, Sender},
-                                                              {<<"stamp">>, Stamp}],
-                                 children = [{xmlcdata, <<"Offline Storage">>}]}]},
+                          Delay]},
               route_stanza(
                 make_chat_jid(US, StateData),
                 jlib:make_jid(AgentLJID),
@@ -2714,11 +2958,12 @@ add_message_to_history(FromNick, FromJID, Packet,
 		  false -> FromJID
 		end,
     {T_string, Tz_string} = jlib:timestamp_to_iso(TimeStamp, utc),
-    TSPacket = xml:append_subtags(Packet,
-	    [#xmlel{name = <<"delay">>, attrs = [{<<"xmlns">>, ?NS_DELAY},
-			{<<"from">>, SenderJid},
-			{<<"stamp">>, <<T_string/binary, Tz_string/binary>>}],
-		    children = [{xmlcdata, <<>>}]}]),
+    Delay = [#xmlel{name = <<"delay">>, attrs = [{<<"xmlns">>, ?NS_DELAY},
+                                                 {<<"from">>, jlib:jid_to_string(SenderJid)},
+                                                 {<<"stamp">>, <<T_string/binary, Tz_string/binary>>}],
+                    children = [{xmlcdata, <<>>}]}],
+
+    TSPacket = xml:append_subtags(Packet, Delay),
     SPacket =
 	jlib:replace_from_to(jlib:jid_replace_resource(StateData#state.jid,
 						       FromNick),
@@ -3478,16 +3723,14 @@ process_iq_owner(From, get, Lang, SubEl, StateData) ->
     end.
 
 is_allowed_log_change(XEl, StateData, From) ->
-    true.
-%    case lists:keymember(<<"support#roomconfig_enablelogging">>,
-%			 1, jlib:parse_xdata_submit(XEl))
-%	of
-%      false -> true;
-%      true ->
-%	  allow ==
-%	    mod_support_log:check_access_log(StateData#state.server_host,
-%					 From)
-%    end.
+    case lists:keymember(<<"support#roomconfig_enablelogging">>,
+			 1, jlib:parse_xdata_submit(XEl))
+	of
+      false -> true;
+      true ->
+	  allow == false
+	    %mod_support_log:check_access_log(StateData#state.server_host, From)
+    end.
 
 is_allowed_persistent_change(XEl, StateData, From) ->
     case
@@ -3845,16 +4088,15 @@ get_config(Lang, StateData, From) ->
 				   <<"support#roomconfig_captcha_whitelist">>,
 				   ((?SETS):to_list(Config#config.captcha_whitelist)))]
 		    ++
-%		    case
-%		      mod_support_log:check_access_log(StateData#state.server_host,
-%						   From)
-%			of
-%		      allow ->
+		    case forbiden
+		      %mod_support_log:check_access_log(StateData#state.server_host, From)
+			of
+		      allow ->
 			  [?BOOLXFIELD(<<"Enable logging">>,
 				       <<"support#roomconfig_enablelogging">>,
-				       (Config#config.logging))],
-%		      _ -> []
-%		    end,
+				       (Config#config.logging))];
+		      _ -> []
+		    end,
     {result,
      [#xmlel{name = <<"instructions">>, attrs = [],
 	     children =
@@ -4261,9 +4503,10 @@ make_opts(StateData) ->
                                true -> (?SETS):to_list(DefV);
                                false -> DefV
                            end,
-                  case Val of
-                        DefVal -> {Pos+1, L};
-                        _ -> {Pos+1, [{Field, Val}|L]}
+                  if Val == DefVal ->
+                          {Pos+1, L};
+                     true ->
+                          {Pos+1, [{Field, Val}|L]}
                   end
           end, {2, []}, Fields),
     Opts2 = lists:reverse(Opts1),
@@ -4551,18 +4794,20 @@ get_supportroom_disco_items(StateData) ->
 
 add_to_log(Type, Data, StateData) ->
     ok.
-%    when false andalso Type == roomconfig_change_disabledlogging ->
-%    mod_support_log:add_to_log(StateData#state.server_host,
-%			   roomconfig_change, Data, StateData#state.jid,
-%			   make_opts(StateData));
-%add_to_log(Type, Data, StateData) ->
-%    case false andalso (StateData#state.config)#config.logging of
-%      true ->
-%	  mod_support_log:add_to_log(StateData#state.server_host,
-%				 Type, Data, StateData#state.jid,
-%				 make_opts(StateData));
-%      false -> ok
-%    end.
+
+%% add_to_log(Type, Data, StateData)
+%%     when false andalso Type == roomconfig_change_disabledlogging ->
+%%     mod_support_log:add_to_log(StateData#state.server_host,
+%% 			   roomconfig_change, Data, StateData#state.jid,
+%% 			   make_opts(StateData));
+%% add_to_log(Type, Data, StateData) ->
+%%     case false andalso (StateData#state.config)#config.logging of
+%%       true ->
+%% 	  mod_support_log:add_to_log(StateData#state.server_host,
+%% 				 Type, Data, StateData#state.jid,
+%% 				 make_opts(StateData));
+%%       false -> ok
+%%     end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Users number checking

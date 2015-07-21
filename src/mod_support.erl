@@ -1021,6 +1021,11 @@ flush() -> receive _ -> flush() after 0 -> ok end.
 		   [#xmlel{name = <<"value">>, attrs = [],
 			   children = [{xmlcdata, Val}]}]}).
 
+iq_get_unique(From) ->
+    {xmlcdata,
+     p1_sha:sha(term_to_binary([From, now(),
+			     randoms:get_string()]))}.
+
 get_nick(ServerHost, Host, From) ->
     LServer = jlib:nameprep(ServerHost),
     get_nick(LServer, Host, From,
