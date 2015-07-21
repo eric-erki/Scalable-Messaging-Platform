@@ -1244,7 +1244,9 @@ process_presence(From, _Nick,
                         Dict = (?DICT):store(
                                  US, Data1#user{is_available = true},
                                  StateData#state.user_status),
-                        StateData#state{user_status = Dict}
+                        StateData#state{user_status = Dict};
+                    true ->
+                        StateData
                 end,
             {next_state, normal_state, NS}
     end.
