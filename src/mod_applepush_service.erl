@@ -251,19 +251,23 @@ handle_info({ssl, Socket, Packet}, State)
     case Packet of
 	<<8, Status, CmdID:32>> when Status /= 0 ->
 	    case dict:find(CmdID, State#state.cmd_cache) of
-		{ok, {JID, _DeviceID}} ->
+		{ok, {JID, DeviceID}} ->
                     ?ERROR_MSG("PUSH ERROR for ~p: ~p", [JID, Status]),
 		    if
 			Status == 8 ->
 			    From = jlib:make_jid(<<"">>, State#state.host, <<"">>),
-			    ejabberd_router:route(
-			      From, JID,
-			      #xmlel{name = <<"message">>, attrs = [],
+                            BJID = jlib:jid_remove_resource(JID),
+                            ejabberd_router:route(
+                              From, BJID,
+                              #xmlel{name = <<"iq">>,
+                                     attrs = [{<<"id">>, <<"disable">>},
+                                              {<<"type">>, <<"set">>}],
                                      children =
                                      [#xmlel{name = <<"disable">>,
-                                             attrs = [{<<"xmlns">>, ?NS_P1_PUSH},
-                                                      {<<"status">>,
-                                                       jlib:integer_to_binary(Status)}],
+                                             attrs =
+                                             [{<<"xmlns">>, ?NS_P1_PUSH_APPLEPUSH},
+                                              {<<"status">>, <<"feedback">>},
+                                              {<<"id">>, jlib:integer_to_binary(DeviceID, 16)}],
                                              children = []}]});
 			true ->
 			    ok
