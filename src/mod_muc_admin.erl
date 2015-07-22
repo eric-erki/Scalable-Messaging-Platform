@@ -655,7 +655,7 @@ find_serverhost(Host, ServerHosts) ->
 act_on_room(destroy, {N, H, Pid}, SH) ->
     gen_fsm:send_all_state_event(
       Pid, {destroy, <<"Room destroyed by rooms_unused_destroy.">>}),
-    mod_muc:unregister_room(H, Room),
+    mod_muc:unregister_room(H, N),
     mod_muc:forget_room(SH, H, N);
 
 act_on_room(list, _, _) ->
