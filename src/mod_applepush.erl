@@ -311,7 +311,7 @@ do_send_offline_packet_notification(From, To, Packet, ID, AppID, SendBody, SendF
                                                       SilentPushEnabled) of
         skip ->
             ok;
-        V ->
+        {V, _Silent} ->
             route_push_notification(To#jid.lserver, To, AppID, V)
     end.
 
