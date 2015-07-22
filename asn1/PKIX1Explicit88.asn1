@@ -204,14 +204,6 @@ id-domainComponent      AttributeType ::=
 
 DomainComponent ::=     IA5String
 
--- Legacy attributes
-
-id-emailAddress          AttributeType ::= { pkcs-9 1 }
-
-EmailAddress ::=         IA5String (SIZE (1..ub-emailaddress-length))
-
--- Legacy attributes
-
 -- naming data types --
 
 Name ::= CHOICE { -- only one possibility for now --
@@ -578,7 +570,6 @@ ub-organizational-unit-name INTEGER ::= 64
 ub-title INTEGER ::= 64
 ub-serial-number INTEGER ::= 64
 ub-match INTEGER ::= 128
-ub-emailaddress-length INTEGER ::= 255
 ub-common-name-length INTEGER ::= 64
 ub-country-name-alpha-length INTEGER ::= 2
 ub-country-name-numeric-length INTEGER ::= 3
