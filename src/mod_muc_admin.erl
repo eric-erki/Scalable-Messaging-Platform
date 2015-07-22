@@ -402,14 +402,14 @@ create_room(Name, Host, ServerHost) ->
 					 default_room_options, fun(X) -> X end, []),
 
     %% Store the room on the server, it is not started yet though at this point
-    mod_muc:store_room(ServerHost, Host, Name, DefRoomOpts),
+    mod_muc:store_room(ServerHost, Host, Name, DefRoomOpts, []),
 
     %% Get all remaining mod_muc parameters that might be utilized
     Access = gen_mod:get_module_opt(ServerHost, mod_muc, access, fun(X) -> X end, all),
     AcCreate = gen_mod:get_module_opt(ServerHost, mod_muc, access_create, fun(X) -> X end, all),
     AcAdmin = gen_mod:get_module_opt(ServerHost, mod_muc, access_admin, fun(X) -> X end, none),
     AcPer = gen_mod:get_module_opt(ServerHost, mod_muc, access_persistent, fun(X) -> X end, all),
-    _PersistHistory = gen_mod:get_module_opt(ServerHost, mod_muc, persist_history, fun(X) -> X end, false),
+    PersistHistory = gen_mod:get_module_opt(ServerHost, mod_muc, persist_history, fun(X) -> X end, false),
     HistorySize = gen_mod:get_module_opt(ServerHost, mod_muc, history_size, fun(X) -> X end, 20),
     RoomShaper = gen_mod:get_module_opt(ServerHost, mod_muc, room_shaper, fun(X) -> X end, none),
 
@@ -423,6 +423,7 @@ create_room(Name, Host, ServerHost) ->
 			  {Access, AcCreate, AcAdmin, AcPer},
 			  Name,
 			  HistorySize,
+			  PersistHistory,
 			  RoomShaper,
 			  DefRoomOpts),
 	    {atomic, ok} = register_room(Host, Name, Pid),
@@ -442,7 +443,7 @@ register_room(Host, Name, Pid) ->
 %% It is required to restart the MUC service for the room to appear.
 muc_create_room(ServerHost, {Name, Host, _}, DefRoomOpts) ->
     io:format("Creating room ~s@~s~n", [Name, Host]),
-    mod_muc:store_room(ServerHost, Host, Name, DefRoomOpts).
+    mod_muc:store_room(ServerHost, Host, Name, DefRoomOpts, []).
 
 %% @spec (Name::binary(), Host::binary(), ServerHost::binary()) ->
 %%       ok | {error, room_not_exists}
@@ -654,7 +655,7 @@ find_serverhost(Host, ServerHosts) ->
 act_on_room(destroy, {N, H, Pid}, SH) ->
     gen_fsm:send_all_state_event(
       Pid, {destroy, <<"Room destroyed by rooms_unused_destroy.">>}),
-    mod_muc:room_destroyed(H, N, Pid, SH),
+    mod_muc:unregister_room(H, Room),
     mod_muc:forget_room(SH, H, N);
 
 act_on_room(list, _, _) ->
@@ -869,7 +870,10 @@ set_room_affiliation(Name, Service, JID, AffiliationString) ->
 	    %% Get the PID for the online room so we can get the state of the room
 	    Pid = R#muc_online_room.pid,
 	    {ok, StateData} = gen_fsm:sync_send_all_state_event(Pid, {process_item_change, {jlib:string_to_jid(JID), affiliation, Affiliation, <<"">>}, <<"">>}),
-	    mod_muc:store_room(StateData#state.server_host, StateData#state.host, StateData#state.room, make_opts(StateData)),
+	    mod_muc:store_room(StateData#state.server_host,
+		StateData#state.host, StateData#state.room,
+		make_opts(StateData),
+		make_affiliations(StateData)),
 	    ok;
 	[] ->
 	    error
@@ -899,6 +903,9 @@ make_opts(StateData) ->
      {subject_author, StateData#state.subject_author}
     ].
 
+%% Copied from mod_muc_room.erl
+make_affiliations(StateData) ->
+    (?DICT):to_list(StateData#state.affiliations).
 
 %%----------------------------
 %% Utils
