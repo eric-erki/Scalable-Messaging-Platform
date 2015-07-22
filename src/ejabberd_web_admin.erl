@@ -1587,7 +1587,11 @@ user_info(User, Server, Query, Lang) ->
                                                           c2s_compressed_tls ->
                                                               <<"tls+zlib">>;
                                                           http_bind ->
-                                                              <<"http-bind">>
+                                                              <<"http-bind">>;
+                                                          http_ws ->
+                                                              <<"websocket">>;
+                                                          _ ->
+                                                              <<"unknown">>
                                                       end,
                                               <<" (", ConnS/binary,
                                                 "://",
