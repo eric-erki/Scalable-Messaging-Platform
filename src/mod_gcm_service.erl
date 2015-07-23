@@ -346,30 +346,30 @@ process_json_response(Request, {Attrs},
 	  NewState
     end.
 
+log_gcm_error(State, ErrType, Request) ->
+    log_gcm_error(State, ErrType, Request, <<"">>).
+log_gcm_error(#state{gateway=G, apikey=A, host=H}, ErrType, Request, ExtraInfo) ->
+    ?ERROR_MSG("(~p) Error response received from GCM gateway ~p (apikey: ~p) "
+	       "with code: ~p. Original JSON request was: ~p~s",
+	       [H, G, A, ErrType, Request, ExtraInfo]).
+
 process_message_result([{<<"error">>,
-			 <<"NotRegistered">>}],
+			 <<"NotRegistered">> = Err}],
 		       From, _To, _Packet, Request, _, DeviceID, State) ->
-    ?ERROR_MSG("(~p) Error response received from GCM "
-	       "with code: ~p. Original JSON request was: ~p",
-	       [State#state.host, <<"NotRegistered">>, Request]),
+    log_gcm_error(State, Err, Request),
     disable_push(From, DeviceID, State),
     active(State);
 process_message_result([{<<"error">>,
-			 <<"InvalidRegistration">>}],
+			 <<"InvalidRegistration">> = Err}],
 		       From, _To, _Packet, Request, _, DeviceID, State) ->
-    ?ERROR_MSG("(~p) Error response received from GCM "
-	       "with code: ~p. Original JSON request was: ~p",
-	       [State#state.host, "InvalidRegistration", Request]),
+    log_gcm_error(State, Err, Request),
     disable_push(From, DeviceID, State),
     active(State);
 process_message_result([{<<"error">>,
-			 <<"Unavailable">>}],
+			 <<"Unavailable">> = Err}],
 		       From, To, Packet, Request, ResponseHeaders, _DeviceID,
 		       State) ->
-    ?ERROR_MSG("(~p) Error response received from GCM "
-	       "with code: ~p. We will retry honoring Retry-After header. "
-	       "Original JSON request was: ~p",
-	       [State#state.host, "Unavailable", Request]),
+    log_gcm_error(State, Err, Request, <<". We will retry honoring Retry-After header">>),
     RetryAfter = case proplists:get_value("Retry-After",
 					  ResponseHeaders)
 		     of
@@ -380,9 +380,7 @@ process_message_result([{<<"error">>,
     queue_message(From, To, Packet, WaitTime, State);
 process_message_result([{<<"error">>, ErrorCode}], From,
 		       To, Packet, Request, _, _DeviceID, State) ->
-    ?ERROR_MSG("(~p) Error response received from GCM "
-	       "with code: ~p. Original JSON request was: ~p",
-	       [State#state.host, ErrorCode, Request]),
+    log_gcm_error(State, ErrorCode, Request),
     bounce_message(From, To, Packet),
     active(State);
 %% everything went fine
