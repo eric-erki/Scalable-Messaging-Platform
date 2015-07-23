@@ -167,7 +167,7 @@ add_to_log2(File, FileSize, Code, Request) ->
     IP = jlib:ip_to_list(Request#request.ip),
     Path = str:join(Request#request.path, <<"/">>),
     Query = case str:join(
-                   lists:flatmap(fun ({nokey, []}) ->
+                   lists:flatmap(fun ({nokey, _}) ->
                                          [];
                                      ({K, V}) ->
                                          [<<K/binary, $=, V/binary>>]
