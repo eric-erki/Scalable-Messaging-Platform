@@ -48,8 +48,6 @@
 
 -include("jlib.hrl").
 
--include("licence.hrl").
-
 -include("logger.hrl").
 
 -record(filter_rule,
