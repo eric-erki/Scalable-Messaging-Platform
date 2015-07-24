@@ -4015,7 +4015,9 @@ is_revoked(Cert, CRL) ->
     RevokedCerts = TBSCertList#'TBSCertList'.revokedCertificates,
     lists:any(
       fun(#'TBSCertList_revokedCertificates_SEQOF'{userCertificate = N}) ->
-	      SerialNumber == N
+	      SerialNumber == N;
+	 (_) ->
+	      false
       end, RevokedCerts).
 
 is_known_issuer(_Cert, []) ->
@@ -4023,7 +4025,9 @@ is_known_issuer(_Cert, []) ->
 is_known_issuer(Cert, CAList) ->
     lists:any(
       fun({'Certificate', Issuer, _}) ->
-	      public_key:pkix_is_issuer(Cert, Issuer)
+	      public_key:pkix_is_issuer(Cert, Issuer);
+	 (_) ->
+	      false
       end, CAList).
 
 %%%----------------------------------------------------------------------
