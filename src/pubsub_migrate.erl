@@ -29,7 +29,8 @@
 -include("pubsub.hrl").
 -include("logger.hrl").
 
--export([update_node_database/2, update_state_database/2, update_lastitem_database/2]).
+-export([update_node_database/2, update_state_database/2]).
+-export([update_item_database/2, update_lastitem_database/2]).
 -export([export/1]).
 
 rename_default_nodeplugin() ->
@@ -319,6 +320,27 @@ update_lastitem_database(_Host, _ServerHost) ->
 	    ?INFO_MSG("Pubsub lastitems table has been binarized: ~p", [Result])
     end.
 
+update_item_database(_Host, _ServerHost) ->
+    F = fun() ->
+	    ?INFO_MSG("Migration of old pubsub items...", []),
+	    lists:foreach(fun (Key) ->
+			[Item] = mnesia:read({pubsub_item, Key}),
+			Payload = [xmlelement_to_xmlel(El) || El <- Item#pubsub_item.payload],
+			mnesia:write(Item#pubsub_item{payload=Payload})
+		end,
+		mnesia:all_keys(pubsub_item))
+	end,
+    case mnesia:transaction(F) of
+	{aborted, Reason} ->
+	    ?ERROR_MSG("Failed to migrate old pubsub items to xmlel: ~p", [Reason]);
+	{atomic, Result} ->
+	    ?INFO_MSG("Pubsub items has been migrated: ~p", [Result])
+    end.
+
+xmlelement_to_xmlel({xmlelement, A, B, C}) when is_list(C) ->
+    {xmlel, A, B, [xmlelement_to_xmlel(El) || El <- C]};
+xmlelement_to_xmlel(El) ->
+    El.
 
 %% REVIEW:
 %% * this code takes NODEID from Itemid2, and forgets about Nodeidx
