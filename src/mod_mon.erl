@@ -657,6 +657,11 @@ init_backend(Host, mnesia) ->
                          {record_name, mon},
                          {attributes, record_info(fields, mon)}]),
     mnesia;
+init_backend(Host, grapherl) ->
+    init_backend(Host, {grapherl, {127,0,0,1}, 11111});
+init_backend(Host, {grapherl, Server, Port}) ->
+    % TODO init client
+    grapherl;
 init_backend(_, _) ->
     none.
 
@@ -682,20 +687,47 @@ push(Host, Probes, mnesia) ->
         end, Probes);
 push(_Host, Probes, statsd) ->
     % Librato metrics are name first with service name (to group the metrics from a service),
-    % then type of service (xmpp, etc) and then name of the data itself
+    % then type of service (xmpp, etc) and then nodename and name of the data itself
     % example => process-one.net.xmpp.xmpp-1.chat_receive_packet
     [_, NodeId] = str:tokens(jlib:atom_to_binary(node()), <<"@">>),
     [Node | _] = str:tokens(NodeId, <<".">>),
-    BaseId = <<"xmpp.", Node/binary>>,
+    BaseId = <<"xmpp.", Node/binary, ".">>,
     lists:foreach(
         fun({Key, Val}) ->
-                Id = <<BaseId/binary, ".", (jlib:atom_to_binary(Key))/binary>>,
+                Id = <<BaseId/binary, (jlib:atom_to_binary(Key))/binary>>,
                 case proplists:get_value(Key, ?NO_COUNTER_PROBES) of
                     undefined -> statsderl:increment(Id, Val, 1);
                     gauge -> statsderl:gauge(Id, Val, 1);
                     _ -> ok
                 end
         end, Probes);
+push(Host, Probes, grapherl) ->
+    % grapherl metrics are name first with service name, then nodename
+    % and name of the data itself, followed by type timestamp and value
+    % example => process-one.net/xmpp-1.chat_receive_packet:g/timestamp:value
+    [_, NodeId] = str:tokens(jlib:atom_to_binary(node()), <<"@">>),
+    [Node | _] = str:tokens(NodeId, <<".">>),
+    BaseId = <<Host/binary, "/", Node/binary, ".">>,
+    DateTime = erlang:universaltime(),
+    UnixTime = calendar:datetime_to_gregorian_seconds(DateTime) - 62167219200,
+    TS = integer_to_binary(UnixTime),
+    case gen_udp:open(0) of
+        {ok, Socket} ->
+            lists:foreach(
+                fun({Key, Val}) ->
+                        Type = case proplists:get_value(Key, ?NO_COUNTER_PROBES) of
+                            gauge -> <<"g">>;
+                            _ -> <<"c">>
+                        end,
+                        BVal = integer_to_binary(Val),
+                        Data = <<BaseId/binary, (jlib:atom_to_binary(Key))/binary,
+                                 ":", Type/binary, "/", TS/binary, ":", BVal/binary>>,
+                        gen_udp:send(Socket, {127,0,0,1}, 11111, Data)
+                end, Probes),
+            gen_udp:close(Socket);
+        Error ->
+            ?WARNING_MSG("can not open udp socket to grapherl: ~p", [Error])
+    end;
 push(_Host, _Probes, none) ->
     ok.
 
