@@ -2436,11 +2436,11 @@ node_ports_to_xhtml(Ports, Lang) ->
 				      ?XE(<<"td">>,
 					  [?INPUTT(<<"submit">>,
 						   <<"add", SSPort/binary>>,
-						   <<"Update">>)]),
+						   <<"Restart">>)]),
 				      ?XE(<<"td">>,
 					  [?INPUTT(<<"submit">>,
 						   <<"delete", SSPort/binary>>,
-						   <<"Delete">>)])])
+						   <<"Stop">>)])])
 			 end,
 			 Ports)
 		 ++
@@ -2460,7 +2460,7 @@ node_ports_to_xhtml(Ports, Lang) ->
 				      <<"[]">>)]),
 		       ?XAE(<<"td">>, [{<<"colspan">>, <<"2">>}],
 			    [?INPUTT(<<"submit">>, <<"addnew">>,
-				     <<"Add New">>)])])]))]).
+				     <<"Start">>)])])]))]).
 
 make_netprot_html(NetProt) ->
     ?XAE(<<"select">>, [{<<"name">>, <<"netprotnew">>}],
