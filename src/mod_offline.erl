@@ -279,7 +279,7 @@ get_max_user_messages(AccessRule, {User, Server}, Host) ->
 store_packet(From, To, Packet) ->
     case need_to_store(To#jid.lserver, Packet) of
 	true ->
-	   case has_no_storage_hint(Packet) of
+	   case has_no_store_hint(Packet) of
 		false ->
 		    case check_event(From, To, Packet) of
 			true ->
@@ -299,18 +299,10 @@ store_packet(From, To, Packet) ->
 	false -> ok
     end.
 
-has_no_storage_hint(Packet) ->
-    case xml:get_subtag(Packet, <<"no-store">>) of
-      #xmlel{attrs = Attrs} ->
-	  case xml:get_attr_s(<<"xmlns">>, Attrs) of
-	    ?NS_HINTS ->
-		true;
-	    _ ->
-		false
-	  end;
-      _ ->
-	  false
-    end.
+has_no_store_hint(Packet) ->
+    xml:get_subtag_with_xmlns(Packet, <<"no-store">>, ?NS_HINTS) =/= false
+      orelse
+      xml:get_subtag_with_xmlns(Packet, <<"no-storage">>, ?NS_HINTS) =/= false.
 
 need_to_store(LServer, Packet) ->
     Type = xml:get_tag_attr_s(<<"type">>, Packet),
