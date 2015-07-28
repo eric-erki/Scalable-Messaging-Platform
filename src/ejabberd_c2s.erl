@@ -4595,6 +4595,8 @@ fix_packet(StateData, FromJID, ToJID, El) ->
       user_send_packet, StateData#state.server,
       El, [StateData, FromJID, ToJID]).
 
+add_resent_delay_info(_State, #xmlel{name = <<"iq">>} = El, _Time) ->
+    El;
 add_resent_delay_info(#state{server = From}, El, Time) ->
     jlib:add_delay_info(El, From, Time, <<"Resent">>).
 
