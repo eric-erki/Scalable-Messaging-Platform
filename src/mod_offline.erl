@@ -296,22 +296,31 @@ need_to_store(LServer, Packet) ->
 store_packet(From, To, Packet) ->
     case need_to_store(To#jid.lserver, Packet) of
 	true ->
-	   case check_event(From, To, Packet) of
-	     true ->
-		 #jid{luser = LUser, lserver = LServer} = To,
-		 TimeStamp = now(),
-		 #xmlel{children = Els} = Packet,
-		 Expire = find_x_expire(TimeStamp, Els),
-                 Worker = mod_offline_sup:get_worker_for(To#jid.lserver, To#jid.luser),
-		 Worker !
-		   #offline_msg{us = {LUser, LServer},
+	    case has_no_store_hint(Packet) of
+		false ->
+		    case check_event(From, To, Packet) of
+			true ->
+			    #jid{luser = LUser, lserver = LServer} = To,
+			    TimeStamp = now(),
+			    #xmlel{children = Els} = Packet,
+			    Expire = find_x_expire(TimeStamp, Els),
+			    Worker = mod_offline_sup:get_worker_for(To#jid.lserver, To#jid.luser),
+			    Worker !
+			    #offline_msg{us = {LUser, LServer},
 				timestamp = TimeStamp, expire = Expire,
 				from = From, to = To, packet = Packet},
-		 stop;
-	     _ -> ok
-	   end;
-       false -> ok
+			    stop;
+			_ -> ok
+		    end;
+		_ -> ok
+	    end;
+	false -> ok
     end.
+
+has_no_store_hint(Packet) ->
+    xml:get_subtag_with_xmlns(Packet, <<"no-store">>, ?NS_HINTS) =/= false
+      orelse
+      xml:get_subtag_with_xmlns(Packet, <<"no-storage">>, ?NS_HINTS) =/= false.
 
 check_event(From, To, Packet) ->
     #xmlel{name = Name, attrs = Attrs, children = Els} =
