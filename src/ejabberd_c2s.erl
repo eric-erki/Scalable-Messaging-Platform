@@ -3836,11 +3836,11 @@ verify_cert(StateData, Cert) ->
 	    OCSPEnabled = proplists:get_bool(ocsp, StateData#state.tls_options),
 	    CRLEnabled = proplists:get_bool(crl, StateData#state.tls_options),
 	    if OCSPEnabled andalso not CRLEnabled ->
-		    verify_via_ocsp(OCSPURIs, Cert);
+		    verify_via_ocsp(OCSPURIs, Cert, CAList);
 	       CRLEnabled andalso not OCSPEnabled ->
 		    verify_via_crl(CRLURIs, Cert, CAList);
 	       true ->
-		    case verify_via_ocsp(OCSPURIs, Cert) of
+		    case verify_via_ocsp(OCSPURIs, Cert, CAList) of
 			{false, _} ->
 			    verify_via_crl(CRLURIs, Cert, CAList);
 			true ->
@@ -3890,12 +3890,12 @@ verify_issuer(StateData, Cert) ->
 	    end
     end.
 
-verify_via_ocsp(URIs, Cert) ->
+verify_via_ocsp(URIs, Cert, CAList) ->
     lists:foldl(
       fun(_, true) ->
 	      true;
 	 (URI, {false, _Reason}) ->
-	      make_ocsp_request(iolist_to_binary(URI), Cert)
+	      make_ocsp_request(iolist_to_binary(URI), Cert, CAList)
       end, {false, <<"no OCSP URIs found in certificate">>}, URIs).
 
 verify_via_crl(URIs, Cert, CAList) ->
@@ -3956,11 +3956,13 @@ get_verify_methods(Cert) ->
 	      Acc
       end, {[], []}, TBSCert#'OTPTBSCertificate'.extensions).
 
-make_ocsp_request(URI0, Cert) ->
+make_ocsp_request(URI0, Cert, CAList) ->
     URI = binary_to_list(URI0),
+    IssuerCert = get_issuer(Cert, CAList),
     TBSCert = Cert#'OTPCertificate'.tbsCertificate,
+    TBSIssuerCert = IssuerCert#'OTPCertificate'.tbsCertificate,
     SerialNumber = TBSCert#'OTPTBSCertificate'.serialNumber,
-    SubjPubKeyInfo = TBSCert#'OTPTBSCertificate'.subjectPublicKeyInfo,
+    SubjPubKeyInfo = TBSIssuerCert#'OTPTBSCertificate'.subjectPublicKeyInfo,
     RSAPubKey = SubjPubKeyInfo#'OTPSubjectPublicKeyInfo'.subjectPublicKey,
     IssuerDN = public_key:pkix_encode(
 		 'Name', TBSCert#'OTPTBSCertificate'.issuer, otp),
@@ -4029,6 +4031,17 @@ is_known_issuer(Cert, CAList) ->
 	 (_) ->
 	      false
       end, CAList).
+
+%% Cert must be issued by the CA list provided or function clause will be
+%% generated. So call is_known_issuer() first.
+get_issuer(Cert, [{'Certificate', DER, _}|CAList]) ->
+    Issuer = public_key:pkix_decode_cert(DER, otp),
+    case public_key:pkix_is_issuer(Cert, Issuer) of
+	true ->
+	    Issuer;
+	false ->
+	    get_issuer(Cert, CAList)
+    end.
 
 %%%----------------------------------------------------------------------
 %%% XEP-0191
