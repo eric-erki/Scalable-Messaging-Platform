@@ -1084,11 +1084,11 @@ process_groupchat_message(From,
 								     FromNick),
 					   StateData#state.server_host,
 					   StateData#state.users,
-					   Packet),
-			     NewStateData2 = case has_body_or_subject(Packet) of
+					   NewPacket),
+			     NewStateData2 = case has_body_or_subject(NewPacket) of
 					       true ->
 						   add_message_to_history(FromNick, From,
-									  Packet,
+									  NewPacket,
 									  NewStateData1);
 					       false ->
 						   NewStateData1
