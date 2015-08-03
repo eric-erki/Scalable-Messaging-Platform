@@ -3593,9 +3593,6 @@ process_push_iq(From, To,
                                                 none)
                                       end,
 				SendFrom = send_from(StateData, El),
-				AppID = xml:get_path_s(El,
-						       [{elem, <<"appid">>},
-							cdata]),
 				{Offline, Keep} =
                                       case xml:get_path_s(El,
                                                           [{elem,
@@ -3635,6 +3632,17 @@ process_push_iq(From, To,
 									    [{xmlcdata,
 									      <<"none">>}]}]}
 					       end,
+				Sandbox = xml:get_tag_attr_s(<<"apns-sandbox">>, El),
+				AppID0 = xml:get_path_s(El,
+                                                        [{elem, <<"appid">>},
+                                                         cdata]),
+				AppID = case {xml:get_path_s(Notification, [{elem, <<"type">>}, cdata]),
+                                              Sandbox} of
+                                            {<<"applepush">>, <<"true">>} ->
+                                                <<AppID0/binary, "_dev">>;
+                                            _ ->
+                                                AppID0
+                                        end,
 				case catch
 				       {jlib:binary_to_integer(SKeepAlive),
 					jlib:binary_to_integer(SOORTimeout)}
