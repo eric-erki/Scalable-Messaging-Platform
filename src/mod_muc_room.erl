@@ -1083,7 +1083,7 @@ process_groupchat_message(From,
 		 case IsAllowed of
 		   true ->
 		       case
-			 ejabberd_hooks:run_fold(muc_filter_packet,
+			 ejabberd_hooks:run_fold(muc_filter_message,
 						 StateData#state.server_host,
 						 Packet,
 						 [StateData,
