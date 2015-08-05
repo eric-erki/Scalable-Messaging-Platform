@@ -2374,7 +2374,7 @@ terminate(_Reason, StateName, StateData) ->
 		if not StateData#state.reception,
 		   not StateData#state.oor_offline ->
 		       Pkt = #xmlel{name = <<"message">>,
-                                    children=[#xmlel{name = <<"body">>, children = [<<"Instant messaging session expired">>]},
+                                    children=[#xmlel{name = <<"body">>, children = [{xmlcdata, <<"Instant messaging session expired">>}]},
                                               #xmlel{name = <<"customize">>, attrs = [{<<"xmlns">>, <<"p1:push:customize">>},                                                                                         {<<"sound">>, <<"false">>}]}]},
 		       ejabberd_hooks:run_fold(p1_push_from_message,
                                                jlib:make_jid(<<"">>, StateData#state.server, <<"">>),
@@ -4567,6 +4567,7 @@ csi_queue_flush(#state{csi_queue = Queue, csi_state = CsiState, jid = JID,
 %% acknowledge the message flood in time.  Also, don't let the queue grow to
 %% more than 100 stanzas.
 csi_max_queue(#state{mgmt_max_queue = infinity}) -> 100;
+csi_max_queue(#state{mgmt_max_queue = exceeded}) -> 0;
 csi_max_queue(#state{mgmt_max_queue = Max}) when Max > 200 -> 100;
 csi_max_queue(#state{mgmt_max_queue = Max}) when Max < 2 -> 1;
 csi_max_queue(#state{mgmt_max_queue = Max}) -> Max div 2.
