@@ -1194,9 +1194,9 @@ process_presence(From, _Nick,
                             Data;
                         _ ->
                             TS = now(),
-                            Data = #user{jid = From,
-                                         status = waiting,
-                                         ts = TS}
+                            #user{jid = From,
+                                  status = waiting,
+                                  ts = TS}
                     end,
             NS =
                 if
@@ -2061,7 +2061,7 @@ handle_agent_message(US, UserData, AgentLJID, Els, StateData) ->
 
 check_for_push_message(US, UserData, AgentLJID, Els, StateData) ->
     case {xml:get_path_s(#xmlel{children=Els}, [{elem, <<"body">>}, cdata]), UserData#user.is_available, UserData#user.push_info /= unavailable} of
-        {<<":push ",Tail/binary>>, _, false} ->
+        {<<":push ",_Tail/binary>>, _, false} ->
             Text = <<"This user don't have push information stored">>,
             Packet =
                 #xmlel{name = <<"message">>,
@@ -2162,7 +2162,7 @@ update_queue_pos_after_user_removal(US, StateData) ->
     V = treap:fold(Fun, {1, false}, StateData#state.ringing_queue),
     treap:fold(Fun, V, StateData#state.user_queue).
 
-handle_accept_event(StateData, UserData, AgentLJID, US) ->
+handle_accept_event(StateData, _UserData, AgentLJID, US) ->
     SD1 = change_agent_status(
             AgentLJID,
             talking, US,
@@ -2243,7 +2243,7 @@ shell_quote([C | Rest], Acc) when C =:= $\" orelse C =:= $\` orelse
 shell_quote([C | Rest], Acc) ->
     shell_quote(Rest, [C | Acc]).
 
-send_push(US, UserData, AgentLJID, Message) ->
+send_push(_US, UserData, _AgentLJID, Message) ->
     case UserData#user.push_info of
         {Product, Push, Alias} ->
             cmd(["boxcar_chat_support.py", binary_to_list(Product),
@@ -3727,7 +3727,7 @@ process_iq_owner(From, get, Lang, SubEl, StateData) ->
 	  {error, ?ERRT_FORBIDDEN(Lang, ErrText)}
     end.
 
-is_allowed_log_change(XEl, StateData, From) ->
+is_allowed_log_change(XEl, _StateData, _From) ->
     case lists:keymember(<<"support#roomconfig_enablelogging">>,
 			 1, jlib:parse_xdata_submit(XEl))
 	of
@@ -4797,7 +4797,7 @@ get_supportroom_disco_items(StateData) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Logging
 
-add_to_log(Type, Data, StateData) ->
+add_to_log(_Type, _Data, _StateData) ->
     ok.
 
 %% add_to_log(Type, Data, StateData)
