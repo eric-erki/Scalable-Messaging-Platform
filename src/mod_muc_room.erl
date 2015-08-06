@@ -38,7 +38,7 @@
 	 start/10, start/8, start/2, migrate/3, route/4,
 	 moderate_room_history/2, persist_recent_messages/1,
          expand_opts/1, encode_opts/2, decode_opts/2,
-         config_fields/0]).
+         config_fields/0, get_role/2]).
 
 -export([init/1, normal_state/2, handle_event/3,
 	 handle_sync_event/4, handle_info/3, terminate/3,
@@ -452,56 +452,67 @@ normal_state({route, From, <<"">>,
 	      #xmlel{name = <<"iq">>} = Packet},
 	     StateData) ->
     case jlib:iq_query_info(Packet) of
-      #iq{type = Type, xmlns = XMLNS, lang = Lang,
-	  sub_el = #xmlel{name = SubElName} = SubEl} =
-	  IQ
-	  when (XMLNS == (?NS_MUC_ADMIN)) or
-		 (XMLNS == (?NS_MUC_OWNER))
-		 or (XMLNS == (?NS_DISCO_INFO))
-		 or (XMLNS == (?NS_DISCO_ITEMS))
-	         or (XMLNS == (?NS_VCARD))
-		 or (XMLNS == (?NS_CAPTCHA)) ->
-	  Res1 = case XMLNS of
-		   ?NS_MUC_ADMIN ->
-		       process_iq_admin(From, Type, Lang, SubEl, StateData);
-		   ?NS_MUC_OWNER ->
-		       process_iq_owner(From, Type, Lang, SubEl, StateData);
-		   ?NS_DISCO_INFO ->
-		       process_iq_disco_info(From, Type, Lang, StateData);
-		   ?NS_DISCO_ITEMS ->
-		       process_iq_disco_items(From, Type, Lang, StateData);
-		   ?NS_VCARD ->
-		       process_iq_vcard(From, Type, Lang, SubEl, StateData);
-		   ?NS_CAPTCHA ->
-		       process_iq_captcha(From, Type, Lang, SubEl, StateData)
-		 end,
-	  {IQRes, NewStateData} = case Res1 of
-				    {result, Res, SD} ->
-					{IQ#iq{type = result,
-					       sub_el =
-						   [#xmlel{name = SubElName,
-							   attrs =
-							       [{<<"xmlns">>,
-								 XMLNS}],
-							   children = Res}]},
-					 SD};
-				    {error, Error} ->
-					{IQ#iq{type = error,
-					       sub_el = [SubEl, Error]},
-					 StateData}
-				  end,
-	  route_stanza(StateData#state.jid, From,
-		       jlib:iq_to_xml(IQRes)),
-	  case NewStateData of
-	    stop -> {stop, normal, StateData};
-	    _ -> {next_state, normal_state, NewStateData}
-	  end;
-      reply -> {next_state, normal_state, StateData};
-      _ ->
-	  Err = jlib:make_error_reply(Packet,
-				      ?ERR_FEATURE_NOT_IMPLEMENTED),
-	  route_stanza(StateData#state.jid, From, Err),
-	  {next_state, normal_state, StateData}
+	reply ->
+	    {next_state, normal_state, StateData};
+	IQ0 ->
+	    case ejabberd_hooks:run_fold(
+		   muc_process_iq,
+		   StateData#state.server_host,
+		   IQ0, [StateData, From, StateData#state.jid]) of
+		ignore ->
+		    {next_state, normal_state, StateData};
+		#iq{type = T} = IQRes when T == error; T == result ->
+		    route_stanza(StateData#state.jid, From, jlib:iq_to_xml(IQRes)),
+		    {next_state, normal_state, StateData};
+		#iq{type = Type, xmlns = XMLNS, lang = Lang,
+		    sub_el = #xmlel{name = SubElName} = SubEl} = IQ
+		  when (XMLNS == (?NS_MUC_ADMIN)) or
+		       (XMLNS == (?NS_MUC_OWNER))
+		       or (XMLNS == (?NS_DISCO_INFO))
+		       or (XMLNS == (?NS_DISCO_ITEMS))
+		       or (XMLNS == (?NS_VCARD))
+		       or (XMLNS == (?NS_CAPTCHA)) ->
+		    Res1 = case XMLNS of
+			       ?NS_MUC_ADMIN ->
+				   process_iq_admin(From, Type, Lang, SubEl, StateData);
+			       ?NS_MUC_OWNER ->
+				   process_iq_owner(From, Type, Lang, SubEl, StateData);
+			       ?NS_DISCO_INFO ->
+				   process_iq_disco_info(From, Type, Lang, StateData);
+			       ?NS_DISCO_ITEMS ->
+				   process_iq_disco_items(From, Type, Lang, StateData);
+			       ?NS_VCARD ->
+				   process_iq_vcard(From, Type, Lang, SubEl, StateData);
+			       ?NS_CAPTCHA ->
+				   process_iq_captcha(From, Type, Lang, SubEl, StateData)
+			   end,
+		    {IQRes, NewStateData} =
+			case Res1 of
+			    {result, Res, SD} ->
+				{IQ#iq{type = result,
+				       sub_el =
+					   [#xmlel{name = SubElName,
+						   attrs =
+						       [{<<"xmlns">>,
+							 XMLNS}],
+						   children = Res}]},
+				 SD};
+			    {error, Error} ->
+				{IQ#iq{type = error,
+				       sub_el = [SubEl, Error]},
+				 StateData}
+			end,
+		    route_stanza(StateData#state.jid, From, jlib:iq_to_xml(IQRes)),
+		    case NewStateData of
+			stop -> {stop, normal, StateData};
+			_ -> {next_state, normal_state, NewStateData}
+		    end;
+		_ ->
+		    Err = jlib:make_error_reply(Packet,
+						?ERR_FEATURE_NOT_IMPLEMENTED),
+		    route_stanza(StateData#state.jid, From, Err),
+		    {next_state, normal_state, StateData}
+	    end
     end;
 normal_state({route, From, Nick,
 	      #xmlel{name = <<"presence">>} = Packet},
@@ -3794,6 +3805,13 @@ get_config(Lang, StateData, From) ->
 				   <<"captcha_protected">>,
 				   (Config#config.captcha_protected))];
 		  false -> []
+		end ++
+	        case gen_mod:is_loaded(StateData#state.server_host, mod_mam) of
+		    true ->
+			[?BOOLXFIELD(<<"Enable message archiving">>,
+				     <<"muc#roomconfig_mam">>,
+				     (Config#config.mam))];
+		    false -> []
 		end
 		  ++
 		  [?JIDMULTIXFIELD(<<"Exclude Jabber IDs from CAPTCHA challenge">>,
@@ -4003,6 +4021,8 @@ set_xoption([{<<"muc#roomconfig_enablelogging">>, [Val]}
 	     | Opts],
 	    Config) ->
     ?SET_BOOL_XOPT(logging, Val);
+set_xoption([{<<"muc#roomconfig_mam">>, [Val]}|Opts], Config) ->
+    ?SET_BOOL_XOPT(mam, Val);
 set_xoption([{<<"muc#roomconfig_captcha_whitelist">>,
 	      Vals}
 	     | Opts],
@@ -4197,6 +4217,9 @@ set_opts([{Opt, Val} | Opts], StateData) ->
 		StateData#state{config =
 				    (StateData#state.config)#config{logging =
 									Val}};
+	    mam ->
+		StateData#state{config =
+				    (StateData#state.config)#config{mam = Val}};
 	    captcha_whitelist ->
 		StateData#state{config =
 				    (StateData#state.config)#config{captcha_whitelist

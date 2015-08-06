@@ -384,6 +384,7 @@ init([Host, Opts]) ->
 			     persistent -> Bool;
 			     public -> Bool;
 			     public_list -> Bool;
+			     mam -> Bool;
 			     password -> fun iolist_to_binary/1;
 			     title -> fun iolist_to_binary/1;
 			     allow_private_messages_from_visitors ->
@@ -608,7 +609,8 @@ do_route1(Host, ServerHost, Access, HistorySize,
 						    attrs =
 							[{<<"xmlns">>, XMLNS}],
 						    children =
-							iq_disco_info(Lang) ++
+							iq_disco_info(
+							  ServerHost, Lang) ++
 							  Info}]},
 			    ejabberd_router:route(To, From,
 						  jlib:iq_to_xml(Res));
@@ -919,7 +921,7 @@ delete_room(RoomHost, Pid1) ->
 	    ok
     end.
 
-iq_disco_info(Lang) ->
+iq_disco_info(ServerHost, Lang) ->
     [#xmlel{name = <<"identity">>,
 	    attrs =
 		[{<<"category">>, <<"conference">>},
@@ -940,7 +942,14 @@ iq_disco_info(Lang) ->
      #xmlel{name = <<"feature">>,
 	    attrs = [{<<"var">>, ?NS_RSM}], children = []},
      #xmlel{name = <<"feature">>,
-	    attrs = [{<<"var">>, ?NS_VCARD}], children = []}].
+	    attrs = [{<<"var">>, ?NS_VCARD}], children = []}] ++
+	case gen_mod:is_loaded(ServerHost, mod_mam) of
+	    true ->
+		[#xmlel{name = <<"feature">>,
+			attrs = [{<<"var">>, ?NS_MAM_0}]}];
+	    false ->
+		[]
+	end.
 
 iq_disco_items(Host, From, Lang, none) ->
     lists:zf(fun (#muc_online_room{name_host =
