@@ -375,6 +375,15 @@ exit_or_halt(ExitText) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Support for 'include_config_file'
 
+get_config_option_key(Name, Val) ->
+    if Name == <<"listen">> ->
+            lists:keyfind(<<"port">>, 1, Val);
+       is_tuple(Val) ->
+            element(1, Val);
+       true ->
+            Val
+    end.
+
 %% @doc Include additional configuration files in the list of terms.
 %% @spec ([term()]) -> [term()]
 include_config_files(Terms) ->
@@ -392,25 +401,21 @@ include_config_files(Terms) ->
                        include_config_file(File, Opts)
                end, lists:flatten(FileOpts)),
 
-    SpecialTerms = dict:from_list([{hosts, []}, {listen, []}, {modules, []}]),
-    PartDict = dict:store(rest, [], SpecialTerms),
-    Partition = fun(L) ->
-                        lists:foldr(fun({Name, Val} = Pair, Dict) ->
-                                            case dict:find(Name, SpecialTerms) of
-                                                {ok, _} ->
-                                                    dict:append_list(Name, Val, Dict);
-                                                _ ->
-                                                    dict:append(rest, Pair, Dict)
-                                            end;
-                                       (Tuple, Dict2) ->
-                                            dict:append(rest, Tuple, Dict2)
-                                    end, PartDict, L)
-                end,
+    Merged = lists:foldr(fun({Name, Val}, Map) when is_list(Val) ->
+                                 Old = maps:get(Name, Map, #{}),
+                                 New = lists:foldr(fun(SVal, OMap) ->
+                                                           maps:put(get_config_option_key(Name, SVal), SVal, OMap)
+                                                   end, Old, Val),
+                                 maps:put(Name, New, Map);
+                            ({Name, Val}, Map) ->
+                                 maps:put(Name, Val, Map)
+                         end, #{}, Terms1++Terms2),
 
-    Merged = dict:merge(fun(_Name, V1, V2) -> V1 ++ V2 end,
-                        Partition(Terms1), Partition(Terms2)),
-    Rest = dict:fetch(rest, Merged),
-    dict:to_list(dict:erase(rest, Merged)) ++ Rest.
+    maps:fold(fun(Name, Map, Res) when is_map(Map) ->
+                      [{Name, maps:values(Map)} | Res];
+                 (Name, Val, Res) ->
+                      [{Name, Val} | Res]
+              end, [], Merged).
 
 transform_include_option({include_config_file, File}) when is_list(File) ->
     case is_string(File) of
