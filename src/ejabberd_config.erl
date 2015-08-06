@@ -401,9 +401,9 @@ include_config_files(Terms) ->
                        include_config_file(File, Opts)
                end, lists:flatten(FileOpts)),
 
-    Merged = lists:foldr(fun({Name, Val}, Map) when is_list(Val) ->
+    Merged = lists:foldl(fun({Name, Val}, Map) when is_list(Val) ->
                                  Old = maps:get(Name, Map, #{}),
-                                 New = lists:foldr(fun(SVal, OMap) ->
+                                 New = lists:foldl(fun(SVal, OMap) ->
                                                            maps:put(get_config_option_key(Name, SVal), SVal, OMap)
                                                    end, Old, Val),
                                  maps:put(Name, New, Map);
