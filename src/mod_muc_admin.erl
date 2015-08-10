@@ -31,7 +31,10 @@
 -include("ejabberd_commands.hrl").
 
 %% Copied from mod_muc/mod_muc.erl
--record(muc_online_room, {name_host, pid}).
+-record(muc_online_room,
+        {name_host = {<<"">>, <<"">>} :: {binary(), binary()} | {'_', '$1'} | '$1' | '_',
+         timestamp = now() :: erlang:timestamp() | '_',
+         pid = self() :: pid() | '$1' | '$2' | '_'}).
 
 %%----------------------------
 %% gen_mod
