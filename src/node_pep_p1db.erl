@@ -49,12 +49,12 @@
     path_to_node/1]).
 
 init(Host, ServerHost, Opts) ->
-    node_hometree_p1db:init(Host, ServerHost, Opts),
+    node_flat_p1db:init(Host, ServerHost, Opts),
     complain_if_modcaps_disabled(ServerHost),
     ok.
 
 terminate(Host, ServerHost) ->
-    node_hometree_p1db:terminate(Host, ServerHost),
+    node_flat_p1db:terminate(Host, ServerHost),
     ok.
 
 options() ->
@@ -67,42 +67,42 @@ create_node_permission(Host, ServerHost, Node, ParentNode, Owner, Access) ->
     node_pep:create_node_permission(Host, ServerHost, Node, ParentNode, Owner, Access).
 
 create_node(Nidx, Owner) ->
-    node_hometree_p1db:create_node(Nidx, Owner),
+    node_flat_p1db:create_node(Nidx, Owner),
     {result, {default, broadcast}}.
 
 delete_node(Nodes) ->
-    {result, {_, _, Result}} = node_hometree_p1db:delete_node(Nodes),
+    {result, {_, _, Result}} = node_flat_p1db:delete_node(Nodes),
     {result, {[], Result}}.
 
 subscribe_node(Nidx, Sender, Subscriber, AccessModel,
 	    SendLast, PresenceSubscription, RosterGroup, Options) ->
-    node_hometree_p1db:subscribe_node(Nidx, Sender, Subscriber, AccessModel, SendLast,
+    node_flat_p1db:subscribe_node(Nidx, Sender, Subscriber, AccessModel, SendLast,
 	PresenceSubscription, RosterGroup, Options).
 
 
 unsubscribe_node(Nidx, Sender, Subscriber, SubId) ->
-    case node_hometree_p1db:unsubscribe_node(Nidx, Sender, Subscriber, SubId) of
+    case node_flat_p1db:unsubscribe_node(Nidx, Sender, Subscriber, SubId) of
 	{error, Error} -> {error, Error};
 	{result, _} -> {result, []}
     end.
 
 publish_item(Nidx, Publisher, Model, MaxItems, ItemId, Payload) ->
-    node_hometree_p1db:publish_item(Nidx, Publisher, Model, MaxItems, ItemId, Payload).
+    node_flat_p1db:publish_item(Nidx, Publisher, Model, MaxItems, ItemId, Payload).
 
 remove_extra_items(Nidx, MaxItems, ItemIds) ->
-    node_hometree_p1db:remove_extra_items(Nidx, MaxItems, ItemIds).
+    node_flat_p1db:remove_extra_items(Nidx, MaxItems, ItemIds).
 
 delete_item(Nidx, Publisher, PublishModel, ItemId) ->
-    node_hometree_p1db:delete_item(Nidx, Publisher, PublishModel, ItemId).
+    node_flat_p1db:delete_item(Nidx, Publisher, PublishModel, ItemId).
 
 purge_node(Nidx, Owner) ->
-    node_hometree_p1db:purge_node(Nidx, Owner).
+    node_flat_p1db:purge_node(Nidx, Owner).
 
 get_entity_affiliations(Host, Owner) ->
     {_, D, _} = SubKey = jlib:jid_tolower(Owner),
     SubKey = jlib:jid_tolower(Owner),
     GenKey = jlib:jid_remove_resource(SubKey),
-    States = node_hometree_p1db:get_states_by_prefix(GenKey),
+    States = node_flat_p1db:get_states_by_prefix(GenKey),
     NodeTree = mod_pubsub:tree(Host),
     Reply = lists:foldl(fun (#pubsub_state{stateid = {_, N}, affiliation = A}, Acc) ->
 		    case NodeTree:get_node(N) of
@@ -114,24 +114,24 @@ get_entity_affiliations(Host, Owner) ->
     {result, Reply}.
 
 get_node_affiliations(Nidx) ->
-    node_hometree_p1db:get_node_affiliations(Nidx).
+    node_flat_p1db:get_node_affiliations(Nidx).
 
 get_affiliation(Nidx, Owner) ->
-    node_hometree_p1db:get_affiliation(Nidx, Owner).
+    node_flat_p1db:get_affiliation(Nidx, Owner).
 
 set_affiliation(Nidx, Owner, Affiliation) ->
-    node_hometree_p1db:set_affiliation(Nidx, Owner, Affiliation).
+    node_flat_p1db:set_affiliation(Nidx, Owner, Affiliation).
 
 get_entity_subscriptions(Host, Owner) ->
     {U, D, _} = SubKey = jlib:jid_tolower(Owner),
     GenKey = jlib:jid_remove_resource(SubKey),
     States = case SubKey of
 	GenKey ->
-	    node_hometree_p1db:get_states_by_prefix({U, D, '_'});
+	    node_flat_p1db:get_states_by_prefix({U, D, '_'});
 	_ ->
-	    node_hometree_p1db:get_states_by_prefix(GenKey)
+	    node_flat_p1db:get_states_by_prefix(GenKey)
 	    ++
-	    node_hometree_p1db:get_states_by_prefix(SubKey)
+	    node_flat_p1db:get_states_by_prefix(SubKey)
     end,
     NodeTree = mod_pubsub:tree(Host),
     Reply = lists:foldl(fun (#pubsub_state{stateid = {J, N}, subscriptions = Ss}, Acc) ->
@@ -154,45 +154,45 @@ get_entity_subscriptions(Host, Owner) ->
     {result, Reply}.
 
 get_node_subscriptions(Nidx) ->
-    node_hometree_p1db:get_node_subscriptions(Nidx).
+    node_flat_p1db:get_node_subscriptions(Nidx).
 
 get_subscriptions(Nidx, Owner) ->
-    node_hometree_p1db:get_subscriptions(Nidx, Owner).
+    node_flat_p1db:get_subscriptions(Nidx, Owner).
 
 set_subscriptions(Nidx, Owner, Subscription, SubId) ->
-    node_hometree_p1db:set_subscriptions(Nidx, Owner, Subscription, SubId).
+    node_flat_p1db:set_subscriptions(Nidx, Owner, Subscription, SubId).
 
 get_pending_nodes(Host, Owner) ->
-    node_hometree_p1db:get_pending_nodes(Host, Owner).
+    node_flat_p1db:get_pending_nodes(Host, Owner).
 
 get_states(Nidx) ->
-    node_hometree_p1db:get_states(Nidx).
+    node_flat_p1db:get_states(Nidx).
 
 get_state(Nidx, JID) ->
-    node_hometree_p1db:get_state(Nidx, JID).
+    node_flat_p1db:get_state(Nidx, JID).
 
 set_state(State) ->
-    node_hometree_p1db:set_state(State).
+    node_flat_p1db:set_state(State).
 
 get_items(Nidx, From, RSM) ->
-    node_hometree_p1db:get_items(Nidx, From, RSM).
+    node_flat_p1db:get_items(Nidx, From, RSM).
 
 get_items(Nidx, JID, AccessModel, PresenceSubscription, RosterGroup, SubId, RSM) ->
-    node_hometree_p1db:get_items(Nidx, JID, AccessModel,
+    node_flat_p1db:get_items(Nidx, JID, AccessModel,
 	PresenceSubscription, RosterGroup, SubId, RSM).
 
 get_item(Nidx, ItemId) ->
-    node_hometree_p1db:get_item(Nidx, ItemId).
+    node_flat_p1db:get_item(Nidx, ItemId).
 
 get_item(Nidx, ItemId, JID, AccessModel, PresenceSubscription, RosterGroup, SubId) ->
-    node_hometree_p1db:get_item(Nidx, ItemId, JID, AccessModel,
+    node_flat_p1db:get_item(Nidx, ItemId, JID, AccessModel,
 	PresenceSubscription, RosterGroup, SubId).
 
 set_item(Item) ->
-    node_hometree_p1db:set_item(Item).
+    node_flat_p1db:set_item(Item).
 
 get_item_name(Host, Node, Id) ->
-    node_hometree_p1db:get_item_name(Host, Node, Id).
+    node_flat_p1db:get_item_name(Host, Node, Id).
 
 node_to_path(Node) ->
     node_flat_p1db:node_to_path(Node).
