@@ -2890,7 +2890,7 @@ process_item_change(UJID) ->
         process_item_change(E, SD, UJID)
     end.
 
-process_item_change(E, SD, UJID) ->
+process_item_change(E, SD, _UJID) ->
     case catch case E of
         {JID, affiliation, owner, _} when JID#jid.luser == <<"">> ->
             %% If the provided JID does not have username,
@@ -2898,7 +2898,7 @@ process_item_change(E, SD, UJID) ->
             SD;
         {JID, role, none, Reason} ->
             catch
-                send_kickban_presence(UJID,
+                send_kickban_presence(JID,
                     Reason,
                     <<"307">>,
                     SD),
@@ -2907,7 +2907,7 @@ process_item_change(E, SD, UJID) ->
             case (SD#state.config)#config.members_only of
                 true ->
                     catch
-                        send_kickban_presence(UJID,
+                        send_kickban_presence(JID,
                             Reason,
                             <<"321">>,
                             none,
@@ -2921,7 +2921,7 @@ process_item_change(E, SD, UJID) ->
             end;
         {JID, affiliation, outcast, Reason} ->
             catch
-                send_kickban_presence(UJID,
+                send_kickban_presence(JID,
                     Reason,
                     <<"301">>,
                     outcast,
