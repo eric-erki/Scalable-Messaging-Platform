@@ -2926,10 +2926,10 @@ process_item_change(E, SD, _UJID) ->
                     <<"301">>,
                     outcast,
                     SD),
-		set_affiliation(JID, outcast,
-				set_role(JID, none, SD),
-				Reason),
-		kick_users_from_banned_server(JID, Reason, SD);
+		SD1 = set_affiliation(JID, outcast,
+                                      set_role(JID, none, SD),
+                                      Reason),
+		kick_users_from_banned_server(JID, Reason, SD1);
         {JID, affiliation, A, Reason}
             when (A == admin) or (A == owner) ->
             SD1 = set_affiliation(JID, A, SD, Reason),
