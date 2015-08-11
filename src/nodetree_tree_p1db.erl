@@ -90,10 +90,8 @@ get_node(Host, Node) ->
     end.
 
 get_node(Nidx) ->
-    case nidx_to_nodeid(Nidx) of
-	undefined -> {error, ?ERR_ITEM_NOT_FOUND};
-	{Host, Node} -> get_node(Host, Node)
-    end.
+    {Host, Node} = nidx_to_nodeid(Nidx),
+    get_node(Host, Node).
 
 get_nodes(Host, _From) ->
     get_nodes(Host).
@@ -224,11 +222,15 @@ enc_key({U,S,R}) ->
 enc_key(Host) ->
     <<Host/binary, 0>>.
 dec_key(Key) ->
-    SLen = str:chr(Key, 0) - 1,
-    <<Head:SLen/binary, 0, Node/binary>> = Key,
-    case jlib:string_to_usr(Head) of
-	{<<>>, Host, <<>>} -> {Host, Node};
-	USR -> {USR, Node}
+    case str:chr(Key, 0) of
+	0 -> {Key, <<>>};
+	N ->
+	    SLen = N - 1,
+	    <<Head:SLen/binary, 0, Node/binary>> = Key,
+	    case jlib:string_to_usr(Head) of
+		{<<>>, Host, <<>>} -> {Host, Node};
+		USR -> {USR, Node}
+	    end
     end.
 enc_val(_, [Parents,Type,Owners,Options]) ->
     node_to_p1db(#pubsub_node{
