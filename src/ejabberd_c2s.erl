@@ -3986,13 +3986,33 @@ make_ocsp_request(URI0, Cert, CAList) ->
 			     <<"application/ocsp-request">>}], Body) of
 	{ok, 200, _, Response} ->
 	    case 'OCSP':decode('OCSPResponse', Response) of
-		{ok, #'OCSPResponse'{responseStatus = Status}} ->
-		    case Status of
-			successful ->
-			    true;
-			_ ->
-			    {false, <<"rejected by OCSP server">>}
+		{ok, #'OCSPResponse'{
+			responseStatus = successful,
+			responseBytes = #'ResponseBytes'{
+					   responseType = ?'id-pkix-ocsp-basic',
+					   response = RespBytes}}} ->
+		    case 'OCSP':decode('BasicOCSPResponse', RespBytes) of
+			{ok, #'BasicOCSPResponse'{
+				tbsResponseData =
+				    #'ResponseData'{
+				       responses = [#'SingleResponse'{
+						       certStatus = Status}]}}} ->
+			    case Status of
+				{good, _} ->
+				    true;
+				{revoked, _} ->
+				    {false, <<"certificate revoked by OCSP server">>};
+				{unknown, _} ->
+				    {false, <<"certificate status is unknown by OCSP server">>}
+			    end;
+			Err ->
+			    ?ERROR_MSG("failed to decode response from OCSP server: ~p",
+				       [Err]),
+			    {false, <<"failed to decode response from OCSP server">>}
 		    end;
+		{ok, #'OCSPResponse'{responseStatus = Status}} ->
+		    Reason = io_lib:fwrite("rejected by OCSP server with reason: ~s", [Status]),
+		    {false, list_to_binary(Reason)};
 		Err ->
 		    ?ERROR_MSG("failed to decode response from OCSP server: ~p",
 			       [Err]),

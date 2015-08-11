@@ -11,6 +11,7 @@
 %% API
 -export([process/2]).
 -include("OCSP.hrl").
+-include_lib("public_key/include/public_key.hrl").
 -include("ejabberd_http.hrl").
 
 %%%===================================================================
@@ -23,14 +24,31 @@ process(_, #request{method = 'POST', data = Data}) ->
 	   #'TBSRequest'{
 	      requestList = [#'Request'{
 				reqCert = #'CertID'{
-					     serialNumber = SN}}]}} = Req,
-    Resp = if SN == 1 ->
-		   error_logger:info_msg("request ~p is successful", [Req]),
-		   #'OCSPResponse'{responseStatus = successful};
-	      true ->
-		   error_logger:info_msg("request ~p is unauthorized", [Req]),
-		   #'OCSPResponse'{responseStatus = unauthorized}
-	   end,
+					     serialNumber = SN} = CertID}]}} = Req,
+    Status = if SN == 1 ->
+		     {good, 'NULL'};
+		true ->
+		     {revoked, #'RevokedInfo'{revocationTime = "20150811090000Z"}}
+	     end,
+    BasicResp = #'BasicOCSPResponse'{
+		   signatureAlgorithm = #'AlgorithmIdentifier'{
+					   algorithm = ?'sha1WithRSAEncryption'},
+		   signature = <<>>,
+		   tbsResponseData =
+		       #'ResponseData'{
+			  responderID = {byKey, <<"">>},
+			  producedAt = "20150811090000Z",
+			  responses = [#'SingleResponse'{
+					  thisUpdate = "20150811090000Z",
+					  nextUpdate = "20150811090000Z",
+					  certID = CertID,
+					  certStatus = Status}]}},
+    {ok, RespBytes} = 'OCSP':encode('BasicOCSPResponse', BasicResp),
+    Resp = #'OCSPResponse'{
+	      responseStatus = successful,
+	      responseBytes = #'ResponseBytes'{
+				 responseType = ?'id-pkix-ocsp-basic',
+				 response = RespBytes}},
     {ok, Bytes} = 'OCSP':encode('OCSPResponse', Resp),
     {200, [], iolist_to_binary(Bytes)};
 process(_, _) ->
