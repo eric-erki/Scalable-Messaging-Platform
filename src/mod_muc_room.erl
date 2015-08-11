@@ -2898,7 +2898,7 @@ process_item_change(E, SD, UJID) ->
             SD;
         {JID, role, none, Reason} ->
             catch
-                send_kickban_presence(JID,
+                send_kickban_presence(UJID,
                     Reason,
                     <<"307">>,
                     SD),
@@ -2907,7 +2907,7 @@ process_item_change(E, SD, UJID) ->
             case (SD#state.config)#config.members_only of
                 true ->
                     catch
-                        send_kickban_presence(JID,
+                        send_kickban_presence(UJID,
                             Reason,
                             <<"321">>,
                             none,
@@ -2921,15 +2921,15 @@ process_item_change(E, SD, UJID) ->
             end;
         {JID, affiliation, outcast, Reason} ->
             catch
-                send_kickban_presence(JID,
+                send_kickban_presence(UJID,
                     Reason,
                     <<"301">>,
                     outcast,
                     SD),
-            set_affiliation(JID,
-                outcast,
-                set_role(JID, none, SD),
-                Reason);
+		set_affiliation(JID, outcast,
+				set_role(JID, none, SD),
+				Reason),
+		kick_users_from_banned_server(JID, Reason, SD);
         {JID, affiliation, A, Reason}
             when (A == admin) or (A == owner) ->
             SD1 = set_affiliation(JID, A, SD, Reason),
