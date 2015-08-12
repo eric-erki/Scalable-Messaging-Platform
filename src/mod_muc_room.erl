@@ -453,7 +453,7 @@ normal_state({route, From, <<"">>,
 	     StateData) ->
     case jlib:iq_query_info(Packet) of
       #iq{type = Type, xmlns = XMLNS, lang = Lang,
-	  sub_el = #xmlel{name = SubElName} = SubEl} =
+	  sub_el = #xmlel{name = SubElName, attrs = Attrs} = SubEl} =
 	  IQ
 	  when (XMLNS == (?NS_MUC_ADMIN)) or
 		 (XMLNS == (?NS_MUC_OWNER))
@@ -467,7 +467,10 @@ normal_state({route, From, <<"">>,
 		   ?NS_MUC_OWNER ->
 		       process_iq_owner(From, Type, Lang, SubEl, StateData);
 		   ?NS_DISCO_INFO ->
-		       process_iq_disco_info(From, Type, Lang, StateData);
+		       case xml:get_attr(<<"node">>, Attrs) of
+			  false -> process_iq_disco_info(From, Type, Lang, StateData);
+			  {value, _} -> {error, ?ERR_SERVICE_UNAVAILABLE}
+		       end;
 		   ?NS_DISCO_ITEMS ->
 		       process_iq_disco_items(From, Type, Lang, StateData);
 		   ?NS_VCARD ->
