@@ -200,11 +200,12 @@ remove_user(LUser, LServer, DBType) when DBType==odbc orelse
       LServer, Key,
       [<<"delete from archive_prefs where username='">>, SUser, <<"';">>]).
 
-user_receive_packet(Pkt, C2SState, JID, Peer, _To) ->
+user_receive_packet(Pkt, C2SState, JID, Peer, To) ->
     LUser = JID#jid.luser,
     LServer = JID#jid.lserver,
+    IsBareCopy = is_bare_copy(JID, To),
     case should_archive(Pkt) of
-	true ->
+	true when not IsBareCopy ->
 	    NewPkt = strip_my_archived_tag(Pkt, LServer),
 	    case store(C2SState, NewPkt, LUser, LServer,
 		       Peer, true, recv) of
@@ -218,9 +219,7 @@ user_receive_packet(Pkt, C2SState, JID, Peer, _To) ->
 		_ ->
 		    NewPkt
 	    end;
-	muc ->
-	    Pkt;
-	false ->
+	_ ->
 	    Pkt
     end.
 
@@ -912,6 +911,38 @@ maybe_update_from_to(Pkt, JidRequestor, Peer) ->
 	    xml:replace_tag_attr(<<"from">>, jlib:jid_to_string(Peer),
 				 Pkt2);
 	_ -> Pkt
+    end.
+
+is_bare_copy(#jid{luser = U, lserver = S, lresource = R}, To) ->
+    PrioRes = ejabberd_sm:get_user_present_resources(U, S),
+    MaxRes = case catch lists:max(PrioRes) of
+		 {_Prio, Res} when is_binary(Res) ->
+		     Res;
+		 _ ->
+		     undefined
+	     end,
+    IsBareTo = case To of
+		   #jid{lresource = <<"">>} ->
+		       true;
+		   #jid{lresource = LRes} ->
+		       %% Unavailable resources are handled like bare JIDs.
+		       lists:keyfind(LRes, 2, PrioRes) =:= false
+	       end,
+    case {IsBareTo, R} of
+	{true, MaxRes} ->
+	    ?DEBUG("Recipient of message to bare JID has top priority: ~s@~s/~s",
+		   [U, S, R]),
+	    false;
+	{true, _R} ->
+	    %% The message was sent to our bare JID, and we currently have
+	    %% multiple resources with the same highest priority, so the session
+	    %% manager routes the message to each of them. We store the message
+	    %% only from the resource where R equals MaxRes.
+	    ?DEBUG("Additional recipient of message to bare JID: ~s@~s/~s",
+		   [U, S, R]),
+	    true;
+	{false, _R} ->
+	    false
     end.
 
 send(From, To, Msgs, RSM, Count, IsComplete, #iq{sub_el = SubEl} = IQ) ->
