@@ -77,75 +77,90 @@ build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom,
                     {_, none} ->
                             false
                 end,
-            Msg =
-                if
-                    IncludeBody ->
-                        CBody = utf8_cut(Body, 100),
-                        case SendFrom of
-                                jid ->
-                                    prepend_sender(SFrom, CBody);
-                                username ->
-                                    UnescapedFrom = unescape(BFrom#jid.user),
-                                    prepend_sender(
-                                      UnescapedFrom, CBody);
-                                name ->
-                                    Name = get_roster_name(
-                                             To, BFrom),
-                                    prepend_sender(Name, CBody);
-                                _ -> CBody
-                            end;
-                        true ->
-                            <<"">>
-                    end,
-                Customizations = lists:filtermap(fun(#xmlel{name = <<"customize">>} = E) ->
-                                                         case xml:get_tag_attr_s(<<"xmlns">>, E) of
-                                                             ?NS_P1_PUSH_CUSTOMIZE ->
-                                                                 {true, {
-                                                                    xml:get_tag_attr_s(<<"mute">>, E) == <<"true">>,
-                                                                    xml:get_tag_attr_s(<<"sound">>, E)
-                                                                   }};
-                                                             _ ->
-                                                                 false
-                                                         end;
-                                                    (_) ->
-                                                         false
-                                                 end, Packet#xmlel.children),
-                case Customizations of
-                    [{true, _}|_] ->
-                        skip;
-                    _ ->
-                        CustomFields = lists:filtermap(fun(#xmlel{name = <<"x">>} = E) ->
-                                                               case {xml:get_tag_attr_s(<<"xmlns">>, E),
-                                                                     xml:get_tag_attr_s(<<"key">>, E),
-                                                                     xml:get_tag_attr_s(<<"value">>, E)} of
-                                                                   {?NS_P1_PUSH_CUSTOM, K, V} when K /= <<"">> ->
-                                                                       {true, {K, V}};
-                                                                   _ ->
-                                                                       false
-                                                               end;
-                                                          (_) ->
-                                                               false
-                                                       end, Packet#xmlel.children),
-                        DeviceID = if is_integer(ID) -> jlib:integer_to_binary(ID, 16);
-                                      true -> ID
-                                   end,
-                        Badge = if Body == <<"">> -> none;
-                                   true -> BadgeCount
-                                end,
-                        Sound = case {IncludeBody, Customizations} of
-                                    {false, _} -> false;
-                                    {_, [{_, <<"false">>}|_]} -> false;
-                                    {_, [{_, S}|_]} when S /= <<"">> -> S;
-                                    _ -> true
-                                end,
+            Customizations = lists:filtermap(fun(#xmlel{name = <<"customize">>} = E) ->
+                                                     case xml:get_tag_attr_s(<<"xmlns">>, E) of
+                                                         ?NS_P1_PUSH_CUSTOMIZE ->
+                                                             {true, {
+                                                                xml:get_tag_attr_s(<<"mute">>, E) == <<"true">>,
+                                                                xml:get_tag_attr_s(<<"sound">>, E),
+                                                                xml:get_tag_attr_s(<<"nick">>, E),
+                                                                case xml:get_subtag(E, <<"body">>) of
+                                                                    false -> false;
+                                                                    V -> xml:get_tag_cdata(V)
+                                                                end
+                                                               }};
+                                                         _ ->
+                                                             false
+                                                     end;
+                                                (_) ->
+                                                     false
+                                             end, Packet#xmlel.children),
+            {Mute, AltSound, AltNick, AltBody} = case Customizations of
+                                                     [] ->
+                                                         {false, true, <<"">>, false};
+                                                     [Vals|_] ->
+                                                         Vals
+                                                 end,
+            case Mute of
+                true ->
+                    skip;
+                _ ->
+                    Msg = if
+                              IncludeBody ->
+                                  CBody = case AltBody of
+                                              false -> utf8_cut(Body, 100);
+                                              _ -> utf8_cut(AltBody, 100)
+                                          end,
+                                  case {AltNick, SendFrom} of
+                                      {N, _} when N /= <<"">> ->
+                                          prepend_sender(N, CBody);
+                                      {_, jid} ->
+                                          prepend_sender(SFrom, CBody);
+                                      {_, username} ->
+                                          UnescapedFrom = unescape(BFrom#jid.user),
+                                          prepend_sender(
+                                            UnescapedFrom, CBody);
+                                      {_, name} ->
+                                          Name = get_roster_name(
+                                                   To, BFrom),
+                                          prepend_sender(Name, CBody);
+                                      _ -> CBody
+                                  end;
+                              true ->
+                                  <<"">>
+                          end,
+                    CustomFields = lists:filtermap(fun(#xmlel{name = <<"x">>} = E) ->
+                                                           case {xml:get_tag_attr_s(<<"xmlns">>, E),
+                                                                 xml:get_tag_attr_s(<<"key">>, E),
+                                                                 xml:get_tag_attr_s(<<"value">>, E)} of
+                                                               {?NS_P1_PUSH_CUSTOM, K, V} when K /= <<"">> ->
+                                                                   {true, {K, V}};
+                                                               _ ->
+                                                                   false
+                                                           end;
+                                                      (_) ->
+                                                           false
+                                                   end, Packet#xmlel.children),
+                    DeviceID = if is_integer(ID) -> jlib:integer_to_binary(ID, 16);
+                                  true -> ID
+                               end,
+                    Badge = if Body == <<"">> -> none;
+                               true -> BadgeCount
+                            end,
+                    Sound = case {IncludeBody, AltSound} of
+                                {false, _} -> false;
+                                {_, <<"false">>} -> false;
+                                {_, S} when S /= <<"">> -> S;
+                                _ -> true
+                            end,
                         case build_and_customize_push_packet(DeviceID, Msg, Badge, Sound, SFrom, To, CustomFields) of
                             skip ->
                                 skip;
                             V ->
                                 {V, Body == <<"">>}
                         end
-                end
-        end.
+            end
+    end.
 
 build_and_customize_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields) ->
     LServer = JID#jid.lserver,
