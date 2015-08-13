@@ -3,7 +3,7 @@
 
 AC_PREREQ(2.53)
 AC_INIT(ejabberd, m4_esyscmd([echo `git describe --tags 2>/dev/null || echo 3.2.x` | sed 's/-g.*//;s/-/./' | tr -d '\012']), [ejabberd@process-one.net], [ejabberd])
-REQUIRE_ERLANG_MIN="6.4 (Erlang/OTP R17)"
+REQUIRE_ERLANG_MIN="6.1 (Erlang/OTP 17.1)"
 REQUIRE_ERLANG_MAX="9.0.0 (No Max)"
 
 # Checks for programs.
