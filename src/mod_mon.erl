@@ -1,4 +1,4 @@
-%%% ====================================================================
+%%%-------------------------------------------------------------------
 %%% File    : mod_mon.erl
 %%% Author  : Christophe Romain <christophe.romain@process-one.net>
 %%% Purpose : Event monitor for runtime statistics
@@ -21,7 +21,7 @@
 %%% with this program; if not, write to the Free Software Foundation, Inc.,
 %%% 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 %%%
-%%% ====================================================================
+%%%-------------------------------------------------------------------
 
 -module(mod_mon).
 
