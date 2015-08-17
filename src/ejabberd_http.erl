@@ -173,7 +173,11 @@ init({SockMod, Socket}, Opts) ->
 		   default_host = DefaultHost, options = Opts,
 		   request_handlers = RequestHandlers,
 		   websocket_handlers = WebSocketHandlers},
-    receive_headers(State).
+    try receive_headers(State) of
+        V -> V
+    catch
+        {error, _} -> State
+    end.
 
 become_controller(_Pid) -> ok.
 
@@ -454,13 +458,17 @@ process_request(#state{request_method = Method,
 	false ->
 	    make_bad_request(State);
 	{LPath, LQuery, Data} ->
-	    {ok, IPHere} =
+	    PeerName =
 		case SockMod of
 		    gen_tcp ->
 			inet:peername(Socket);
 		    _ ->
 			SockMod:peername(Socket)
 		end,
+            IPHere = case PeerName of
+                         {ok, V} -> V;
+                         {error, _} = E -> throw(E)
+                     end,
 	    XFF = proplists:get_value('X-Forwarded-For', RequestHeaders, []),
 	    IP = analyze_ip_xff(IPHere, XFF, Host),
             Request = #request{method = Method,
