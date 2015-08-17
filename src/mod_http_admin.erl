@@ -176,8 +176,8 @@ process([Call], #request{method = 'POST', data = Data, ip = IP} = Req) ->
             ErrorResponse ->
                 ErrorResponse
         end
-    catch Error ->
-        ?DEBUG("Bad Request: ~p", Error),
+    catch _:Error ->
+        ?DEBUG("Bad Request: ~p", [Error]),
         badrequest_response()
     end;
 process([Call], #request{method = 'GET', q = Data, ip = IP} = Req) ->
@@ -194,8 +194,8 @@ process([Call], #request{method = 'GET', q = Data, ip = IP} = Req) ->
             ErrorResponse ->
                 ErrorResponse
         end
-    catch Error ->
-        ?DEBUG("Bad Request: ~p", Error),
+    catch _:Error ->
+        ?DEBUG("Bad Request: ~p", [Error]),
         badrequest_response()
     end;
 process([], #request{method = 'OPTIONS', data = <<>>}) ->
@@ -207,6 +207,72 @@ process(_Path, Request) ->
 %% ----------------
 %% command handlers
 %% ----------------
+
+get_json_prop(Name, JSON) ->
+    case lists:keyfind(Name, 1, JSON) of
+        {Name, Val} -> Val;
+        false -> throw(<<"Can't find field ", Name/binary, " in struct">>)
+    end.
+get_json_prop(Name, JSON, Default) ->
+    case lists:keyfind(Name, 1, JSON) of
+        {Name, Val} -> Val;
+        false -> Default
+    end.
+
+handle(<<"bulk-roster-update">>, Args) ->
+    Err1 = case lists:keyfind(<<"add">>, 1, Args) of
+               {<<"add">>, List} ->
+                   lists:filtermap(fun([{C1}, {C2}]) ->
+                                           Jid1 = get_json_prop(<<"jid">>, C1),
+                                           Nick1 = get_json_prop(<<"nick">>, C1, <<"">>),
+                                           Group1 = get_json_prop(<<"group">>, C1, []),
+                                           {U1, S1, _} = jlib:jid_tolower(jlib:string_to_jid(Jid1)),
+                                           Jid2 = get_json_prop(<<"jid">>, C2),
+                                           Nick2 = get_json_prop(<<"nick">>, C2, <<"">>),
+                                           Group2 = get_json_prop(<<"group">>, C2, []),
+                                           {U2, S2, _} = jlib:jid_tolower(jlib:string_to_jid(Jid2)),
+
+                                           case {ejabberd_auth:is_user_exists(U1, S1),
+                                                 ejabberd_auth:is_user_exists(U2, S2)}
+                                           of
+                                               {true, true} ->
+                                                   case mod_admin_p1:add_rosteritem(U2, S2, Jid1, Group1, Nick1, <<"both">>) of
+                                                       0 -> case mod_admin_p1:add_rosteritem(U1, S1, Jid2, Group2, Nick2, <<"both">>) of
+                                                                0 -> false;
+                                                                _ -> {true, {[{Jid1, <<"Modifing roster failed">>}]}}
+                                                            end;
+                                                       _ -> {true, {[{Jid2, <<"Modifing roster failed">>}]}}
+                                                   end;
+                                               {false, _} -> {true, {[{Jid1, <<"User doesn't exist">>}]}};
+                                               {_, false} -> {true, {[{Jid2, <<"User doesn't exist">>}]}}
+                                           end
+                                   end, List);
+               _ -> []
+           end,
+    Err2 = case lists:keyfind(<<"remove">>, 1, Args) of
+               {<<"remove">>, ListR} ->
+                   lists:filtermap(fun([JidR1, JidR2]) ->
+                                           {UR1, SR1, _} = jlib:jid_tolower(jlib:string_to_jid(JidR1)),
+                                           {UR2, SR2, _} = jlib:jid_tolower(jlib:string_to_jid(JidR2)),
+                                           case mod_admin_p1:delete_rosteritem(UR1, SR1, JidR2) of
+                                               0 ->
+                                                   case mod_admin_p1:delete_rosteritem(UR2, SR2, JidR1) of
+                                                       0 -> false;
+                                                       _ -> {true, {[{JidR2, <<"Can't delete roster item">>}]}}
+                                                   end;
+                                               _ -> {true, {[{JidR1, <<"Can't delete roster item">>}]}}
+                                           end
+                                   end, ListR);
+               _ ->
+                   []
+           end,
+    Err = Err1 ++ Err2,
+    case Err of
+        [] ->
+            {200, {[{<<"result">>, <<"success">>}]}};
+        _ ->
+            {500, {[{<<"result">>, <<"failure">>},{<<"errors">>, Err}]}}
+    end;
 
 % generic ejabberd command handler
 handle(Call, Args) when is_binary(Call), is_list(Args) ->
