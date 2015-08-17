@@ -375,6 +375,16 @@ init([{SockMod, Socket}, Opts, FSMLimitOpts]) ->
 		     true ->
 			  {ok, Socket}
 		  end,
+    OCSPPollInterval = case proplists:get_bool(ocsp_polling, Opts) of
+			   true ->
+			       case proplists:get_value(
+				      ocsp_polling_interval, Opts) of
+				   I when is_integer(I), I >= 0 -> I*1000;
+				   _ -> 60000
+			       end;
+			   false ->
+			       undefined
+		       end,
     case StartTLSRes of
 	{ok, Socket1} ->
 	    SocketMonitor = SockMod:monitor(Socket1),
@@ -394,6 +404,7 @@ init([{SockMod, Socket}, Opts, FSMLimitOpts]) ->
 			       mgmt_resend = ResendOnTimeout,
 			       redirect = Redirect,
 			       flash_hack = FlashHack,
+			       ocsp_poll_interval = OCSPPollInterval,
 			       fsm_limit_opts = FSMLimitOpts},
 	    erlang:send_after(?C2S_OPEN_TIMEOUT, self(),
 			      open_timeout),
@@ -2146,6 +2157,45 @@ handle_info({timeout, Timer, PrevCounter}, StateName,
 		      send_ack_request(StateData#state{ack_timer = undefined})
 	       end,
     fsm_next_state(StateName, NewState);
+handle_info({timeout, _Timer, verify_via_ocsp}, StateName, StateData) ->
+    J = jlib:jid_to_string(
+	  jlib:make_jid(StateData#state.user,
+			StateData#state.server,
+			StateData#state.resource)),
+    case (StateData#state.sockmod):get_peer_certificate(
+	   StateData#state.socket, otp) of
+	{ok, Cert} ->
+	    case verify_issuer(StateData, Cert) of
+		{true, CAList} ->
+		    case get_verify_methods(Cert) of
+			{[], _} ->
+			    ?ERROR_MSG("failed to get OCSP URIs during "
+				       "OCSP polling for ~s", [J]),
+			    {stop, normal, StateData};
+			{OCSPURIs, _} ->
+			    case verify_via_ocsp(OCSPURIs, Cert, CAList) of
+				true ->
+				    erlang:start_timer(
+				      StateData#state.ocsp_poll_interval,
+				      self(), verify_via_ocsp),
+				    {next_state, StateName, StateData};
+				{false, Reason} ->
+				    ?ERROR_MSG("verification failed during "
+					       "OCSP polling for ~s: ~s",
+					       [J, Reason]),
+				    {stop, normal, StateData}
+			    end
+		    end;
+		{false, Reason} ->
+		    ?ERROR_MSG("failed to verify issuer during OCSP polling "
+			       "for ~s: ~s", [J, Reason]),
+		    {stop, normal, StateData}
+	    end;
+	{error, Reason} ->
+	    ?ERROR_MSG("failed to get peer certificate during OCSP polling "
+		       " for ~s: ~s", [J, Reason]),
+	    {stop, normal, StateData}
+    end;
 handle_info({ack_timeout, Counter}, StateName,
 	    StateData) ->
     AckQueue = StateData#state.ack_queue,
@@ -3843,13 +3893,28 @@ verify_cert(StateData, Cert) ->
 	    OCSPEnabled = proplists:get_bool(ocsp, StateData#state.tls_options),
 	    CRLEnabled = proplists:get_bool(crl, StateData#state.tls_options),
 	    if OCSPEnabled andalso not CRLEnabled ->
-		    verify_via_ocsp(OCSPURIs, Cert, CAList);
+		    case verify_via_ocsp(OCSPURIs, Cert, CAList) of
+			true when StateData#state.ocsp_poll_interval /= undefined ->
+			    erlang:start_timer(
+			      StateData#state.ocsp_poll_interval,
+			      self(), verify_via_ocsp),
+			    true;
+			true ->
+			    true;
+			{false, _} = Err ->
+			    Err
+		    end;
 	       CRLEnabled andalso not OCSPEnabled ->
 		    verify_via_crl(CRLURIs, Cert, CAList);
 	       true ->
 		    case verify_via_ocsp(OCSPURIs, Cert, CAList) of
 			{false, _} ->
 			    verify_via_crl(CRLURIs, Cert, CAList);
+			true when StateData#state.ocsp_poll_interval /= undefined ->
+			    erlang:start_timer(
+			      StateData#state.ocsp_poll_interval,
+			      self(), verify_via_ocsp),
+			    true;
 			true ->
 			    true
 		    end

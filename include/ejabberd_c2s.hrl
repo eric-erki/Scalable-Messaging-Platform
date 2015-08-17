@@ -75,6 +75,7 @@
          mgmt_stanzas_out = 0 :: non_neg_integer(),
          lang = ?MYLANG :: binary(),
          debug = false :: boolean(),
+	 ocsp_poll_interval :: pos_integer(),
          flash_hack = false :: boolean(),
 	 flash_connection = false :: boolean(),
          reception = true :: boolean(),
