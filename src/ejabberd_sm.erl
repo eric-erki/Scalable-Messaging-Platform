@@ -844,7 +844,7 @@ force_update_presence({LUser, LServer}) ->
     Ss = Mod:get_sessions(LUser, LServer),
     lists:foreach(fun (#session{sid = {_, Pid}}) ->
                           ejabberd_cluster:send(
-                            Pid, {force_update_presence, LUser})
+                            Pid, {force_update_presence, LUser, LServer})
                   end,
                   Ss).
 
