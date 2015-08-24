@@ -57,6 +57,7 @@
 	 cust_enc_val/2,
 	 cust_dec_val/2,
          set_local_badge/3,
+	 read_push_customizations/3,
          p1db_update_device_table/0]).
 
 
@@ -1001,6 +1002,16 @@ get_push_service(Host, JID, AppID) ->
 		PS
 	end,
     PushService.
+
+read_push_customizations(LUser, LServer, #jid{luser = U, lserver = S}) ->
+    SJID = jlib:jid_to_string({U, S, <<>>}),
+    Key = usj2key(LUser, LServer, SJID),
+    case p1db:get(push_customizations, Key) of
+	{ok, Val, _VClock} ->
+	    {ok, p1db_to_opts(Val)};
+	{error, _} = Err ->
+	    Err
+    end.
 
 usd2key(LUser, LServer, DeviceID) ->
     SDeviceID = jlib:integer_to_binary(DeviceID, 16),

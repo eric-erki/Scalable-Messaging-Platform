@@ -179,6 +179,23 @@ build_and_customize_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, Custo
                 _ ->
                     build_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields)
             end;
+	p1db ->
+	    LUser = JID#jid.luser,
+	    SenderJID = jlib:string_to_jid(Sender),
+	    case mod_applepush:read_push_customizations(LUser, LServer, SenderJID) of
+		{ok, Opts} ->
+		    Mute = proplists:get_bool(mute, Opts),
+		    CustomSound = proplists:get_value(sound, Opts, <<"">>),
+		    if Mute ->
+			    skip;
+		       true ->
+			    build_push_packet(DeviceID, Msg, Unread,
+					      CustomSound, Sender, JID,
+					      CustomFields)
+		    end;
+		{error, _} ->
+		    build_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields)
+	    end;
         _ ->
             build_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields)
     end.
