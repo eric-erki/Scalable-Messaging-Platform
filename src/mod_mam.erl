@@ -1076,18 +1076,13 @@ send(From, To, Msgs, RSM, Count, IsComplete, #iq{sub_el = SubEl} = IQ) ->
     end.
 
 
-make_rsm_out(_Msgs, none, _Count, _Attrs, ?NS_MAM_TMP) ->
-    [];
-make_rsm_out(_Msgs, none, _Count, Attrs, NS) when NS == ?NS_MAM_0;
-						  NS == ?NS_MAM_1 ->
-    [#xmlel{name = <<"fin">>, attrs = [{<<"xmlns">>, NS}|Attrs]}];
-make_rsm_out([], #rsm_in{}, Count, Attrs, NS) ->
+make_rsm_out([], _, Count, Attrs, NS) ->
     Tag = if NS == ?NS_MAM_TMP -> <<"query">>;
 	     true -> <<"fin">>
 	  end,
     [#xmlel{name = Tag, attrs = [{<<"xmlns">>, NS}|Attrs],
 	    children = jlib:rsm_encode(#rsm_out{count = Count})}];
-make_rsm_out([{FirstID, _, _}|_] = Msgs, #rsm_in{}, Count, Attrs, NS) ->
+make_rsm_out([{FirstID, _, _}|_] = Msgs, _, Count, Attrs, NS) ->
     {LastID, _, _} = lists:last(Msgs),
     Tag = if NS == ?NS_MAM_TMP -> <<"query">>;
 	     true -> <<"fin">>
