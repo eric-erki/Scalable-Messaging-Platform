@@ -54,6 +54,8 @@
 	 device_dec_key/1,
 	 device_enc_val/2,
 	 device_dec_val/2,
+	 cust_enc_val/2,
+	 cust_dec_val/2,
          set_local_badge/3,
          p1db_update_device_table/0]).
 
@@ -151,6 +153,14 @@ init_db(p1db, Host) ->
 			       {dec_key, fun ?MODULE:dec_key/1},
 			       {enc_val, fun ?MODULE:enc_val/2},
 			       {dec_val, fun ?MODULE:dec_val/2}]}]),
+    p1db:open_table(push_customizations,
+		    [{group, Group}, {nosync, true},
+		     {schema, [{keys, [server, user, jid]},
+			       {vals, [mute, sound]},
+			       {enc_key, fun ?MODULE:enc_key/1},
+			       {dec_key, fun ?MODULE:dec_key/1},
+			       {enc_val, fun ?MODULE:cust_enc_val/2},
+			       {dec_val, fun ?MODULE:cust_dec_val/2}]}]),
     p1db:open_table(applepush_cache_device,
 		    [{group, Group}, {nosync, true},
 		     {schema, [{keys, [device_id]},
@@ -426,7 +436,9 @@ process_customization_iq(From, To, #iq{type = Type, sub_el = SubEl} = IQ) ->
                 Res ->
                     Res2 = lists:map(fun([R,M,S]) ->
                                              [{<<"from">>, R},
-                                              {<<"mute">>, if M == 1 -> <<"true">>; true -> <<"false">> end}] ++
+                                              {<<"mute">>,
+					       if M == true; M == 1 -> <<"true">>;
+						  true -> <<"false">> end}] ++
                                                  if S == <<"">> -> []; true -> [{<<"sound">>, S}] end
                                      end, Res),
                     ResX = [#xmlel{name = <<"item">>, attrs = Attrs} || Attrs <- Res2],
@@ -462,6 +474,25 @@ change_customizations(odbc, User, Items) ->
         end,
     {atomic, _} = odbc_queries:sql_transaction(LServer, F),
     ok;
+change_customizations(p1db, User, Items) ->
+    LUser = User#jid.luser,
+    LServer = User#jid.lserver,
+    lists:foreach(
+      fun({From, IsMute, IsDelete, Sound}) ->
+	      #jid{luser = U, lserver = S} = jlib:string_to_jid(From),
+	      Sender = jlib:jid_to_string({U, S, <<>>}),
+	      Key = usj2key(LUser, LServer, Sender),
+	      p1db:delete(push_customizations, Key),
+	      if not IsDelete andalso IsMute ->
+		      p1db:insert(push_customizations, Key,
+				  opts_to_p1db([{mute, true}]));
+		 IsDelete andalso Sound /= <<"">> ->
+		      p1db:insert(push_customizations, Key,
+				  opts_to_p1db([{sound, Sound}]));
+		 true ->
+		      ok
+	      end
+      end, Items);
 change_customizations(_Db, _User, _Items) ->
     not_supported.
 
@@ -482,6 +513,41 @@ get_customizations(odbc, User, Items) ->
         _ ->
             error
     end;
+get_customizations(p1db, User, Items) ->
+    LUser = User#jid.luser,
+    LServer = User#jid.lserver,
+    QueryRes = case Items of
+		   [] ->
+		       USPrefix = us_prefix(LUser, LServer),
+		       case p1db:get_by_prefix(push_customizations, USPrefix) of
+			   {ok, L} ->
+			       lists:map(
+				 fun({Key, Val, _VClock}) ->
+					 SJID = key2jid(USPrefix, Key),
+					 {SJID, Val}
+				 end, L);
+			   {error, _} ->
+			       []
+		       end;
+		   Js ->
+		       lists:flatmap(
+			 fun(J) ->
+				 Key = usj2key(LUser, LServer, J),
+				 case p1db:get(push_customizations, Key) of
+				     {ok, Val, _VClock} ->
+					 [{J, Val}];
+				     {error, _} ->
+					 []
+				 end
+			 end, Js)
+	       end,
+    lists:map(
+      fun({SJID, Val}) ->
+	      Opts = p1db_to_opts(Val),
+	      Mute = proplists:get_bool(mute, Opts),
+	      Sound = proplists:get_value(sound, Opts, <<>>),
+	      [SJID, Mute, Sound]
+      end, QueryRes);
 get_customizations(_Db, _User, _Items) ->
     not_supported.
 
@@ -940,10 +1006,18 @@ usd2key(LUser, LServer, DeviceID) ->
     SDeviceID = jlib:integer_to_binary(DeviceID, 16),
     <<LServer/binary, 0, LUser/binary, 0, SDeviceID/binary>>.
 
+usj2key(LUser, LServer, JID) ->
+    <<LServer/binary, 0, LUser/binary, 0, JID/binary>>.
+
 key2did(USPrefix, Key) ->
     Size = size(USPrefix),
     <<_:Size/binary, SDeviceID/binary>> = Key,
     jlib:binary_to_integer(SDeviceID, 16).
+
+key2jid(USPrefix, Key) ->
+    Size = size(USPrefix),
+    <<_:Size/binary, JID/binary>> = Key,
+    JID.
 
 us_prefix(LUser, LServer) ->
     <<LServer/binary, 0, LUser/binary, 0>>.
@@ -984,6 +1058,16 @@ dec_val(_, Bin) ->
      jlib:atom_to_binary(proplists:get_value(send_from, Options, true)),
      jlib:integer_to_binary(proplists:get_value(local_badge, Options, 0)),
      jlib:integer_to_binary(proplists:get_value(timestamp, Options, 0))].
+
+cust_enc_val(_, [Mute, Sound]) ->
+    Options = [{mute, jlib:binary_to_atom(Mute)},
+	       {sound, Sound}],
+    opts_to_p1db(Options).
+
+cust_dec_val(_, Bin) ->
+    Options = p1db_to_opts(Bin),
+    [jlib:atom_to_binary(proplists:get_bool(mute, Options)),
+     proplists:get_value(sound, Options, <<"">>)].
 
 device_dec_key(Key) ->
     [Key].
