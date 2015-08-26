@@ -66,23 +66,9 @@
 
 %% server = string()
 %% dests = [string()]
-%% multicast = {cached, local_server} | {cached, string()} | {cached, not_supported} | {obsolete, not_supported} | {obsolete, string()} | not_cached
-%%  after being updated, possible values are: local | multicast_not_supported | {multicast_supported, string(), limits()}
+%% multicast = route_single | {route_multicast, string(), limits()}
 %% others = [xml()]
 %% packet = xml()
-
--record(waiter,
-	{awaiting, group, renewal = false, sender, packet,
-	 aattrs, addresses}).
-
-%% awaiting = {[Remote_service], Local_service, Type_awaiting}
-%%  Remote_service = Local_service = string()
-%%  Type_awaiting = info | items
-%% group = #group
-%% renewal = true | false
-%% sender = From
-%% packet = xml()
-%% aattrs = [xml()]
 
 -record(limits, {message, presence}).
 
@@ -102,6 +88,8 @@
 -define(MAXTIME_CACHE_POSITIVE, 86400).
 
 -define(MAXTIME_CACHE_NEGATIVE, 86400).
+
+-define(MAXTIME_CACHE_NEGOTIATING, 600).
 
 -define(CACHE_PURGE_TIMER, 86400000).
 
@@ -150,7 +138,6 @@ init([LServerS, Opts]) ->
 						   [])),
     create_cache(),
     try_start_loop(),
-    create_pool(),
     ejabberd_router_multicast:register_route(LServerS),
     ejabberd_router:register_route(LServiceS),
     {ok,
@@ -221,7 +208,7 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %%% IQ Request Processing
 %%%------------------------
 
-handle_iq(From, To, #xmlel{attrs = Attrs} = Packet, State) ->
+handle_iq(From, To, Packet, State) ->
     IQ = jlib:iq_query_info(Packet),
     case catch process_iq(From, IQ, State) of
         Result when is_record(Result, iq) ->
@@ -234,11 +221,12 @@ handle_iq(From, To, #xmlel{attrs = Attrs} = Packet, State) ->
             ejabberd_router:route(To, From, Err);
         reply ->
             LServiceS = jts(To),
-            case xml:get_attr_s(<<"type">>, Attrs) of
-                <<"result">> ->
-                    process_iqreply_result(From, LServiceS, Packet, State);
-                <<"error">> ->
-                    process_iqreply_error(From, LServiceS, Packet)
+            IQRes = jlib:iq_query_or_response_info(Packet),
+            case IQRes#iq.type of
+                result ->
+                    process_iqreply_result(From, LServiceS, IQRes, State);
+                error ->
+                    process_iqreply_error(From, LServiceS, IQRes)
             end;
         ok -> ok
     end.
@@ -394,7 +382,7 @@ route_untrusted2(LServiceS, LServerS, Access, SLimits,
 
 route_common(LServerS, LServiceS, FromJID, Groups,
 	     Delivereds, Packet_stripped, AAttrs) ->
-    Groups2 = look_cached_servers(LServerS, Groups),
+    Groups2 = look_cached_servers(LServerS, LServiceS, Groups),
     Groups3 = build_others_xml(Groups2),
     Groups4 = add_addresses(Delivereds, Groups3),
     AGroups = decide_action_groups(Groups4),
@@ -415,26 +403,7 @@ perform(From, Packet, AAttrs, _,
 perform(From, Packet, AAttrs, _,
 	{{route_multicast, JID, RLimits}, Group}) ->
     route_packet_multicast(From, JID, Packet, AAttrs,
-			   Group#group.dests, Group#group.addresses, RLimits);
-perform(From, Packet, AAttrs, LServiceS,
-	{{ask, Old_service, renewal}, Group}) ->
-    send_query_info(Old_service, LServiceS),
-    add_waiter(#waiter{awaiting =
-			   {[Old_service], LServiceS, info},
-		       group = Group, renewal = true, sender = From,
-		       packet = Packet, aattrs = AAttrs,
-		       addresses = Group#group.addresses});
-perform(_From, _Packet, _AAttrs, LServiceS,
-	{{ask, LServiceS, _}, _Group}) ->
-    ok;
-perform(From, Packet, AAttrs, LServiceS,
-	{{ask, Server, not_renewal}, Group}) ->
-    send_query_info(Server, LServiceS),
-    add_waiter(#waiter{awaiting =
-			   {[Server], LServiceS, info},
-		       group = Group, renewal = false, sender = From,
-		       packet = Packet, aattrs = AAttrs,
-		       addresses = Group#group.addresses}).
+			   Group#group.dests, Group#group.addresses, RLimits).
 
 %%%-------------------------
 %%% Check access permission
@@ -565,14 +534,14 @@ group_dests(Dests) ->
 %%% Look for cached responses
 %%%-------------------------
 
-look_cached_servers(LServerS, Groups) ->
-    [look_cached(LServerS, Group) || Group <- Groups].
+look_cached_servers(LServerS, LServiceS, Groups) ->
+    [look_cached(LServerS, LServiceS, Group) || Group <- Groups].
 
-look_cached(LServerS, G) ->
+look_cached(LServerS, LServiceS, G) ->
     Maxtime_positive = (?MAXTIME_CACHE_POSITIVE),
     Maxtime_negative = (?MAXTIME_CACHE_NEGATIVE),
     Cached_response = search_server_on_cache(G#group.server,
-					     LServerS,
+					     LServerS, LServiceS,
 					     {Maxtime_positive,
 					      Maxtime_negative}),
     G#group{multicast = Cached_response}.
@@ -628,22 +597,7 @@ decide_action_groups(Groups) ->
      || Group <- Groups].
 
 decide_action_group(Group) ->
-    Server = Group#group.server,
-    case Group#group.multicast of
-      {cached, local_server} ->
-	  %% Send a copy of the packet to each local user on Dests
-	  route_single;
-      {cached, not_supported} ->
-	  %% Send a copy of the packet to each remote user on Dests
-	  route_single;
-      {cached, {multicast_supported, JID, RLimits}} ->
-	  {route_multicast, JID, RLimits};
-      {obsolete,
-       {multicast_supported, Old_service, _RLimits}} ->
-	  {ask, Old_service, renewal};
-      {obsolete, not_supported} -> {ask, Server, not_renewal};
-      not_cached -> {ask, Server, not_renewal}
-    end.
+    Group#group.multicast.
 
 %%%-------------------------
 %%% Route packet
@@ -696,6 +650,7 @@ check_relay(RS, LS, Gs) ->
     end.
 
 check_relay_required(RServer, LServerS, Groups) ->
+    % TODO
     case lists:suffix(str:tokens(LServerS, <<".">>),
                       str:tokens(RServer, <<".">>)) of
       true -> false;
@@ -711,18 +666,20 @@ check_relay_required(LServerS, Groups) ->
 %%% Check protocol support: Send request
 %%%-------------------------
 
-send_query_info(RServerS, LServiceS) ->
+send_query_info(RServerS, LServiceS, ID) ->
     case str:str(RServerS, <<"echo.">>) of
       1 -> false;
-      _ -> send_query(RServerS, LServiceS, ?NS_DISCO_INFO)
+      _ -> send_query(RServerS, LServiceS, ID, ?NS_DISCO_INFO)
     end.
 
-send_query_items(RServerS, LServiceS) ->
-    send_query(RServerS, LServiceS, ?NS_DISCO_ITEMS).
+send_query_items(RServerS, LServiceS, ID) ->
+    send_query(RServerS, LServiceS, ID, ?NS_DISCO_ITEMS).
 
-send_query(RServerS, LServiceS, XMLNS) ->
+send_query(RServerS, LServiceS, ID, XMLNS) ->
     Packet = #xmlel{name = <<"iq">>,
-		    attrs = [{<<"to">>, RServerS}, {<<"type">>, <<"get">>}],
+		    attrs = [{<<"to">>, RServerS},
+                             {<<"type">>, <<"get">>},
+                             {<<"id">>, ID}],
 		    children =
 			[#xmlel{name = <<"query">>,
 				attrs = [{<<"xmlns">>, XMLNS}],
@@ -734,85 +691,116 @@ send_query(RServerS, LServiceS, XMLNS) ->
 %%% Check protocol support: Receive response: Error
 %%%-------------------------
 
-process_iqreply_error(From, LServiceS, _Packet) ->
+process_iqreply_error(From, LServiceS, IQ) ->
+    % TODO
     FromS = jts(From),
-    case search_waiter(FromS, LServiceS, info) of
-      {found_waiter, Waiter} ->
-	  received_awaiter(FromS, Waiter, LServiceS);
-      _ -> ok
+    ID = IQ#iq.id,
+    case str:tokens(ID, <<"/">>) of
+        [RServer, _] ->
+            case look_server(RServer) of
+                {cached, {_Response, {wait_for_info, ID}}, _TS}
+                when RServer == FromS ->
+                    add_response(RServer, not_supported, cached);
+                {cached, {_Response, {wait_for_items, ID}}, _TS}
+                when RServer == FromS ->
+                    add_response(RServer, not_supported, cached);
+                {cached, {Response, {wait_for_items_info, ID, Items}},
+                 _TS} ->
+                    case lists:member(FromS, Items) of
+                        true ->
+                            received_awaiter(
+                              FromS, RServer, Response, ID, Items,
+                              LServiceS);
+                        false ->
+                            ok
+                    end;
+                _ ->
+                    ok
+            end;
+        _ ->
+            ok
     end.
 
 %%%-------------------------
 %%% Check protocol support: Receive response: Disco
 %%%-------------------------
 
-process_iqreply_result(From, LServiceS, Packet,
-		       State) ->
-    #xmlel{name = <<"query">>, attrs = Attrs2,
-	   children = Els2} =
-	xml:get_subtag(Packet, <<"query">>),
-    case xml:get_attr_s(<<"xmlns">>, Attrs2) of
-      ?NS_DISCO_INFO ->
-	  process_discoinfo_result(From, LServiceS, Els2, State);
-      ?NS_DISCO_ITEMS ->
-	  process_discoitems_result(From, LServiceS, Els2)
+process_iqreply_result(From, LServiceS, IQ, State) ->
+    case IQ#iq.sub_el of
+        [#xmlel{name = <<"query">>, children = Els2}] ->
+            case IQ#iq.xmlns of
+                ?NS_DISCO_INFO ->
+                    process_discoinfo_result(
+                      From, LServiceS, Els2, IQ#iq.id, State);
+                ?NS_DISCO_ITEMS ->
+                    process_discoitems_result(From, LServiceS, IQ#iq.id, Els2)
+            end;
+        _ ->
+            ok
     end.
 
 %%%-------------------------
 %%% Check protocol support: Receive response: Disco Info
 %%%-------------------------
 
-process_discoinfo_result(From, LServiceS, Els,
+process_discoinfo_result(From, LServiceS, Els, ID,
 			 _State) ->
     FromS = jts(From),
-    case search_waiter(FromS, LServiceS, info) of
-      {found_waiter, Waiter} ->
-	  process_discoinfo_result2(From, FromS, LServiceS, Els,
-				    Waiter);
-      _ -> ok
+    case str:tokens(ID, <<"/">>) of
+        [RServer, _] ->
+            case look_server(RServer) of
+                {cached, {Response, {wait_for_info, ID} = ST}, _TS}
+                when RServer == FromS ->
+                    process_discoinfo_result2(
+                      From, FromS, LServiceS, Els,
+                      RServer, Response, ST);
+                {cached, {Response, {wait_for_items_info, ID, Items} = ST},
+                 _TS} ->
+                    case lists:member(FromS, Items) of
+                        true ->
+                            process_discoinfo_result2(
+                              From, FromS, LServiceS, Els,
+                              RServer, Response, ST);
+                        false ->
+                            ok
+                    end;
+                _ ->
+                    ok
+            end;
+        _ ->
+            ok
     end.
 
 process_discoinfo_result2(From, FromS, LServiceS, Els,
-			  Waiter) ->
-    Multicast_support = lists:any(fun (XML) ->
-					  case XML of
-					    #xmlel{name = <<"feature">>,
-						   attrs = Attrs} ->
-						(?NS_ADDRESS) ==
-						  xml:get_attr_s(<<"var">>,
-								 Attrs);
-					    _ -> false
-					  end
-				  end,
-				  Els),
-    Group = Waiter#waiter.group,
-    RServer = Group#group.server,
+			  RServer, Response, ST) ->
+    Multicast_support =
+        lists:any(
+          fun(XML) ->
+                  case XML of
+                      #xmlel{name = <<"feature">>, attrs = Attrs} ->
+                          (?NS_ADDRESS) == xml:get_attr_s(<<"var">>, Attrs);
+                      _ -> false
+                  end
+          end,
+          Els),
     case Multicast_support of
-      true ->
-	  SenderT = sender_type(From),
-	  RLimits = get_limits_xml(Els, SenderT),
-	  add_response(RServer,
-		       {multicast_supported, FromS, RLimits}),
-	  FromM = Waiter#waiter.sender,
-	  DestsM = Group#group.dests,
-	  PacketM = Waiter#waiter.packet,
-	  AAttrsM = Waiter#waiter.aattrs,
-	  AddressesM = Waiter#waiter.addresses,
-	  RServiceM = FromS,
-	  route_packet_multicast(FromM, RServiceM, PacketM,
-				 AAttrsM, DestsM, AddressesM, RLimits),
-	  delo_waiter(Waiter);
-      false ->
-	  case FromS of
-	    RServer ->
-		send_query_items(FromS, LServiceS),
-		delo_waiter(Waiter),
-		add_waiter(Waiter#waiter{awaiting =
-					     {[FromS], LServiceS, items},
-					 renewal = false});
-	    %% We asked a component, and it does not support XEP33
-	    _ -> received_awaiter(FromS, Waiter, LServiceS)
-	  end
+        true ->
+            SenderT = sender_type(From),
+            RLimits = get_limits_xml(Els, SenderT),
+            add_response(RServer, {multicast_supported, FromS, RLimits},
+                         cached);
+        false ->
+            case ST of
+                {wait_for_info, _ID} ->
+                    Random = randoms:get_string(),
+                    ID = <<RServer/binary, $/, Random/binary>>,
+                    send_query_items(FromS, LServiceS, ID),
+                    add_response(RServer, Response, {wait_for_items, ID});
+                %% We asked a component, and it does not support XEP33
+                {wait_for_items_info, ID, Items} ->
+                    received_awaiter(FromS, RServer, Response, ID, Items,
+                                     LServiceS)
+            end
     end.
 
 get_limits_xml(Els, SenderT) ->
@@ -880,34 +868,44 @@ get_limits_values(Values) ->
 %%% Check protocol support: Receive response: Disco Items
 %%%-------------------------
 
-process_discoitems_result(From, LServiceS, Els) ->
+process_discoitems_result(From, LServiceS, ID, Els) ->
     FromS = jts(From),
-    case search_waiter(FromS, LServiceS, items) of
-        {found_waiter, Waiter} ->
-            List = lists:foldl(
-                     fun(XML, Res) ->
-                             case XML of
-                                 #xmlel{name = <<"item">>, attrs = Attrs} ->
-                                     SJID = xml:get_attr_s(<<"jid">>, Attrs),
-                                     case jlib:string_to_jid(SJID) of
-                                         #jid{luser = <<"">>,
-                                              lresource = <<"">>} ->
-                                             [SJID | Res];
-                                         _ -> Res
-                                     end;
-                                 _ -> Res
-                             end
-                     end,
-                     [], Els),
-            case List of
-                [] ->
-                    received_awaiter(FromS, Waiter, LServiceS);
+    case str:tokens(ID, <<"/">>) of
+        [FromS = RServer, _] ->
+            case look_server(RServer) of
+                {cached, {Response, {wait_for_items, ID}}, _TS} ->
+                    List =
+                        lists:foldl(
+                          fun(XML, Res) ->
+                                  case XML of
+                                      #xmlel{name = <<"item">>,
+                                             attrs = Attrs} ->
+                                          SJID = xml:get_attr_s(
+                                                   <<"jid">>, Attrs),
+                                          case jlib:string_to_jid(SJID) of
+                                              #jid{luser = <<"">>,
+                                                   lserver = S,
+                                                   lresource = <<"">>} ->
+                                                  [S | Res];
+                                              _ -> Res
+                                          end;
+                                      _ -> Res
+                                  end
+                          end,
+                          [], Els),
+                                                % TODO
+                    case List of
+                        [] ->
+                            add_response(RServer, not_supported, cached);
+                        _ ->
+                            Random = randoms:get_string(),
+                            ID2 = <<RServer/binary, $/, Random/binary>>,
+                            [send_query_info(Item, LServiceS, ID2) || Item <- List],
+                            add_response(RServer, Response,
+                                         {wait_for_items_info, ID2, List})
+                    end;
                 _ ->
-                    [send_query_info(Item, LServiceS) || Item <- List],
-                    delo_waiter(Waiter),
-                    add_waiter(Waiter#waiter{awaiting =
-                                             {List, LServiceS, info},
-                                             renewal = false})
+                    ok
             end;
         _ ->
             ok
@@ -917,32 +915,12 @@ process_discoitems_result(From, LServiceS, Els) ->
 %%% Check protocol support: Receive response: Received awaiter
 %%%-------------------------
 
-received_awaiter(JID, Waiter, LServiceS) ->
-    {JIDs, LServiceS, _} = Waiter#waiter.awaiting,
-    delo_waiter(Waiter),
-    Group = Waiter#waiter.group,
-    RServer = Group#group.server,
+received_awaiter(JID, RServer, Response, ID, JIDs, _LServiceS) ->
     case lists:delete(JID, JIDs) of
-      [] ->
-	  case Waiter#waiter.renewal of
-	    false ->
-		add_response(RServer, not_supported),
-		From = Waiter#waiter.sender,
-		Packet = Waiter#waiter.packet,
-		AAttrs = Waiter#waiter.aattrs,
-		Addresses = Waiter#waiter.addresses,
-		[route_packet(From, ToUser, Packet, AAttrs, Addresses)
-		 || ToUser <- Group#group.dests];
-	    true ->
-		send_query_info(RServer, LServiceS),
-		add_waiter(Waiter#waiter{awaiting =
-					     {[RServer], LServiceS, info},
-					 renewal = false})
-	  end;
-      JIDs2 ->
-	  add_waiter(Waiter#waiter{awaiting =
-				       {JIDs2, LServiceS, info},
-				   renewal = false})
+        [] ->
+            add_response(RServer, not_supported, cached);
+        JIDs2 ->
+            add_response(RServer, Response, {wait_for_items_info, ID, JIDs2})
     end.
 
 %%%-------------------------
@@ -954,26 +932,53 @@ create_cache() ->
 			[{ram_copies, [node()]},
 			 {attributes, record_info(fields, multicastc)}]).
 
-add_response(RServer, Response) ->
+add_response(RServer, Response, State) ->
     Secs =
 	calendar:datetime_to_gregorian_seconds(calendar:now_to_datetime(now())),
     mnesia:dirty_write(#multicastc{rserver = RServer,
-				   response = Response, ts = Secs}).
+				   response = {Response, State}, ts = Secs}).
 
-search_server_on_cache(RServer, LServerS, _Maxmins)
-    when RServer == LServerS ->
-    {cached, local_server};
-search_server_on_cache(RServer, _LServerS, Maxmins) ->
+search_server_on_cache(RServer, LServerS, _LServiceS, _Maxmins)
+  when RServer == LServerS ->
+    route_single;
+search_server_on_cache(RServer, _LServerS, LServiceS, Maxmins) ->
     case look_server(RServer) of
-      not_cached -> not_cached;
-      {cached, Response, Ts} ->
-	  Now =
-	      calendar:datetime_to_gregorian_seconds(calendar:now_to_datetime(now())),
-	  case is_obsolete(Response, Ts, Now, Maxmins) of
-	    false -> {cached, Response};
-	    true -> {obsolete, Response}
-	  end
+        not_cached ->
+            query_info(RServer, LServiceS, not_supported),
+            route_single;
+        {cached, {Response, State}, TS} ->
+            Now =
+                calendar:datetime_to_gregorian_seconds(calendar:now_to_datetime(now())),
+            Response2 =
+                case State of
+                    cached ->
+                        case is_obsolete(Response, TS, Now, Maxmins) of
+                            false -> ok;
+                            true ->
+                                query_info(RServer, LServiceS, Response)
+                        end,
+                        Response;
+                    _ ->
+                        if
+                            Now - TS > ?MAXTIME_CACHE_NEGOTIATING ->
+                                query_info(RServer, LServiceS, not_supported),
+                                not_supported;
+                            true ->
+                                Response
+                        end
+                end,
+            case Response2 of
+                not_supported -> route_single;
+                {multicast_supported, Service, Limits} ->
+                    {route_multicast, Service, Limits}
+            end
     end.
+
+query_info(RServer, LServiceS, Response) ->
+    Random = randoms:get_string(),
+    ID = <<RServer/binary, $/, Random/binary>>,
+    send_query_info(RServer, LServiceS, ID),
+    add_response(RServer, Response, {wait_for_info, ID}).
 
 look_server(RServer) ->
     case mnesia:dirty_read(multicastc, RServer) of
@@ -1043,44 +1048,6 @@ purge_loop(NM) ->
       new_module -> purge_loop(NM + 1);
       try_stop when NM > 1 -> purge_loop(NM - 1);
       try_stop -> purge_loop_finished
-    end.
-
-%%%-------------------------
-%%% Pool
-%%%-------------------------
-
-create_pool() ->
-    catch
-      begin
-          ets:new(multicastp,
-                  [duplicate_bag, public, named_table, {keypos, 2}]),
-          ets:give_away(multicastp, whereis(ejabberd), ok)
-      end.
-
-add_waiter(Waiter) ->
-    true = ets:insert(multicastp, Waiter).
-
-delo_waiter(Waiter) ->
-    true = ets:delete_object(multicastp, Waiter).
-
--spec search_waiter(binary(), binary(), info | items) ->
-    {found_waiter, #waiter{}} | waiter_not_found.
-
-search_waiter(JID, LServiceS, Type) ->
-    Rs = ets:foldl(fun (W, Res) ->
-			   {JIDs, LServiceS1, Type1} = W#waiter.awaiting,
-			   case lists:member(JID, JIDs) and
-				  (LServiceS == LServiceS1)
-				  and (Type1 == Type)
-			       of
-			     true -> Res ++ [W];
-			     false -> Res
-			   end
-		   end,
-		   [], multicastp),
-    case Rs of
-      [R | _] -> {found_waiter, R};
-      [] -> waiter_not_found
     end.
 
 %%%-------------------------
