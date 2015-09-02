@@ -53,3 +53,4 @@
 /test/*.beam
 /logs/
 /priv/sql
+/rel/ejabberd
