@@ -70,6 +70,7 @@
          mgmt_max_queue = 500 :: pos_integer() | exceeded | infinity,
          mgmt_pending_since :: erlang:timestamp(),
          mgmt_timeout = 0 :: non_neg_integer(),
+	 mgmt_max_timeout = 0 :: non_neg_integer(),
          mgmt_resend = false :: boolean(),
          mgmt_stanzas_in = 0 :: non_neg_integer(),
          mgmt_stanzas_out = 0 :: non_neg_integer(),
