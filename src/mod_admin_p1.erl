@@ -1744,7 +1744,7 @@ mass_message(Host, Delay, Stanza, From, [Uid|Others]) ->
 purge_mam(Host, Days) ->
     case lists:member(Host, ?MYHOSTS) of
 	true ->
-	    purge_mam(Host, Days, gen_mod:db_type(Host, mod_roster));
+	    purge_mam(Host, Days, gen_mod:db_type(Host, mod_mam));
 	_ ->
 	    ?ERROR_MSG("Unknown Host name: ~s", [Host]),
 	    -1
