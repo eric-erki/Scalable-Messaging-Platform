@@ -207,7 +207,9 @@ AllDeps = case lists:keytake(lager, 1, AllDeps0) of
 		false -> AllDeps0
 	  end,
 
-Config = [{erl_opts, Macros ++ HiPE ++ DebugInfo ++
+CompileOpts = [nowarn_deprecated_function],
+
+Config = [{erl_opts, CompileOpts ++ Macros ++ HiPE ++ DebugInfo ++
                [{src_dirs, [asn1, src | SrcDirs]}]},
           {sub_dirs, ["rel"]},
           {keep_build_info, true},
