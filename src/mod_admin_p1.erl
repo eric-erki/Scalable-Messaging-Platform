@@ -518,7 +518,7 @@ commands() ->
 			    {probe, {tuple, [{level, atom}, {message, string}]}}}}},
      #ejabberd_commands{name = user_info,
 			tags = [session],
-			desc = "Number of IQ handlers in the node",
+			desc = "Information about a user's online sessions",
 			module = ?MODULE, function = user_info,
 			args = [{user, binary}, {server, binary}],
 			result = {res, {tuple, [
