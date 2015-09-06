@@ -115,6 +115,24 @@ process_iq_reply(From, To, #iq{id = ID} = IQ) ->
       {ok, Module, Function} ->
 	  Module:Function(From, To, IQ), ok;
       _ -> nothing
+    end;
+process_iq_reply(From, To, #xmlel{} = Packet) ->
+    ID = xml:get_tag_attr_s(<<"id">>, Packet),
+    case get_iq_callback(ID) of
+	{ok, Module, Function} ->
+	    case jlib:iq_query_or_response_info(Packet) of
+		#iq{type = T} = IQ when T == result; T == error ->
+		    if Module == undefined ->
+			    Function(IQ);
+		       true ->
+			    Module:Function(From, To, IQ)
+		    end,
+		    ok;
+		_ ->
+		    nothing
+	    end;
+	_ ->
+	    nothing
     end.
 
 route(From, To, Packet) ->

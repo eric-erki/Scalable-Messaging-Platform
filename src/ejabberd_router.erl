@@ -354,19 +354,17 @@ do_route(OrigFrom, OrigTo, OrigPacket, IsBounce) ->
                         undefined ->
                             ejabberd_s2s:route(From, To, Packet)
                     end;
-                [#route{pid = [Pid]}] ->
-		    case allow_host(LSrcDomain, LDstDomain, IsBounce) of
-			true ->
-			    ejabberd_cluster:send(Pid, {route, From, To, Packet});
-			false ->
-			    bounce_packet(From, To, Packet)
-		    end;
                 [#route{pid = Pids}] ->
 		    case allow_host(LSrcDomain, LDstDomain, IsBounce) of
-			true ->
-			    balancing_route(Pids, From, To, Packet);
 			false ->
-			    bounce_packet(From, To, Packet)
+			    bounce_packet(From, To, Packet);
+			true ->
+			    case ejabberd_local:process_iq_reply(From, To, Packet) of
+				nothing ->
+				    balancing_route(Pids, From, To, Packet);
+				ok ->
+				    ok
+			    end
 		    end
             end;
         drop ->
@@ -408,6 +406,8 @@ bounce_packet(From, To, #xmlel{attrs = Attrs} = Packet) ->
 	    do_route(To, From, Err, true)
     end.
 
+balancing_route([Pid], From, To, Packet) ->
+    ejabberd_cluster:send(Pid, {route, From, To, Packet});
 balancing_route(Pids, From, To, Packet) ->
     LDstDomain = To#jid.lserver,
     Value = case get_domain_balancing(LDstDomain) of
