@@ -665,11 +665,13 @@ normal_state({route, From, ToNick,
 					  From,
 					  jlib:iq_to_xml(Reply#iq{id = ID}));
 				   (timeout) ->
+					Err = jlib:make_error_reply(
+						Packet,
+						?ERR_SERVICE_UNAVAILABLE),
 					route_stanza(
 					  jlib:jid_replace_resource(
 					    StateData#state.jid, ToNick),
-					  From,
-					  ?ERR_SERVICE_UNAVAILABLE)
+					  From, Err)
 				end,
 			    {ok, #user{nick = FromNick}} =
 				(?DICT):find(jlib:jid_tolower(From),
