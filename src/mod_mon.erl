@@ -537,13 +537,13 @@ flush_log(Host, Probe) ->
                 ClusterLog = cluster_log(Host),
                 ejabberd_cluster:multicall(?MODULE, flush_log, [Host, Probe, ClusterLog])
         end).
-flush_log(Host, Probe, ClusterLog) when is_binary(Host), is_atom(Probe) ->
+flush_log(Host, Probe, _ClusterLog) when is_binary(Host), is_atom(Probe) ->
     set(Host, log, ehyperloglog:new(16)),
-    {UpdatedLogs, _} = lists:foldr(
+    UpdatedLogs = lists:foldr(
             fun({Key, Val}, Acc) ->
                     NewLog = case Key of
                         Probe -> reset_log(Host, Key);
-                        _ -> merge_log(Host, Key, Val, ClusterLog)
+                        _ -> Val
                     end,
                     [{Key, NewLog}|Acc]
             end,
