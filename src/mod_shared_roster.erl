@@ -31,17 +31,18 @@
 
 -behaviour(gen_mod).
 
--export([start/2, stop/1, item_to_xml/1, export/1, import_info/0,
-	 webadmin_menu/3, webadmin_page/3, get_user_roster/2,
-	 get_subscription_lists/3, get_jid_info/4, import/5,
-	 process_item/2, in_subscription/6, out_subscription/4,
-	 user_available/1, unset_presence/4, register_user/2,
-	 remove_user/2, list_groups/1, create_group/2,
-	 create_group/3, delete_group/2, get_group_opts/2,
-	 set_group_opts/3, get_group_users/2, import_start/2,
-	 get_group_explicit_users/2, is_user_in_group/3,
-	 enc_key/1, dec_key/1, enc_val/2, dec_val/2,
-	 add_user_to_group/3, remove_user_from_group/3]).
+-export([start/2, stop/1, item_to_xml/1, export/1,
+         import_info/0, webadmin_menu/3, webadmin_page/3,
+	 get_user_roster/2, get_subscription_lists/3,
+	 get_jid_info/4, import/5, process_item/2,
+	 in_subscription/6, out_subscription/4, user_available/1,
+	 unset_presence/4, register_user/2, remove_user/2,
+	 list_groups/1, create_group/2, create_group/3,
+	 delete_group/2, get_group_opts/2, set_group_opts/3,
+         get_group_users/2, import_start/2, get_group_explicit_users/2,
+	 is_user_in_group/3, add_user_to_group/3,
+         remove_user_from_group/3,
+	 enc_key/1, dec_key/1, enc_val/2, dec_val/2]).
 
 -export([command_group_create/5, command_group_delete/2,
 	 command_add_user/3, command_remove_user/3,
@@ -250,6 +251,8 @@ get_rosteritem_name_vcard([Vcard]) ->
       Nickname -> Nickname
     end.
 
+%% This function rewrites the roster entries when moving or renaming
+%% them in the user contact list.
 process_item(RosterItem, Host) ->
     USFrom = {UserFrom, ServerFrom} = RosterItem#roster.us,
     {UserTo, ServerTo, ResourceTo} = RosterItem#roster.jid,
@@ -591,7 +594,10 @@ delete_group(Host, Group, odbc) ->
 		ejabberd_odbc:sql_query_t([<<"delete from sr_user where grp='">>,
 					   SGroup, <<"';">>])
 	end,
-    ejabberd_odbc:sql_transaction(Host, F).
+    case ejabberd_odbc:sql_transaction(Host, F) of
+        {atomic,{updated,_}} -> {atomic, ok};
+        Res -> Res
+    end.
 
 get_group_opts(Host, Group) ->
     get_group_opts(Host, Group,
@@ -795,6 +801,7 @@ get_group_name(Host1, Group1) ->
     Opts = get_group_opts(Host, Group),
     get_group_opt(name, Opts, Group).
 
+%% Get list of names of groups that have @all@/@online@/etc in the memberlist
 get_special_users_groups(Host) ->
     lists:flatmap(fun ({Group, Opts}) ->
                           case get_group_opt(all_users, Opts, false) orelse
@@ -805,6 +812,7 @@ get_special_users_groups(Host) ->
                   end,
                   groups_with_opts(Host)).
 
+%% Get list of names of groups that have @online@ in the memberlist
 get_special_users_groups_online(Host) ->
     lists:flatmap(fun ({Group, Opts}) ->
                           case get_group_opt(online_users, Opts, false) of
@@ -814,7 +822,12 @@ get_special_users_groups_online(Host) ->
                   end,
                   groups_with_opts(Host)).
 
+%% Given two lists of groupnames and their options,
+%% return the list of displayed groups to the second list
 displayed_groups(GroupsOpts, SelectedGroupsOpts) ->
+%% Given a list of group names with options,
+%% for those that have @all@ in memberlist,
+%% get the list of groups displayed
     DisplayedGroups = lists:usort(lists:flatmap(fun
 						  ({_Group, Opts}) ->
 						      [G
@@ -831,15 +844,18 @@ displayed_groups(GroupsOpts, SelectedGroupsOpts) ->
 
 get_special_displayed_groups(GroupsOpts) ->
     Groups = lists:flatmap(
-               fun({Group, Opts}) ->
+               fun({_Group, Opts} = GroupOpt) ->
                        case proplists:get_value(all_users, Opts, false) of
-                           true -> [Group];
+                           true -> [GroupOpt];
                            false -> []
                        end
                end,
                GroupsOpts),
     displayed_groups(GroupsOpts, Groups).
 
+%% Given a username and server, and a list of group names with options,
+%% for the list of groups of that server that user is member
+%% get the list of groups displayed
 get_user_displayed_groups(LUser, LServer, GroupsOpts) ->
     Groups = get_user_displayed_groups(LUser, LServer,
 				       GroupsOpts,
@@ -891,6 +907,7 @@ get_user_displayed_groups(LUser, LServer, GroupsOpts,
       _ -> []
     end.
 
+%% @doc Get the list of groups that are displayed to this user
 get_user_displayed_groups(US) ->
     Host = element(2, US),
     DisplayedGroups1 =
@@ -955,6 +972,7 @@ is_user_in_group(US, Group, Host, odbc) ->
       _ -> true
     end.
 
+%% @spec (Host::string(), {User::string(), Server::string()}, Group::string()) -> {atomic, ok}
 add_user_to_group(Host, US, Group) ->
     {LUser, LServer} = US,
     case ejabberd_regexp:run(LUser, <<"^@.+@\$">>) of
@@ -967,14 +985,14 @@ add_user_to_group(Host, US, Group) ->
 			  end,
 	  (?MODULE):set_group_opts(Host, Group,
 				   GroupOpts ++ MoreGroupOpts);
-        nomatch ->
-            Res = add_user_to_group(Host, US, Group,
-                                    gen_mod:db_type(Host, ?MODULE)),
-            push_user_to_displayed(LUser, LServer, Group, Host,
-                                   both),
-            push_displayed_to_user(LUser, LServer, Group, Host,
-                                   both),
-            Res
+      nomatch ->
+	  DisplayedToGroups = displayed_to_groups(Group, Host),
+	  DisplayedGroups = get_displayed_groups(Group, LServer),
+	  push_user_to_displayed(LUser, LServer, Group, Host, both, DisplayedToGroups),
+	  push_displayed_to_user(LUser, LServer, Host, both, DisplayedGroups),
+	  broadcast_user_to_displayed(LUser, LServer, Host, both, DisplayedToGroups),
+	  broadcast_displayed_to_user(LUser, LServer, Host, both, DisplayedGroups),
+	  add_user_to_group(Host, US, Group, gen_mod:db_type(Host, ?MODULE))
     end.
 
 add_user_to_group(Host, US, Group, mnesia) ->
@@ -1009,12 +1027,17 @@ add_user_to_group(Host, US, Group, odbc) ->
 	end,
     ejabberd_odbc:sql_transaction(Host, F).
 
-push_displayed_to_user(LUser, LServer, Group, Host,
-		       Subscription) ->
+get_displayed_groups(Group, LServer) ->
     GroupsOpts = groups_with_opts(LServer),
     GroupOpts = proplists:get_value(Group, GroupsOpts, []),
-    DisplayedGroups = proplists:get_value(displayed_groups,
-					  GroupOpts, []),
+    proplists:get_value(displayed_groups, GroupOpts, []).
+
+broadcast_displayed_to_user(LUser, LServer, Host, Subscription, DisplayedGroups) ->
+    [broadcast_members_to_user(LUser, LServer, DGroup, Host,
+			  Subscription)
+	 || DGroup <- DisplayedGroups].
+
+push_displayed_to_user(LUser, LServer, Host, Subscription, DisplayedGroups) ->
     [push_members_to_user(LUser, LServer, DGroup, Host,
 			  Subscription)
      || DGroup <- DisplayedGroups].
@@ -1038,10 +1061,10 @@ remove_user_from_group(Host, US, Group) ->
       nomatch ->
 	  Result = remove_user_from_group(Host, US, Group,
 					  gen_mod:db_type(Host, ?MODULE)),
-	  push_user_to_displayed(LUser, LServer, Group, Host,
-				 remove),
-	  push_displayed_to_user(LUser, LServer, Group, Host,
-				 remove),
+	  DisplayedToGroups = displayed_to_groups(Group, Host),
+	  DisplayedGroups = get_displayed_groups(Group, LServer),
+	  push_user_to_displayed(LUser, LServer, Group, Host, remove, DisplayedToGroups),
+	  push_displayed_to_user(LUser, LServer, Host, remove, DisplayedGroups),
 	  Result
     end.
 
@@ -1087,10 +1110,17 @@ push_members_to_user(LUser, LServer, Group, Host,
 		  end,
 		  Members).
 
+broadcast_members_to_user(LUser, LServer, Group, Host, Subscription) ->
+    Members = get_group_users(Host, Group),
+    lists:foreach(
+      fun({U, S}) ->
+	      broadcast_subscription(U, S, {LUser, LServer, <<"">>}, Subscription)
+      end, Members).
+
 register_user(User, Server) ->
     Groups = get_user_groups({User, Server}),
     [push_user_to_displayed(User, Server, Group, Server,
-			    both)
+			    both, displayed_to_groups(Group, Server))
      || Group <- Groups].
 
 remove_user(User, Server) ->
@@ -1122,68 +1152,48 @@ push_user_to_members(User, Server, Subscription) ->
 		  end,
 		  lists:usort(SpecialGroups ++ UserGroups)).
 
-push_user_to_displayed(LUser, LServer, Group, Host,
-		       Subscription) ->
+push_user_to_displayed(LUser, LServer, Group, Host, Subscription, DisplayedToGroupsOpts) ->
     GroupsOpts = groups_with_opts(Host),
     GroupOpts = proplists:get_value(Group, GroupsOpts, []),
     GroupName = proplists:get_value(name, GroupOpts, Group),
-    DisplayedToGroupsOpts = displayed_to_groups(Group, Host),
-    Users =
-        lists:usort(
-          lists:append([get_group_users(Host, GroupD)
-                        || {GroupD, _Opts} <- DisplayedToGroupsOpts])),
-    UserGroups = get_user_groups({LUser, LServer}),
-    [push_user_to_users(LUser, LServer, GroupD, Host,
-			GroupName, Subscription, UserGroups, Users)
-     || {GroupD, _Opts} <- DisplayedToGroupsOpts].
+    [push_user_to_group(LUser, LServer, GroupD, Host,
+			GroupName, Subscription)
+     || GroupD <- DisplayedToGroupsOpts].
 
-push_user_to_users(LUser, LServer, Group, _Host,
-		   GroupName, Subscription, UserGroups, Users) ->
+broadcast_user_to_displayed(LUser, LServer, Host, Subscription, DisplayedToGroupsOpts) ->
+    [broadcast_user_to_group(LUser, LServer, GroupD, Host, Subscription)
+	|| GroupD <- DisplayedToGroupsOpts].
+
+push_user_to_group(LUser, LServer, Group, Host,
+		   GroupName, Subscription) ->
+    lists:foreach(fun ({U, S})
+			  when (U == LUser) and (S == LServer) ->
+			  ok;
+		      ({U, S}) ->
+			  push_roster_item(U, S, LUser, LServer, GroupName,
+					   Subscription)
+		  end,
+		  get_group_users(Host, Group)).
+
+broadcast_user_to_group(LUser, LServer, Group, Host, Subscription) ->
     lists:foreach(
-      fun({U, S})
-         when (U == LUser) and (S == LServer) ->
-              ok;
-         ({U, S} = US) ->
-              case {Subscription, UserGroups} of
-                  {remove, []} ->
-                      push_roster_item(U, S, LUser, LServer, GroupName,
-                                       Subscription);
-                  {both, [Group]} ->
-                      push_roster_item(U, S, LUser, LServer, GroupName,
-                                       Subscription);
-                  _ ->
-                      UGroups = get_user_displayed_groups(US),
-                      Groups =
-                          lists:filter(
-                            fun(G) ->
-                                    lists:member(G, UGroups)
-                            end, UserGroups),
-                      Subscription1 =
-                          case Groups of
-                              [] -> remove;
-                              _ -> both
-                          end,
-                      push_roster_item_with_groups(
-                        U, S, LUser, LServer, Groups,
-                        Subscription1)
-              end
-      end,
-      Users).
+      fun({U, S})  when (U == LUser) and (S == LServer) -> ok;
+         ({U, S}) ->
+	      broadcast_subscription(LUser, LServer, {U, S, <<"">>}, Subscription)
+      end, get_group_users(Host, Group)).
 
+%% Get list of groups to which this group is displayed
 displayed_to_groups(GroupName, LServer) ->
     GroupsOpts = groups_with_opts(LServer),
-    lists:filter(fun ({_Group, Opts}) ->
+    Gs = lists:filter(fun ({_Group, Opts}) ->
 			 lists:member(GroupName,
 				      proplists:get_value(displayed_groups,
 							  Opts, []))
 		 end,
-		 GroupsOpts).
+		 GroupsOpts),
+    [Name || {Name, _} <- Gs].
 
-push_item(User, Server, From, Item) ->
-    ejabberd_sm:route(From,
-		      jlib:make_jid(User, Server, <<"">>),
-                      {broadcast, {item, Item#roster.jid,
-				   Item#roster.subscription}}),
+push_item(User, Server, Item) ->
     Stanza = jlib:iq_to_xml(#iq{type = set,
 				xmlns = ?NS_ROSTER,
 				id = <<"push", (randoms:get_string())/binary>>,
@@ -1204,18 +1214,7 @@ push_roster_item(User, Server, ContactU, ContactS,
 		   us = {User, Server}, jid = {ContactU, ContactS, <<"">>},
 		   name = <<"">>, subscription = Subscription, ask = none,
 		   groups = [GroupName]},
-    push_item(User, Server,
-	      jlib:make_jid(<<"">>, Server, <<"">>), Item).
-
-push_roster_item_with_groups(User, Server, ContactU, ContactS,
-                             Groups, Subscription) ->
-    Item = #roster{usj =
-		       {User, Server, {ContactU, ContactS, <<"">>}},
-		   us = {User, Server}, jid = {ContactU, ContactS, <<"">>},
-		   name = <<"">>, subscription = Subscription, ask = none,
-		   groups = Groups},
-    push_item(User, Server,
-	      jlib:make_jid(<<"">>, Server, <<"">>), Item).
+    push_item(User, Server, Item).
 
 item_to_xml(Item) ->
     Attrs1 = [{<<"jid">>,
@@ -1259,14 +1258,16 @@ user_available(New) ->
     case length(Resources) of
       %% first session for this user
       1 ->
-	  OnlineGroups = get_special_users_groups_online(LServer),
+	  UserGroups = get_user_groups({LUser, LServer}),
 	  lists:foreach(fun (OG) ->
 				?DEBUG("user_available: pushing  ~p @ ~p grp ~p",
 				       [LUser, LServer, OG]),
-				push_user_to_displayed(LUser, LServer, OG,
-						       LServer, both)
+			  DisplayedToGroups = displayed_to_groups(OG, LServer),
+			  DisplayedGroups = get_displayed_groups(OG, LServer),
+			  broadcast_displayed_to_user(LUser, LServer, LServer, both, DisplayedGroups),
+			  broadcast_user_to_displayed(LUser, LServer, LServer, both, DisplayedToGroups)
 			end,
-			OnlineGroups);
+			UserGroups);
       _ -> ok
     end.
 
@@ -1281,9 +1282,9 @@ unset_presence(LUser, LServer, Resource, Status) ->
 	  OnlineGroups = get_special_users_groups_online(LServer),
 	  lists:foreach(fun (OG) ->
 				push_user_to_displayed(LUser, LServer, OG,
-						       LServer, remove),
-				push_displayed_to_user(LUser, LServer, OG,
-						       LServer, remove)
+						       LServer, remove, displayed_to_groups(OG, LServer)),
+				push_displayed_to_user(LUser, LServer,
+						       LServer, remove, displayed_to_groups(OG, LServer))
 			end,
 			OnlineGroups);
       _ -> ok
@@ -1498,6 +1499,11 @@ shared_roster_group_parse_query(Host, Group, Query) ->
 			     true -> [{online_users, true}];
 			     false -> []
 			   end,
+	  CurrentDisplayedGroups = get_displayed_groups(Group, Host),
+	  AddedDisplayedGroups =  DispGroups -- CurrentDisplayedGroups,
+	  RemovedDisplayedGroups = CurrentDisplayedGroups -- DispGroups,
+	  displayed_groups_update(OldMembers, RemovedDisplayedGroups, remove),
+	  displayed_groups_update(OldMembers, AddedDisplayedGroups, both),
 	  (?MODULE):set_group_opts(Host, Group,
 				   NameOpt ++
 				     DispGroupsOpt ++
@@ -1537,6 +1543,25 @@ split_grouphost(Host, Group) ->
       [GroupName, HostName] -> {HostName, GroupName};
       [_] -> {Host, Group}
     end.
+
+broadcast_subscription(User, Server, ContactJid, Subscription) ->
+    ejabberd_sm:route(
+		      jlib:make_jid(<<"">>, Server, <<"">>),
+		      jlib:make_jid(User, Server, <<"">>),
+                      {broadcast, {item, ContactJid,
+				   Subscription}}).
+
+displayed_groups_update(Members, DisplayedGroups, Subscription) ->
+    lists:foreach(fun({U, S}) ->
+	push_displayed_to_user(U, S, S, Subscription, DisplayedGroups),
+	    case Subscription of
+		both ->
+		    broadcast_displayed_to_user(U, S, S, to, DisplayedGroups),
+		    broadcast_displayed_to_user(U, S, S, from, DisplayedGroups);
+		Subscr ->
+		    broadcast_displayed_to_user(U, S, S, Subscr, DisplayedGroups)
+	    end
+	end, Members).
 
 make_jid_s(U, S) ->
     ejabberd_odbc:escape(jlib:jid_to_string(jlib:jid_tolower(jlib:make_jid(U,
