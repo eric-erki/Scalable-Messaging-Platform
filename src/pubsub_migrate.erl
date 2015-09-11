@@ -26,11 +26,61 @@
 -module(pubsub_migrate).
 
 -include("pubsub.hrl").
+-include("jlib.hrl").
 -include("logger.hrl").
 
 -export([update_node_database/2, update_state_database/2]).
 -export([update_item_database/2, update_lastitem_database/2]).
 -export([export/1]).
+
+-export([mnesia_to/3, write_p1db/3, write_odbc/3]).
+
+mnesia_to(DbType, Host, ServerHost) ->
+    % in case the table was created using a 'ejabberdctl load', extra
+    % index may be missing
+    mnesia:add_table_index(pubsub_item, nodeidx),
+
+    update_node_database(Host, ServerHost),
+    update_state_database(Host, ServerHost),
+    update_lastitem_database(Host, ServerHost),
+    update_item_database(Host, ServerHost),
+
+    Method = list_to_atom("write_" ++ atom_to_list(DbType)),
+    F = fun (Node, Acc) ->
+		Nidx = Node#pubsub_node.id,
+		?DEBUG("Nidx ~p", [Nidx]),
+		{result, States} = node_flat:get_states(Nidx),
+		?DEBUG("States ~p", [States]),
+		{result, {Items, _}} = node_flat:get_items(Nidx, undefined, none),
+		?DEBUG("Items ~p", [Items]),
+		Res = ?MODULE:Method(Node, States, Items),
+		?DEBUG("Res ~p", [Res]),
+		[Res | Acc]
+	end,
+
+    {atomic, Result} = mnesia:transaction(fun mnesia:foldl/3, [F, [], pubsub_node]),
+    Result.
+
+write_p1db(Node, States, Items) ->
+    nodetree_tree_p1db:set_node(Node),
+    Nidx = nodetree_tree_p1db:enc_key(Node#pubsub_node.nodeid),
+    [node_flat_p1db:set_state(state_to_p1db(Nidx, State)) || State <- States],
+    [node_flat_p1db:set_item(item_to_p1db(Nidx, Item)) || Item <- Items],
+    ok. 
+
+state_to_p1db(Nidx, State) ->
+    {ID, _} = State#pubsub_state.stateid,
+    State#pubsub_state{stateid = {ID, Nidx}, nodeidx=Nidx}.
+item_to_p1db(Nidx, Item) ->
+    {ID, _} = Item#pubsub_item.itemid,
+    Item#pubsub_item{itemid = {ID, Nidx}, nodeidx=Nidx}.
+
+write_odbc(Node, States, Items) ->
+    nodetree_tree_odbc:set_node(Node),
+    [node_flat_odbc:set_state(State) || State <- States],
+    [node_flat_odbc:set_item(Item) || Item <- Items],
+    ok.
+
 
 rename_default_nodeplugin() ->
     lists:foreach(fun (Node) ->
@@ -65,12 +115,11 @@ update_node_database_binary() ->
 				end,
 
 				BH = case H of
-				    {U, S, R} -> {iolist_to_binary(U), iolist_to_binary(S), iolist_to_binary(R)};
+				    {U, S, R} -> binarize_ljid({U, S, R});
 				    String -> iolist_to_binary(String)
 				end,
 
-				Owners = [{iolist_to_binary(U), iolist_to_binary(S), iolist_to_binary(R)} ||
-					{U, S, R} <- Node#pubsub_node.owners],
+				Owners = [binarize_ljid(USR) || USR <- Node#pubsub_node.owners],
 
 				ok = mnesia:delete({pubsub_node, {H, N}}),
 				ok = mnesia:write(Node#pubsub_node{nodeid = {BH, BN},
@@ -212,13 +261,38 @@ update_node_database(Host, ServerHost) ->
     end,
     update_node_database_binary().
 
+
+update_state_database_binary() ->
+    F = fun () ->
+		case catch mnesia:read({pubsub_state, mnesia:first(pubsub_state)}) of
+		    [First] when is_list(element(2, element(1, First#pubsub_state.stateid))) ->
+			?INFO_MSG("Binarization of pubsub state table...", []),
+			lists:foreach(fun (Id) ->
+					      [State] = mnesia:read({pubsub_state, Id}),
+					      {{A, B, C}, N} = State#pubsub_state.stateid,
+					      ok = mnesia:delete({pubsub_state, Id}),
+					      ok = mnesia:write(State#pubsub_state{stateid={binarize_ljid({A, B, C}), N}})
+				      end,
+				      mnesia:all_keys(pubsub_state));
+		    _-> no_need
+		end
+	end,
+    case mnesia:transaction(F) of
+	{aborted, Reason} ->
+	    ?ERROR_MSG("Failed to binarize pubsub state table: ~p", [Reason]);
+	{atomic, no_need} ->
+	    ok;
+	{atomic, Result} ->
+	    ?INFO_MSG("Pubsub state table has been binarized: ~p", [Result])
+    end.
+
 update_state_database(_Host, _ServerHost) ->
     case catch mnesia:table_info(pubsub_state, attributes)
     of
 	[stateid, nodeidx, items, affiliation, subscription] ->
 	    ?INFO_MSG("Upgrading pubsub states table...", []),
 	    F = fun ({pubsub_state, {{U,S,R}, NodeId}, _NodeIdx, Items, Aff, Sub}, Acc) ->
-		    JID = {iolist_to_binary(U), iolist_to_binary(S), iolist_to_binary(R)},
+		    JID = binarize_ljid({U, S, R}),
 		    Subs = case Sub of
 			none ->
 			    [];
@@ -291,7 +365,8 @@ update_state_database(_Host, _ServerHost) ->
 	    ok
     end,
     mnesia:add_table_index(pubsub_state, nodeidx),
-    mnesia:add_table_index(pubsub_item, nodeidx).
+    mnesia:add_table_index(pubsub_item, nodeidx),
+    update_state_database_binary().
 
 update_lastitem_database(_Host, _ServerHost) ->
     F = fun () ->
@@ -300,9 +375,7 @@ update_lastitem_database(_Host, _ServerHost) ->
 		    ?INFO_MSG("Binarization of pubsub items table...", []),
 		    lists:foreach(fun (Id) ->
 				[Node] = mnesia:read({pubsub_last_item, Id}),
-
 				ItemId = iolist_to_binary(Node#pubsub_last_item.itemid),
-
 				ok = mnesia:delete({pubsub_last_item, Id}),
 				ok = mnesia:write(Node#pubsub_last_item{itemid=ItemId})
 			end,
@@ -321,13 +394,24 @@ update_lastitem_database(_Host, _ServerHost) ->
 
 update_item_database(_Host, _ServerHost) ->
     F = fun() ->
-	    ?INFO_MSG("Migration of old pubsub items...", []),
-	    lists:foreach(fun (Key) ->
-			[Item] = mnesia:read({pubsub_item, Key}),
-			Payload = [xmlelement_to_xmlel(El) || El <- Item#pubsub_item.payload],
-			mnesia:write(Item#pubsub_item{payload=Payload})
-		end,
-		mnesia:all_keys(pubsub_item))
+		case catch mnesia:read({pubsub_item, mnesia:first(pubsub_item)}) of
+		    [First] when is_list(element(1, First#pubsub_item.itemid)) ->
+			?INFO_MSG("Migration of old pubsub items...", []),
+			lists:foreach(fun (Key) ->
+					      [Item] = mnesia:read({pubsub_item, Key}),
+					      {ItemId, NodeIdx} = Item#pubsub_item.itemid,
+					      {CreationTS, CreationJID} = Item#pubsub_item.creation,
+					      {ModifTS, ModifJID} = Item#pubsub_item.modification,
+					      Payload = [xmlelement_to_xmlel(El) || El <- Item#pubsub_item.payload],
+					      ok = mnesia:delete({pubsub_item, {ItemId, NodeIdx}}),
+					      ok = mnesia:write(Item#pubsub_item{itemid = {iolist_to_binary(ItemId), NodeIdx}, 
+										 creation = {CreationTS, binarize_ljid(CreationJID)},
+										 modification = {ModifTS, binarize_ljid(ModifJID)},
+										 payload = Payload})
+				      end,
+				      mnesia:all_keys(pubsub_item));
+		    _ -> no_need
+		end
 	end,
     case mnesia:transaction(F) of
 	{aborted, Reason} ->
@@ -336,10 +420,23 @@ update_item_database(_Host, _ServerHost) ->
 	    ?INFO_MSG("Pubsub items has been migrated: ~p", [Result])
     end.
 
-xmlelement_to_xmlel({xmlelement, A, B, C}) when is_list(C) ->
-    {xmlel, A, B, [xmlelement_to_xmlel(El) || El <- C]};
-xmlelement_to_xmlel(El) ->
-    El.
+binarize_ljid({U, S, R}) ->
+    {iolist_to_binary(U), iolist_to_binary(S), iolist_to_binary(R)}.
+    
+
+xmlelement_to_xmlel(El) when is_record(El, xmlel)->
+    El;
+xmlelement_to_xmlel({xmlelement, Name, Attrs, Children}) ->
+    {xmlel, iolist_to_binary(Name), binarize_attributes(Attrs),
+     [xmlelement_to_xmlel(El) || El <- Children]};
+xmlelement_to_xmlel({xmlcdata, Data}) ->
+    {xmlcdata, iolist_to_binary(Data)}.
+
+binarize_attributes([{Name, Value} | Tail]) ->
+    [{iolist_to_binary(Name), iolist_to_binary(Value)} | binarize_attributes(Tail)];
+binarize_attributes([]) ->
+    [].
+
 
 %% REVIEW:
 %% * this code takes NODEID from Itemid2, and forgets about Nodeidx
