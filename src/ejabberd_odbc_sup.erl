@@ -59,11 +59,14 @@ init([Host]) ->
                                       fun(mysql) -> mysql;
                                          (pgsql) -> pgsql;
                                          (sqlite) -> sqlite;
+					 (mssql) -> mssql;
                                          (odbc) -> odbc
                                       end, odbc),
     case Type of
         sqlite ->
             check_sqlite_db(Host);
+	mssql ->
+	    ejabberd_odbc:init_mssql(Host);
         _ ->
             ok
     end,
@@ -250,6 +253,7 @@ opt_type(odbc_type) ->
     fun (mysql) -> mysql;
 	(pgsql) -> pgsql;
 	(sqlite) -> sqlite;
+	(mssql) -> mssql;
 	(odbc) -> odbc
     end;
 opt_type(shard_size) ->
