@@ -48,6 +48,8 @@
 -define(KW(A), ?SPAN(kw,A)).
 -define(BR, <<"\n">>).
 
+-define(ARG_S(A), ?STR(atom_to_list(A))).
+
 -define(RAW_L(A), ?RAW(<<A>>)).
 -define(STR_L(A), ?STR(<<A>>)).
 -define(FIELD_L(A), ?FIELD(<<A>>)).
@@ -79,7 +81,7 @@ perl_gen({Name, string}, Str, _Indent) ->
 perl_gen({Name, binary}, Str, _Indent) ->
     [?ARG(Name), ?OP_L(" => "), ?STR(Str)];
 perl_gen({Name, atom}, Atom, _Indent) ->
-    [?ARG(Name), ?OP_L(" => "), ?STR(atom_to_list(Atom))];
+    [?ARG(Name), ?OP_L(" => "), ?STR_A(Atom)];
 perl_gen({Name, {tuple, Fields}}, Tuple, Indent) ->
     Res = lists:map(fun({A,B})->perl_gen(A, B, Indent) end, lists:zip(Fields, tuple_to_list(Tuple))),
     [?ARG(Name), ?OP_L(" => {"), list_join_with(Res, [?OP_L(", ")]), ?OP_L("}")];
@@ -108,7 +110,7 @@ java_gen({Name, string}, Str, _Indent) ->
 java_gen({Name, binary}, Str, _Indent) ->
     [?ID_L("put"), ?OP_L("("), ?STR_A(Name), ?OP_L(", "), ?STR(Str), ?OP_L(");")];
 java_gen({Name, atom}, Atom, _Indent) ->
-    [?ID_L("put"), ?OP_L("("), ?STR_A(Name), ?OP_L(", "), ?STR(atom_to_list(Atom)), ?OP_L(");")];
+    [?ID_L("put"), ?OP_L("("), ?STR_A(Name), ?OP_L(", "), ?STR_A(Atom), ?OP_L(");")];
 java_gen({Name, {tuple, Fields}}, Tuple, Indent) ->
     NewIndent = <<"  ", Indent/binary>>,
     Res = lists:map(fun({A, B}) -> [java_gen(A, B, NewIndent)] end, lists:zip(Fields, tuple_to_list(Tuple))),
@@ -183,6 +185,64 @@ xml_call(Name, ArgsDesc, Values) ->
                       [?XML(value, Ind, 3,
                             [?XML(struct, Ind, 4, Res)])])])])].
 
+%    [?ARG_S(Name), ?OP_L(": "), ?STR(Str)];
+json_gen({_Name, integer}, Int, _Indent) ->
+    [?NUM(Int)];
+json_gen({_Name, string}, Str, _Indent) ->
+    [?STR(Str)];
+json_gen({_Name, binary}, Str, _Indent) ->
+    [?STR(Str)];
+json_gen({_Name, atom}, Atom, _Indent) ->
+    [?STR_A(Atom)];
+json_gen({_Name, rescode}, Val, _Indent) ->
+    [?ID_A(Val == ok orelse Val == true)];
+json_gen({_Name, restuple}, {Val, Str}, _Indent) ->
+    [?OP_L("{"), ?STR_L("res"), ?OP_L(": "), ?ID_A(Val == ok orelse Val == true), ?OP_L(", "),
+     ?STR_L("text"), ?OP_L(": "), ?STR(Str), ?OP_L("}")];
+json_gen({_Name, {list, {_, {tuple, [{_, atom}, ValFmt]}}}}, List, Indent) ->
+    Indent2 = <<"  ", Indent/binary>>,
+    Res = lists:map(fun({N, V})->[?STR_A(N), ?OP_L(": "), json_gen(ValFmt, V, Indent2)] end, List),
+    [?OP_L("{"), ?BR, Indent2, list_join_with(Res, [?OP_L(","), ?BR, Indent2]), ?BR, Indent, ?OP_L("}")];
+json_gen({_Name, {tuple, Fields}}, Tuple, Indent) ->
+    Indent2 = <<"  ", Indent/binary>>,
+    Res = lists:map(fun({{N, _} = A, B})->[?STR_A(N), ?OP_L(": "), json_gen(A, B, Indent2)] end,
+                    lists:zip(Fields, tuple_to_list(Tuple))),
+    [?OP_L("{"), ?BR, Indent2, list_join_with(Res, [?OP_L(","), ?BR, Indent2]), ?BR, Indent, ?OP_L("}")];
+json_gen({_Name, {list, ElDesc}}, List, Indent) ->
+    Indent2 = <<"  ", Indent/binary>>,
+    Res = lists:map(fun(E) -> json_gen(ElDesc, E, Indent2) end, List),
+    [?OP_L("["), ?BR, Indent2, list_join_with(Res, [?OP_L(","), ?BR, Indent2]), ?BR, Indent, ?OP_L("]")].
+
+json_call(Name, ArgsDesc, Values, ResultDesc, Result) ->
+    {Code, ResultStr} = case {ResultDesc, Result} of
+                            {{_, rescode}, V} when V == true; V == ok ->
+                                {200, [?STR_L("")]};
+                            {{_, rescode}, _} ->
+                                {500, [?STR_L("")]};
+                            {{_, restuple}, {V1, Text1}} when V1 == true; V1 == ok ->
+                                {200, [?STR(Text1)]};
+                            {{_, restuple}, {_, Text2}} ->
+                                {500, [?STR(Text2)]};
+                            {{_, {list, _}}, _} ->
+                                {200, json_gen(ResultDesc, Result, <<"">>)};
+                            {{_, {tuple, _}}, _} ->
+                                {200, json_gen(ResultDesc, Result, <<"">>)};
+                            {{Name0, _}, _} ->
+                                {200, [?OP_L("{"), ?STR_A(Name0), ?OP_L(": "), json_gen(ResultDesc, Result, <<"">>), ?OP_L("}")]}
+                        end,
+    CodeStr = case Code of
+                  200 -> <<" 200 OK">>;
+                  500 -> <<" 500 Internal Server Error">>
+              end,
+    [?ID_L("POST /api/"), ?ID_A(Name), ?BR,
+     ?OP_L("{"), ?BR, <<"  ">>,
+     list_join_with(lists:map(fun({{N,_}=A,B})->[?STR_A(N), ?OP_L(": "), json_gen(A, B, <<"  ">>)] end,
+                              lists:zip(ArgsDesc, Values)), [?OP_L(","), ?BR, <<"  ">>]),
+     ?BR, ?OP_L("}"), ?BR, ?BR,
+     ?ID_L("HTTP/1.1"), ?ID(CodeStr), ?BR,
+     ResultStr
+    ].
+
 generate_example_input({_Name, integer}, {LastStr, LastNum}) ->
     {LastNum+1, {LastStr, LastNum+1}};
 generate_example_input({_Name, string}, {LastStr, LastNum}) ->
@@ -191,6 +251,10 @@ generate_example_input({_Name, binary}, {LastStr, LastNum}) ->
     {iolist_to_binary(string:chars(LastStr+1, 5)), {LastStr+1, LastNum}};
 generate_example_input({_Name, atom}, {LastStr, LastNum}) ->
     {list_to_atom(string:chars(LastStr+1, 5)), {LastStr+1, LastNum}};
+generate_example_input({_Name, rescode}, {LastStr, LastNum}) ->
+    {ok, {LastStr, LastNum}};
+generate_example_input({_Name, restuple}, {LastStr, LastNum}) ->
+    {{ok, <<"Success">>}, {LastStr, LastNum}};
 generate_example_input({_Name, {tuple, Fields}}, Data) ->
     {R, D} = lists:foldl(fun(Field, {Res2, Data2}) ->
                                  {Res3, Data3} = generate_example_input(Field, Data2),
@@ -202,25 +266,32 @@ generate_example_input({_Name, {list, Desc}}, Data) ->
     {R2, D2} = generate_example_input(Desc, D1),
     {[R1, R2], D2}.
 
-
 gen_calls(#ejabberd_commands{args_example=none, args=ArgsDesc} = C) ->
-    {R, _} = lists:foldl(fun(Arg, {Res2, Data2}) ->
-                                 {Res3, Data3} = generate_example_input(Arg, Data2),
-                                 {[Res3 | Res2], Data3}
+    {R, _} = lists:foldl(fun(Arg, {Res, Data}) ->
+                                 {Res3, Data3} = generate_example_input(Arg, Data),
+                                 {[Res3 | Res], Data3}
                          end, {[], {$a-1, 0}}, ArgsDesc),
     gen_calls(C#ejabberd_commands{args_example=lists:reverse(R)});
-gen_calls(#ejabberd_commands{args_example=Values, args=ArgsDesc, name=Name}) ->
+gen_calls(#ejabberd_commands{result_example=none, result=ResultDesc} = C) ->
+    {R, _} = generate_example_input(ResultDesc, {$a-1, 0}),
+    gen_calls(C#ejabberd_commands{result_example=R});
+gen_calls(#ejabberd_commands{args_example=Values, args=ArgsDesc,
+                             result_example=Result, result=ResultDesc,
+                             name=Name}) ->
     Perl = perl_call(Name, ArgsDesc, Values),
     Java = java_call(Name, ArgsDesc, Values),
     XML = xml_call(Name, ArgsDesc, Values),
+    JSON = json_call(Name, ArgsDesc, Values, ResultDesc, Result),
     [?TAG(ul, "code-samples-names",
           [?TAG(li, <<"Java">>),
            ?TAG(li, <<"Perl">>),
-           ?TAG(li, <<"XML">>)]),
+           ?TAG(li, <<"XML">>),
+           ?TAG(li, <<"JSON">>)]),
      ?TAG(ul, "code-samples",
           [?TAG(li, ?TAG(pre, Java)),
            ?TAG(li, ?TAG(pre, Perl)),
-           ?TAG(li, ?TAG(pre, XML))])].
+           ?TAG(li, ?TAG(pre, XML)),
+           ?TAG(li, ?TAG(pre, JSON))])].
 
 gen_doc(#ejabberd_commands{name=Name, tags=_Tags, desc=Desc, longdesc=LongDesc,
                            args=Args, args_desc=ArgsDesc,
