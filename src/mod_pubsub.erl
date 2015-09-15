@@ -79,6 +79,9 @@
     get_cached_item/2, get_configure/5, set_configure/5,
     tree_action/3, node_action/4, node_call/4]).
 
+%% exports for cluster split plugins like flatmem
+-export([broadcast_publish_item/9]).
+
 %% general helpers for plugins
 -export([subscription_to_string/1, affiliation_to_string/1,
     string_to_subscription/1, string_to_affiliation/1,
@@ -2193,6 +2196,15 @@ publish_item(Host, ServerHost, Node, Publisher, ItemId, Payload, Access) ->
 	    set_cached_item(Host, Nidx, ItemId, Publisher, BrPayload),
 	    case get_option(Options, deliver_notifications) of
 		true ->
+		    case catch apply(plugin(Host, Type), storage_location, []) of
+			local ->
+			    [rpc:cast(ClusterNode, ?MODULE,
+				    broadcast_publish_item, [Host, Node, Nidx, Type, Options, ItemId,
+					Publisher, BrPayload, Removed])
+				|| ClusterNode <- ejabberd_cluster:get_nodes()--[node()]];
+			_ ->
+			    ok
+		    end,
 		    broadcast_publish_item(Host, Node, Nidx, Type, Options, ItemId,
 			Publisher, BrPayload, Removed);
 		false ->
@@ -3404,6 +3416,7 @@ node_subscriptions(Host, Node, Nidx, Type, _NodeOptions, Notify) ->
     case Type of
 	<<"flat">> -> node_subscriptions_bare(Host, Node, Nidx, Type);
 	<<"pep">> -> node_subscriptions_bare(Host, Node, Nidx, Type);
+	<<"flatmem">> -> node_subscriptions_bare(Host, Node, Nidx, Type);
 	_ -> node_subscriptions_full(Host, Node, Notify)
     end.
 
@@ -3883,18 +3896,26 @@ set_cached_item({_, ServerHost, _}, Nidx, ItemId, Publisher, Payload) ->
     set_cached_item(ServerHost, Nidx, ItemId, Publisher, Payload);
 set_cached_item(Host, Nidx, ItemId, Publisher, Payload) ->
     case is_last_item_cache_enabled(Host) of
-	true -> mnesia:dirty_write({pubsub_last_item, Nidx, ItemId,
+	true ->
+	    Item = {pubsub_last_item, Nidx, ItemId,
 		    {now(), jlib:jid_tolower(jlib:jid_remove_resource(Publisher))},
-		    Payload});
-	_ -> ok
+		    Payload},
+	    [rpc:cast(ClusterNode, mnesia, dirty_write, [Item])
+		|| ClusterNode <- ejabberd_cluster:get_nodes()];
+	_ ->
+	    ok
     end.
 
 unset_cached_item({_, ServerHost, _}, Nidx) ->
     unset_cached_item(ServerHost, Nidx);
 unset_cached_item(Host, Nidx) ->
     case is_last_item_cache_enabled(Host) of
-	true -> mnesia:dirty_delete({pubsub_last_item, Nidx});
-	_ -> ok
+	true ->
+	    Item = {pubsub_last_item, Nidx},
+	    [rpc:cast(ClusterNode, mnesia, dirty_delete, [Item])
+		|| ClusterNode <- ejabberd_cluster:get_nodes()];
+	_ ->
+	    ok
     end.
 
 -spec(get_cached_item/2 ::
