@@ -71,7 +71,7 @@ SrcDirs = lists:foldl(
 Deps = [{p1_cache_tab, ".*", {git, "git://github.com/processone/cache_tab"}},
         {p1_tls, ".*", {git, "ssh://git@git.process-one.net:7999/ebe/p1_tls.git"}},
         {p1_stringprep, ".*", {git, "git://github.com/processone/stringprep"}},
-        {p1_xml, ".*", {git, "ssh://git@git.process-one.net:7999/ebe/xml_priv.git"}},
+        {p1_xml, ".*", {git, "https://github.com/processone/xml"}},
         {esip, ".*", {git, "git://github.com/processone/p1_sip"}},
         {p1_stun, ".*", {git, "git://github.com/processone/stun"}},
         {p1_yaml, ".*", {git, "git://github.com/processone/p1_yaml"}},
