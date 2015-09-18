@@ -221,20 +221,16 @@ terminate(_Reason, _State) -> ok.
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
 add_to_log2(text, {Nick, Packet}, Room, Opts, State) ->
-    case has_no_permanent_store_hint(Packet) of
-	false ->
-	    case {xml:get_subtag(Packet, <<"subject">>),
-		    xml:get_subtag(Packet, <<"body">>)}
-	    of
-		{false, false} -> ok;
-		{false, SubEl} ->
-		    Message = {body, xml:get_tag_cdata(SubEl)},
-		    add_message_to_log(Nick, Message, Room, Opts, State);
-		{SubEl, _} ->
-		    Message = {subject, xml:get_tag_cdata(SubEl)},
-		    add_message_to_log(Nick, Message, Room, Opts, State)
-	    end;
-	true -> ok
+    case {xml:get_subtag(Packet, <<"subject">>),
+	  xml:get_subtag(Packet, <<"body">>)}
+	of
+      {false, false} -> ok;
+      {false, SubEl} ->
+	  Message = {body, xml:get_tag_cdata(SubEl)},
+	  add_message_to_log(Nick, Message, Room, Opts, State);
+      {SubEl, _} ->
+	  Message = {subject, xml:get_tag_cdata(SubEl)},
+	  add_message_to_log(Nick, Message, Room, Opts, State)
     end;
 add_to_log2(roomconfig_change, _Occupants, Room, Opts,
 	    State) ->
@@ -1220,16 +1216,6 @@ calc_hour_offset(TimeHere) ->
 
 fjoin(FileList) ->
     list_to_binary(filename:join([binary_to_list(File) || File <- FileList])).
-
-has_no_permanent_store_hint(Packet) ->
-    xml:get_subtag_with_xmlns(Packet, <<"no-store">>, ?NS_HINTS)
-      =/= false orelse
-    xml:get_subtag_with_xmlns(Packet, <<"no-storage">>, ?NS_HINTS)
-      =/= false orelse
-    xml:get_subtag_with_xmlns(Packet, <<"no-permanent-store">>, ?NS_HINTS)
-      =/= false orelse
-    xml:get_subtag_with_xmlns(Packet, <<"no-permanent-storage">>, ?NS_HINTS)
-      =/= false.
 
 mod_opt_type(access_log) ->
     fun (A) when is_atom(A) -> A end;
