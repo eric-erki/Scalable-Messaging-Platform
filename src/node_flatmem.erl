@@ -143,7 +143,7 @@ get_entity_affiliations(Host, Owner) ->
     node_flat:get_entity_affiliations(Host, Owner).
 
 get_node_affiliations(Nidx) ->
-    noe_flat:get_node_affiliations(Nidx).
+    node_flat:get_node_affiliations(Nidx).
 
 get_affiliation(Nidx, Owner) ->
     node_flat:get_affiliation(Nidx, Owner).
