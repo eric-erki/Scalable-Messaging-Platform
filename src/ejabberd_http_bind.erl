@@ -237,7 +237,8 @@ process_request(Data, IP, HOpts) ->
 		   (?NS_HTTP_BIND)/binary, "'/>">>};
 	    XmppDomain ->
 		Sid = make_sid(),
-		case start(XmppDomain, Sid, <<"">>, IP, HOpts) of
+                NXmppDomain = jlib:nameprep(XmppDomain),
+		case start(NXmppDomain, Sid, <<"">>, IP, HOpts) of
 		  {error, _} ->
 		      {500, ?HEADER,
 		       <<"<body type='terminate' condition='internal-se"
@@ -245,7 +246,7 @@ process_request(Data, IP, HOpts) ->
 			 (?NS_HTTP_BIND)/binary,
 			 "'>Internal Server Error</body>">>};
 		  {ok, Pid} ->
-		      handle_session_start(Pid, XmppDomain, Sid, Rid, Attrs,
+		      handle_session_start(Pid, NXmppDomain, Sid, Rid, Attrs,
 					   Payload, PayloadSize, IP)
 		end
 	  end;
