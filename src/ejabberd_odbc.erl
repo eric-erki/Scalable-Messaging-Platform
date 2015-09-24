@@ -297,7 +297,7 @@ sqlite_file(Host) ->
 %%%----------------------------------------------------------------------
 init([Host, StartInterval, Shard]) ->
     case ejabberd_config:get_option(
-           {keepalive_interval, Host},
+           {odbc_keepalive_interval, Host},
            fun(I) when is_integer(I), I>0 -> I end) of
         undefined ->
             ok;
@@ -924,7 +924,7 @@ fsm_limit_opts() ->
       _ -> []
     end.
 
-opt_type(keepalive_interval) ->
+opt_type(odbc_keepalive_interval) ->
     fun (I) when is_integer(I), I > 0 -> I end;
 opt_type(max_fsm_queue) ->
     fun (N) when is_integer(N), N > 0 -> N end;
@@ -943,6 +943,6 @@ opt_type(odbc_type) ->
 opt_type(odbc_username) -> fun iolist_to_binary/1;
 opt_type(shards) -> fun (S) when is_list(S) -> S end;
 opt_type(_) ->
-    [keepalive_interval, max_fsm_queue, odbc_database,
+    [odbc_keepalive_interval, max_fsm_queue, odbc_database,
      odbc_password, odbc_port, odbc_server, odbc_type,
      odbc_username, shards].
