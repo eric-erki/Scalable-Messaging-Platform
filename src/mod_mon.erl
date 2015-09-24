@@ -43,7 +43,7 @@
 -export([start_link/2, start/2, stop/1]).
 -export([value/2, reset/2, set/3, dump/1, info/1]).
 %% sync commands
--export([flush_log/3, sync_log/1]).
+-export([flush_log/3, sync_log/1, push_metrics/2]).
 %% administration commands
 -export([active_counters_command/1, flush_probe_command/2]).
 %% monitors
@@ -114,6 +114,13 @@ dump(Host) when is_binary(Host) ->
 %%====================================================================
 
 init([Host, Opts]) ->
+    % List configured backend for master only init (push_metrics)
+    Hosts = lists:foldr(fun({_VHost, undefined}, Acc) -> Acc;
+                           ({VHost, _ModOpts}, Acc) -> [VHost|Acc]
+                        end,
+                        [],
+                        [{H, proplists:get_value(?MODULE, gen_mod:loaded_modules_with_opts(H))}
+                         || H <- ejabberd_config:get_myhosts()]),
     % List enabled monitors, defaults all
     Monitors = gen_mod:get_opt(monitors, Opts,
                                fun(L) when is_list(L) -> L end, [])
@@ -144,7 +151,10 @@ init([Host, Opts]) ->
 
     % Start timers for cache and backends sync
     {ok, T1} = timer:apply_interval(?HOUR, ?MODULE, sync_log, [Host]),
-    {ok, T2} = timer:send_interval(?MINUTE, push),
+    {ok, T2} = case Hosts of
+        [Host|_] -> timer:apply_interval(?MINUTE, ?MODULE, push_metrics, [Hosts, Backends]);
+        _ -> {ok, undefined}
+    end,
 
     {ok, #state{host = Host,
                 active_count = ActiveCount,
@@ -169,6 +179,14 @@ handle_call({reset, Probe}, _From, State) ->
     {reply, OldVal, State};
 handle_call(dump, _From, State) ->
     {reply, get(), State};
+handle_call(snapshot, _From, State) ->
+    run_monitors(State#state.host, State#state.monitors),
+    [compute_average(Probe) || Probe <- ?AVG_MONITORS],
+    Probes = [{Key, Val} || {Key, Val} <- get(), is_integer(Val)],
+    [put(Key, 0) || {Key, Val} <- Probes,
+                    Val =/= 0,
+                    not proplists:is_defined(Key, ?NO_COUNTER_PROBES)],
+    {reply, Probes, State};
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State}.
 
@@ -208,15 +226,6 @@ handle_cast({active, Item}, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info(push, State) ->
-    run_monitors(State#state.host, State#state.monitors),
-    [compute_average(Probe) || Probe <- [backend_api_response_time]],
-    Probes = [{Key, Val} || {Key, Val} <- get(), is_integer(Val)],
-    [push(State#state.host, Probes, Backend) || Backend <- State#state.backends],
-    [put(Key, 0) || {Key, Val} <- Probes,
-                    Val =/= 0,
-                    not proplists:is_defined(Key, ?NO_COUNTER_PROBES)],
-    {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -305,6 +314,12 @@ get(Key) ->
     case erlang:get(Key) of
         undefined -> 0;
         Val -> Val
+    end.
+
+get_env(App, Key, Default) ->
+    case application:get_env(App, Key) of
+        {ok, Value} -> Value;
+        _ -> Default
     end.
 
 %%====================================================================
@@ -635,19 +650,27 @@ compute_average(Probe) ->
 %%====================================================================
 
 init_backend(Host, {statsd, Server}) ->
-    application:load(statsderl),
-    application:set_env(statsderl, base_key, binary_to_list(Host)),
-    case catch inet:getaddr(binary_to_list(Server), inet) of
-        {ok, Ip} -> application:set_env(statsderl, hostname, Ip);
-        _ -> ?WARNING_MSG("statsd have undefined endpoint: can not resolve ~p", [Server])
-    end,
-    application:start(statsderl),
-    statsd;
+    case application:load(statsderl) of
+        ok ->
+            application:set_env(statsderl, base_key, binary_to_list(Host)),
+            case catch inet:getaddr(binary_to_list(Server), inet) of
+                {ok, Ip} -> application:set_env(statsderl, hostname, Ip);
+                _ -> ?WARNING_MSG("statsd have undefined endpoint: can not resolve ~p", [Server])
+            end,
+            application:start(statsderl),
+            statsd;
+        _ ->
+            none
+    end;
 init_backend(Host, statsd) ->
-    application:load(statsderl),
-    application:set_env(statsderl, base_key, binary_to_list(Host)),
-    application:start(statsderl),
-    statsd;
+    case application:load(statsderl) of
+        ok ->
+            application:set_env(statsderl, base_key, binary_to_list(Host)),
+            application:start(statsderl),
+            statsd;
+        _ ->
+            none
+    end;
 init_backend(Host, mnesia) ->
     Table = gen_mod:get_module_proc(Host, mon),
     mnesia:create_table(Table,
@@ -659,10 +682,39 @@ init_backend(Host, mnesia) ->
 init_backend(Host, grapherl) ->
     init_backend(Host, {grapherl, {127,0,0,1}, 11111});
 init_backend(Host, {grapherl, Server, Port}) ->
-    % TODO init client
+    application:set_env(grapherl, {backend_ip, Host}, Server),
+    application:set_env(grapherl, {backend_port, Host}, Port),
     grapherl;
 init_backend(_, _) ->
     none.
+
+% push_metrics must be called only by master vhost (1st listed vhost) and take care
+% to agregate values of all vhosts or not, depending on backend.
+push_metrics(Hosts, Backends) ->
+    AllProbes = [{Host, gen_server:call(gen_mod:get_module_proc(Host, ?PROCNAME), snapshot, ?CALL_TIMEOUT)}
+                 || Host <- Hosts],
+    case lists:member(statsd, Backends) of
+        true ->
+            [{MasterHost, MasterProbes}|Tail] = AllProbes,
+            KeepMaster = ?AVG_MONITORS++?SYS_MONITORS,
+            Merge = fun(Key, MasterValue, SlaveValue) ->
+                    case lists:member(Key, KeepMaster) of
+                        true -> MasterValue;
+                        false -> MasterValue+SlaveValue
+                    end
+            end,
+            Merged = lists:foldl(
+                    fun({_VHost, HostProbes}, Acc) ->
+                            dict:merge(Merge, Acc, dict:from_list(HostProbes))
+                    end, dict:from_list(MasterProbes), Tail),
+            push(MasterHost, dict:to_list(Merged), statsd);
+        false ->
+            ok
+    end,
+    [push(Host, Probes, Backend)
+     || {Host, Probes} <- AllProbes,
+        Backend <- Backends--[statsd]],
+    ok.
 
 push(Host, Probes, mnesia) ->
     Table = gen_mod:get_module_proc(Host, mon),
@@ -712,6 +764,8 @@ push(Host, Probes, grapherl) ->
     TS = integer_to_binary(UnixTime),
     case gen_udp:open(0) of
         {ok, Socket} ->
+            Ip = get_env(grapherl, {backend_ip, Host}, {127,0,0,1}),
+            Port = get_env(grapherl, {backend_port, Host}, 11111),
             lists:foreach(
                 fun({Key, Val}) ->
                         Type = case proplists:get_value(Key, ?NO_COUNTER_PROBES) of
@@ -721,7 +775,7 @@ push(Host, Probes, grapherl) ->
                         BVal = integer_to_binary(Val),
                         Data = <<BaseId/binary, (jlib:atom_to_binary(Key))/binary,
                                  ":", Type/binary, "/", TS/binary, ":", BVal/binary>>,
-                        gen_udp:send(Socket, {127,0,0,1}, 11111, Data)
+                        gen_udp:send(Socket, Ip, Port, Data)
                 end, Probes),
             gen_udp:close(Socket);
         Error ->

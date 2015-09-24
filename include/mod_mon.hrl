@@ -77,6 +77,30 @@
          {weekly_active_users, gauge},
          {monthly_active_users, gauge}]).
 
+% Average computed probes
+-define(AVG_MONITORS,
+        [backend_api_response_time]).
+
+% System wide monitors (not cumulative per vhosts)
+-define(SYS_MONITORS,
+        [message_queues,
+         iq_message_queues,
+         sm_message_queues,
+         c2s_message_queues,
+         odbc_message_queues,
+         offline_message_queues,
+         iq_internal_queues,
+         sm_internal_queues,
+         c2s_internal_queues,
+         odbc_internal_queues,
+         offline_internal_queues,
+         sessions,
+         memory,
+         processes,
+         client_conn_time, %% we only keep production client stats as we don't average
+         client_auth_time, %% values across vhosts
+         client_roster_time]).
+
 % Generic default monitors to aglomerate common values
 -define(DEFAULT_MONITORS,
         [{c2s_receive, [message_receive_packet,chat_receive_packet,groupchat_receive_packet,
