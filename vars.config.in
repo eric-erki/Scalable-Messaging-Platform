@@ -37,7 +37,6 @@
 {iconv, @iconv@}.
 {airbrake, @airbrake@}.
 {p1db, @p1db@}.
-{oauth, @oauth@}.
 
 %% Version
 {vsn, "@PACKAGE_VERSION@"}.
