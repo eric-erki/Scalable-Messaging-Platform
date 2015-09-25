@@ -1,7 +1,7 @@
 %%%----------------------------------------------------------------------
-%%% File    : mod_http_admin.erl
+%%% File    : mod_http_api.erl
 %%% Author  : Christophe romain <christophe.romain@process-one.net>
-%%% Purpose : Provide admin REST API using JSON data
+%%% Purpose : Implements REST API for ejabberd using JSON data
 %%% Created : 15 Sep 2014 by Christophe Romain <christophe.romain@process-one.net>
 %%%
 %%%
@@ -25,28 +25,26 @@
 
 %% Example config:
 %%
-%%  in access section
-%%    http_admin:
-%%      admin:
-%%        - register
-%%        - connected_users
-%%        - status
-%%      all:
-%%        - status
-%%
 %%  in ejabberd_http listener
 %%    request_handlers:
-%%      "api": mod_http_admin
+%%      "/api": mod_http_api
+%% 
+%% Access rights are defined with:
+%% commands_admin_access: configure 
+%% commands:
+%%   - add_commands: user
 %%
-%%  in module section
-%%    mod_http_admin:
-%%      access: http_admin
 %%
+%% add_commands allow exporting a class of commands, from
+%%   open: methods is not risky and can be called by without any access check
+%%   restricted (default): the same, but will appear only in ejabberdctl list.
+%%   admin – auth is required with XMLRPC and HTTP API and checked for admin priviledges, works as usual in ejabberdctl.
+%%   user - can be used through XMLRPC and HTTP API, even by user. Only admin can use the commands for other users.
 %%
 %% Then to perform an action, send a POST request to the following URL:
 %% http://localhost:5280/api/<call_name>
 
--module(mod_http_admin).
+-module(mod_http_api).
 
 -author('cromain@process-one.net').
 
@@ -104,55 +102,46 @@ stop(_Host) ->
 %% basic auth
 %% ----------
 
-check_permissions(#request{auth={SJID, Pass}}, Command) ->
-    case jlib:string_to_jid(SJID) of
-        #jid{user = User, server = Server} = JID ->
-            Access = gen_mod:get_module_opt(Server, ?MODULE, access,
-                                                 mod_opt_type(access),
-                                                 none),
-            case ejabberd_auth:check_password(User, Server, Pass) of
-                true ->
-                    Res = acl:match_rule(Server, Access, JID),
-                    case Res of
-                        all ->
-                            allowed;
-                        [all] ->
-                            allowed;
-                        allow ->
-                            allowed;
-                        Commands when is_list(Commands) ->
-                            case lists:member(jlib:binary_to_atom(Command), Commands) of
-                                true -> allowed;
-                                _ -> unauthorized_response()
-                            end;
-                        _ ->
-                        unauthorized_response()
-                    end;
-                false ->
-                    unauthorized_response()
-            end;
-        _ -> unauthorized_response()
-    end;
-check_permissions(#request{ip={IP, _Port}}, Command) ->
-    Access = gen_mod:get_module_opt(global, ?MODULE, access,
-                                    mod_opt_type(access),
-                                    none),
-    Res = acl:match_rule(global, Access, IP),
-    case Res of
-        all ->
-            allowed;
-        [all] ->
-            allowed;
-        allow ->
-            allowed;
-        Commands when is_list(Commands) ->
-            case lists:member(jlib:binary_to_atom(Command), Commands) of
-                true -> allowed;
+check_permissions(#request{auth = HTTPAuth, headers = Headers}, Command)
+  when HTTPAuth /= undefined ->
+    case catch binary_to_existing_atom(Command, utf8) of
+        Call when is_atom(Call) ->
+            Admin =
+                case lists:keysearch(<<"X-Admin">>, 1, Headers) of
+                    {value, {_, <<"true">>}} -> true;
+                    _ -> false
+                end,
+            Auth =
+                case HTTPAuth of
+                    {SJID, Pass} ->
+                        case jlib:string_to_jid(SJID) of
+                            #jid{user = User, server = Server} ->
+                                case ejabberd_auth:check_password(User, Server, Pass) of
+                                    true -> {ok, {User, Server, Pass, Admin}};
+                                    false -> false
+                                end;
+                            _ ->
+                                false
+                        end;
+                    {oauth, Token, _} ->
+                        case ejabberd_oauth:check_token(Command, Token) of
+                            {ok, User, Server} ->
+                                {ok, {User, Server, {oauth, Token}, Admin}};
+                            false ->
+                                false
+                        end;
+                    _ ->
+                        false
+                end,
+            case Auth of
+                {ok, A} -> {allowed, Call, A};
                 _ -> unauthorized_response()
             end;
         _ ->
             unauthorized_response()
-    end.
+    end;
+check_permissions(_, _Command) ->
+    unauthorized_response().
 
 %% ------------------
 %% command processing
@@ -170,8 +159,8 @@ process([Call], #request{method = 'POST', data = Data, ip = IP} = Req) ->
         end,
         log(Call, Args, IP),
         case check_permissions(Req, Call) of
-            allowed ->
-                {Code, Result} = handle(Call, Args),
+            {allowed, Cmd, Auth} ->
+                {Code, Result} = handle(Cmd, Auth, Args),
                 json_response(Code, jiffy:encode(Result));
             ErrorResponse ->
                 ErrorResponse
@@ -188,8 +177,8 @@ process([Call], #request{method = 'GET', q = Data, ip = IP} = Req) ->
         end,
         log(Call, Args, IP),
         case check_permissions(Req, Call) of
-            allowed ->
-                {Code, Result} = handle(Call, Args),
+            {allowed, Cmd, Auth} ->
+                {Code, Result} = handle(Cmd, Auth, Args),
                 json_response(Code, jiffy:encode(Result));
             ErrorResponse ->
                 ErrorResponse
@@ -208,75 +197,9 @@ process(_Path, Request) ->
 %% command handlers
 %% ----------------
 
-get_json_prop(Name, JSON) ->
-    case lists:keyfind(Name, 1, JSON) of
-        {Name, Val} -> Val;
-        false -> throw(<<"Can't find field ", Name/binary, " in struct">>)
-    end.
-get_json_prop(Name, JSON, Default) ->
-    case lists:keyfind(Name, 1, JSON) of
-        {Name, Val} -> Val;
-        false -> Default
-    end.
-
-handle(<<"bulk-roster-update">>, Args) ->
-    Err1 = case lists:keyfind(<<"add">>, 1, Args) of
-               {<<"add">>, List} ->
-                   lists:filtermap(fun([{C1}, {C2}]) ->
-                                           Jid1 = get_json_prop(<<"jid">>, C1),
-                                           Nick1 = get_json_prop(<<"nick">>, C1, <<"">>),
-                                           Group1 = get_json_prop(<<"group">>, C1, []),
-                                           {U1, S1, _} = jlib:jid_tolower(jlib:string_to_jid(Jid1)),
-                                           Jid2 = get_json_prop(<<"jid">>, C2),
-                                           Nick2 = get_json_prop(<<"nick">>, C2, <<"">>),
-                                           Group2 = get_json_prop(<<"group">>, C2, []),
-                                           {U2, S2, _} = jlib:jid_tolower(jlib:string_to_jid(Jid2)),
-
-                                           case {ejabberd_auth:is_user_exists(U1, S1),
-                                                 ejabberd_auth:is_user_exists(U2, S2)}
-                                           of
-                                               {true, true} ->
-                                                   case mod_admin_p1:add_rosteritem(U2, S2, Jid1, Group1, Nick1, <<"both">>) of
-                                                       0 -> case mod_admin_p1:add_rosteritem(U1, S1, Jid2, Group2, Nick2, <<"both">>) of
-                                                                0 -> false;
-                                                                _ -> {true, {[{Jid1, <<"Modifing roster failed">>}]}}
-                                                            end;
-                                                       _ -> {true, {[{Jid2, <<"Modifing roster failed">>}]}}
-                                                   end;
-                                               {false, _} -> {true, {[{Jid1, <<"User doesn't exist">>}]}};
-                                               {_, false} -> {true, {[{Jid2, <<"User doesn't exist">>}]}}
-                                           end
-                                   end, List);
-               _ -> []
-           end,
-    Err2 = case lists:keyfind(<<"remove">>, 1, Args) of
-               {<<"remove">>, ListR} ->
-                   lists:filtermap(fun([JidR1, JidR2]) ->
-                                           {UR1, SR1, _} = jlib:jid_tolower(jlib:string_to_jid(JidR1)),
-                                           {UR2, SR2, _} = jlib:jid_tolower(jlib:string_to_jid(JidR2)),
-                                           case mod_admin_p1:delete_rosteritem(UR1, SR1, JidR2) of
-                                               0 ->
-                                                   case mod_admin_p1:delete_rosteritem(UR2, SR2, JidR1) of
-                                                       0 -> false;
-                                                       _ -> {true, {[{JidR2, <<"Can't delete roster item">>}]}}
-                                                   end;
-                                               _ -> {true, {[{JidR1, <<"Can't delete roster item">>}]}}
-                                           end
-                                   end, ListR);
-               _ ->
-                   []
-           end,
-    Err = Err1 ++ Err2,
-    case Err of
-        [] ->
-            {200, {[{<<"result">>, <<"success">>}]}};
-        _ ->
-            {500, {[{<<"result">>, <<"failure">>},{<<"errors">>, Err}]}}
-    end;
-
 % generic ejabberd command handler
-handle(Call, Args) when is_binary(Call), is_list(Args) ->
-    case ejabberd_commands:get_command_format(jlib:binary_to_atom(Call)) of
+handle(Call, Auth, Args) when is_atom(Call), is_list(Args) ->
+    case ejabberd_commands:get_command_format(Call, Auth) of
         {ArgsSpec, _} when is_list(ArgsSpec) ->
             Args2 = [{jlib:binary_to_atom(Key), Value} || {Key, Value} <- Args],
             Spec = lists:foldr(
@@ -291,22 +214,22 @@ handle(Call, Args) when is_binary(Call), is_list(Args) ->
                         ({Key, atom}, Acc) ->
                             [{Key, undefined}|Acc]
                     end, [], ArgsSpec),
-            handle2(Call, match(Args2, Spec));
+            handle2(Call, Auth, match(Args2, Spec));
         {error, Msg} ->
             {400, Msg};
-        Error ->
+        _Error ->
             {400, <<"Error">>}
     end.
 
-handle2(Call, Args) when is_binary(Call), is_list(Args) ->
-    Fun = jlib:binary_to_atom(Call),
-    {ArgsF, _ResultF} = ejabberd_commands:get_command_format(Fun),
+handle2(Call, Auth, Args) when is_atom(Call), is_list(Args) ->
+    {ArgsF, _ResultF} = ejabberd_commands:get_command_format(Call, Auth),
     ArgsFormatted = format_args(Args, ArgsF),
-    case ejabberd_command(Fun, ArgsFormatted, 400) of
+    case ejabberd_command(Auth, Call, ArgsFormatted, 400) of
         0 -> {200, <<"OK">>};
         1 -> {500, <<"500 Internal server error">>};
         400 -> {400, <<"400 Bad Request">>};
-        Res -> format_command_result(Fun, Res)
+        404 -> {404, <<"404 Not found">>};
+        Res -> format_command_result(Call, Auth, Res)
     end.
 
 get_elem_delete(A, L) ->
@@ -385,15 +308,15 @@ process_unicode_codepoints(Str) ->
 match(Args, Spec) ->
     [{Key, proplists:get_value(Key, Args, Default)} || {Key, Default} <- Spec].
 
-ejabberd_command(Cmd, Args, Default) ->
-    case catch ejabberd_commands:execute_command(Cmd, Args) of
+ejabberd_command(Auth, Cmd, Args, Default) ->
+    case catch ejabberd_commands:execute_command(undefined, Auth, Cmd, Args) of
         {'EXIT', _} -> Default;
         {error, _} -> Default;
         Result -> Result
     end.
 
-format_command_result(Cmd, Result) ->
-    {_, ResultFormat} = ejabberd_commands:get_command_format(Cmd),
+format_command_result(Cmd, Auth, Result) ->
+    {_, ResultFormat} = ejabberd_commands:get_command_format(Cmd, Auth),
     case {ResultFormat, Result} of
         {{_, rescode}, V} when V == true; V == ok ->
             {200, <<"">>};
@@ -403,10 +326,10 @@ format_command_result(Cmd, Result) ->
             {200, iolist_to_binary(Text1)};
         {{_, restuple}, {_, Text2}} ->
             {500, iolist_to_binary(Text2)};
-        {{_, {list, _}}, V} ->
+        {{_, {list, _}}, _V} ->
             {_, L} = format_result(Result, ResultFormat),
             {200, L};
-        {{_, {tuple, _}}, V} ->
+        {{_, {tuple, _}}, _V} ->
             {_, T} = format_result(Result, ResultFormat),
             {200, T};
         _ ->
@@ -436,7 +359,7 @@ format_result(Els, {Name, {list, {_, {tuple, [{_, atom}, _]}} = Fmt}}) ->
 format_result(Els, {Name, {list, Def}}) ->
     {jlib:atom_to_binary(Name), [element(2, format_result(El, Def)) || El <- Els]};
 
-format_result(Tuple, {Name, {tuple, [{_, atom}, ValFmt]}}) ->
+format_result(Tuple, {_Name, {tuple, [{_, atom}, ValFmt]}}) ->
     {Name2, Val} = Tuple,
     {_, Val2} = format_result(Val, ValFmt),
     {jlib:atom_to_binary(Name2), Val2};

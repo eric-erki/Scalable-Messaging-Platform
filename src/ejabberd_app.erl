@@ -66,6 +66,7 @@ start(normal, _Args) ->
     %ejabberd_debug:fprof_start(),
     maybe_add_nameservers(),
     ejabberd_auth:start(),
+    ejabberd_oauth:start(),
     start_modules(),
     ejabberd_node_groups:start(),
     ejabberd_cluster:boot(),
