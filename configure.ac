@@ -139,10 +139,10 @@ AC_ARG_ENABLE(mssql,
 esac],[db_type=generic])
 
 AC_ARG_ENABLE(all,
-[AC_HELP_STRING([--enable-all], [same as --enable-nif --enable-odbc --enable-mysql --enable-pgsql --enable-sqlite --enable-pam --enable-zlib --enable-riak --enable-redis --enable-json --enable-elixir --enable-iconv --enable-debug --enable-http --enable-lager --enable-tools --enable-p1db (useful for Dialyzer checks, default: no)])],
+[AC_HELP_STRING([--enable-all], [same as --enable-nif --enable-odbc --enable-mysql --enable-pgsql --enable-sqlite --enable-pam --enable-zlib --enable-riak --enable-redis --enable-elixir --enable-iconv --enable-debug --enable-http --enable-lager --enable-tools --enable-p1db (useful for Dialyzer checks, default: no)])],
 [case "${enableval}" in
-  yes) nif=true odbc=true mysql=true pgsql=true sqlite=true pam=true zlib=true riak=true redis=true json=true elixir=true iconv=true debug=true http=true lager=true tools=true p1db=true ;;
-  no) nif=false odbc=false mysql=false pgsql=false sqlite=false pam=false zlib=false riak=false redis=false json=false elixir=false iconv=false debug=false http=false lager=false tools=false p1db=false ;;
+  yes) nif=true odbc=true mysql=true pgsql=true sqlite=true pam=true zlib=true riak=true redis=true elixir=true iconv=true debug=true http=true lager=true tools=true p1db=true ;;
+  no) nif=false odbc=false mysql=false pgsql=false sqlite=false pam=false zlib=false riak=false redis=false elixir=false iconv=false debug=false http=false lager=false tools=false p1db=false ;;
   *) AC_MSG_ERROR(bad value ${enableval} for --enable-all) ;;
 esac],[])
 
@@ -233,14 +233,6 @@ AC_ARG_ENABLE(p1db,
   no)  p1db=false ;;
   *) AC_MSG_ERROR(bad value ${enableval} for --enable-p1db) ;;
 esac],[if test "x$p1db" = "x"; then p1db=false; fi])
-
-AC_ARG_ENABLE(json,
-[AC_HELP_STRING([--enable-json], [enable JSON support for mod_bosh (default: no)])],
-[case "${enableval}" in
-  yes) json=true ;;
-  no)  json=false ;;
-  *) AC_MSG_ERROR(bad value ${enableval} for --enable-json) ;;
-esac],[if test "x$json" = "x"; then json=false; fi])
 
 AC_ARG_ENABLE(elixir,
 [AC_HELP_STRING([--enable-elixir], [enable Elixir support (default: no)])],
@@ -341,7 +333,6 @@ AC_SUBST(zlib)
 AC_SUBST(riak)
 AC_SUBST(redis)
 AC_SUBST(p1db)
-AC_SUBST(json)
 AC_SUBST(elixir)
 AC_SUBST(iconv)
 AC_SUBST(debug)
