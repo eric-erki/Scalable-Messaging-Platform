@@ -79,7 +79,7 @@ Deps = [{p1_cache_tab, ".*", {git, "git://github.com/processone/cache_tab"}},
         {statsderl, ".*", {git, "https://github.com/lpgauth/statsderl.git"}},
         {p1_utils, ".*", {git, "git://github.com/processone/p1_utils"}},
         {jiffy, ".*", {git, "git://github.com/davisp/jiffy"}},
-        {oauth2, ".*", {git, "git://github.com/IvanMartinez/oauth2"}},
+        {oauth2, ".*", {git, "https://github.com/prefiks/oauth2.git"}},
         {xmlrpc, ".*", {git, "git://github.com/rds13/xmlrpc"}}],
 
 ConfigureCmd = fun(Pkg, Flags) ->
