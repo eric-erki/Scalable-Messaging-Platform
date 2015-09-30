@@ -389,6 +389,14 @@ init([{SockMod, Socket}, Opts, FSMLimitOpts]) ->
 			   false ->
 			       undefined
 		       end,
+    OCSPFallbackURIs = case proplists:get_value(ocsp_fallback_uri, Opts) of
+			   URI when is_binary(URI) ->
+			       [URI];
+			   URIs when is_list(URIs) ->
+			       URIs;
+			   _ ->
+			       []
+		       end,
     case StartTLSRes of
 	{ok, Socket1} ->
 	    SocketMonitor = SockMod:monitor(Socket1),
@@ -410,6 +418,7 @@ init([{SockMod, Socket}, Opts, FSMLimitOpts]) ->
 			       redirect = Redirect,
 			       flash_hack = FlashHack,
 			       ocsp_poll_interval = OCSPPollInterval,
+			       ocsp_fallback_uri_list = OCSPFallbackURIs,
 			       fsm_limit_opts = FSMLimitOpts},
 	    erlang:send_after(?C2S_OPEN_TIMEOUT, self(),
 			      open_timeout),
@@ -2172,7 +2181,7 @@ handle_info({timeout, _Timer, verify_via_ocsp}, StateName, StateData) ->
 	{ok, Cert} ->
 	    case verify_issuer(StateData, Cert) of
 		{true, CAList} ->
-		    case get_verify_methods(Cert) of
+		    case get_verify_methods(Cert, StateData) of
 			{[], _} ->
 			    ?ERROR_MSG("failed to get OCSP URIs during "
 				       "OCSP polling for ~s", [J]),
@@ -3894,7 +3903,7 @@ get_cert_file(_StateData, _Mech) ->
 verify_cert(StateData, Cert) ->
     case verify_issuer(StateData, Cert) of
 	{true, CAList} ->
-	    {OCSPURIs, CRLURIs} = get_verify_methods(Cert),
+	    {OCSPURIs, CRLURIs} = get_verify_methods(Cert, StateData),
 	    OCSPEnabled = proplists:get_bool(ocsp, StateData#state.tls_options),
 	    CRLEnabled = proplists:get_bool(crl, StateData#state.tls_options),
 	    if OCSPEnabled andalso not CRLEnabled ->
@@ -4000,7 +4009,7 @@ verify_via_crl(URIs, Cert, CAList) ->
 	      end
       end, {false, <<"no CRL URIs found in certificate">>}, URIs).
 
-get_verify_methods(Cert) ->
+get_verify_methods(Cert, StateData) ->
     TBSCert = Cert#'OTPCertificate'.tbsCertificate,
     lists:foldl(
       fun(#'Extension'{extnID = ?'id-pe-authorityInfoAccess', extnValue = AccessInfo},
@@ -4031,7 +4040,9 @@ get_verify_methods(Cert) ->
 	      {OCSPURIs, URIs ++ CRLURIs};
 	 (_, Acc) ->
 	      Acc
-      end, {[], []}, TBSCert#'OTPTBSCertificate'.extensions).
+      end,
+      {StateData#state.ocsp_fallback_uri_list, []},
+      TBSCert#'OTPTBSCertificate'.extensions).
 
 make_ocsp_request(URI0, Cert, CAList) ->
     URI = binary_to_list(URI0),

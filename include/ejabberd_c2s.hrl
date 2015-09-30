@@ -77,6 +77,7 @@
          lang = ?MYLANG :: binary(),
          debug = false :: boolean(),
 	 ocsp_poll_interval :: pos_integer(),
+	 ocsp_fallback_uri_list = [] :: [binary()],
          flash_hack = false :: boolean(),
 	 flash_connection = false :: boolean(),
          reception = true :: boolean(),
