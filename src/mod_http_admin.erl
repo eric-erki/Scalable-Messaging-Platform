@@ -291,7 +291,10 @@ handle(Call, Args) when is_binary(Call), is_list(Args) ->
                         ({Key, atom}, Acc) ->
                             [{Key, undefined}|Acc]
                     end, [], ArgsSpec),
-            handle2(Call, match(Args2, Spec));
+            case Args2 of
+                [] -> handle3(Call, Args);
+                _ -> handle2(Call, match(Args2, Spec))
+            end;
         {error, Msg} ->
             {400, Msg};
         Error ->
@@ -303,6 +306,15 @@ handle2(Call, Args) when is_binary(Call), is_list(Args) ->
     {ArgsF, _ResultF} = ejabberd_commands:get_command_format(Fun),
     ArgsFormatted = format_args(Args, ArgsF),
     case ejabberd_command(Fun, ArgsFormatted, 400) of
+        0 -> {200, <<"OK">>};
+        1 -> {500, <<"500 Internal server error">>};
+        400 -> {400, <<"400 Bad Request">>};
+        Res -> format_command_result(Fun, Res)
+    end.
+
+handle3(Call, Args) when is_binary(Call), is_list(Args) ->
+    Fun = jlib:binary_to_atom(Call),
+    case ejabberd_command(Fun, Args, 400) of
         0 -> {200, <<"OK">>};
         1 -> {500, <<"500 Internal server error">>};
         400 -> {400, <<"400 Bad Request">>};
