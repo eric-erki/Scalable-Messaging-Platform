@@ -221,11 +221,13 @@ forget_room(ServerHost, Host, Name) ->
     forget_room(LServer, Host, Name,
 		gen_mod:db_type(LServer, ?MODULE)).
 
-forget_room(_LServer, Host, Name, mnesia) ->
+forget_room(LServer, Host, Name, mnesia) ->
+    remove_room_mam(LServer, Host, Name),
     F = fun () -> mnesia:delete({muc_room, {Name, Host}})
 	end,
     mnesia:transaction(F);
-forget_room(_LServer, Host, Name, p1db) ->
+forget_room(LServer, Host, Name, p1db) ->
+    remove_room_mam(LServer, Host, Name),
     RoomKey = rh2key(Name, Host),
     DelRes = p1db:delete(muc_config, RoomKey),
     if DelRes == ok; DelRes == {error, notfound} ->
@@ -242,9 +244,11 @@ forget_room(_LServer, Host, Name, p1db) ->
        true ->
             {aborted, DelRes}
     end;
-forget_room(_LServer, Host, Name, riak) ->
+forget_room(LServer, Host, Name, riak) ->
+    remove_room_mam(LServer, Host, Name),
     {atomic, ejabberd_riak:delete(muc_room, {Name, Host})};
 forget_room(LServer, Host, Name, odbc) ->
+    remove_room_mam(LServer, Host, Name),
     SName = ejabberd_odbc:escape(Name),
     SHost = ejabberd_odbc:escape(Host),
     F = fun () ->
@@ -253,6 +257,22 @@ forget_room(LServer, Host, Name, odbc) ->
 					   <<"';">>])
 	end,
     ejabberd_odbc:sql_transaction(LServer, F).
+
+remove_room_mam(LServer, Host, Name) ->
+    case gen_mod:is_loaded(LServer, mod_mam) of
+	true ->
+	    U = jlib:nodeprep(Name),
+	    S = jlib:nameprep(Host),
+	    DBType = gen_mod:db_type(LServer, mod_mam),
+	    if DBType == rest; DBType == sharding; DBType == odbc ->
+		    mod_mam:remove_user(jlib:jid_to_string({U, S, <<>>}),
+					LServer, DBType);
+	       true ->
+		    mod_mam:remove_user(U, S, DBType)
+	    end;
+	false ->
+	    ok
+    end.
 
 process_iq_disco_items(Host, From, To,
 		       #iq{lang = Lang} = IQ) ->
@@ -384,6 +404,7 @@ init([Host, Opts]) ->
 			     persistent -> Bool;
 			     public -> Bool;
 			     public_list -> Bool;
+			     mam -> Bool;
 			     password -> fun iolist_to_binary/1;
 			     title -> fun iolist_to_binary/1;
 			     allow_private_messages_from_visitors ->
@@ -608,7 +629,8 @@ do_route1(Host, ServerHost, Access, HistorySize,
 						    attrs =
 							[{<<"xmlns">>, XMLNS}],
 						    children =
-							iq_disco_info(Lang) ++
+							iq_disco_info(
+							  ServerHost, Lang) ++
 							  Info}]},
 			    ejabberd_router:route(To, From,
 						  jlib:iq_to_xml(Res));
@@ -919,7 +941,7 @@ delete_room(RoomHost, Pid1) ->
 	    ok
     end.
 
-iq_disco_info(Lang) ->
+iq_disco_info(ServerHost, Lang) ->
     [#xmlel{name = <<"identity">>,
 	    attrs =
 		[{<<"category">>, <<"conference">>},
@@ -940,7 +962,14 @@ iq_disco_info(Lang) ->
      #xmlel{name = <<"feature">>,
 	    attrs = [{<<"var">>, ?NS_RSM}], children = []},
      #xmlel{name = <<"feature">>,
-	    attrs = [{<<"var">>, ?NS_VCARD}], children = []}].
+	    attrs = [{<<"var">>, ?NS_VCARD}], children = []}] ++
+	case gen_mod:is_loaded(ServerHost, mod_mam) of
+	    true ->
+		[#xmlel{name = <<"feature">>,
+			attrs = [{<<"var">>, ?NS_MAM_0}]}];
+	    false ->
+		[]
+	end.
 
 iq_disco_items(Host, From, Lang, none) ->
     lists:zf(fun (#muc_online_room{name_host =

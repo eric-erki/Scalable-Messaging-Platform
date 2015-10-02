@@ -37,11 +37,13 @@
 -export([user_send_packet/4, user_receive_packet/5,
 	 enc_key/1, dec_key/1, enc_val/2, dec_val/2, enc_prefs/2,
 	 dec_prefs/2, process_iq_v0_2/3, process_iq_v0_3/3, remove_user/2,
-	 mod_opt_type/1, opt_type/1]).
+	 remove_user/3, mod_opt_type/1, opt_type/1, muc_process_iq/4,
+	 muc_filter_packet/5]).
 
 -include_lib("stdlib/include/ms_transform.hrl").
 -include("jlib.hrl").
 -include("logger.hrl").
+-include("mod_muc_room.hrl").
 
 -record(archive_msg,
 	{us = {<<"">>, <<"">>}                :: {binary(), binary()} | '$2',
@@ -49,7 +51,9 @@
 	 timestamp = now()                    :: erlang:timestamp() | '_' | '$1',
 	 peer = {<<"">>, <<"">>, <<"">>}      :: ljid() | '_' | '$3',
 	 bare_peer = {<<"">>, <<"">>, <<"">>} :: ljid() | '_' | '$3',
-	 packet = #xmlel{}                    :: xmlel() | '_'}).
+	 packet = #xmlel{}                    :: xmlel() | '_',
+	 nick = <<"">>                        :: binary(),
+	 type = chat                          :: chat | groupchat}).
 
 -record(archive_prefs,
 	{us = {<<"">>, <<"">>} :: {binary(), binary()},
@@ -82,19 +86,16 @@ start(Host, Opts) ->
 		       user_receive_packet, 500),
     ejabberd_hooks:add(user_send_packet, Host, ?MODULE,
 		       user_send_packet, 500),
+    ejabberd_hooks:add(muc_filter_packet, Host, ?MODULE,
+		       muc_filter_packet, 50),
+    ejabberd_hooks:add(muc_process_iq, Host, ?MODULE,
+		       muc_process_iq, 50),
     ejabberd_hooks:add(remove_user, Host, ?MODULE,
 		       remove_user, 50),
     ejabberd_hooks:add(anonymous_purge_hook, Host, ?MODULE,
 		       remove_user, 50),
     ok.
 
-init_db(DBType, Host) when DBType==odbc orelse DBType==sharding ->
-    Muchost = gen_mod:get_module_opt_host(Host, mod_muc,
-					 <<"conference.@HOST@">>),
-    ets:insert(ejabberd_modules, {ejabberd_module, {mod_mam, Muchost},
-				  [{db_type,DBType}]}),
-    mnesia:dirty_write({local_config, {modules,Muchost},
-			[{mod_mam, [{db_type,DBType}]}]});
 init_db(mnesia, _Host) ->
     mnesia:create_table(archive_msg,
 			[{disc_only_copies, [node()]},
@@ -147,6 +148,10 @@ stop(Host) ->
 			  user_send_packet, 500),
     ejabberd_hooks:delete(user_receive_packet, Host, ?MODULE,
 			  user_receive_packet, 500),
+    ejabberd_hooks:delete(muc_filter_packet, Host, ?MODULE,
+			  muc_filter_packet, 50),
+    ejabberd_hooks:delete(muc_process_iq, Host, ?MODULE,
+			  muc_process_iq, 50),
     gen_iq_handler:remove_iq_handler(ejabberd_local, Host, ?NS_MAM_TMP),
     gen_iq_handler:remove_iq_handler(ejabberd_sm, Host, ?NS_MAM_TMP),
     gen_iq_handler:remove_iq_handler(ejabberd_local, Host, ?NS_MAM_0),
@@ -213,8 +218,7 @@ user_receive_packet(Pkt, C2SState, JID, Peer, To) ->
     case should_archive(Pkt) of
 	true when not IsBareCopy ->
 	    NewPkt = strip_my_archived_tag(Pkt, LServer),
-	    case store(C2SState, NewPkt, LUser, LServer,
-		       Peer, true, recv) of
+	    case store_msg(C2SState, NewPkt, LUser, LServer, Peer, recv) of
 		{ok, ID} ->
 		    Archived = #xmlel{name = <<"archived">>,
 				      attrs = [{<<"by">>, LServer},
@@ -233,26 +237,22 @@ user_send_packet(Pkt, C2SState, JID, Peer) ->
     LUser = JID#jid.luser,
     LServer = JID#jid.lserver,
     case should_archive(Pkt) of
-	S when (S==true) ->
+	true ->
 	    NewPkt = strip_my_archived_tag(Pkt, LServer),
-	    store0(C2SState, jlib:replace_from_to(JID, Peer, NewPkt),
-		  LUser, LServer, Peer, S, send),
+	    store_msg(C2SState, jlib:replace_from_to(JID, Peer, NewPkt),
+		      LUser, LServer, Peer, send),
 	    NewPkt;
-	S when (S==muc) ->
-	    NewPkt = strip_my_archived_tag(Pkt, LServer),
-	    case store0(C2SState, jlib:replace_from_to(JID, Peer, NewPkt),
-		  LUser, LServer, Peer, S, send) of
-		{ok, ID} ->
-		    By = jlib:jid_to_string(Peer),
-		    Archived = #xmlel{name = <<"archived">>,
-			    attrs = [{<<"by">>, By}, {<<"xmlns">>, ?NS_MAM_TMP},
-			    {<<"id">>, ID}]},
-		    NewEls = [Archived|NewPkt#xmlel.children],
-		    NewPkt#xmlel{children = NewEls};
-		_ ->
-		    NewPkt
-	    end;
 	false ->
+	    Pkt
+    end.
+
+muc_filter_packet(Pkt, #state{config = Config} = MUCState,
+		  RoomJID, From, FromNick) ->
+    if Config#config.mam ->
+	    NewPkt = strip_my_archived_tag(Pkt, MUCState#state.server_host),
+	    store_muc(MUCState, NewPkt, RoomJID, From, FromNick),
+	    NewPkt;
+	true ->
 	    Pkt
     end.
 
@@ -276,28 +276,46 @@ process_iq_v0_2(#jid{lserver = LServer} = From,
 	      (_) ->
 		   []
 	   end, SubEl#xmlel.children),
-    process_iq(From, To, IQ, SubEl, Fs);
+    process_iq(LServer, From, To, IQ, SubEl, Fs, chat);
 process_iq_v0_2(From, To, IQ) ->
     process_iq(From, To, IQ).
 
 % Query archive v0.3
 process_iq_v0_3(#jid{lserver = LServer} = From,
-	   #jid{lserver = LServer} = To,
-	   #iq{type = set, sub_el = #xmlel{name = <<"query">>} = SubEl} = IQ) ->
-    Fs = case {xml:get_subtag_with_xmlns(SubEl, <<"x">>, ?NS_XDATA),
-	       xml:get_subtag_with_xmlns(SubEl, <<"set">>, ?NS_RSM)} of
-	     {#xmlel{} = XData, false} ->
-		 jlib:parse_xdata_submit(XData);
-	     {#xmlel{} = XData, #xmlel{}} ->
-		 [{<<"set">>, SubEl} | jlib:parse_xdata_submit(XData)];
-	     {false, #xmlel{}} ->
-		 [{<<"set">>, SubEl}];
-	     {false, false} ->
-		 []
-	 end,
-    process_iq(From, To, IQ, SubEl, Fs);
+		#jid{lserver = LServer} = To,
+		#iq{type = set, sub_el = #xmlel{name = <<"query">>} = SubEl} = IQ) ->
+    process_iq(LServer, From, To, IQ, SubEl, get_xdata_fields(SubEl), chat);
 process_iq_v0_3(From, To, IQ) ->
     process_iq(From, To, IQ).
+
+muc_process_iq(#iq{type = set,
+		   sub_el = #xmlel{name = <<"query">>,
+				   attrs = Attrs} = SubEl} = IQ,
+	       MUCState, From, To) ->
+    case xml:get_attr_s(<<"xmlns">>, Attrs) of
+	?NS_MAM_0 ->
+	    LServer = MUCState#state.server_host,
+	    Role = mod_muc_room:get_role(From, MUCState),
+	    process_iq(LServer, From, To, IQ, SubEl,
+		       get_xdata_fields(SubEl), {groupchat, Role});
+	_ ->
+	    IQ
+    end;
+muc_process_iq(IQ, _MUCState, _From, _To) ->
+    IQ.
+
+get_xdata_fields(SubEl) ->
+    case {xml:get_subtag_with_xmlns(SubEl, <<"x">>, ?NS_XDATA),
+	  xml:get_subtag_with_xmlns(SubEl, <<"set">>, ?NS_RSM)} of
+	{#xmlel{} = XData, false} ->
+	    jlib:parse_xdata_submit(XData);
+	{#xmlel{} = XData, #xmlel{}} ->
+	    [{<<"set">>, SubEl} | jlib:parse_xdata_submit(XData)];
+	{false, #xmlel{}} ->
+	    [{<<"set">>, SubEl}];
+	{false, false} ->
+	    []
+    end.
 
 %%%===================================================================
 %%% Internal functions
@@ -335,7 +353,7 @@ process_iq(#jid{luser = LUser, lserver = LServer},
 process_iq(_, _, #iq{sub_el = SubEl} = IQ) ->
     IQ#iq{type = error, sub_el = [SubEl, ?ERR_NOT_ALLOWED]}.
 
-process_iq(From, To, IQ, SubEl, Fs) ->
+process_iq(LServer, From, To, IQ, SubEl, Fs, MsgType) ->
     case catch lists:foldl(
 		 fun({<<"start">>, [Data|_]}, {_, End, With, RSM}) ->
 			 {{_, _, _} = jlib:datetime_string_to_timestamp(Data),
@@ -360,7 +378,8 @@ process_iq(From, To, IQ, SubEl, Fs) ->
 	{'EXIT', _} ->
 	    IQ#iq{type = error, sub_el = [SubEl, ?ERR_BAD_REQUEST]};
 	{Start, End, With, RSM} ->
-	    select_and_send(From, To, Start, End, With, RSM, IQ)
+	    select_and_send(LServer, From, To, Start, End,
+			    With, RSM, IQ, MsgType)
     end.
 
 should_archive(#xmlel{name = <<"message">>} = Pkt) ->
@@ -369,11 +388,7 @@ should_archive(#xmlel{name = <<"message">>} = Pkt) ->
 	{<<"error">>, _} ->
 	    false;
 	{<<"groupchat">>, _} ->
-	    To = xml:get_attr_s(<<"to">>, Pkt#xmlel.attrs),
-	    case (jlib:string_to_jid(To))#jid.resource of
-		<<"">> -> muc;
-		_ -> false
-	    end;
+	    false;
 	{_, <<>>} ->
 	    %% Empty body
 	    false;
@@ -429,46 +444,57 @@ should_archive_peer(C2SState,
 	    end
     end.
 
-store0(C2SState, Pkt, LUser, LServer, Peer, Type, Dir) ->
-    case Type of
-	muc -> store(C2SState, Pkt, Peer#jid.luser, LServer,
-		    jlib:jid_replace_resource(Peer, LUser), Type, Dir);
-	true -> store(C2SState, Pkt, LUser, LServer, Peer, Type, Dir)
-    end.
+should_archive_muc(_MUCState, _Peer) ->
+    %% TODO
+    true.
 
-store(C2SState, Pkt, LUser, LServer, Peer, Type, Dir) ->
+store_msg(C2SState, Pkt, LUser, LServer, Peer, Dir) ->
     Prefs = get_prefs(LUser, LServer),
     case should_archive_peer(C2SState, Prefs, Peer) of
 	true ->
-	    do_store(Pkt, LUser, LServer, Peer, Type, Dir,
-		     gen_mod:db_type(LServer, ?MODULE));
+	    US = {LUser, LServer},
+	    store(Pkt, LServer, US, chat, Peer, <<"">>, Dir,
+		  gen_mod:db_type(LServer, ?MODULE));
 	false ->
 	    pass
     end.
 
-do_store(Pkt, LUser, LServer, Peer, Type, _Dir, mnesia) ->
+store_muc(MUCState, Pkt, RoomJID, Peer, Nick) ->
+    case should_archive_muc(MUCState, Peer) of
+	true ->
+	    LServer = MUCState#state.server_host,
+	    {U, S, _} = jlib:jid_tolower(RoomJID),
+	    store(Pkt, LServer, {U, S}, groupchat, Peer, Nick, recv,
+		  gen_mod:db_type(LServer, ?MODULE));
+	false ->
+	    pass
+    end.
+
+store(Pkt, _, {LUser, LServer}, Type, Peer, Nick, _Dir, mnesia) ->
     LPeer = {PUser, PServer, _} = jlib:jid_tolower(Peer),
-    LServer2 = case Type of muc -> Peer#jid.lserver; _ -> LServer end,
     TS = now(),
     ID = jlib:integer_to_binary(now_to_usec(TS)),
     case mnesia:dirty_write(
-	   #archive_msg{us = {LUser, LServer2},
+	   #archive_msg{us = {LUser, LServer},
 			id = ID,
 			timestamp = TS,
 			peer = LPeer,
 			bare_peer = {PUser, PServer, <<>>},
+			type = Type,
+			nick = Nick,
 			packet = Pkt}) of
 	ok ->
 	    {ok, ID};
 	Err ->
 	    Err
     end;
-do_store(Pkt, LUser, LServer, Peer, Type, _Dir, p1db) ->
+store(Pkt, _, {LUser, LServer}, Type, Peer, Nick, _Dir, p1db) ->
     Now = now(),
-    LServer2 = case Type of muc -> Peer#jid.lserver; _ -> LServer end,
-    USNKey = usn2key(LUser, LServer2, Now),
+    USNKey = usn2key(LUser, LServer, Now),
     XML = xml:element_to_binary(Pkt),
     Val = term_to_binary([{peer, Peer},
+			  {nick, Nick},
+			  {type, Type},
 			  {packet, XML}]),
     case p1db:insert(archive_msg, USNKey, Val) of
 	ok ->
@@ -477,11 +503,13 @@ do_store(Pkt, LUser, LServer, Peer, Type, _Dir, p1db) ->
 	{error, _} = Err ->
 	    Err
     end;
-do_store(Pkt, LUser, LServer, Peer, Type, Dir, rest) ->
+store(Pkt, LServer, {LUser, LHost}, Type, Peer, Nick, Dir, rest) ->
     Now = now(),
-    LServer2 = case Type of muc -> Peer#jid.lserver; _ -> LServer end,
     SPeer = Peer#jid.luser,
-    SUser = LUser,
+    SUser = case Type of
+		chat -> LUser;
+		groupchat -> jlib:jid_to_string({LUser, LHost, <<>>})
+	    end,
     ID = jlib:integer_to_binary(now_to_usec(Now)),
     T = case gen_mod:get_module_opt(LServer, ?MODULE, store_body_only,
 				    fun(B) when is_boolean(B) -> B end,
@@ -496,9 +524,11 @@ do_store(Pkt, LUser, LServer, Peer, Type, Dir, rest) ->
 				      fun(X) -> iolist_to_binary(X) end,
 				      <<"/archive">>),
     %% Retry 2 times, with a backoff of 500millisec
-    case rest:with_retry(post, [LServer2, Path, [],
+    case rest:with_retry(post, [LServer, Path, [],
 		   {[{<<"username">>, SUser},
 		     {<<"peer">>, SPeer},
+		     {<<"type">>, jlib:atom_to_binary(Type)},
+		     {<<"nick">>, Nick},
 		     {<<"timestamp">>, now_to_iso(Now)} | T]}], 2, 500) of
 	{ok, Code, _} when Code == 200 orelse Code == 201 ->
 	    {ok, ID};
@@ -508,10 +538,14 @@ do_store(Pkt, LUser, LServer, Peer, Type, Dir, rest) ->
 		       [SUser, SPeer, Err, Pkt, Dir]),
 	    {error, Err}
     end;
-do_store(Pkt, LUser, LServer, Peer, _Type, _Dir, DBType)
+store(Pkt, LServer, {LUser, LHost}, Type, Peer, Nick, _Dir, DBType)
   when DBType==odbc orelse DBType==sharding->
     TSinteger = now_to_usec(now()),
     ID = TS = jlib:integer_to_binary(TSinteger),
+    SUser = case Type of
+		chat -> LUser;
+		groupchat -> jlib:jid_to_string({LUser, LHost, <<>>})
+	    end,
     BarePeer = jlib:jid_to_string(
 		 jlib:jid_tolower(
 		   jlib:jid_remove_resource(Peer))),
@@ -526,13 +560,15 @@ do_store(Pkt, LUser, LServer, Peer, _Type, _Dir, DBType)
     case ejabberd_odbc:sql_query(
 	   LServer, Key,
 	   [<<"insert into archive (username, timestamp, "
-	      "peer, bare_peer, xml, txt) values (">>,
-	    <<"'">>, ejabberd_odbc:escape(LUser), <<"', ">>,
+	      "peer, bare_peer, xml, txt, kind, nick) values (">>,
+	    <<"'">>, ejabberd_odbc:escape(SUser), <<"', ">>,
 	    <<"'">>, TS, <<"', ">>,
 	    <<"'">>, ejabberd_odbc:escape(LPeer), <<"', ">>,
 	    <<"'">>, ejabberd_odbc:escape(BarePeer), <<"', ">>,
 	    <<"'">>, ejabberd_odbc:escape(XML), <<"', ">>,
-	    <<"'">>, ejabberd_odbc:escape(Body), <<"');">>]) of
+	    <<"'">>, ejabberd_odbc:escape(Body), <<"', ">>,
+	    <<"'">>, jlib:atom_to_binary(Type), <<"', ">>,
+	    <<"'">>, ejabberd_odbc:escape(Nick), <<"');">>]) of
 	{updated, _} ->
 	    {ok, ID};
 	Err ->
@@ -655,35 +691,38 @@ get_prefs(LUser, LServer, DBType)
 	    error
     end.
 
-select_and_send(#jid{lserver = LServer} = From,
-		To, Start, End, With, RSM, IQ) ->
+select_and_send(LServer, From, To, Start, End, With, RSM, IQ, MsgType) ->
     DBType = case gen_mod:db_type(LServer, ?MODULE) of
 		 odbc -> {odbc, LServer};
 		 sharding -> {sharding, LServer};
 		 DB -> DB
 	     end,
-    select_and_send(From, To, Start, End, With, RSM, IQ,
-		    DBType).
+    select_and_send(LServer, From, To, Start, End, With, RSM, IQ,
+		    MsgType, DBType).
 
-select_and_send(From, To, Start, End, With, RSM, IQ, DBType) ->
-    {Msgs, IsComplete, Count} = select_and_start(From, To, Start, End, With,
-						 RSM, DBType),
+select_and_send(LServer, From, To, Start, End, With, RSM, IQ, MsgType, DBType) ->
+    {Msgs, IsComplete, Count} = select_and_start(LServer, From, To, Start, End,
+						 With, RSM, MsgType, DBType),
     SortedMsgs = lists:keysort(2, Msgs),
     send(From, To, SortedMsgs, RSM, Count, IsComplete, IQ).
 
-select_and_start(From, _To, StartUser, End, With, RSM, DB) ->
-    {JidRequestor, Start, With2} = case With of
-	{room, {LUserRoom, LServerRoom, <<>>} = WithJid} ->
-	    JR = jlib:make_jid(LUserRoom,LServerRoom,<<>>),
-	    St = StartUser,
-	    {JR, St, WithJid};
-	_ ->
-	    {From, StartUser, With}
-    end,
-    select(JidRequestor, Start, End, With2, RSM, DB).
+select_and_start(LServer, From, To, Start, End, With, RSM, MsgType, DBType) ->
+    case MsgType of
+	chat ->
+	    case With of
+		{room, {_, _, <<"">>} = WithJID} ->
+		    select(LServer, jlib:make_jid(WithJID), Start, End,
+			   WithJID, RSM, MsgType, DBType);
+		_ ->
+		    select(LServer, From, Start, End,
+			   With, RSM, MsgType, DBType)
+	    end;
+	{groupchat, _Role} ->
+	    select(LServer, To, Start, End, With, RSM, MsgType, DBType)
+    end.
 
-select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
-       Start, End, With, RSM, mnesia) ->
+select(_LServer, #jid{luser = LUser, lserver = LServer} = JidRequestor,
+       Start, End, With, RSM, MsgType, mnesia) ->
     MS = make_matchspec(LUser, LServer, Start, End, With),
     Msgs = mnesia:dirty_select(archive_msg, MS),
     {FilteredMsgs, IsComplete} = filter_by_rsm(Msgs, RSM),
@@ -692,10 +731,10 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
        fun(Msg) ->
 	       {Msg#archive_msg.id,
 		jlib:binary_to_integer(Msg#archive_msg.id),
-		msg_to_el(Msg, JidRequestor)}
+		msg_to_el(Msg, MsgType, JidRequestor)}
        end, FilteredMsgs), IsComplete, Count};
-select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
-       Start, End, With, RSM, rest) ->
+select(LServer, #jid{luser = LUser} = JidRequestor,
+       Start, End, With, RSM, MsgType, rest) ->
     Peer = case With of
 	       {U, _S, _R} when U /= <<"">> -> [{<<"peer">>, U}];
 	       _ -> []
@@ -706,7 +745,14 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
 	       _ ->
 		   []
 	   end,
-    User = [{<<"username">>, LUser}],
+    User = case MsgType of
+	       chat ->
+		   [{<<"username">>, LUser},
+		    {<<"type">>, <<"chat">>}];
+	       {groupchat, _Role} ->
+		   [{<<"username">>, jlib:jid_to_string(JidRequestor)},
+		    {<<"type">>, <<"groupchat">>}]
+	   end,
     After = case RSM of
 		#rsm_in{direction = aft, id = <<>>} ->
 		    [];
@@ -758,12 +804,17 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
 						     Attrs, StoreBody),
 			   TS = proplists:get_value(<<"timestamp">>,
 						    Attrs, <<"">>),
+			   Nick = proplists:get_value(<<"nick">>, Attrs, <<"">>),
+			   T = jlib:binary_to_atom(
+				 proplists:get_value(<<"type">>, Attrs, <<"chat">>)),
 			   {_, _, _} = Now = jlib:datetime_string_to_timestamp(TS),
 			   ID = now_to_usec(Now),
 			   [{jlib:integer_to_binary(ID), ID,
 			     msg_to_el(#archive_msg{
+					  type = T,
+					  nick = Nick,
 					  timestamp = Now,
-					  packet = Pkt}, JidRequestor)}]
+					  packet = Pkt}, MsgType, JidRequestor)}]
 		       catch error:{badmatch, _} ->
 			       []
 		       end end, ArchiveEls), IsComplete, Count};
@@ -780,8 +831,8 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
 		       [_Err, JidRequestor, With]),
 	    {[], false, 0}
     end;
-select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
-       Start, End, With, RSM, p1db) ->
+select(_LServer, #jid{luser = LUser, lserver = LServer} = JidRequestor,
+       Start, End, With, RSM, MsgType, p1db) ->
     USPrefix = us_prefix(LUser, LServer),
     case p1db:get_by_prefix(archive_msg, USPrefix) of
 	{ok, L} ->
@@ -791,6 +842,8 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
 			     Now = usec_to_now(TS),
 			     Opts = binary_to_term(Val),
 			     Peer = proplists:get_value(peer, Opts),
+			     Nick = proplists:get_value(nick, Opts, <<"">>),
+			     T = proplists:get_value(type, Opts, chat),
 			     case match_interval(Now, Start, End) and
 				 match_with(Peer, With) and
 				 match_rsm(Now, RSM) of
@@ -801,9 +854,12 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
 							       Opts)),
 				     [{jlib:integer_to_binary(TS), TS,
 				       msg_to_el(#archive_msg{
+						    type = T,
 						    timestamp = Now,
 						    peer = Peer,
+						    nick = Nick,
 						    packet = Pkt},
+						 MsgType,
 						 JidRequestor)}];
 				 false ->
 				     []
@@ -822,10 +878,14 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
 	{error, _} ->
 	    {[], false, 0}
     end;
-select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
-       Start, End, With, RSM, {DBType, Host}) ->
-	{Query, CountQuery} = make_sql_query(LUser, LServer,
-					     Start, End, With, RSM),
+select(LServer, #jid{luser = LUser} = JidRequestor,
+       Start, End, With, RSM, MsgType, {DBType, Host}) ->
+    User = case MsgType of
+	       chat -> LUser;
+	       {groupchat, _Role} -> jlib:jid_to_string(JidRequestor)
+	   end,
+    {Query, CountQuery} = make_sql_query(User, LServer,
+					 Start, End, With, RSM),
     Key = case DBType of
 	      odbc -> undefined;
 	      sharding -> LUser
@@ -854,14 +914,21 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
 			{Res, true}
 		end,
 	    {lists:map(
-	       fun([TS, XML, PeerBin]) ->
+	       fun([TS, XML, PeerBin, Kind, Nick]) ->
 		       #xmlel{} = El = xml_stream:parse_element(XML),
 		       Now = usec_to_now(jlib:binary_to_integer(TS)),
 		       PeerJid = jlib:jid_tolower(jlib:string_to_jid(PeerBin)),
+		       T = if Kind /= <<"">> ->
+				   jlib:binary_to_atom(Kind);
+			      true -> chat
+			   end,
 		       {TS, jlib:binary_to_integer(TS),
 			msg_to_el(#archive_msg{timestamp = Now,
 					       packet = El,
+					       type = T,
+					       nick = Nick,
 					       peer = PeerJid},
+				  MsgType,
 				  JidRequestor)}
 	       end, Res1), IsComplete, jlib:binary_to_integer(Count)};
 	_ ->
@@ -894,10 +961,10 @@ build_xml_from_json(User, Attrs, StoreBody) ->
 	    #xmlel{} = xml_stream:parse_element(XML)
     end.
 
-msg_to_el(#archive_msg{timestamp = TS, packet = Pkt1, peer = Peer},
-	  JidRequestor) ->
+msg_to_el(#archive_msg{timestamp = TS, packet = Pkt1, nick = Nick, peer = Peer},
+	  MsgType, JidRequestor) ->
     Delay = jlib:now_to_utc_string(TS),
-    Pkt = maybe_update_from_to(Pkt1, JidRequestor, Peer),
+    Pkt = maybe_update_from_to(Pkt1, JidRequestor, Peer, MsgType, Nick),
     #xmlel{name = <<"forwarded">>,
 	   attrs = [{<<"xmlns">>, ?NS_FORWARD}],
 	   children = [#xmlel{name = <<"delay">>,
@@ -906,9 +973,9 @@ msg_to_el(#archive_msg{timestamp = TS, packet = Pkt1, peer = Peer},
 		       xml:replace_tag_attr(
 			 <<"xmlns">>, <<"jabber:client">>, Pkt)]}.
 
-maybe_update_from_to(Pkt, _JIDRequestor, undefined) ->
+maybe_update_from_to(Pkt, _JIDRequestor, undefined, _Type, _Nick) ->
     Pkt;
-maybe_update_from_to(Pkt, JidRequestor, Peer) ->
+maybe_update_from_to(Pkt, JidRequestor, Peer, chat, _Nick) ->
     case xml:get_attr_s(<<"type">>, Pkt#xmlel.attrs) of
 	<<"groupchat">> ->
 	    Pkt2 = xml:replace_tag_attr(<<"to">>,
@@ -917,7 +984,23 @@ maybe_update_from_to(Pkt, JidRequestor, Peer) ->
 	    xml:replace_tag_attr(<<"from">>, jlib:jid_to_string(Peer),
 				 Pkt2);
 	_ -> Pkt
-    end.
+    end;
+maybe_update_from_to(#xmlel{children = Els} = Pkt, JidRequestor,
+		     Peer, {groupchat, Role}, Nick) ->
+    Items = case Role of
+		moderator ->
+		    [#xmlel{name = <<"x">>,
+			    attrs = [{<<"xmlns">>, ?NS_MUC_USER}],
+			    children =
+				[#xmlel{name = <<"item">>,
+					attrs = [{<<"jid">>,
+						  jlib:jid_to_string(Peer)}]}]}];
+		_ ->
+		    []
+	    end,
+    Pkt1 = Pkt#xmlel{children = Items ++ Els},
+    Pkt2 = jlib:replace_from(jlib:jid_replace_resource(JidRequestor, Nick), Pkt1),
+    jlib:remove_attr(<<"to">>, Pkt2).
 
 is_bare_copy(#jid{luser = U, lserver = S, lresource = R}, To) ->
     PrioRes = ejabberd_sm:get_user_present_resources(U, S),
@@ -1093,7 +1176,7 @@ make_matchspec(LUser, LServer, Start, End, none) ->
 	      Msg
       end).
 
-make_sql_query(LUser, _LServer, Start, End, With, RSM) ->
+make_sql_query(User, _LServer, Start, End, With, RSM) ->
     {Max, Direction, ID} = case RSM of
 			       #rsm_in{} ->
 				   {RSM#rsm_in.max,
@@ -1151,9 +1234,9 @@ make_sql_query(LUser, _LServer, Start, End, With, RSM) ->
 		    _ ->
 			[]
 		end,
-    SUser = ejabberd_odbc:escape(LUser),
+    SUser = ejabberd_odbc:escape(User),
 
-    Query = [<<"SELECT timestamp, xml, peer"
+    Query = [<<"SELECT timestamp, xml, peer, kind, nick"
 	      " FROM archive WHERE username='">>,
 	     SUser, <<"'">>, WithClause, StartClause, EndClause,
 	     PageClause],
@@ -1164,7 +1247,7 @@ make_sql_query(LUser, _LServer, Start, End, With, RSM) ->
 		% ID can be empty because of
 		% XEP-0059: Result Set Management
 		% 2.5 Requesting the Last Page in a Result Set
-		[<<"SELECT timestamp, xml, peer FROM (">>, Query,
+		[<<"SELECT timestamp, xml, peer, kind, nick FROM (">>, Query,
 		 <<" ORDER BY timestamp DESC ">>,
 		 LimitClause, <<") AS t ORDER BY timestamp ASC;">>];
 	    _ ->
@@ -1282,15 +1365,19 @@ dec_key(Key) ->
 	    [Server, User, TS]
     end.
 
-enc_val(_, [SPeer, XML]) ->
+enc_val(_, [SPeer, SNick, SType, XML]) ->
     term_to_binary([{peer, #jid{} = jlib:string_to_jid(SPeer)},
+		    {nick, SNick},
+		    {type, jlib:binary_to_atom(SType)},
 		    {packet, XML}]).
 
 dec_val(_, Bin) ->
     Opts = binary_to_term(Bin),
     Packet = proplists:get_value(packet, Opts),
     #jid{} = Peer = proplists:get_value(peer, Opts),
-    [jlib:jid_to_string(Peer), Packet].
+    Nick = proplists:get_value(nick, Opts, <<"">>),
+    Type = proplists:get_value(type, Opts, chat),
+    [jlib:jid_to_string(Peer), Nick, jlib:atom_to_binary(Type), Packet].
 
 enc_prefs(_, [Default, Always, Never]) ->
     prefs_to_p1db(#archive_prefs{

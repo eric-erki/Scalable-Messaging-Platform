@@ -62,7 +62,8 @@
     logging                              = false :: boolean(),
     vcard                                = <<"">> :: binary(),
     hibernate_time                       = 0 :: non_neg_integer(),
-    captcha_whitelist                    = (?SETS):empty() :: ?TGB_SET
+    captcha_whitelist                    = (?SETS):empty() :: ?TGB_SET,
+    mam                                  = false :: boolean()
 }).
 
 -type config() :: #config{}.
