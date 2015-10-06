@@ -54,3 +54,5 @@
 /logs/
 /priv/sql
 /rel/ejabberd
+/_build
+/mnesiadb
