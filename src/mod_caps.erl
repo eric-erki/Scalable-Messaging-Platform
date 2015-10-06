@@ -148,7 +148,7 @@ read_caps([], Result) -> Result.
 
 user_send_packet(#xmlel{name = <<"presence">>, attrs = Attrs,
 			children = Els} = Pkt,
-                 _C2SState,
+		 _C2SState,
 		 #jid{luser = User, lserver = Server} = From,
 		 #jid{luser = User, lserver = Server,
 		      lresource = <<"">>}) ->
@@ -167,7 +167,8 @@ user_send_packet(Pkt, _C2SState, _From, _To) ->
 
 user_receive_packet(#xmlel{name = <<"presence">>, attrs = Attrs,
 			   children = Els} = Pkt,
-                    _C2SState, #jid{lserver = Server},
+		    _C2SState,
+		    #jid{lserver = Server},
 		    From, _To) ->
     Type = xml:get_attr_s(<<"type">>, Attrs),
     IsRemote = not lists:member(From#jid.lserver, ?MYHOSTS),

@@ -282,7 +282,8 @@ users_number(LServer, [{prefix, Prefix}])
                                      %%          injection.
                                      "where username like '~s%'",
                                  [Prefix]))]);
-users_number(LServer, []) -> users_number(LServer).
+users_number(LServer, []) ->
+    users_number(LServer).
 
 quote(Str) -> [<<"'">>, Str, <<"'">>].
 

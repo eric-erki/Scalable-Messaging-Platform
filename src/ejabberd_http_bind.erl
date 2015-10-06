@@ -32,14 +32,33 @@
 -behaviour(gen_fsm).
 
 %% External exports
--export([start_link/5, init/1, handle_event/3,
-	 handle_sync_event/4, code_change/4, handle_info/3,
-	 terminate/3, send/2, send_xml/2, sockname/1, peername/1,
-	 setopts/2, controlling_process/2, become_controller/2,
-	 change_controller/2, custom_receiver/1, reset_stream/1,
-	 change_shaper/2, monitor/1, close/1, start/5,
-	 handle_session_start/8, handle_http_put/7, http_put/7,
-	 http_get/2, prepare_response/4, process_request/3]).
+-export([start_link/5,
+	 init/1,
+	 handle_event/3,
+	 handle_sync_event/4,
+	 code_change/4,
+	 handle_info/3,
+	 terminate/3,
+	 send/2,
+	 send_xml/2,
+	 sockname/1,
+	 peername/1,
+	 setopts/2,
+	 controlling_process/2,
+	 become_controller/2,
+	 change_controller/2,
+	 custom_receiver/1,
+	 reset_stream/1,
+	 change_shaper/2,
+	 monitor/1,
+	 close/1,
+	 start/5,
+	 handle_session_start/8,
+	 handle_http_put/7,
+	 http_put/7,
+	 http_get/2,
+	 prepare_response/4,
+	 process_request/3]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -55,44 +74,44 @@
 
 -define(NULL_PEER, {{0, 0, 0, 0}, 0}).
 
--record(hbr, {rid, key, out}).
+%% http binding request
+-record(hbr, {rid,
+	      key,
+	      out}).
 
--record(state,
-{
-    id,
-    rid                   = none,
-    key,
-    socket,
-    output                = [],
-    input                 = queue:new(),
-    waiting_input         = false,
-    shaper_state,
-    shaper_timer,
-    last_receiver,
-    last_poll,
-    http_receiver,
-    out_of_order_receiver = false,
-    wait_timer,
-    ctime                 = 0,
-    timer,
-    jid,
-    pause                 = 0,
-    unprocessed_req_list  = [],
-    req_list              = [],
-    max_inactivity,
-    max_pause,
-    ip                    = ?NULL_PEER
-}).
+-record(state, {id,
+		rid = none,
+		key,
+		socket,
+		output = "",
+		input = queue:new(),
+		waiting_input = false,
+		shaper_state,
+		shaper_timer,
+		last_receiver,
+		last_poll,
+		http_receiver,
+		out_of_order_receiver = false,
+		wait_timer,
+		ctime = 0,
+		timer,
+		jid,
+		pause = 0,
+		unprocessed_req_list = [], % list of request that have been delayed for proper reordering: {Request, PID}
+		req_list = [], % list of requests (cache)
+		max_inactivity,
+		max_pause,
+		ip = ?NULL_PEER
+	       }).
 
--record(http_put,
-{
-    rid,
-    attrs,
-    payload,
-    payload_size,
-    hold, stream,
-    ip
-}).
+%% Internal request format:
+-record(http_put, {rid,
+		   attrs,
+		   payload,
+		   payload_size,
+		   hold,
+		   stream,
+		   ip}).
 
 %%-define(DBGFSM, true).
 -ifdef(DBGFSM).
@@ -134,28 +153,26 @@
 
 start(XMPPDomain, Sid, Key, IP, HOpts) ->
     ?DEBUG("Starting session", []),
-    SupervisorProc = gen_mod:get_module_proc(XMPPDomain,
-					     ?PROCNAME_MHB),
+    SupervisorProc = gen_mod:get_module_proc(XMPPDomain, ?PROCNAME_MHB),
     case catch supervisor:start_child(SupervisorProc,
 				      [XMPPDomain, Sid, Key, IP, HOpts])
-	of
-      {ok, Pid} -> {ok, Pid};
-      {error, _} = Err ->
+    of
+	{ok, Pid} -> {ok, Pid};
+	{error, _} = Err ->
 	  case check_bind_module(XMPPDomain) of
 	    false -> {error, <<"Cannot start HTTP bind session">>};
 	    true ->
 		?ERROR_MSG("Cannot start HTTP bind session: ~p", [Err]),
 		Err
 	  end;
-      Exit ->
+	Exit ->
 	  ?ERROR_MSG("Cannot start HTTP bind session: ~p",
 		     [Exit]),
 	  {error, Exit}
     end.
 
 start_link(ServerHost, Sid, Key, IP, HOpts) ->
-    gen_fsm:start_link(?MODULE, [ServerHost, Sid, Key, IP, HOpts],
-		       ?FSMOPTS).
+    gen_fsm:start_link(?MODULE, [ServerHost, Sid, Key, IP, HOpts], ?FSMOPTS).
 
 send({http_bind, FsmRef, _IP}, Packet) ->
     gen_fsm:sync_send_all_state_event(FsmRef,
@@ -167,10 +184,9 @@ send_xml({http_bind, FsmRef, _IP}, Packet) ->
 
 setopts({http_bind, FsmRef, _IP}, Opts) ->
     case lists:member({active, once}, Opts) of
-      true ->
-	  gen_fsm:send_all_state_event(FsmRef,
-				       {activate, self()});
-      _ ->
+	true ->
+	    gen_fsm:send_all_state_event(FsmRef, {activate, self()});
+	_ ->
 	  case lists:member({active, false}, Opts) of
 	    true ->
 		case catch gen_fsm:sync_send_all_state_event(FsmRef,
@@ -195,7 +211,8 @@ become_controller(FsmRef, C2SPid) ->
 change_controller({http_bind, FsmRef, _IP}, C2SPid) ->
     become_controller(FsmRef, C2SPid).
 
-reset_stream({http_bind, _FsmRef, _IP}) -> ok.
+reset_stream({http_bind, _FsmRef, _IP}) ->
+    ok.
 
 change_shaper({http_bind, FsmRef, _IP}, Shaper) ->
     gen_fsm:send_all_state_event(FsmRef,
@@ -211,6 +228,7 @@ close({http_bind, FsmRef, _IP}) ->
 sockname(_Socket) -> {ok, ?NULL_PEER}.
 
 peername({http_bind, _FsmRef, IP}) -> {ok, IP}.
+
 
 %% Entry point for data coming from client through ejabberd HTTP server:
 process_request(Data, IP, HOpts) ->
@@ -236,8 +254,8 @@ process_request(Data, IP, HOpts) ->
 		   "dressing' xmlns='",
 		   (?NS_HTTP_BIND)/binary, "'/>">>};
 	    XmppDomain ->
-		Sid = make_sid(),
                 NXmppDomain = jlib:nameprep(XmppDomain),
+		Sid = make_sid(),
 		case start(NXmppDomain, Sid, <<"">>, IP, HOpts) of
 		  {error, _} ->
 		      {500, ?HEADER,
@@ -332,8 +350,7 @@ handle_session_start(Pid, XmppDomain, Sid, Rid, Attrs,
 						       process_delay = Pdelay,
 						       version = Version})
 		       end),
-    handle_http_put(Sid, Rid, Attrs, Payload, PayloadSize,
-		    true, IP).
+    handle_http_put(Sid, Rid, Attrs, Payload, PayloadSize, true, IP).
 
 %%%----------------------------------------------------------------------
 %%% Callback functions from gen_fsm
@@ -374,8 +391,7 @@ init([ServerHost, Sid, Key, IP, HOpts]) ->
 	  {ok, loop, State}
     end.
 
-handle_event({become_controller, C2SPid}, StateName,
-	     StateData) ->
+handle_event({become_controller, C2SPid}, StateName, StateData) ->
     erlang:monitor(process, C2SPid),
     case StateData#state.input of
       cancel ->
@@ -473,52 +489,53 @@ handle_sync_event({http_get, _Rid, _Wait, _Hold}, _From,
     when JID /= undefined ->
     {reply, {ok, {prebind, JID}}, StateName,
      StateData#state{jid = undefined}};
-handle_sync_event({http_get, Rid, Wait, Hold}, From,
-		  StateName, StateData) ->
+handle_sync_event({http_get, Rid, Wait, Hold}, From, StateName, StateData) ->
     TNow = tnow(),
     if (Hold > 0) and
-	 ((StateData#state.output == []) or
-	    (StateData#state.rid < Rid))
-	 and (TNow - StateData#state.ctime < Wait * 1000 * 1000)
-	 and (StateData#state.rid =< Rid)
-	 and (StateData#state.input /= cancel)
-	 and (StateData#state.pause == 0) ->
-	   send_receiver_reply(StateData#state.http_receiver,
-			       {ok, empty}),
-	   cancel_timer(StateData#state.wait_timer),
-	   WaitTimer = erlang:start_timer(Wait * 1000, self(), []),
-	   cancel_timer(StateData#state.timer),
-	   {next_state, StateName,
-	    StateData#state{http_receiver = From,
-			    out_of_order_receiver = StateData#state.rid < Rid,
-			    wait_timer = WaitTimer, timer = undefined}};
-       true ->
-	   cancel_timer(StateData#state.timer),
-	   Reply = {ok, StateData#state.output},
-	   ReqList = [#hbr{rid = Rid, key = StateData#state.key,
-			   out = StateData#state.output}
+	((StateData#state.output == []) or (StateData#state.rid < Rid)) and
+	((TNow - StateData#state.ctime) < (Wait*1000*1000)) and
+	(StateData#state.rid =< Rid) and
+	(StateData#state.input /= cancel) and
+	(StateData#state.pause == 0) ->
+	    send_receiver_reply(StateData#state.http_receiver, {ok, empty}),
+	    cancel_timer(StateData#state.wait_timer),
+	    WaitTimer = erlang:start_timer(Wait * 1000, self(), []),
+	    cancel_timer(StateData#state.timer),
+	    {next_state, StateName, StateData#state{
+				      http_receiver = From,
+				      out_of_order_receiver = StateData#state.rid < Rid,
+				      wait_timer = WaitTimer,
+				      timer = undefined}};
+	true ->
+	    cancel_timer(StateData#state.timer),
+	    Reply = {ok, StateData#state.output},
+	    ReqList = [#hbr{rid = Rid,
+			    key = StateData#state.key,
+			    out = StateData#state.output}
 		      | [El
-			 || El <- StateData#state.req_list, El#hbr.rid /= Rid]],
-	   if (StateData#state.http_receiver /= undefined) and
-		StateData#state.out_of_order_receiver ->
-		  {reply, Reply, StateName,
-		   StateData#state{output = [], timer = undefined,
-				   req_list = ReqList,
-				   out_of_order_receiver = false}};
-	      true ->
-		  send_receiver_reply(StateData#state.http_receiver,
-				      {ok, empty}),
-		  cancel_timer(StateData#state.wait_timer),
-		  Timer = set_inactivity_timer(StateData#state.pause,
-					       StateData#state.max_inactivity),
-		  {reply, Reply, StateName,
-		   StateData#state{output = [], http_receiver = undefined,
-				   wait_timer = undefined, timer = Timer,
-				   req_list = ReqList}}
-	   end
+			 || El <- StateData#state.req_list,
+			    El#hbr.rid /= Rid]],
+	    if (StateData#state.http_receiver /= undefined) and
+			StateData#state.out_of_order_receiver ->
+		    {reply, Reply, StateName,
+			StateData#state{output = [], timer = undefined,
+			    req_list = ReqList,
+			    out_of_order_receiver = false}};
+		true ->
+		    send_receiver_reply(StateData#state.http_receiver, {ok, empty}),
+		    cancel_timer(StateData#state.wait_timer),
+		    Timer = set_inactivity_timer(StateData#state.pause,
+			    StateData#state.max_inactivity),
+		    {reply, Reply, StateName,
+			StateData#state{output = [],
+			    http_receiver = undefined,
+			    wait_timer = undefined,
+			    timer = Timer,
+			    req_list = ReqList}}
+	    end
     end;
 handle_sync_event(peername, _From, StateName,
-		  StateData) ->
+	    StateData) ->
     Reply = {ok, StateData#state.ip},
     {reply, Reply, StateName, StateData};
 handle_sync_event(_Event, _From, StateName,
@@ -555,8 +572,7 @@ handle_info({timeout, WaitTimer, _}, StateName,
     end;
 handle_info({timeout, ShaperTimer, _}, StateName,
 	    #state{shaper_timer = ShaperTimer} = StateData) ->
-    {next_state, StateName,
-     StateData#state{shaper_timer = undefined}};
+    {next_state, StateName, StateData#state{shaper_timer = undefined}};
 handle_info({'DOWN', _MRef, process, C2SPid, _},
 	    _StateName,
 	    #state{waiting_input = C2SPid} = StateData) ->
@@ -580,6 +596,7 @@ terminate(_Reason, _StateName, StateData) ->
 %%% Internal functions
 %%%----------------------------------------------------------------------
 
+%% PUT / Get processing:
 handle_http_put_event(#http_put{rid = Rid,
 				attrs = Attrs, hold = Hold} =
 			  Request,
@@ -804,32 +821,27 @@ http_put(Sid, Rid, Attrs, Payload, PayloadSize,
 	 StreamStart, IP) ->
     ?DEBUG("Looking for session: ~p", [Sid]),
     case get_session(Sid) of
-      {error, _} -> {error, not_exists};
-      {ok,
-       #http_bind{pid = FsmRef, hold = Hold,
-		  to = {To, StreamVersion}} =
-	   Sess} ->
-	  NewStream = case StreamStart of
-			true -> {To, StreamVersion};
-			_ -> <<"">>
-		      end,
-	  case catch {gen_fsm:sync_send_all_state_event(FsmRef,
-							#http_put{rid = Rid,
-								  attrs = Attrs,
-								  payload =
-								      Payload,
-								  payload_size =
-								      PayloadSize,
-								  hold = Hold,
-								  stream =
-								      NewStream,
-								  ip = IP},
-							30000),
-		      Sess}
-	      of
-	    {'EXIT', _} -> {error, not_exists};
-	    Res -> Res
-	  end
+	{error, _} ->
+	    {error, not_exists};
+	{ok, #http_bind{pid = FsmRef, hold = Hold,
+		        to = {To, StreamVersion}} = Sess} ->
+	    NewStream = case StreamStart of
+		true -> {To, StreamVersion};
+		_ -> <<"">>
+	    end,
+	    case catch {gen_fsm:sync_send_all_state_event(
+		    FsmRef, #http_put{rid = Rid,
+			    attrs = Attrs,
+			    payload = Payload,
+			    payload_size = PayloadSize,
+			    hold = Hold,
+			    stream = NewStream,
+			    ip = IP},
+			30000), Sess}
+	    of
+		{'EXIT', _} -> {error, not_exists};
+		Res -> Res
+	    end
     end.
 
 handle_http_put_error(Reason,
@@ -884,6 +896,7 @@ handle_http_put_error(Reason,
 	  {403, ?HEADER, <<"">>}
     end.
 
+%% Control RID ordering
 rid_allow(none, _NewRid, _Attrs, _Hold, _MaxPause) ->
     {true, 0};
 rid_allow(OldRid, NewRid, Attrs, Hold, MaxPause) ->
@@ -983,6 +996,7 @@ prepare_response(Sess, Rid, OutputEls, StreamStart) ->
 	     (?NS_HTTP_BIND)/binary, "'/>">>}
     end.
 
+%% Send output payloads on establised sessions
 prepare_outpacket_response(Sess, _Rid, OutPacket,
 			   false) ->
     case catch send_outpacket(Sess, OutPacket) of
@@ -1219,11 +1233,14 @@ send_receiver_reply(undefined, _Reply) -> ok;
 send_receiver_reply(Receiver, Reply) ->
     gen_fsm:reply(Receiver, Reply).
 
+%% Cancel timer and empty message queue.
 cancel_timer(undefined) -> ok;
 cancel_timer(Timer) ->
     erlang:cancel_timer(Timer),
     receive {timeout, Timer, _} -> ok after 0 -> ok end.
 
+%% If client asked for a pause (pause > 0), we apply the pause value
+%% as inactivity timer:
 set_inactivity_timer(Pause, _MaxInactivity)
     when Pause > 0 ->
     erlang:start_timer(Pause * 1000, self(), []);
@@ -1239,6 +1256,8 @@ elements_to_string([El|Els], Acc) ->
 elements_to_string(Els) ->
     elements_to_string(Els, []).
 
+%% @spec (To, Default::integer()) -> integer()
+%% where To = [] | {Host::string(), Version::string()}
 get_max_inactivity({Host, _}, Default) ->
     case gen_mod:get_module_opt(Host, mod_http_bind, max_inactivity,
                                 fun(I) when is_integer(I), I>0 -> I end,
@@ -1255,6 +1274,7 @@ get_max_pause({Host, _}) ->
 			   ?MAX_PAUSE);
 get_max_pause(_) -> ?MAX_PAUSE.
 
+%% Current time as integer
 tnow() ->
     {TMegSec, TSec, TMSec} = now(),
     (TMegSec * 1000000 + TSec) * 1000000 + TMSec.
@@ -1271,6 +1291,8 @@ check_default_xmlns(#xmlel{name = Name, attrs = Attrs,
     end;
 check_default_xmlns(El) -> El.
 
+%% Check that mod_http_bind has been defined in config file.
+%% Print a warning in log file if this is not the case.
 check_bind_module(XmppDomain) ->
     case gen_mod:is_loaded(XmppDomain, mod_http_bind) of
       true -> true;

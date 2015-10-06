@@ -56,15 +56,15 @@ is_carbon_copy(Packet) ->
 	is_carbon_copy(Packet, <<"received">>).
 
 is_carbon_copy(Packet, Direction) ->
-	case xml:get_subtag(Packet, Direction) of
-		#xmlel{name = Direction, attrs = AAttrs}  ->
-		case xml:get_attr_s(<<"xmlns">>, AAttrs) of
-				?NS_CARBONS_2 -> true;
-				?NS_CARBONS_1 -> true;
-				_ -> false
-			end;
+    case xml:get_subtag(Packet, Direction) of
+	#xmlel{name = Direction, attrs = Attrs} ->
+	    case xml:get_attr_s(<<"xmlns">>, Attrs) of
+		?NS_CARBONS_2 -> true;
+		?NS_CARBONS_1 -> true;
 		_ -> false
-	end.
+	    end;
+	_ -> false
+    end.
 
 start(Host, Opts) ->
     IQDisc = gen_mod:get_opt(iqdisc, Opts,fun gen_iq_handler:check_type/1, one_queue),

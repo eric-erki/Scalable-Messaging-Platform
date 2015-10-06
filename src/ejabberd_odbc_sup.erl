@@ -151,8 +151,7 @@ get_random_pid_shard(Host, Key, Term) ->
 transform_options(Opts) ->
     lists:foldl(fun transform_options/2, [], Opts).
 
-transform_options({odbc_server,
-		   {Type, Server, Port, DB, User, Pass}}, Opts) ->
+transform_options({odbc_server, {Type, Server, Port, DB, User, Pass}}, Opts) ->
     [{odbc_type, Type},
      {odbc_server, Server},
      {odbc_port, Port},
@@ -160,11 +159,9 @@ transform_options({odbc_server,
      {odbc_username, User},
      {odbc_password, Pass}|Opts];
 transform_options({odbc_server, {mysql, Server, DB, User, Pass}}, Opts) ->
-    transform_options(
-      {odbc_server, {mysql, Server, ?MYSQL_PORT, DB, User, Pass}}, Opts);
+    transform_options({odbc_server, {mysql, Server, ?MYSQL_PORT, DB, User, Pass}}, Opts);
 transform_options({odbc_server, {pgsql, Server, DB, User, Pass}}, Opts) ->
-    transform_options(
-      {odbc_server, {pgsql, Server, ?PGSQL_PORT, DB, User, Pass}}, Opts);
+    transform_options({odbc_server, {pgsql, Server, ?PGSQL_PORT, DB, User, Pass}}, Opts);
 transform_options({odbc_server, {sqlite, DB}}, Opts) ->
     transform_options({odbc_server, {sqlite, DB}}, Opts);
 transform_options(Opt, Opts) ->

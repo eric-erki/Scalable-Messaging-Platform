@@ -31,9 +31,10 @@
 
 -export([export/2, export/3, import/3, import/4, import_info/1]).
 
--record(sql_dump, {fd, type}).
 
 -define(MAX_RECORDS_PER_TRANSACTION, 100).
+
+-record(sql_dump, {fd, type}).
 
 %%%----------------------------------------------------------------------
 %%% API

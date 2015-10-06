@@ -32,9 +32,12 @@
 -behaviour(p1_fsm).
 
 %% External exports
--export([start/3, start_link/3, start_connection/1,
-	 terminate_if_waiting_delay/2, stop_connection/1,
-	 stop_connection/2, transform_options/1]).
+-export([start/3,
+	 start_link/3,
+	 start_connection/1,
+	 terminate_if_waiting_delay/2,
+	 stop_connection/1, stop_connection/2,
+	 transform_options/1]).
 
 -export([init/1, open_socket/2, wait_for_stream/2,
 	 wait_for_validation/2, wait_for_features/2,
@@ -101,8 +104,11 @@
 
 -define(FSMTIMEOUT, 30000).
 
+%% We do not block on send anymore.
 -define(TCP_SEND_TIMEOUT, 15000).
 
+%% Maximum delay to wait before retrying to connect after a failed attempt.
+%% Specified in miliseconds. Default value is 5 minutes.
 -define(MAX_RETRY_DELAY, 300000).
 
 -define(STREAM_HEADER,
@@ -124,6 +130,9 @@
 
 -define(SOCKET_DEFAULT_RESULT, {error, badarg}).
 
+%%%----------------------------------------------------------------------
+%%% API
+%%%----------------------------------------------------------------------
 start(From, Host, Type) ->
     Node = node(), ?SUPERVISOR_START.
 
@@ -722,7 +731,7 @@ wait_for_starttls_proceed({xmlstreamelement, El},
       #xmlel{name = <<"proceed">>, attrs = Attrs} ->
 	  case xml:get_attr_s(<<"xmlns">>, Attrs) of
 	    ?NS_TLS ->
-		?DEBUG("startp1_tls: ~p",
+		?DEBUG("starttls: ~p",
 		       [{StateData#state.myname, StateData#state.server}]),
 		Socket = StateData#state.socket,
 		TLSOpts = case
@@ -804,6 +813,7 @@ reopen_socket(closed, StateData) ->
     p1_fsm:send_event(self(), init),
     {next_state, open_socket, StateData, ?FSMTIMEOUT}.
 
+%% This state is use to avoid reconnecting to often to bad sockets
 wait_before_retry(_Event, StateData) ->
     {next_state, wait_before_retry, StateData, ?FSMTIMEOUT}.
 
@@ -1017,6 +1027,7 @@ send_queue(StateData, Q) ->
       {empty, _Q1} -> ok
     end.
 
+%% Bounce a single message (xmlelement)
 bounce_element(El, Error) ->
     #xmlel{attrs = Attrs} = El,
     case xml:get_attr_s(<<"type">>, Attrs) of
@@ -1269,6 +1280,8 @@ transform_options({s2s_dns_options, S2SDNSOpts}, AllOpts) ->
 transform_options(Opt, Opts) ->
     [Opt|Opts].
 
+%% Human readable S2S logging: Log only new outgoing connections as INFO
+%% Do not log dialback
 log_s2s_out(false, _, _, _) -> ok;
 %% Log new outgoing connections:
 log_s2s_out(_, Myname, Server, Tls) ->
@@ -1276,6 +1289,8 @@ log_s2s_out(_, Myname, Server, Tls) ->
 	      "~s with TLS=~p",
 	      [Myname, Server, Tls]).
 
+%% Calculate timeout depending on which state we are in:
+%% Can return integer > 0 | infinity
 get_timeout_interval(StateName) ->
     case StateName of
       %% Validation implies dialback: Networking can take longer:
@@ -1285,6 +1300,8 @@ get_timeout_interval(StateName) ->
       _ -> ?FSMTIMEOUT
     end.
 
+%% This function is intended to be called at the end of a state
+%% function that want to wait for a reconnect delay before stopping.
 wait_before_reconnect(StateData) ->
     bounce_queue(StateData#state.queue,
 		 ?ERR_REMOTE_SERVER_NOT_FOUND),
@@ -1308,6 +1325,7 @@ get_max_retry_delay() ->
         Seconds -> Seconds * 1000
     end.
 
+%% Terminate s2s_out connections that are in state wait_before_retry
 terminate_if_waiting_delay(From, To) ->
     FromTo = {From, To},
     Pids = ejabberd_s2s:get_connections_pids(FromTo),

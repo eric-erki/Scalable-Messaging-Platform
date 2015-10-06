@@ -30,14 +30,24 @@
 -behaviour(gen_server).
 
 %% API
--export([start/4, start_link/5, starttls/2, starttls/3,
-	 compress/1, compress/2, reset_stream/1, send/2,
-	 change_shaper/2, monitor/1, get_sockmod/1,
-	 get_peer_certificate/1, get_verify_result/1, close/1,
-	 setopts/2, change_controller/2, sockname/1,
-	 peername/1]).
-
-         %connect/3,
+-export([start/4,
+	 start_link/5,
+	 %connect/3,
+	 starttls/2,
+	 starttls/3,
+	 compress/1,
+	 compress/2,
+	 reset_stream/1,
+	 send/2,
+	 change_shaper/2,
+	 monitor/1,
+	 get_sockmod/1,
+	 get_peer_certificate/1,
+	 get_verify_result/1,
+	 close/1,
+	 setopts/2,
+	 change_controller/2,
+	 sockname/1, peername/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
@@ -47,6 +57,9 @@
 
 -define(HIBERNATE_TIMEOUT, 90000).
 
+%%====================================================================
+%% API
+%%====================================================================
 start_link(Module, SockMod, Socket, Opts, Receiver) ->
     gen_server:start_link(?MODULE,
 			  [Module, SockMod, Socket, Opts, Receiver], []).
@@ -128,13 +141,14 @@ close(FsmRef) -> gen_server:call(FsmRef, close).
 
 sockname(FsmRef) -> gen_server:call(FsmRef, sockname).
 
+peername(FsmRef) ->
+    gen_server:call(FsmRef, peername).
+
 setopts(FsmRef, Opts) ->
     gen_server:call(FsmRef, {setopts, Opts}).
 
 change_controller(FsmRef, C2SPid) ->
     gen_server:call(FsmRef, {change_controller, C2SPid}).
-
-peername(FsmRef) -> gen_server:call(FsmRef, peername).
 
 %%====================================================================
 %% gen_server callbacks
@@ -183,8 +197,7 @@ handle_call(reset_stream, _From, State) ->
     Reply = ok,
     {reply, Reply, State, ?HIBERNATE_TIMEOUT};
 handle_call({send, Data}, _From, State) ->
-    catch (State#socket_state.sockmod):send(State#socket_state.socket,
-				     Data),
+    catch (State#socket_state.sockmod):send(State#socket_state.socket, Data),
     Reply = ok,
     {reply, Reply, State, ?HIBERNATE_TIMEOUT};
 handle_call({change_shaper, Shaper}, _From, State) ->
@@ -242,10 +255,9 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
 check_starttls(SockMod, Socket, Receiver, Opts) ->
     TLSEnabled = proplists:get_bool(tls, Opts),
-    TLSOpts = lists:filter(fun ({certfile, _}) -> true;
-			       (_) -> false
-			   end,
-			   Opts),
+    TLSOpts = lists:filter(fun({certfile, _}) -> true;
+			      (_) -> false
+			   end, Opts),
     if TLSEnabled ->
            case ejabberd_receiver:starttls(Receiver, TLSOpts) of
                {ok, TLSSocket} ->

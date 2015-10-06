@@ -66,7 +66,8 @@ start_link(Host, Opts) ->
 init([Opts]) ->
     update_tables(),
     mnesia:create_table(bytestream,
-			[{ram_copies, [node()]}, {local_content, true},
+			[{ram_copies, [node()]},
+			 {local_content, true},
 			 {attributes, record_info(fields, bytestream)}]),
     mnesia:add_table_copy(bytestream, node(), ram_copies),
     MaxConnections = gen_mod:get_opt(max_connections, Opts,
@@ -174,8 +175,7 @@ activate_stream(SHA1, IJid, TJid, Host)
     end.
 
 update_tables() ->
-    case catch mnesia:table_info(bytestream, local_content)
-	of
-      false -> mnesia:delete_table(bytestream);
-      _ -> ok
+    case catch mnesia:table_info(bytestream, local_content) of
+	false -> mnesia:delete_table(bytestream);
+	_ -> ok
     end.

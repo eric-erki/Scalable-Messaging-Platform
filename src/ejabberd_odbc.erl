@@ -34,13 +34,24 @@
 -behaviour(?GEN_FSM).
 
 %% External exports
--export([start/2, start_link/3, start_link/4, sql_query/2,
-	 sql_query/3, sql_query_t/1, sql_transaction/2,
-	 sql_transaction/3, sql_bloc/2, sql_bloc/3, escape/1,
-	 escape_like/1, to_bool/1, keep_alive/1, init_mssql/1,
+-export([start/2, start_link/3, start_link/4,
+	 sql_query/2, sql_query/3,
+	 sql_query_t/1,
+	 sql_transaction/2, sql_transaction/3,
+	 sql_bloc/2, sql_bloc/3,
+	 escape/1,
+	 escape_like/1,
+	 to_bool/1,
+	 sqlite_db/1,
+	 sqlite_file/1,
+	 encode_term/1,
+	 decode_term/1,
+	 odbc_config/0,
+	 freetds_config/0,
+	 odbcinst_config/0,
+	 init_mssql/1,
+	 keep_alive/1,
 	 sql_query_on_all_connections/2, sql_query_on_all_connections/3,
-	 sqlite_db/1, sqlite_file/1, encode_term/1, decode_term/1,
-	 odbc_config/0, freetds_config/0, odbcinst_config/0,
 	 get_proc/2, get_proc/3]).
 
 %% gen_fsm callbacks
@@ -57,12 +68,12 @@
 
 -record(state,
 	{db_ref = self()                     :: pid(),
-         db_type = odbc                      :: pgsql | mysql | sqlite | odbc | mssql,
+	 db_type = odbc                      :: pgsql | mysql | sqlite | odbc | mssql,
 	 shard = undefined                   :: undefined | non_neg_integer(),
-         start_interval = 0                  :: non_neg_integer(),
-         host = <<"">>                       :: binary(),
+	 start_interval = 0                  :: non_neg_integer(),
+	 host = <<"">>                       :: binary(),
 	 max_pending_requests_len            :: non_neg_integer(),
-         pending_requests = {0, queue:new()} :: {non_neg_integer(), ?TQUEUE}}).
+	 pending_requests = {0, queue:new()} :: {non_neg_integer(), ?TQUEUE}}).
 
 -define(STATE_KEY, ejabberd_odbc_state).
 
@@ -155,6 +166,8 @@ sql_query_on_all_connections(Host, Key, Query) ->
 	end,
     lists:map(F, ejabberd_odbc_sup:get_pids_shard(Host, Key)).
 
+%% SQL transaction based on a list of queries
+%% This function automatically
 -spec sql_transaction(binary(), [sql_query()] | fun(() -> any())) ->
                              {atomic, any()} |
                              {aborted, any()}.
@@ -216,10 +229,9 @@ sql_call(Host, Key, Msg) ->
     end.
 
 keep_alive(PID) ->
-    (?GEN_FSM):sync_send_event(
-      PID,
-      {sql_cmd, {sql_query, ?KEEPALIVE_QUERY}, now()},
-      ?KEEPALIVE_TIMEOUT).
+    (?GEN_FSM):sync_send_event(PID,
+			       {sql_cmd, {sql_query, ?KEEPALIVE_QUERY}, now()},
+			       ?KEEPALIVE_TIMEOUT).
 
 -spec sql_query_t(sql_query()) -> sql_query_result().
 
@@ -241,14 +253,13 @@ escape(S) ->
 	<<  <<(odbc_queries:escape(Char))/binary>> || <<Char>> <= S >>.
 
 %% Escape character that will confuse an SQL engine
-%% Percent and underscore only need to be escaped for pattern matching
-%% like statement
+%% Percent and underscore only need to be escaped for pattern matching like
+%% statement
 escape_like(S) when is_binary(S) ->
     << <<(escape_like(C))/binary>> || <<C>> <= S >>;
 escape_like($%) -> <<"\\%">>;
 escape_like($_) -> <<"\\_">>;
-escape_like(C) when is_integer(C), C >= 0, C =< 255 ->
-    odbc_queries:escape(C).
+escape_like(C) when is_integer(C), C >= 0, C =< 255 -> odbc_queries:escape(C).
 
 to_bool(<<"t">>) -> true;
 to_bool(<<"true">>) -> true;
@@ -360,21 +371,19 @@ connecting({sql_cmd, Command, Timestamp} = Req, From,
     NewPendingRequests = if Len <
 			      State#state.max_pending_requests_len ->
 				{Len + 1,
-				 queue:in({sql_cmd, Command,
-					   From, Timestamp},
+				 queue:in({sql_cmd, Command, From, Timestamp},
 					  PendingRequests)};
 			    true ->
-				lists:foreach(
-				  fun ({sql_cmd, _, To, _Timestamp}) ->
-					  (?GEN_FSM):reply(
-					    To,
-					    {error,
-					     <<"SQL connection failed">>})
-				  end,
-				  queue:to_list(PendingRequests)),
-				 {1,
-				  queue:from_list([{sql_cmd, Command, From,
-						    Timestamp}])}
+				lists:foreach(fun ({sql_cmd, _, To,
+						    _Timestamp}) ->
+						      (?GEN_FSM):reply(To,
+								       {error,
+									<<"SQL connection failed">>})
+					      end,
+					      queue:to_list(PendingRequests)),
+				{1,
+				 queue:from_list([{sql_cmd, Command, From,
+						   Timestamp}])}
 			 end,
     {next_state, connecting,
      State#state{pending_requests = NewPendingRequests}};
@@ -453,8 +462,7 @@ run_sql_cmd(Command, From, State, Timestamp) ->
     end.
 
 %% Only called by handle_call, only handles top level operations.
-%% @spec outer_op(Op) ->
-%%                {error, Reason} | {aborted, Reason} | {atomic, Result}
+%% @spec outer_op(Op) -> {error, Reason} | {aborted, Reason} | {atomic, Result}
 outer_op({sql_query, Query}) ->
     sql_query_internal(Query);
 outer_op({sql_transaction, F}) ->
@@ -545,16 +553,10 @@ sql_query_internal(Query) ->
 	    pgsql ->
 		pgsql_to_odbc(pgsql:squery(State#state.db_ref, Query));
 	    mysql ->
-		%% squery to be able to specify result_type = binary
-		%% [Query] because p1_mysql_conn expect query to be a
-		%% list (elements can be binaries, or iolist) but
-		%% doesn't accept just a binary
-		R = mysql_to_odbc(
-		      p1_mysql_conn:squery(
-			State#state.db_ref,
-			[Query], self(),
-			[{timeout, (?TRANSACTION_TIMEOUT) - 1000},
-			 {result_type, binary}])),
+		R = mysql_to_odbc(p1_mysql_conn:squery(State#state.db_ref,
+						   [Query], self(),
+						   [{timeout, (?TRANSACTION_TIMEOUT) - 1000},
+						    {result_type, binary}])),
 		%% ?INFO_MSG("MySQL, Received result~n~p~n", [R]),
 		  R;
 	      sqlite ->
@@ -690,9 +692,9 @@ mysql_connect(Server, Port, DB, Username, Password) ->
 	of
 	{ok, Ref} ->
 	    p1_mysql_conn:fetch(
-	      Ref, [<<"set names 'utf8' collate 'utf8_bin';">>], self()),
+		Ref, [<<"set names 'utf8' collate 'utf8_bin';">>], self()),
 	    p1_mysql_conn:fetch(
-	      Ref, [<<"SET SESSION query_cache_type=1;">>], self()),
+		Ref, [<<"SET SESSION query_cache_type=1;">>], self()),
 	    {ok, Ref};
 	Err -> Err
     end.
@@ -924,11 +926,11 @@ fsm_limit_opts() ->
       _ -> []
     end.
 
-opt_type(odbc_keepalive_interval) ->
-    fun (I) when is_integer(I), I > 0 -> I end;
 opt_type(max_fsm_queue) ->
     fun (N) when is_integer(N), N > 0 -> N end;
 opt_type(odbc_database) -> fun iolist_to_binary/1;
+opt_type(odbc_keepalive_interval) ->
+    fun (I) when is_integer(I), I > 0 -> I end;
 opt_type(odbc_password) -> fun iolist_to_binary/1;
 opt_type(odbc_port) ->
     fun (P) when is_integer(P), P > 0, P < 65536 -> P end;

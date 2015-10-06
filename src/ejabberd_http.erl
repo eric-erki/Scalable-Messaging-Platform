@@ -179,11 +179,14 @@ init({SockMod, Socket}, Opts) ->
         {error, _} -> State
     end.
 
-become_controller(_Pid) -> ok.
+become_controller(_Pid) ->
+    ok.
 
-socket_type() -> raw.
+socket_type() ->
+    raw.
 
-send_text(_State, none) -> exit(normal);
+send_text(_State, none) ->
+    exit(normal);
 send_text(State, Text) ->
     case catch
 	   (State#state.sockmod):send(State#state.socket, Text)
@@ -225,15 +228,16 @@ parse_headers(#state{request_method = Method,
 		_ -> httph_bin
 	      end,
     case erlang:decode_packet(PktType, Data, []) of
-      {ok, Pkt, Rest} ->
-	  NewState = process_header(State#state{trail = Rest},
-				    {ok, Pkt}),
-	  case NewState#state.end_of_request of
-	    true -> ok;
-	    _ -> parse_headers(NewState)
-	  end;
-      {more, _} -> receive_headers(State#state{trail = Data});
-      _ -> ok
+	{ok, Pkt, Rest} ->
+	    NewState = process_header(State#state{trail = Rest}, {ok, Pkt}),
+	    case NewState#state.end_of_request of
+		true -> ok;
+		_ -> parse_headers(NewState)
+	    end;
+	{more, _} ->
+	    receive_headers(State#state{trail = Data});
+	_ ->
+	    ok
     end.
 
 process_header(State, Data) ->
@@ -293,9 +297,7 @@ process_header(State, Data) ->
 		      request_headers = add_header(Name, Host, State)};
       {ok, {http_header, _, Name, _, Value}} when is_binary(Name) ->
 	  State#state{request_headers =
-			  add_header(normalize_header_name(Name),
-                                     Value,
-				     State)};
+			  add_header(normalize_header_name(Name), Value, State)};
       {ok, {http_header, _, Name, _, Value}} ->
 	  State#state{request_headers =
 			  add_header(Name, Value, State)};
@@ -320,24 +322,24 @@ process_header(State, Data) ->
 	  send_text(State2, Out),
 	  case State2#state.request_keepalive of
 	    true ->
-                  #state{sockmod = SockMod, socket = Socket,
-                         options = State#state.options,
-                         default_host = State#state.default_host,
-                         request_handlers = State#state.request_handlers,
-                         websocket_handlers = State#state.websocket_handlers};
+		#state{sockmod = SockMod, socket = Socket,
+		       options = State#state.options,
+		       default_host = State#state.default_host,
+		       request_handlers = State#state.request_handlers,
+		       websocket_handlers = State#state.websocket_handlers};
 	    _ ->
-                  #state{end_of_request = true,
-                         options = State#state.options,
-                         default_host = State#state.default_host,
-                         request_handlers = State#state.request_handlers,
-                         websocket_handlers = State#state.websocket_handlers}
+		#state{end_of_request = true,
+		       options = State#state.options,
+		       default_host = State#state.default_host,
+		       request_handlers = State#state.request_handlers,
+		       websocket_handlers = State#state.websocket_handlers}
 	  end;
       _ ->
-            #state{end_of_request = true,
-                   options = State#state.options,
-                   default_host = State#state.default_host,
-                   request_handlers = State#state.request_handlers,
-                   websocket_handlers = State#state.websocket_handlers}
+	  #state{end_of_request = true,
+		 options = State#state.options,
+		 default_host = State#state.default_host,
+		 request_handlers = State#state.request_handlers,
+		 websocket_handlers = State#state.websocket_handlers}
     end.
 
 add_header(Name, Value, State)->
@@ -349,7 +351,8 @@ add_header(Name, Value, State)->
 	  false -> undefined
 	end).
 
-get_host_really_served(undefined, Provided) -> Provided;
+get_host_really_served(undefined, Provided) ->
+    Provided;
 get_host_really_served(Default, Provided) ->
     case lists:member(Provided, ?MYHOSTS) of
       true -> Provided;
@@ -453,7 +456,7 @@ process_request(#state{request_method = Method,
 		       websocket_handlers = WebSocketHandlers,
 		       request_headers = RequestHeaders,
 		       request_handlers = RequestHandlers,
-                       trail = Trail} = State) ->
+		       trail = Trail} = State) ->
     case extract_path_query(State) of
 	false ->
 	    make_bad_request(State);
@@ -563,13 +566,13 @@ recv_data(State, Len, Acc) ->
 
 make_xhtml_output(State, Status, Headers, XHTML) ->
     DataRaw = case lists:member(html, Headers) of
-		  true ->
-		      iolist_to_binary([?HTML_DOCTYPE,
-					xml:element_to_binary(XHTML)]);
-		  _ ->
-		      iolist_to_binary([?XHTML_DOCTYPE,
-					xml:element_to_binary(XHTML)])
-	      end,
+	true ->
+	    iolist_to_binary([?HTML_DOCTYPE,
+		    xml:element_to_binary(XHTML)]);
+	_ ->
+	    iolist_to_binary([?XHTML_DOCTYPE,
+		    xml:element_to_binary(XHTML)])
+    end,
     Data = if State#state.compression == gzip ->
 		   zlib:gzip(DataRaw);
 	      true ->
@@ -702,6 +705,7 @@ parse_encoding(Encodings) ->
 % 2. Redistributions in binary form must reproduce the above copyright
 %    notice as well as this list of conditions.
 
+%% @doc Split the URL and return {Path, QueryPart}
 url_decode_q_split(Path) ->
     url_decode_q_split(Path, <<>>).
 
@@ -713,6 +717,7 @@ url_decode_q_split(<<H, T/binary>>, Acc) when H /= 0 ->
 url_decode_q_split(<<>>, Ack) ->
     {path_norm_reverse(Ack), <<>>}.
 
+%% @doc Decode a part of the URL and return string()
 path_decode(Path) -> path_decode(Path, <<>>).
 
 path_decode(<<$%, Hi, Lo, Tail/binary>>, Acc) ->

@@ -37,18 +37,13 @@
 
 -define(LOG_PATH, <<"ejabberd.log">>).
 
+-define(EJABBERD_URI, <<"http://www.process-one.net/en/ejabberd/">>).
+
 -ifdef(ENABLE_FLASH_HACK).
-
 -define(FLASH_HACK, true).
-
 -else.
-
 -define(FLASH_HACK, false).
-
 -endif.
-
--define(EJABBERD_URI,
-	<<"http://www.process-one.net/en/ejabberd/">>).
 
 -define(S2STIMEOUT, 600000).
 

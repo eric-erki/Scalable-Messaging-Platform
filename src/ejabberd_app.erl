@@ -226,11 +226,9 @@ set_settings_from_config() ->
 -ifdef(p1db).
 p1db_start() ->
     ejabberd:start_app(p1db).
-
 -else.
 p1db_start() ->
     ok.
-
 -endif.
 
 start_apps() ->

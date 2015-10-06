@@ -41,14 +41,23 @@
 -export([count_offline_messages/2]).
 
 -export([start/2,
-         start_link/2,
-         stop/1, store_packet/3, get_offline_els/2,
+	 start_link/2,
+	 stop/1,
+	 store_packet/3,
+	 get_offline_els/2,
 	 pop_offline_messages/3,
-	 remove_expired_messages/1, remove_old_messages/2,
-	 remove_user/2, get_queue_length/2, webadmin_page/3, webadmin_user/4,
-	 webadmin_user_parse_query/5, count_offline_messages/3,
+	 remove_expired_messages/1,
+	 remove_old_messages/2,
+	 remove_user/2,
+	 import/5,
+	 export/1,
+	 get_queue_length/2,
+	 count_offline_messages/3,
+	 webadmin_page/3,
+	 webadmin_user/4,
+	 webadmin_user_parse_query/5,
 	 enc_key/1, dec_key/1, enc_val/2, dec_val/2,
-         export/1, import_info/0, import/5, import_start/2]).
+	 import_info/0, import_start/2]).
 
 
 %% Called from mod_offline_worker
@@ -76,6 +85,7 @@
 
 -define(OFFLINE_TABLE_LOCK_THRESHOLD, 1000).
 
+%% default value for the maximum number of user messages
 -define(MAX_USER_MESSAGES, infinity).
 
 start_link(Host, Opts) ->
@@ -88,7 +98,7 @@ start(Host, Opts) ->
 
 stop(Host) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    catch ?GEN_SERVER:call(Proc, stop), %%To ensure the terminate() callback is triggered
+    catch ?GEN_SERVER:call(Proc, stop),
     mod_offline_sup:stop(Host).
 
 status(Host) ->
@@ -104,21 +114,21 @@ init([Host, Opts]) ->
 		       store_packet, 50),
     ejabberd_hooks:add(resend_offline_messages_hook, Host,
 		       ?MODULE, pop_offline_messages, 50),
-    ejabberd_hooks:add(remove_user, Host, ?MODULE,
-		       remove_user, 50),
-    ejabberd_hooks:add(anonymous_purge_hook, Host, ?MODULE,
-		       remove_user, 50),
-    ejabberd_hooks:add(webadmin_page_host, Host, ?MODULE,
-		       webadmin_page, 50),
-    ejabberd_hooks:add(webadmin_user, Host, ?MODULE,
-		       webadmin_user, 50),
+    ejabberd_hooks:add(remove_user, Host,
+		       ?MODULE, remove_user, 50),
+    ejabberd_hooks:add(anonymous_purge_hook, Host,
+		       ?MODULE, remove_user, 50),
+    ejabberd_hooks:add(webadmin_page_host, Host,
+		       ?MODULE, webadmin_page, 50),
+    ejabberd_hooks:add(webadmin_user, Host,
+		       ?MODULE, webadmin_user, 50),
     ejabberd_hooks:add(webadmin_user_parse_query, Host,
 		       ?MODULE, webadmin_user_parse_query, 50),
     ejabberd_hooks:add(count_offline_messages, Host,
 		       ?MODULE, count_offline_messages, 50),
     AccessMaxOfflineMsgs =
 	gen_mod:get_opt(access_max_user_messages, Opts,
-                        fun(A) when is_atom(A) -> A end,
+			fun(A) when is_atom(A) -> A end,
 			max_user_offline_messages),
     {ok,
      #state{host = Host,
@@ -199,8 +209,7 @@ store_offline_msg(_Host, US, Msgs, Len, MaxOfflineMsgs,
 		end
 	end,
     mnesia:transaction(F);
-store_offline_msg(Host, {User, _}, Msgs, Len, MaxOfflineMsgs,
-		  odbc) ->
+store_offline_msg(Host, {User, _Server}, Msgs, Len, MaxOfflineMsgs, odbc) ->
     Count = if MaxOfflineMsgs =/= infinity ->
 		   Len + count_offline_messages(User, Host);
 	       true -> 0
@@ -267,19 +276,35 @@ store_offline_msg(Host, {User, _}, Msgs, Len, MaxOfflineMsgs,
     end.
 
 get_max_user_messages(AccessRule, {User, Server}, Host) ->
-    case acl:match_rule(Host, AccessRule,
-			jlib:make_jid(User, Server, <<"">>))
-	of
-      Max when is_integer(Max) -> Max;
-      infinity -> infinity;
-      _ -> ?MAX_USER_MESSAGES
+    case acl:match_rule(
+	   Host, AccessRule, jlib:make_jid(User, Server, <<"">>)) of
+	Max when is_integer(Max) -> Max;
+	infinity -> infinity;
+	_ -> ?MAX_USER_MESSAGES
     end.
 
+
+need_to_store(LServer, Packet) ->
+    Type = xml:get_tag_attr_s(<<"type">>, Packet),
+    if (Type /= <<"error">>) and (Type /= <<"groupchat">>)
+       and (Type /= <<"headline">>) ->
+	    case gen_mod:get_module_opt(
+		   LServer, ?MODULE, store_empty_body,
+		   fun(V) when is_boolean(V) -> V end,
+		   true) of
+		false ->
+		    xml:get_subtag(Packet, <<"body">>) /= false;
+		true ->
+		    true
+	    end;
+       true ->
+	    false
+    end.
 
 store_packet(From, To, Packet) ->
     case need_to_store(To#jid.lserver, Packet) of
 	true ->
-	   case has_no_store_hint(Packet) of
+	    case has_no_store_hint(Packet) of
 		false ->
 		    case check_event(From, To, Packet) of
 			true ->
@@ -304,23 +329,7 @@ has_no_store_hint(Packet) ->
       orelse
       xml:get_subtag_with_xmlns(Packet, <<"no-storage">>, ?NS_HINTS) =/= false.
 
-need_to_store(LServer, Packet) ->
-    Type = xml:get_tag_attr_s(<<"type">>, Packet),
-    if (Type /= <<"error">>) and (Type /= <<"groupchat">>)
-       and (Type /= <<"headline">>) ->
-	    case gen_mod:get_module_opt(
-		   LServer, ?MODULE, store_empty_body,
-		   fun(V) when is_boolean(V) -> V end,
-		   true) of
-		false ->
-		    xml:get_subtag(Packet, <<"body">>) /= false;
-		true ->
-		    true
-	    end;
-       true ->
-	    false
-    end.
-
+%% Check if the packet has any content about XEP-0022 or XEP-0085
 check_event(From, To, Packet) ->
     #xmlel{name = Name, attrs = Attrs, children = Els} =
 	Packet,
@@ -364,6 +373,7 @@ check_event(From, To, Packet) ->
 	  end
     end.
 
+%% Check if the packet has subelements about XEP-0022, XEP-0085 or other
 find_x_event([]) -> false;
 find_x_event([{xmlcdata, _} | Els]) ->
     find_x_event(Els);
@@ -632,6 +642,7 @@ update_table() ->
 
 %% Helper functions:
 
+%% Warn senders that their messages have been discarded:
 discard_warn_sender(Msgs) ->
     lists:foreach(fun (#offline_msg{from = From, to = To,
 				    packet = Packet}) ->
@@ -1076,6 +1087,7 @@ webadmin_user_parse_query(Acc, _Action, _User, _Server,
 			  _Query) ->
     Acc.
 
+%% Returns as integer the number of offline messages for a given user
 count_offline_messages(User, Server) ->
     LUser = jlib:nodeprep(User),
     LServer = jlib:nameprep(Server),

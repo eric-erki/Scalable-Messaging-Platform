@@ -32,19 +32,19 @@
 -export([start_link/0,
 	 add/3,
 	 add/4,
+	 add/5,
 	 add_dist/5,
+	 add_dist/6,
 	 delete/3,
 	 delete/4,
-	 delete_dist/5,
-	 run/2,
-	 run_fold/3,
-	 add/5,
-	 add_dist/6,
 	 delete/5,
+	 delete_dist/5,
 	 delete_dist/6,
-	 get_handlers/2,
+	 run/2,
 	 run/3,
-	 run_fold/4]).
+	 run_fold/3,
+	 run_fold/4,
+	 get_handlers/2]).
 
 -export([delete_all_hooks/0]).
 
@@ -236,6 +236,7 @@ handle_call({add, Hook, Host, Node, Module, Function, Seq}, _From, State) ->
 		    ok
 	    end,
     {reply, Reply, State};
+
 handle_call({delete, Hook, Host, Module, Function, Seq}, _From, State) ->
     Reply = case ets:lookup(hooks, {Hook, Host}) of
 		[{_, Ls}] ->
@@ -256,17 +257,18 @@ handle_call({delete, Hook, Host, Node, Module, Function, Seq}, _From, State) ->
 		    ok
 	    end,
     {reply, Reply, State};
+
 handle_call({get_handlers, Hook, Host}, _From, State) ->
     Reply = case ets:lookup(hooks, {Hook, Host}) of
-                [{_, Handlers}] ->
-                    Handlers;
-                [] ->
-                    []
+                [{_, Handlers}] -> Handlers;
+                []              -> []
             end,
     {reply, Reply, State};
+
 handle_call({delete_all}, _From, State) ->
     Reply = ets:delete_all_objects(hooks),
     {reply, Reply, State};
+
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -297,7 +299,6 @@ handle_info(_Info, State) ->
 terminate(_Reason, _State) ->
     ok.
 
-
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
@@ -327,15 +328,10 @@ run1([{_Seq, Node, Module, Function} | Ls], Hook, Args) ->
 	    run1(Ls, Hook, Args)
     end;
 run1([{_Seq, Module, Function} | Ls], Hook, Args) ->
-    Res = if is_function(Function) ->
-		  catch apply(Function, Args);
-	     true ->
-		  catch apply(Module, Function, Args)
-	  end,
+    Res = safe_apply(Module, Function, Args),
     case Res of
 	{'EXIT', Reason} ->
-	    ?ERROR_MSG("~p~nrunning hook: ~p",
-		       [Reason, {Hook, Args}]),
+	    ?ERROR_MSG("~p~nrunning hook: ~p", [Reason, {Hook, Args}]),
 	    run1(Ls, Hook, Args);
 	stop ->
 	    ok;
@@ -368,15 +364,10 @@ run_fold1([{_Seq, Node, Module, Function} | Ls], Hook, Val, Args) ->
 	    run_fold1(Ls, Hook, NewVal, Args)
     end;
 run_fold1([{_Seq, Module, Function} | Ls], Hook, Val, Args) ->
-    Res = if is_function(Function) ->
-		  catch apply(Function, [Val | Args]);
-	     true ->
-		  catch apply(Module, Function, [Val | Args])
-	  end,
+    Res = safe_apply(Module, Function, [Val | Args]),
     case Res of
 	{'EXIT', Reason} ->
-	    ?ERROR_MSG("~p~nrunning hook: ~p",
-		       [Reason, {Hook, Args}]),
+	    ?ERROR_MSG("~p~nrunning hook: ~p", [Reason, {Hook, Args}]),
 	    run_fold1(Ls, Hook, Val, Args);
 	stop ->
 	    stopped;
@@ -384,4 +375,11 @@ run_fold1([{_Seq, Module, Function} | Ls], Hook, Val, Args) ->
 	    NewVal;
 	NewVal ->
 	    run_fold1(Ls, Hook, NewVal, Args)
+    end.
+
+safe_apply(Module, Function, Args) ->
+    if is_function(Function) ->
+            catch apply(Function, Args);
+       true ->
+            catch apply(Module, Function, Args)
     end.

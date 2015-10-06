@@ -28,13 +28,26 @@
 -author('alexey@process-one.net').
 
 %% API
--export([init/0, start/4, connect/3, connect/4, starttls/2,
-	 starttls/3, compress/1, compress/2, reset_stream/1,
-	 send/2, send_xml/2, change_shaper/2, monitor/1,
-	 get_sockmod/1, get_peer_certificate/1,
-	 get_peer_certificate/2, get_conn_type/1,
-	 get_verify_result/1, close/1, change_controller/2,
-	 change_socket/2, sockname/1, peername/1, is_remote_receiver/1]).
+-export([init/0, start/4,
+	 connect/3,
+	 connect/4,
+	 starttls/2,
+	 starttls/3,
+	 compress/1,
+	 compress/2,
+	 reset_stream/1,
+	 send/2,
+	 send_xml/2,
+	 change_shaper/2,
+	 monitor/1,
+	 get_sockmod/1,
+	 get_peer_certificate/1, get_peer_certificate/2,
+	 get_conn_type/1,
+	 get_verify_result/1,
+	 close/1,
+	 change_controller/2, change_socket/2,
+	 sockname/1, peername/1,
+	 is_remote_receiver/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -59,9 +72,12 @@
 
 -export_type([socket_state/0, sockmod/0]).
 
--spec start(atom(), sockmod(), socket(), [{atom(), any()}]) -> any().
-
 init() -> #socket_state{}.
+
+%%====================================================================
+%% API
+%%====================================================================
+-spec start(atom(), sockmod(), socket(), [{atom(), any()}]) -> any().
 
 start(Module, SockMod, Socket, Opts) ->
     case Module:socket_type() of
@@ -214,6 +230,9 @@ send(SocketData, Data) ->
 	  exit(normal)
     end.
 
+%% Can only be called when in c2s StateData#state.xml_socket is true
+%% This function is used for HTTP bind
+%% sockmod=ejabberd_http_ws|ejabberd_http_bind or any custom module
 -spec send_xml(socket_state(), xmlel()) -> any().
 
 send_xml(SocketData, Data) ->

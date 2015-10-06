@@ -13,15 +13,15 @@
 
 %% API
 -export([init/0,
-	 get_session/3,
 	 set_session/1,
 	 delete_session/1,
 	 get_sessions/0,
 	 get_sessions/1,
 	 get_sessions/2,
-         get_node_sessions/1,
-         delete_node/1,
-         get_sessions_number/0]).
+	 get_session/3,
+	 get_node_sessions/1,
+	 delete_node/1,
+	 get_sessions_number/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -105,7 +105,8 @@ get_sessions_number() ->
 init([]) ->
     update_tables(),
     mnesia:create_table(session,
-			[{ram_copies, [node()]}, {local_content, true},
+			[{ram_copies, [node()]},
+			 {local_content, true},
 			 {attributes, record_info(fields, session)}]),
     mnesia:add_table_index(session, us),
     mnesia:add_table_copy(session, node(), ram_copies),
@@ -139,12 +140,10 @@ update_tables() ->
       [ur, user, node] -> mnesia:delete_table(session);
       [ur, user, pid] -> mnesia:delete_table(session);
       [usr, us, pid] -> mnesia:delete_table(session);
+      [sid, usr, us, priority, info] -> mnesia:delete_table(session);
       [sid, usr, us, priority] ->
 	  mnesia:delete_table(session);
-      [sid, usr, us, priority, info] ->
-          mnesia:delete_table(session);
-      [usr, us, sid, priority, info] ->
-          ok;
+      [usr, us, sid, priority, info] -> ok;
       {'EXIT', _} -> ok
     end,
     case lists:member(presence, mnesia:system_info(tables))
@@ -152,14 +151,14 @@ update_tables() ->
       true -> mnesia:delete_table(presence);
       false -> ok
     end,
-    case lists:member(local_session,
-		      mnesia:system_info(tables))
-	of
-      true -> mnesia:delete_table(local_session);
-      false -> ok
+    case lists:member(local_session, mnesia:system_info(tables)) of
+	true ->
+	    mnesia:delete_table(local_session);
+	false ->
+	    ok
     end,
     mnesia:delete_table(session_counter),
     case catch mnesia:table_info(session, local_content) of
-      false -> mnesia:delete_table(session);
-      _ -> ok
+	false -> mnesia:delete_table(session);
+	_ -> ok
     end.

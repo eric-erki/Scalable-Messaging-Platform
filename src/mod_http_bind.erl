@@ -76,6 +76,55 @@ process(_Path, _Request) ->
     {400, ?HEADER,
      #xmlel{name = <<"h1">>, children = [{xmlcdata, <<"400 Bad Request">>}]}}.
 
+%%%----------------------------------------------------------------------
+%%% BEHAVIOUR CALLBACKS
+%%%----------------------------------------------------------------------
+start(Host, _Opts) ->
+    setup_database(),
+    Proc = gen_mod:get_module_proc(Host, ?PROCNAME_MHB),
+    ChildSpec = {Proc,
+		 {ejabberd_tmp_sup, start_link,
+		  [Proc, ejabberd_http_bind]},
+		 permanent, infinity, supervisor, [ejabberd_tmp_sup]},
+    supervisor:start_child(ejabberd_sup, ChildSpec).
+
+stop(Host) ->
+    Proc = gen_mod:get_module_proc(Host, ?PROCNAME_MHB),
+    supervisor:terminate_child(ejabberd_sup, Proc),
+    supervisor:delete_child(ejabberd_sup, Proc).
+
+setup_database() ->
+    migrate_database(),
+    mnesia:create_table(http_bind,
+			[{ram_copies, [node()]},
+			 {local_content, true},
+			 {attributes, record_info(fields, http_bind)}]),
+    mnesia:add_table_copy(http_bind, node(), ram_copies).
+
+migrate_database() ->
+    case catch mnesia:table_info(http_bind, attributes) of
+      [id, pid, to, hold, wait, process_delay, version] -> ok;
+      _ -> mnesia:delete_table(http_bind)
+    end,
+    case catch mnesia:table_info(http_bind, local_content)
+	of
+      false -> mnesia:delete_table(http_bind);
+      _ -> ok
+    end.
+
+mod_opt_type(max_inactivity) ->
+    fun (I) when is_integer(I), I > 0 -> I end;
+mod_opt_type(max_pause) ->
+    fun (I) when is_integer(I), I > 0 -> I end;
+mod_opt_type(prebind) ->
+    fun (B) when is_boolean(B) -> B end;
+mod_opt_type(_) -> [max_inactivity, max_pause, prebind].
+
+
+%%%----------------------------------------------------------------------
+%%% Help Web Page
+%%%----------------------------------------------------------------------
+
 get_human_html_xmlel() ->
     Heading = <<"ejabberd ",
 		(iolist_to_binary(atom_to_list(?MODULE)))/binary>>,
@@ -108,42 +157,3 @@ get_human_html_xmlel() ->
 					   "use HTTP-Bind you need a Jabber/XMPP "
 					   "client that supports it.">>}]}]}]}.
 
-start(Host, _Opts) ->
-    setup_database(),
-    Proc = gen_mod:get_module_proc(Host, ?PROCNAME_MHB),
-    ChildSpec = {Proc,
-		 {ejabberd_tmp_sup, start_link,
-		  [Proc, ejabberd_http_bind]},
-		 permanent, infinity, supervisor, [ejabberd_tmp_sup]},
-    supervisor:start_child(ejabberd_sup, ChildSpec).
-
-stop(Host) ->
-    Proc = gen_mod:get_module_proc(Host, ?PROCNAME_MHB),
-    supervisor:terminate_child(ejabberd_sup, Proc),
-    supervisor:delete_child(ejabberd_sup, Proc).
-
-setup_database() ->
-    migrate_database(),
-    mnesia:create_table(http_bind,
-			[{ram_copies, [node()]}, {local_content, true},
-			 {attributes, record_info(fields, http_bind)}]),
-    mnesia:add_table_copy(http_bind, node(), ram_copies).
-
-migrate_database() ->
-    case catch mnesia:table_info(http_bind, attributes) of
-      [id, pid, to, hold, wait, process_delay, version] -> ok;
-      _ -> mnesia:delete_table(http_bind)
-    end,
-    case catch mnesia:table_info(http_bind, local_content)
-	of
-      false -> mnesia:delete_table(http_bind);
-      _ -> ok
-    end.
-
-mod_opt_type(max_inactivity) ->
-    fun (I) when is_integer(I), I > 0 -> I end;
-mod_opt_type(max_pause) ->
-    fun (I) when is_integer(I), I > 0 -> I end;
-mod_opt_type(prebind) ->
-    fun (B) when is_boolean(B) -> B end;
-mod_opt_type(_) -> [max_inactivity, max_pause, prebind].

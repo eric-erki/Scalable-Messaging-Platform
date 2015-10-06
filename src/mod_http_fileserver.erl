@@ -215,7 +215,6 @@ stop(_Host) -> ok.
 %% @doc Handle an HTTP request.
 %% LocalPath is the part of the requested URL path that is "local to the module".
 %% Returns the page to be sent back to the client and/or HTTP status code.
-
 process(LocalPath, Request) ->
     ?DEBUG("Requested ~p", [LocalPath]),
     Host = get_host(Request#request.host),
@@ -307,7 +306,6 @@ serve_index(FileName, [Index | T], CH,
 
 %% Assume the file exists if we got this far and attempt to read it in
 %% and serve it up.
-
 serve_file(FileInfo, FileName, CustomHeaders,
 	   DefaultContentType, ContentTypes, false) ->
     ?DEBUG("Delivering: ~s", [FileName]),

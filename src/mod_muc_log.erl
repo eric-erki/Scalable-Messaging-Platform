@@ -28,6 +28,7 @@
 -behaviour(ejabberd_config).
 
 -author('badlop@process-one.net').
+
 -define(GEN_SERVER, p1_server).
 -behaviour(?GEN_SERVER).
 
@@ -35,7 +36,8 @@
 
 %% API
 -export([start_link/2, start/2, stop/1, transform_module_options/1,
-	 check_access_log/2, add_to_log/5, register_listener/2, whereis_proc/1, get_proc_name/1]).
+	 check_access_log/2, add_to_log/5,
+	 register_listener/2, whereis_proc/1, get_proc_name/1]).
 
 -export([init/1, handle_call/3, handle_cast/2,
 	 handle_info/2, terminate/2, code_change/3,
@@ -53,7 +55,6 @@
                           pid = self() :: pid()}).
 
 -define(T(Text), translate:translate(Lang, Text)).
-
 -define(PROCNAME, ejabberd_mod_muc_log).
 
 -define(PLAINTEXT_CO, <<"ZZCZZ">>).
@@ -78,6 +79,9 @@
                    spam_prevention = true :: boolean(),
                    top_link = {<<>>, <<>>} :: {binary(), binary()}}).
 
+%%====================================================================
+%% API
+%%====================================================================
 start_link(Host, Opts) ->
     Proc = get_proc_name(Host),
     ?GEN_SERVER:start_link(Proc, ?MODULE, [Host, Opts], []).
@@ -100,16 +104,16 @@ whereis_proc(Host) ->
 
 add_to_log(Host, Type, Data, Room, Opts) ->
     case whereis_proc(Host) of
-        Pid when is_pid(Pid) ->
-            ejabberd_cluster:send(
-              Pid, {add_to_log, Type, Data, Room, Opts});
-        _ ->
-            error
+	Pid when is_pid(Pid) ->
+	    ejabberd_cluster:send(
+		Pid, {add_to_log, Type, Data, Room, Opts});
+	_ ->
+	    error
     end.
 
 check_access_log(Host, From) ->
     case catch ?GEN_SERVER:call(get_proc_name(Host),
-                                {check_access_log, Host, From})
+			       {check_access_log, Host, From})
 	of
       {'EXIT', _Error} -> deny;
       Res -> Res
@@ -220,6 +224,9 @@ terminate(_Reason, _State) -> ok.
 
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
+%%--------------------------------------------------------------------
+%%% Internal functions
+%%--------------------------------------------------------------------
 add_to_log2(text, {Nick, Packet}, Room, Opts, State) ->
     case has_no_permanent_store_hint(Packet) of
 	false ->
@@ -309,6 +316,7 @@ build_filename_string(TimeStamp, OutDir, RoomJID,
 get_room_name(RoomJID) ->
     JID = jlib:string_to_jid(RoomJID), JID#jid.user.
 
+%% calculate day before
 get_timestamp_daydiff(TimeStamp, Daydiff) ->
     {Date1, HMS} = TimeStamp,
     Date2 =
@@ -316,6 +324,7 @@ get_timestamp_daydiff(TimeStamp, Daydiff) ->
 					  + Daydiff),
     {Date2, HMS}.
 
+%% Try to close the previous day log, if it exists
 close_previous_log(Fn, Images_dir, FileFormat) ->
     case file:read_file_info(Fn) of
       {ok, _} ->
@@ -945,6 +954,9 @@ put_room_occupants(_F, _RoomOccupants, _Lang,
 put_room_occupants(F, RoomOccupants, Lang,
 		   _FileFormat) ->
     {_, Now2, _} = now(),
+%% htmlize
+%% The default behaviour is to ignore the nofollow spam prevention on links
+%% (NoFollow=false)
     fw(F, <<"<div class=\"rc\">">>),
     fw(F,
        <<"<div class=\"rct\" onclick=\"sh('o~p');return "
@@ -981,6 +993,8 @@ htmlize(S1, NoFollow, _FileFormat) ->
 		<<"">>, S2_list).
 
 htmlize2(S1, NoFollow) ->
+%% Regexp link
+%% Add the nofollow rel attribute when required
     S2 = ejabberd_regexp:greplace(S1, <<"\\&">>,
 				  <<"\\&amp;">>),
     S3 = ejabberd_regexp:greplace(S2, <<"<">>,
@@ -1127,6 +1141,7 @@ get_roomconfig_text(max_users) ->
     <<"Maximum Number of Occupants">>;
 get_roomconfig_text(_) -> undefined.
 
+%% Users = [{JID, Nick, Role}]
 roomoccupants_to_string(Users, _FileFormat) ->
     Res = [role_users_to_string(RoleS, Users1)
 	   || {RoleS, Users1} <- group_by_role(Users),

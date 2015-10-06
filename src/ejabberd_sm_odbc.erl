@@ -12,15 +12,15 @@
 
 %% API
 -export([init/0,
-         get_session/3,
 	 set_session/1,
 	 delete_session/1,
 	 get_sessions/0,
 	 get_sessions/1,
 	 get_sessions/2,
-         get_node_sessions/1,
-         delete_node/1,
-         get_sessions_number/0]).
+	 get_session/3,
+	 get_node_sessions/1,
+	 delete_node/1,
+	 get_sessions_number/0]).
 
 -include("ejabberd.hrl").
 -include("ejabberd_sm.hrl").
