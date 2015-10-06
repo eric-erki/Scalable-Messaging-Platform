@@ -66,10 +66,10 @@ check_cache_last_options(Server) ->
       {true, _CacheTime} ->
 	  case get_mod_last_configured(Server) of
 	    no_mod_last ->
-		?ERROR_MSG("In host ~p extauth is used, extauth_cache "
-			   "is enabled but mod_last is not enabled.",
+		?INFO_MSG("extauth_cache option will work for extauth"
+			  " only if mod_last is enabled in host ~p",
 			   [Server]),
-		no_cache;
+		cache;
 	    _ -> cache
 	  end
     end.
@@ -281,7 +281,6 @@ is_fresh_enough(TimeStampLast, CacheTime) ->
 get_last_access(User, Server) ->
     case ejabberd_sm:get_user_resources(User, Server) of
       [] ->
-	  _US = {User, Server},
 	  case get_last_info(User, Server) of
 	    mod_last_required -> mod_last_required;
 	    not_found -> never;
