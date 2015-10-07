@@ -37,7 +37,7 @@
 -export([user_send_packet/4, user_receive_packet/5,
 	 process_iq_v0_2/3, process_iq_v0_3/3, remove_user/2,
 	 remove_user/3, mod_opt_type/1, muc_process_iq/4,
-	 muc_filter_packet/5, opt_type/1,
+	 muc_filter_message/5, opt_type/1,
 	 enc_key/1, dec_key/1, enc_val/2, dec_val/2, enc_prefs/2, dec_prefs/2]).
 
 -include_lib("stdlib/include/ms_transform.hrl").
@@ -86,8 +86,8 @@ start(Host, Opts) ->
 		       user_receive_packet, 500),
     ejabberd_hooks:add(user_send_packet, Host, ?MODULE,
 		       user_send_packet, 500),
-    ejabberd_hooks:add(muc_filter_packet, Host, ?MODULE,
-		       muc_filter_packet, 50),
+    ejabberd_hooks:add(muc_filter_message, Host, ?MODULE,
+		       muc_filter_message, 50),
     ejabberd_hooks:add(muc_process_iq, Host, ?MODULE,
 		       muc_process_iq, 50),
     ejabberd_hooks:add(remove_user, Host, ?MODULE,
@@ -148,8 +148,8 @@ stop(Host) ->
 			  user_send_packet, 500),
     ejabberd_hooks:delete(user_receive_packet, Host, ?MODULE,
 			  user_receive_packet, 500),
-    ejabberd_hooks:delete(muc_filter_packet, Host, ?MODULE,
-			  muc_filter_packet, 50),
+    ejabberd_hooks:delete(muc_filter_message, Host, ?MODULE,
+			  muc_filter_message, 50),
     ejabberd_hooks:delete(muc_process_iq, Host, ?MODULE,
 			  muc_process_iq, 50),
     gen_iq_handler:remove_iq_handler(ejabberd_local, Host, ?NS_MAM_TMP),
@@ -250,7 +250,7 @@ user_send_packet(Pkt, C2SState, JID, Peer) ->
 	    Pkt
     end.
 
-muc_filter_packet(Pkt, #state{config = Config} = MUCState,
+muc_filter_message(Pkt, #state{config = Config} = MUCState,
 		  RoomJID, From, FromNick) ->
     if Config#config.mam ->
 	    By = jlib:jid_to_string(RoomJID),
