@@ -31,10 +31,17 @@
 -behaviour(?GEN_SERVER).
 
 %% API
--export([start_link/4, start/3, start/4,
-	 change_shaper/2, reset_stream/1, starttls/2, starttls/3,
-	 compress/2, send/2, become_controller/2,
-	 change_controller/2, setopts/2, close/1]).
+-export([start_link/4,
+	 start/3,
+	 start/4,
+	 change_shaper/2,
+	 reset_stream/1,
+	 starttls/2, starttls/3,
+	 compress/2,
+	 become_controller/2, change_controller/2,
+	 send/2,
+	 setopts/2,
+	 close/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
@@ -112,7 +119,8 @@ starttls(Pid, TLSOpts, Data) ->
 -spec compress(pid(), iodata() | undefined) -> {error, any()} |
                                                {ok, ezlib:zlib_socket()}.
 
-compress(Pid, Data) -> do_call(Pid, {compress, Data}).
+compress(Pid, Data) ->
+    do_call(Pid, {compress, Data}).
 
 -spec become_controller(pid(), pid()) -> ok | {error, any()}.
 
@@ -139,7 +147,9 @@ send(Pid, Data) -> do_call(Pid, {send, Data}).
 
 -spec close(pid()) -> ok.
 
-close(Pid) -> ?GEN_SERVER:cast(Pid, close).
+close(Pid) ->
+    ?GEN_SERVER:cast(Pid, close).
+
 
 %%====================================================================
 %% gen_server callbacks
@@ -159,8 +169,7 @@ init([Socket, SockMod, Shaper, MaxStanzaSize]) ->
 handle_call({starttls, TLSOpts, Data}, _From,
 	    #state{xml_stream_state = XMLStreamState,
 		   c2s_pid = C2SPid, socket = Socket,
-		   max_stanza_size = MaxStanzaSize} =
-		State) ->
+		   max_stanza_size = MaxStanzaSize} = State) ->
     {ok, TLSSocket} = p1_tls:tcp_to_tls(Socket, TLSOpts),
     if Data /= undefined -> do_send(State, Data);
        true -> ok
@@ -171,10 +180,11 @@ handle_call({starttls, TLSOpts, Data}, _From,
 			   sock_mod = p1_tls,
 			   xml_stream_state = NewXMLStreamState},
     case p1_tls:recv_data(TLSSocket, <<"">>) of
-      {ok, TLSData} ->
-	  {reply, {ok, TLSSocket},
-	   process_data(TLSData, NewState), ?HIBERNATE_TIMEOUT};
-      {error, _Reason} = Err -> {stop, normal, Err, NewState}
+	{ok, TLSData} ->
+	    {reply, {ok, TLSSocket},
+		process_data(TLSData, NewState), ?HIBERNATE_TIMEOUT};
+	{error, _Reason} = Err ->
+	    {stop, normal, Err, NewState}
     end;
 handle_call({compress, Data}, _From,
 	    #state{xml_stream_state = XMLStreamState,
@@ -193,9 +203,10 @@ handle_call({compress, Data}, _From,
 			   xml_stream_state = NewXMLStreamState},
     case ezlib:recv_data(ZlibSocket, <<"">>) of
       {ok, ZlibData} ->
-	  {reply, {ok, ZlibSocket},
-	   process_data(ZlibData, NewState), ?HIBERNATE_TIMEOUT};
-      {error, _Reason} = Err -> {stop, normal, Err, NewState}
+	    {reply, {ok, ZlibSocket},
+		process_data(ZlibData, NewState), ?HIBERNATE_TIMEOUT};
+      {error, _Reason} = Err ->
+	    {stop, normal, Err, NewState}
     end;
 handle_call(reset_stream, _From,
 	    #state{xml_stream_state = XMLStreamState,
@@ -207,8 +218,7 @@ handle_call(reset_stream, _From,
     {reply, Reply,
      State#state{xml_stream_state = NewXMLStreamState},
      ?HIBERNATE_TIMEOUT};
-handle_call({become_controller, C2SPid}, _From,
-	    State) ->
+handle_call({become_controller, C2SPid}, _From, State) ->
     erlang:monitor(process, C2SPid),
     XMLStreamState = new_stream(C2SPid, State#state.max_stanza_size),
     NewState = State#state{c2s_pid = C2SPid,
@@ -336,6 +346,9 @@ deactivate_socket(#state{socket = Socket, tref = TRef,
       _ -> SockMod:setopts(Socket, [{active, false}])
     end.
 
+%% Data processing for connectors directly generating xmlelement in
+%% Erlang data structure.
+%% WARNING: Shaper does not work with Erlang data structure.
 process_data([], State) ->
     activate_socket(State), State;
 process_data([Element | Els],
@@ -367,6 +380,10 @@ process_data(Data,
     State#state{xml_stream_state = XMLStreamState1,
 		tref = NewTRef, shaper_state = NewShaperState}.
 
+%% Element coming from XML parser are wrapped inside xmlstreamelement
+%% When we receive directly xmlelement tuple (from a socket module
+%% speaking directly Erlang XML), we wrap it inside the same
+%% xmlstreamelement coming from the XML parser.
 element_wrapper(XMLElement)
     when element(1, XMLElement) == xmlel ->
     {xmlstreamelement, XMLElement};

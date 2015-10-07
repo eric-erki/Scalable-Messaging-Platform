@@ -28,6 +28,7 @@
 -behaviour(ejabberd_config).
 
 -author('badlop@process-one.net').
+
 -define(GEN_SERVER, p1_server).
 -behaviour(?GEN_SERVER).
 
@@ -35,7 +36,8 @@
 
 %% API
 -export([start_link/2, start/2, stop/1, transform_module_options/1,
-	 check_access_log/2, add_to_log/5, register_listener/2, whereis_proc/1, get_proc_name/1]).
+	 check_access_log/2, add_to_log/5,
+	 register_listener/2, whereis_proc/1, get_proc_name/1]).
 
 -export([init/1, handle_call/3, handle_cast/2,
 	 handle_info/2, terminate/2, code_change/3,
@@ -53,31 +55,33 @@
                           pid = self() :: pid()}).
 
 -define(T(Text), translate:translate(Lang, Text)).
-
 -define(PROCNAME, ejabberd_mod_muc_log).
-
--define(PLAINTEXT_CO, <<"ZZCZZ">>).
--define(PLAINTEXT_IN, <<"ZZIZZ">>).
--define(PLAINTEXT_OUT, <<"ZZOZZ">>).
-
 -record(room, {jid = <<"">> :: binary(),
                title = <<"">> :: binary(),
                subject = <<"">> :: binary(),
                subject_author = <<"">> :: binary(),
                config = [] :: list()}).
 
--record(logstate, {host = <<"">> :: binary(),
-                   out_dir = <<"">> :: binary(),
-                   dir_type = subdirs :: subdirs | plain,
-                   dir_name = room_jid :: room_jid| room_name,
-                   file_format = html :: html | plaintext,
-                   css_file = false :: false | binary(),
-                   access :: atom(),
-                   lang = <<"">> :: binary(),
-                   timezone = local :: local | universal,
-                   spam_prevention = true :: boolean(),
-                   top_link = {<<>>, <<>>} :: {binary(), binary()}}).
+-define(PLAINTEXT_CO, <<"ZZCZZ">>).
+-define(PLAINTEXT_IN, <<"ZZIZZ">>).
+-define(PLAINTEXT_OUT, <<"ZZOZZ">>).
 
+-record(logstate, {host = <<"">> :: binary(),
+		out_dir = <<"">> :: binary(),
+		dir_type = subdirs :: subdirs | plain,
+		dir_name = room_jid :: room_jid| room_name,
+		file_format = html :: html | plaintext,
+		file_permissions = {644, 33} :: {integer(), integer()},
+		css_file = false :: false | binary(),
+		access :: atom(),
+		lang = <<"">> :: binary(),
+		timezone = local :: local | universal,
+		spam_prevention = true :: boolean(),
+		top_link = {<<>>, <<>>} :: {binary(), binary()}}).
+
+%%====================================================================
+%% API
+%%====================================================================
 start_link(Host, Opts) ->
     Proc = get_proc_name(Host),
     ?GEN_SERVER:start_link(Proc, ?MODULE, [Host, Opts], []).
@@ -100,16 +104,16 @@ whereis_proc(Host) ->
 
 add_to_log(Host, Type, Data, Room, Opts) ->
     case whereis_proc(Host) of
-        Pid when is_pid(Pid) ->
-            ejabberd_cluster:send(
-              Pid, {add_to_log, Type, Data, Room, Opts});
-        _ ->
-            error
+	Pid when is_pid(Pid) ->
+	    ejabberd_cluster:send(
+		Pid, {add_to_log, Type, Data, Room, Opts});
+	_ ->
+	    error
     end.
 
 check_access_log(Host, From) ->
     case catch ?GEN_SERVER:call(get_proc_name(Host),
-                                {check_access_log, Host, From})
+			       {check_access_log, Host, From})
 	of
       {'EXIT', _Error} -> deny;
       Res -> Res
@@ -162,6 +166,15 @@ init([Host, Opts]) ->
                                  fun(html) -> html;
                                     (plaintext) -> plaintext
                                  end, html),
+    FilePermissions = gen_mod:get_opt(file_permissions, Opts,
+                                 fun(SubOpts) ->
+                                         F = fun({mode, Mode}, {_M, G}) ->
+                                                        {Mode, G};
+                                                ({group, Group}, {M, _G}) ->
+                                                        {M, Group}
+                                             end,
+                                         lists:foldl(F, {644, 33}, SubOpts)
+                                 end, {644, 33}),
     CSSFile = gen_mod:get_opt(cssfile, Opts,
                               fun iolist_to_binary/1,
                               false),
@@ -189,6 +202,7 @@ init([Host, Opts]) ->
      #logstate{host = Host, out_dir = OutDir,
 	       dir_type = DirType, dir_name = DirName,
 	       file_format = FileFormat, css_file = CSSFile,
+	       file_permissions = FilePermissions,
 	       access = AccessLog, lang = Lang, timezone = Timezone,
 	       spam_prevention = NoFollow, top_link = Top_link}}.
 
@@ -220,6 +234,9 @@ terminate(_Reason, _State) -> ok.
 
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
+%%--------------------------------------------------------------------
+%%% Internal functions
+%%--------------------------------------------------------------------
 add_to_log2(text, {Nick, Packet}, Room, Opts, State) ->
     case has_no_permanent_store_hint(Packet) of
 	false ->
@@ -309,6 +326,7 @@ build_filename_string(TimeStamp, OutDir, RoomJID,
 get_room_name(RoomJID) ->
     JID = jlib:string_to_jid(RoomJID), JID#jid.user.
 
+%% calculate day before
 get_timestamp_daydiff(TimeStamp, Daydiff) ->
     {Date1, HMS} = TimeStamp,
     Date2 =
@@ -316,6 +334,7 @@ get_timestamp_daydiff(TimeStamp, Daydiff) ->
 					  + Daydiff),
     {Date2, HMS}.
 
+%% Try to close the previous day log, if it exists
 close_previous_log(Fn, Images_dir, FileFormat) ->
     case file:read_file_info(Fn) of
       {ok, _} ->
@@ -354,6 +373,10 @@ write_last_lines(F, Images_dir, _FileFormat) ->
        [Images_dir]),
     fw(F, <<"</span></div></body></html>">>).
 
+set_filemode(Fn, {FileMode, FileGroup}) ->
+    ok = file:change_mode(Fn, list_to_integer(integer_to_list(FileMode), 8)),
+    ok = file:change_group(Fn, FileGroup).
+
 htmlize_nick(Nick1, html) ->
     htmlize(<<"<", Nick1/binary, ">">>, html);
 htmlize_nick(Nick1, plaintext) ->
@@ -363,6 +386,7 @@ add_message_to_log(Nick1, Message, RoomJID, Opts,
 		   State) ->
     #logstate{out_dir = OutDir, dir_type = DirType,
 	      dir_name = DirName, file_format = FileFormat,
+	      file_permissions = FilePermissions,
 	      css_file = CSSFile, lang = Lang, timezone = Timezone,
 	      spam_prevention = NoFollow, top_link = TopLink} =
 	State,
@@ -388,6 +412,7 @@ add_message_to_log(Nick1, Message, RoomJID, Opts,
       {error, enoent} ->
 	  make_dir_rec(Fd),
 	  {ok, F} = file:open(Fn, [append]),
+	  catch set_filemode(Fn, FilePermissions),
 	  Datestring = get_dateweek(Date, Lang),
 	  TimeStampYesterday = get_timestamp_daydiff(TimeStamp,
 						     -1),
@@ -945,6 +970,9 @@ put_room_occupants(_F, _RoomOccupants, _Lang,
 put_room_occupants(F, RoomOccupants, Lang,
 		   _FileFormat) ->
     {_, Now2, _} = now(),
+%% htmlize
+%% The default behaviour is to ignore the nofollow spam prevention on links
+%% (NoFollow=false)
     fw(F, <<"<div class=\"rc\">">>),
     fw(F,
        <<"<div class=\"rct\" onclick=\"sh('o~p');return "
@@ -981,6 +1009,8 @@ htmlize(S1, NoFollow, _FileFormat) ->
 		<<"">>, S2_list).
 
 htmlize2(S1, NoFollow) ->
+%% Regexp link
+%% Add the nofollow rel attribute when required
     S2 = ejabberd_regexp:greplace(S1, <<"\\&">>,
 				  <<"\\&amp;">>),
     S3 = ejabberd_regexp:greplace(S2, <<"<">>,
@@ -1127,6 +1157,7 @@ get_roomconfig_text(max_users) ->
     <<"Maximum Number of Occupants">>;
 get_roomconfig_text(_) -> undefined.
 
+%% Users = [{JID, Nick, Role}]
 roomoccupants_to_string(Users, _FileFormat) ->
     Res = [role_users_to_string(RoleS, Users1)
 	   || {RoleS, Users1} <- group_by_role(Users),
@@ -1246,6 +1277,13 @@ mod_opt_type(file_format) ->
     fun (html) -> html;
 	(plaintext) -> plaintext
     end;
+mod_opt_type(file_permissions) ->
+    fun (SubOpts) ->
+	    F = fun ({mode, Mode}, {_M, G}) -> {Mode, G};
+		    ({group, Group}, {M, _G}) -> {M, Group}
+		end,
+	    lists:foldl(F, {644, 33}, SubOpts)
+    end;
 mod_opt_type(outdir) -> fun iolist_to_binary/1;
 mod_opt_type(spam_prevention) ->
     fun (B) when is_boolean(B) -> B end;
@@ -1259,7 +1297,8 @@ mod_opt_type(top_link) ->
     end;
 mod_opt_type(_) ->
     [access_log, cssfile, dirname, dirtype, file_format,
-     outdir, spam_prevention, timezone, top_link].
+     file_permissions, outdir, spam_prevention, timezone,
+     top_link].
 
 opt_type(language) -> fun iolist_to_binary/1;
 opt_type(_) -> [language].

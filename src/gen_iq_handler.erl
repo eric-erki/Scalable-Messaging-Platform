@@ -69,16 +69,18 @@ add_iq_handler(Component, Host, NS, Module, Function,
 	       Type) ->
     case Type of
 	no_queue ->
-	    Component:register_iq_handler(Host, NS, Module, Function, no_queue);
+	    Component:register_iq_handler(Host, NS, Module,
+		Function, no_queue);
 	one_queue ->
-            start_handler(Component, Host, NS, Module, Function);
+	    start_handler(Component, Host, NS, Module, Function);
 	N when is_integer(N) ->
-            lists:foreach(
-              fun(_) ->
-                      start_handler(Component, Host, NS, Module, Function)
-              end, lists:seq(1, N));
+	    lists:foreach(
+		fun(_) ->
+			start_handler(Component, Host, NS, Module, Function)
+		end, lists:seq(1, N));
 	parallel ->
-	    Component:register_iq_handler(Host, NS, Module, Function, parallel)
+	    Component:register_iq_handler(Host, NS, Module,
+		Function, parallel)
     end.
 
 -spec remove_iq_handler(component(), binary(), binary()) -> any().
@@ -102,13 +104,14 @@ handle(Host, Module, Function, Opts, From, To, IQ) ->
     case Opts of
 	no_queue ->
 	    process_iq(Host, Module, Function, From, To, IQ);
-        parallel ->
-	    spawn(?MODULE, process_iq, [Host, Module, Function, From, To, IQ]);
+	parallel ->
+	    spawn(?MODULE, process_iq,
+		[Host, Module, Function, From, To, IQ]);
 	[_|_] = Pids ->
 	    Pid = lists:nth(erlang:phash(now(), length(Pids)), Pids),
 	    Pid ! {process_iq, From, To, IQ};
 	_ ->
-            ?ERROR_MSG("unexpected iqdisc options = ~p", [Opts]),
+	    ?ERROR_MSG("unexpected iqdisc options = ~p", [Opts]),
 	    todo
     end.
 

@@ -2929,8 +2929,8 @@ make_menu_item(item, 3, URI, Name, Lang) ->
 
 %%%==================================
 
-%%% vim: set foldmethod=marker foldmarker=%%%%,%%%=:
-
 
 opt_type(access) -> fun (V) -> V end;
 opt_type(_) -> [access].
+
+%%% vim: set foldmethod=marker foldmarker=%%%%,%%%=:

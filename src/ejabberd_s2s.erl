@@ -41,10 +41,10 @@
 	 incoming_s2s_number/0, outgoing_s2s_number/0,
 	 clean_temporarily_blocked_table/0,
 	 list_temporarily_blocked_hosts/0,
-         needed_connections_number/2,
-         get_connections_number_per_node/1,
-         check_peer_certificate/3,
-	 external_host_overloaded/1, is_temporarly_blocked/1]).
+	 external_host_overloaded/1, is_temporarly_blocked/1,
+	 check_peer_certificate/3,
+	 needed_connections_number/2,
+	 get_connections_number_per_node/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
@@ -157,8 +157,10 @@ remove_connection(FromTo, Pid, Key) ->
 
 have_connection(FromTo) ->
     case mnesia:dirty_read(s2s, FromTo) of
-      [_] -> true;
-      _ -> false
+       [_] ->
+            true;
+        _ ->
+            false
     end.
 
 -spec has_key({binary(), binary()}, binary()) -> boolean().
@@ -184,9 +186,10 @@ has_key(FromTo, Key) ->
 
 get_connections_pids(FromTo) ->
     case catch mnesia:dirty_read(s2s, FromTo) of
-      L when is_list(L) ->
-	  [Connection#s2s.pid || Connection <- L];
-      _ -> []
+	L when is_list(L) ->
+	    [Connection#s2s.pid || Connection <- L];
+	_ ->
+	    []
     end.
 
 -spec get_connections_number_per_node({binary(), binary()}) -> non_neg_integer().
@@ -264,21 +267,22 @@ check_peer_certificate(SockMod, Sock, Peer) ->
 init([]) ->
     update_tables(),
     mnesia:create_table(s2s,
-			[{ram_copies, [node()]}, {type, bag},
+			[{ram_copies, [node()]},
+			 {type, bag},
 			 {local_content, true},
 			 {attributes, record_info(fields, s2s)}]),
     mnesia:add_table_copy(s2s, node(), ram_copies),
     ejabberd_commands:register_commands(commands()),
     mnesia:create_table(temporarily_blocked,
 			[{ram_copies, [node()]},
-			 {attributes,
-			  record_info(fields, temporarily_blocked)}]),
+			 {attributes, record_info(fields, temporarily_blocked)}]),
     {ok, #state{}}.
 
 handle_call(_Request, _From, State) ->
-    Reply = ok, {reply, Reply, State}.
+    {reply, ok, State}.
 
-handle_cast(_Msg, State) -> {noreply, State}.
+handle_cast(_Msg, State) ->
+    {noreply, State}.
 
 handle_info({route, From, To, Packet}, State) ->
     case catch do_route(From, To, Packet) of
@@ -291,9 +295,15 @@ handle_info({route, From, To, Packet}, State) ->
 handle_info(_Info, State) -> {noreply, State}.
 
 terminate(_Reason, _State) ->
-    ejabberd_commands:unregister_commands(commands()), ok.
+    ejabberd_commands:unregister_commands(commands()),
+    ok.
 
-code_change(_OldVsn, State, _Extra) -> {ok, State}.
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+%%--------------------------------------------------------------------
+%%% Internal functions
+%%--------------------------------------------------------------------
 
 do_route(From, To, Packet) ->
     ?DEBUG("s2s manager~n\tfrom ~s~n\tto ~s~n\tpacket "
@@ -395,8 +405,8 @@ open_several_connections(N, MyServer, Server, From,
 new_connection(MyServer, Server, From, FromTo,
 	       MaxS2SConnectionsNumberPerNode) ->
     Key = new_key(),
-    {ok, Pid} = ejabberd_s2s_out:start(MyServer, Server,
-				       {new, Key}),
+    {ok, Pid} = ejabberd_s2s_out:start(
+		  MyServer, Server, {new, Key}),
     NeededConnections = needed_connections_number(
                           FromTo,
                           MaxS2SConnectionsNumberPerNode),
@@ -439,6 +449,11 @@ get_node_by_key(Key) ->
       _ -> node()
     end.
 
+%%--------------------------------------------------------------------
+%% Function: is_service(From, To) -> true | false
+%% Description: Return true if the destination must be considered as a
+%% service.
+%% --------------------------------------------------------------------
 is_service(From, To) ->
     LFromDomain = From#jid.lserver,
     case ejabberd_config:get_option(
@@ -507,16 +522,16 @@ update_tables() ->
       [fromto, pid, key] -> ok;
       {'EXIT', _} -> ok
     end,
-    case lists:member(local_s2s, mnesia:system_info(tables))
-	of
-      true -> mnesia:delete_table(local_s2s);
-      false -> ok
+    case lists:member(local_s2s, mnesia:system_info(tables)) of
+	true -> mnesia:delete_table(local_s2s);
+	false -> ok
     end,
     case catch mnesia:table_info(s2s, local_content) of
-      false -> mnesia:delete_table(s2s);
-      _ -> ok
+	false -> mnesia:delete_table(s2s);
+	_ -> ok
     end.
 
+%% Check if host is in blacklist or white list
 allow_host(MyServer, S2SHost) ->
     allow_host2(MyServer, S2SHost) andalso
       not is_temporarly_blocked(S2SHost).
@@ -573,6 +588,10 @@ transform_options({s2s_default_policy, Action}, Opts) ->
 transform_options(Opt, Opts) ->
     [Opt|Opts].
 
+%% Get information about S2S connections of the specified type.
+%% @spec (Type) -> [Info]
+%% where Type = in | out
+%%       Info = [{InfoName::atom(), InfoValue::any()}]
 get_info_s2s_connections(Type) ->
     ChildType = case Type of
 		  in -> ejabberd_s2s_in_sup;

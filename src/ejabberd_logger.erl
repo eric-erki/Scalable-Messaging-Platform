@@ -5,7 +5,6 @@
 %%% @end
 %%% Created : 12 May 2013 by Evgeniy Khramtsov <ekhramtsov@process-one.net>
 %%%
-%%%
 %%% ejabberd, Copyright (C) 2013-2015   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or

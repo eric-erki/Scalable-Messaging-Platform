@@ -33,22 +33,43 @@
 
 %% API
 -export([start/0,
-         start_link/0, route/3, do_route1/4, set_session/6,
-	 open_session/5, open_session/6, close_session/4,
-	 close_migrated_session/4, drop_session/2,
-	 check_in_subscription/6, bounce_offline_message/3,
-	 disconnect_removed_user/2, get_user_sessions/2,
-	 get_user_resources/2, get_user_present_resources/2,
-	 set_presence/7, unset_presence/6,
-	 close_session_unset_presence/5, get_max_user_sessions/2,
-	 dirty_get_sessions_list/0, dirty_get_my_sessions_list/0,
-	 get_vh_session_list/1, get_vh_my_session_list/1,
-	 get_vh_session_number/1, register_iq_handler/4,
-	 register_iq_handler/5, unregister_iq_handler/2,
-	 force_update_presence/1, connected_users/0,
-	 connected_users_number/0, user_resources/2, get_all_pids/0,
-	 get_session_pid/3, get_user_info/3, get_user_ip/3,
-	 get_proc_num/0, kick_user/2]).
+	 start_link/0,
+	 route/3, do_route1/4,
+	 set_session/6,
+	 open_session/5,
+	 open_session/6,
+	 close_session/4,
+	 close_migrated_session/4,
+	 drop_session/2,
+	 check_in_subscription/6,
+	 bounce_offline_message/3,
+	 disconnect_removed_user/2,
+	 get_user_sessions/2,
+	 get_user_resources/2,
+	 get_user_present_resources/2,
+	 set_presence/7,
+	 unset_presence/6,
+	 close_session_unset_presence/5,
+	 dirty_get_sessions_list/0,
+	 dirty_get_my_sessions_list/0,
+	 get_vh_session_list/1,
+	 get_vh_my_session_list/1,
+	 get_vh_session_number/1,
+	 register_iq_handler/4,
+	 register_iq_handler/5,
+	 unregister_iq_handler/2,
+	 force_update_presence/1,
+	 connected_users/0,
+	 connected_users_number/0,
+	 user_resources/2,
+	 kick_user/2,
+	 get_session_pid/3,
+	 get_user_info/3,
+	 get_user_ip/3,
+	 get_max_user_sessions/2,
+	 get_all_pids/0,
+	 get_proc_num/0
+	]).
 
 -export([init/1, handle_call/3, handle_cast/2,
 	 handle_info/2, terminate/2, code_change/3, opt_type/1]).
@@ -75,11 +96,15 @@
 
 -record(state, {}).
 
+%% default value for the maximum number of user connections
 -define(MAX_USER_SESSIONS, infinity).
 -define(CALL_TIMEOUT, timer:seconds(60)).
 
 -type session() :: #session{}.
 
+%%====================================================================
+%% API
+%%====================================================================
 -export_type([sid/0]).
 
 start() ->
@@ -108,10 +133,8 @@ open_session(SID, User, Server, Resource, Info) ->
 
 -spec open_session(sid(), binary(), binary(), binary(), prio(), info()) -> ok.
 
-open_session(SID, User, Server, Resource, Priority,
-	     Info) ->
-    set_session(SID, User, Server, Resource, Priority,
-		Info),
+open_session(SID, User, Server, Resource, Priority, Info) ->
+    set_session(SID, User, Server, Resource, Priority, Info),
     check_for_sessions_to_replace(User, Server, element(2,SID)),
     JID = jlib:make_jid(User, Server, Resource),
     ejabberd_hooks:run(sm_register_connection_hook,
@@ -161,8 +184,7 @@ drop_session(SID, USR) ->
 -spec check_in_subscription(any(), binary(), binary(),
                             any(), any(), any()) -> any().
 
-check_in_subscription(Acc, User, Server, _JID, _Type,
-		      _Reason) ->
+check_in_subscription(Acc, User, Server, _JID, _Type, _Reason) ->
     case ejabberd_auth:is_user_exists(User, Server) of
       true -> Acc;
       false -> {stop, false}
@@ -370,12 +392,6 @@ handle_call(_Request, _From, State) ->
 
 handle_cast(_Msg, State) -> {noreply, State}.
 
-%%--------------------------------------------------------------------
-%% Function: handle_info(Info, State) -> {noreply, State} |
-%%                                       {noreply, State, Timeout} |
-%%                                       {stop, Reason, State}
-%% Description: Handling all non call/cast messages
-%%--------------------------------------------------------------------
 handle_info({route, From, To, Packet}, State) ->
     handle_info({route, From, To, Packet, []}, State);
 handle_info({route, From, To, Packet, Hops}, State) ->
@@ -410,11 +426,10 @@ handle_info({register_iq_handler, Host, XMLNS, Module, Function, Opts}, State) -
 handle_info({unregister_iq_handler, Host, XMLNS},
 	    State) ->
     case ets:lookup(sm_iqtable, {XMLNS, Host}) of
-	[{_, Module, Function, Opts1}|Tail] when is_pid(Opts1) ->
-            Opts = [Opts1 | [Pid || {_, _, _, Pid} <- Tail]],
-	    gen_iq_handler:stop_iq_handler(Module, Function, Opts);
-	_ ->
-	    ok
+      [{_, Module, Function, Opts1}|Tail] when is_pid(Opts1) ->
+	  Opts = [Opts1 | [Pid || {_, _, _, Pid} <- Tail]],
+	  gen_iq_handler:stop_iq_handler(Module, Function, Opts);
+      _ -> ok
     end,
     ets:delete(sm_iqtable, {XMLNS, Host}),
     {noreply, State};
@@ -660,8 +675,8 @@ do_route1(From, To, Packet, Hops) ->
 	    _ -> ok
 	  end;
       _ ->
-          Mod = get_sm_backend(),
-          case Mod:get_session(LUser, LServer, LResource) of
+	  Mod = get_sm_backend(),
+	  case Mod:get_session(LUser, LServer, LResource) of
 	    {error, notfound} ->
 		case Name of
 		  <<"message">> ->
@@ -693,6 +708,10 @@ do_route1(From, To, Packet, Hops) ->
 	  end
     end.
 
+%% The default list applies to the user as a whole,
+%% and is processed if there is no active list set
+%% for the target session/resource to which a stanza is addressed,
+%% or if there are no current sessions for the user.
 is_privacy_allow(From, To, Packet) ->
     User = To#jid.user,
     Server = To#jid.server,
@@ -701,6 +720,8 @@ is_privacy_allow(From, To, Packet) ->
 				#userlist{}, [User, Server]),
     is_privacy_allow(From, To, Packet, PrivacyList).
 
+%% Check if privacy rules allow this delivery
+%% Function copied from ejabberd_c2s.erl
 is_privacy_allow(From, To, Packet, PrivacyList) ->
     User = To#jid.user,
     Server = To#jid.server,
@@ -772,6 +793,7 @@ clean_session_list([S1, S2 | Rest], Res) ->
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+%% On new session, check if some existing connections need to be replace
 check_for_sessions_to_replace(User, Server, NewPid) ->
     LUser = jlib:nodeprep(User),
     LServer = jlib:nameprep(Server),
@@ -781,14 +803,17 @@ check_max_sessions(LUser, LServer, NewPid) ->
     Mod = get_sm_backend(),
     Ss = Mod:get_sessions(LUser, LServer),
     MaxSessions = get_max_user_sessions(LUser, LServer),
-    if length(Ss) =< MaxSessions ->
-            ok;
+    if length(Ss) =< MaxSessions -> ok;
        true ->
             SIDs = [SID || #session{sid = SID} <- Ss],
             {_, Pid} = lists:min(SIDs),
             ejabberd_cluster:send(Pid, {replaced, NewPid})
     end.
 
+%% Get the user_max_session setting
+%% This option defines the max number of time a given users are allowed to
+%% log in
+%% Defaults to infinity
 get_max_user_sessions(LUser, Host) ->
     case acl:match_rule(Host, max_user_sessions,
 			jlib:make_jid(LUser, Host, <<"">>))
@@ -803,38 +828,33 @@ get_max_user_sessions(LUser, Host) ->
 process_iq(From, To, Packet) ->
     IQ = jlib:iq_query_info(Packet),
     case IQ of
-	#iq{xmlns = XMLNS} ->
-	    Host = To#jid.lserver,
-	    case ets:lookup(sm_iqtable, {XMLNS, Host}) of
-		[{_, Module, Function}] ->
-		    ResIQ = Module:Function(From, To, IQ),
-		    if
-			ResIQ /= ignore ->
-			    ejabberd_router:route(To, From,
-						  jlib:iq_to_xml(ResIQ));
-			true ->
-			    ok
-		    end;
-		[{_, Module, Function, Opts1}|Tail] ->
-                    Opts = if is_pid(Opts1) ->
-                                   [Opts1 |
-                                    [Pid || {_, _, _, Pid} <- Tail]];
-                              true ->
-                                   Opts1
-                           end,
-		    gen_iq_handler:handle(Host, Module, Function, Opts,
-					  From, To, IQ);
-		[] ->
-		    Err = jlib:make_error_reply(
-			    Packet, ?ERR_SERVICE_UNAVAILABLE),
-		    ejabberd_router:route(To, From, Err)
-	    end;
-	reply ->
-	    ok;
-	_ ->
-	    Err = jlib:make_error_reply(Packet, ?ERR_BAD_REQUEST),
-	    ejabberd_router:route(To, From, Err),
-	    ok
+      #iq{xmlns = XMLNS} ->
+	  Host = To#jid.lserver,
+	  case ets:lookup(sm_iqtable, {XMLNS, Host}) of
+	    [{_, Module, Function}] ->
+		ResIQ = Module:Function(From, To, IQ),
+		if ResIQ /= ignore ->
+		       ejabberd_router:route(To, From, jlib:iq_to_xml(ResIQ));
+		   true -> ok
+		end;
+	    [{_, Module, Function, Opts1}|Tail] ->
+		Opts = if is_pid(Opts1) ->
+			[Opts1 | [Pid || {_, _, _, Pid} <- Tail]];
+		    true ->
+			Opts1
+		end,
+		gen_iq_handler:handle(Host, Module, Function, Opts,
+				      From, To, IQ);
+	    [] ->
+		Err = jlib:make_error_reply(Packet,
+					    ?ERR_SERVICE_UNAVAILABLE),
+		ejabberd_router:route(To, From, Err)
+	  end;
+      reply -> ok;
+      _ ->
+	  Err = jlib:make_error_reply(Packet, ?ERR_BAD_REQUEST),
+	  ejabberd_router:route(To, From, Err),
+	  ok
     end.
 
 -spec force_update_presence({binary(), binary()}) -> any().

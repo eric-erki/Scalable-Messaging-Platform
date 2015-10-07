@@ -35,10 +35,10 @@
 -export([start/2, stop/1]).
 
 -export([user_send_packet/4, user_receive_packet/5,
-	 enc_key/1, dec_key/1, enc_val/2, dec_val/2, enc_prefs/2,
-	 dec_prefs/2, process_iq_v0_2/3, process_iq_v0_3/3, remove_user/2,
-	 remove_user/3, mod_opt_type/1, opt_type/1, muc_process_iq/4,
-	 muc_filter_packet/5]).
+	 process_iq_v0_2/3, process_iq_v0_3/3, remove_user/2,
+	 remove_user/3, mod_opt_type/1, muc_process_iq/4,
+	 muc_filter_message/5, opt_type/1,
+	 enc_key/1, dec_key/1, enc_val/2, dec_val/2, enc_prefs/2, dec_prefs/2]).
 
 -include_lib("stdlib/include/ms_transform.hrl").
 -include("jlib.hrl").
@@ -86,8 +86,8 @@ start(Host, Opts) ->
 		       user_receive_packet, 500),
     ejabberd_hooks:add(user_send_packet, Host, ?MODULE,
 		       user_send_packet, 500),
-    ejabberd_hooks:add(muc_filter_packet, Host, ?MODULE,
-		       muc_filter_packet, 50),
+    ejabberd_hooks:add(muc_filter_message, Host, ?MODULE,
+		       muc_filter_message, 50),
     ejabberd_hooks:add(muc_process_iq, Host, ?MODULE,
 		       muc_process_iq, 50),
     ejabberd_hooks:add(remove_user, Host, ?MODULE,
@@ -148,8 +148,8 @@ stop(Host) ->
 			  user_send_packet, 500),
     ejabberd_hooks:delete(user_receive_packet, Host, ?MODULE,
 			  user_receive_packet, 500),
-    ejabberd_hooks:delete(muc_filter_packet, Host, ?MODULE,
-			  muc_filter_packet, 50),
+    ejabberd_hooks:delete(muc_filter_message, Host, ?MODULE,
+			  muc_filter_message, 50),
     ejabberd_hooks:delete(muc_process_iq, Host, ?MODULE,
 			  muc_process_iq, 50),
     gen_iq_handler:remove_iq_handler(ejabberd_local, Host, ?NS_MAM_TMP),
@@ -226,8 +226,8 @@ user_receive_packet(Pkt, C2SState, JID, Peer, To) ->
 					       {<<"id">>, ID}]},
 		    StanzaID = #xmlel{name = <<"stanza-id">>,
 				      attrs = [{<<"by">>, LServer},
-                                               {<<"xmlns">>, ?NS_SID_0},
-                                               {<<"id">>, ID}]},
+					       {<<"xmlns">>, ?NS_SID_0},
+					       {<<"id">>, ID}]},
                     NewEls = [Archived, StanzaID|NewPkt#xmlel.children],
 		    NewPkt#xmlel{children = NewEls};
 		_ ->
@@ -250,7 +250,7 @@ user_send_packet(Pkt, C2SState, JID, Peer) ->
 	    Pkt
     end.
 
-muc_filter_packet(Pkt, #state{config = Config} = MUCState,
+muc_filter_message(Pkt, #state{config = Config} = MUCState,
 		  RoomJID, From, FromNick) ->
     if Config#config.mam ->
 	    By = jlib:jid_to_string(RoomJID),
@@ -275,19 +275,19 @@ process_iq_v0_2(#jid{lserver = LServer} = From,
 	       #jid{lserver = LServer} = To,
 	       #iq{type = get, sub_el = #xmlel{name = <<"query">>} = SubEl} = IQ) ->
     Fs = lists:flatmap(
-	   fun(#xmlel{name = <<"start">>} = El) ->
-		   [{<<"start">>, [xml:get_tag_cdata(El)]}];
-	      (#xmlel{name = <<"end">>} = El) ->
-		   [{<<"end">>, [xml:get_tag_cdata(El)]}];
-	      (#xmlel{name = <<"with">>} = El) ->
-		   [{<<"with">>, [xml:get_tag_cdata(El)]}];
-	      (#xmlel{name = <<"withroom">>} = El) ->
-		   [{<<"withroom">>, [xml:get_tag_cdata(El)]}];
-	      (#xmlel{name = <<"withtext">>} = El) ->
-		   [{<<"withtext">>, [xml:get_tag_cdata(El)]}];
-	      (#xmlel{name = <<"set">>}) ->
-		   [{<<"set">>, SubEl}];
-	      (_) ->
+	    fun (#xmlel{name = <<"start">>} = El) ->
+		    [{<<"start">>, [xml:get_tag_cdata(El)]}];
+		(#xmlel{name = <<"end">>} = El) ->
+		    [{<<"end">>, [xml:get_tag_cdata(El)]}];
+		(#xmlel{name = <<"with">>} = El) ->
+		    [{<<"with">>, [xml:get_tag_cdata(El)]}];
+		(#xmlel{name = <<"withroom">>} = El) ->
+		    [{<<"withroom">>, [xml:get_tag_cdata(El)]}];
+		(#xmlel{name = <<"withtext">>} = El) ->
+		    [{<<"withtext">>, [xml:get_tag_cdata(El)]}];
+		(#xmlel{name = <<"set">>}) ->
+		    [{<<"set">>, SubEl}];
+		(_) ->
 		   []
 	   end, SubEl#xmlel.children),
     process_iq(LServer, From, To, IQ, SubEl, Fs, chat);
@@ -340,26 +340,26 @@ process_iq(#jid{luser = LUser, lserver = LServer},
 	   #jid{lserver = LServer},
 	   #iq{type = set, sub_el = #xmlel{name = <<"prefs">>} = SubEl} = IQ) ->
     try {case xml:get_tag_attr_s(<<"default">>, SubEl) of
-	     <<"always">> -> always;
-	     <<"never">> -> never;
-	     <<"roster">> -> roster
-	 end,
-	 lists:foldl(
-	   fun(#xmlel{name = <<"always">>, children = Els}, {A, N}) ->
-		   {get_jids(Els) ++ A, N};
-	      (#xmlel{name = <<"never">>, children = Els}, {A, N}) ->
-		   {A, get_jids(Els) ++ N};
-	      (_, {A, N}) ->
-		   {A, N}
-	   end, {[], []}, SubEl#xmlel.children)} of
+	    <<"always">> -> always;
+	    <<"never">> -> never;
+	    <<"roster">> -> roster
+	    end,
+	    lists:foldl(
+		fun(#xmlel{name = <<"always">>, children = Els}, {A, N}) ->
+			{get_jids(Els) ++ A, N};
+		    (#xmlel{name = <<"never">>, children = Els}, {A, N}) ->
+			{A, get_jids(Els) ++ N};
+		    (_, {A, N}) ->
+			{A, N}
+		end, {[], []}, SubEl#xmlel.children)} of
 	{Default, {Always, Never}} ->
 	    case write_prefs(LUser, LServer, LServer, Default,
-			     lists:usort(Always), lists:usort(Never)) of
+		    lists:usort(Always), lists:usort(Never)) of
 		ok ->
 		    IQ#iq{type = result, sub_el = []};
 		_Err ->
 		    IQ#iq{type = error,
-			  sub_el = [SubEl, ?ERR_INTERNAL_SERVER_ERROR]}
+			sub_el = [SubEl, ?ERR_INTERNAL_SERVER_ERROR]}
 	    end
     catch _:_ ->
 	    IQ#iq{type = error, sub_el = [SubEl, ?ERR_BAD_REQUEST]}
@@ -414,19 +414,19 @@ should_archive(#xmlel{}) ->
 
 strip_my_archived_tag(Pkt, LServer) ->
     NewEls = lists:filter(
-	       fun(#xmlel{name = Tag, attrs = Attrs})
-		  when Tag == <<"archived">>; Tag == <<"stanza-id">> ->
-		       case catch jlib:nameprep(
-				    xml:get_attr_s(
-				      <<"by">>, Attrs)) of
-			   LServer ->
-			       false;
-			   _ ->
-			       true
-		       end;
-		  (_) ->
-		       true
-	       end, Pkt#xmlel.children),
+	    fun(#xmlel{name = Tag, attrs = Attrs})
+			when Tag == <<"archived">>; Tag == <<"stanza-id">> ->
+		    case catch jlib:nameprep(
+			    xml:get_attr_s(
+				<<"by">>, Attrs)) of
+			LServer ->
+			    false;
+			_ ->
+			    true
+		    end;
+		(_) ->
+		    true
+	    end, Pkt#xmlel.children),
     Pkt#xmlel{children = NewEls}.
 
 should_archive_peer(C2SState,
@@ -572,17 +572,17 @@ store(Pkt, LServer, {LUser, LHost}, Type, Peer, Nick, _Dir, DBType)
 	      sharding -> LUser
 	  end,
     case ejabberd_odbc:sql_query(
-	   LServer, Key,
-	   [<<"insert into archive (username, timestamp, "
-	      "peer, bare_peer, xml, txt, kind, nick) values (">>,
-	    <<"'">>, ejabberd_odbc:escape(SUser), <<"', ">>,
-	    <<"'">>, TS, <<"', ">>,
-	    <<"'">>, ejabberd_odbc:escape(LPeer), <<"', ">>,
-	    <<"'">>, ejabberd_odbc:escape(BarePeer), <<"', ">>,
-	    <<"'">>, ejabberd_odbc:escape(XML), <<"', ">>,
-	    <<"'">>, ejabberd_odbc:escape(Body), <<"', ">>,
-	    <<"'">>, jlib:atom_to_binary(Type), <<"', ">>,
-	    <<"'">>, ejabberd_odbc:escape(Nick), <<"');">>]) of
+	    LServer, Key,
+	    [<<"insert into archive (username, timestamp, "
+		    "peer, bare_peer, xml, txt, kind, nick) values (">>,
+		<<"'">>, ejabberd_odbc:escape(SUser), <<"', ">>,
+		<<"'">>, TS, <<"', ">>,
+		<<"'">>, ejabberd_odbc:escape(LPeer), <<"', ">>,
+		<<"'">>, ejabberd_odbc:escape(BarePeer), <<"', ">>,
+		<<"'">>, ejabberd_odbc:escape(XML), <<"', ">>,
+		<<"'">>, ejabberd_odbc:escape(Body), <<"', ">>,
+		<<"'">>, jlib:atom_to_binary(Type), <<"', ">>,
+		<<"'">>, ejabberd_odbc:escape(Nick), <<"');">>]) of
 	{updated, _} ->
 	    {ok, ID};
 	Err ->
@@ -656,11 +656,11 @@ get_prefs(LUser, LServer) ->
 	    Prefs;
 	error ->
 	    Default = gen_mod:get_module_opt(
-			LServer, ?MODULE, default,
-			fun(always) -> always;
-			   (never) -> never;
-			   (roster) -> roster
-			end, never),
+		    LServer, ?MODULE, default,
+		    fun(always) -> always;
+			(never) -> never;
+			(roster) -> roster
+		    end, never),
 	    #archive_prefs{us = {LUser, LServer}, default = Default}
     end.
 
@@ -698,9 +698,9 @@ get_prefs(LUser, LServer, DBType)
 	    Always = ejabberd_odbc:decode_term(SAlways),
 	    Never = ejabberd_odbc:decode_term(SNever),
 	    {ok, #archive_prefs{us = {LUser, LServer},
-				default = Default,
-				always = Always,
-				never = Never}};
+		    default = Default,
+		    always = Always,
+		    never = Never}};
 	_ ->
 	    error
     end.
@@ -981,7 +981,7 @@ select(LServer, #jid{luser = LUser} = JidRequestor,
 					       peer = PeerJid},
 				  MsgType,
 				  JidRequestor)}
-	       end, Res1), IsComplete, jlib:binary_to_integer(Count)};
+		    end, Res1), IsComplete, jlib:binary_to_integer(Count)};
 	_ ->
 	    {[], false, 0}
     end.
@@ -1222,13 +1222,13 @@ make_matchspec(LUser, LServer, Start, End, none) ->
 
 make_sql_query(User, _LServer, Start, End, With, RSM) ->
     {Max, Direction, ID} = case RSM of
-			       #rsm_in{} ->
-				   {RSM#rsm_in.max,
-				    RSM#rsm_in.direction,
-				    RSM#rsm_in.id};
-			       none ->
-				   {none, none, <<>>}
-			   end,
+	#rsm_in{} ->
+	    {RSM#rsm_in.max,
+		RSM#rsm_in.direction,
+		RSM#rsm_in.id};
+	none ->
+	    {none, none, <<>>}
+    end,
     LimitClause = if is_integer(Max), Max >= 0 ->
 			  [<<" limit ">>, jlib:integer_to_binary(Max+1)];
 		     true ->

@@ -31,8 +31,8 @@
 -export([start_link/0, init/1, start/3, init/3,
 	 start_listeners/0, start_listener/3, stop_listeners/0,
 	 stop_listener/2, parse_listener_portip/2,
-	 add_listener/3, delete_listener/2, rate_limit/2,
-	 transform_options/1, validate_cfg/1, opt_type/1]).
+	 add_listener/3, delete_listener/2, transform_options/1,
+	 rate_limit/2, validate_cfg/1, opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -197,8 +197,8 @@ listen_tcp(PortIP, Module, SockOpts, Port, IPS) ->
 					{reuseaddr, true},
 					{nodelay, true},
 					{send_timeout, ?TCP_SEND_TIMEOUT},
-					{keepalive, true},
-					{send_timeout_close, true} |
+					{send_timeout_close, true},
+					{keepalive, true} |
 					SockOpts]),
 	    case Res of
 		{ok, ListenSocket} ->
@@ -516,6 +516,8 @@ delete_listener(PortIP, Module, Opts) ->
 is_frontend({frontend, _Module}) -> true;
 is_frontend(_) -> false.
 
+%% @doc(FrontMod) -> atom()
+%% where FrontMod = atom() | {frontend, atom()}
 -spec strip_frontend({frontend, module()} | module()) -> module().
 
 strip_frontend({frontend, Module}) -> Module;
@@ -705,7 +707,6 @@ transform_options(Opt, Opts) ->
                              {inet:port_number(), inet:ip_address()} |
                              {inet:port_number(), inet:ip_address(),
                               transport()}.
-
 -spec validate_cfg(list()) -> [{port_ip_transport(), module(), list()}].
 
 validate_cfg(L) ->

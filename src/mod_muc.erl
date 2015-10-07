@@ -28,6 +28,7 @@
 -behaviour(ejabberd_config).
 
 -author('alexey@process-one.net').
+
 -protocol({xep, 45, '1.25'}).
 
 -define(GEN_SERVER, p1_server).
@@ -36,15 +37,28 @@
 -behaviour(gen_mod).
 
 %% API
--export([start_link/2, start/2, stop/1, export/1, import_info/0,
-	 unregister_room/4, store_room/5, restore_room/3,
-	 forget_room/3, create_room/5, process_iq_disco_items/4,
-	 broadcast_service_message/2, register_room/4,
-	 get_vh_rooms/1, shutdown_rooms/1,
-	 is_broadcasted/1, moderate_room_history/2, import/5,
-	 persist_recent_messages/1, can_use_nick/4,
+-export([start_link/2,
+	 start/2,
+	 stop/1,
+	 store_room/5,
+	 restore_room/3,
+	 forget_room/3,
+	 create_room/5,
+	 shutdown_rooms/1,
+	 process_iq_disco_items/4,
+	 broadcast_service_message/2,
+	 export/1,
+	 import/5,
+	 can_use_nick/4,
+	 register_room/4,
+	 import_info/0,
+	 unregister_room/4,
+	 get_vh_rooms/1,
+	 is_broadcasted/1,
+	 moderate_room_history/2,
+	 persist_recent_messages/1,
 	 enc_key/1, dec_key/1, enc_aff/2, dec_aff/2,
-         rh_prefix/2, key2us/2, rhus2key/4, import_start/2]).
+	 rh_prefix/2, key2us/2, rhus2key/4, import_start/2]).
 
 -export([init/1, handle_call/3, handle_cast/2,
 	 handle_info/2, terminate/2, code_change/3,
@@ -79,10 +93,13 @@
 
 -define(PROCNAME, ejabberd_mod_muc).
 
+%%====================================================================
+%% API
+%%====================================================================
 start_link(Host, Opts) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     ?GEN_SERVER:start_link({local, Proc}, ?MODULE,
-                           [Host, Opts], []).
+			  [Host, Opts], []).
 
 start(Host, Opts) ->
     start_supervisor(Host),
@@ -103,14 +120,14 @@ shutdown_rooms(Host) ->
     MyHost = gen_mod:get_module_opt_host(Host, mod_muc,
 					 <<"conference.@HOST@">>),
     lists:flatmap(
-      fun(#muc_online_room{pid = Pid}) ->
-              if node(Pid) == node() ->
-		      ejabberd_cluster:send(Pid, system_shutdown),
-                      [Pid];
-                 true ->
-                      []
-              end
-      end, get_vh_rooms_all_nodes(MyHost)).
+	fun(#muc_online_room{pid = Pid}) ->
+		if node(Pid) == node() ->
+			ejabberd_cluster:send(Pid, system_shutdown),
+			[Pid];
+		    true ->
+			[]
+		end
+	end, get_vh_rooms_all_nodes(MyHost)).
 
 persist_recent_messages(Host) ->
     MyHost = gen_mod:get_module_opt_host(Host, mod_muc,
@@ -135,6 +152,9 @@ moderate_room_history(RoomStr, Nick) ->
 	  mod_muc_room:moderate_room_history(Pid, Nick)
     end.
 
+%% @doc Create a room.
+%% If Opts = default, the default room options are used.
+%% Else use the passed options as defined in mod_muc_room.
 create_room(Host, Name, From, Nick, Opts) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     ?GEN_SERVER:call(Proc, {create, Name, From, Nick, Opts}).
@@ -431,14 +451,13 @@ init([Host, Opts]) ->
     load_permanent_rooms(MyHost, Host,
 			 {Access, AccessCreate, AccessAdmin, AccessPersistent},
 			 HistorySize, PersistHistory, RoomShaper),
-    {ok,
-     #state{host = MyHost, server_host = Host,
-	    access =
-		{Access, AccessCreate, AccessAdmin, AccessPersistent},
-	    default_room_opts = DefRoomOpts,
-	    history_size = HistorySize,
-	    persist_history = PersistHistory,
-	    room_shaper = RoomShaper}}.
+    {ok, #state{host = MyHost,
+		server_host = Host,
+		access = {Access, AccessCreate, AccessAdmin, AccessPersistent},
+		default_room_opts = DefRoomOpts,
+		history_size = HistorySize,
+		persist_history = PersistHistory,
+		room_shaper = RoomShaper}}.
 
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State};
@@ -450,16 +469,17 @@ handle_call({create, Room, From, Nick, Opts}, _From,
 		   access = Access, default_room_opts = DefOpts,
 		   history_size = HistorySize,
 		   persist_history = PersistHistory,
-		   room_shaper = RoomShaper} =
-		State) ->
+		   room_shaper = RoomShaper} = State) ->
     ?DEBUG("MUC: create new room '~s'~n", [Room]),
     NewOpts = case Opts of
 		default -> DefOpts;
 		_ -> Opts
 	      end,
-    {ok, _Pid} = mod_muc_room:start(Host, ServerHost, Access,
-				   Room, HistorySize, PersistHistory,
-				   RoomShaper, From, Nick, NewOpts),
+    {ok, _Pid} = mod_muc_room:start(
+		  Host, ServerHost, Access,
+		  Room, HistorySize, PersistHistory,
+		  RoomShaper, From,
+		  Nick, NewOpts),
     {reply, ok, State}.
 
 handle_cast(_Msg, State) -> {noreply, State}.
@@ -471,8 +491,7 @@ handle_info({route, From, To, Packet, Hops},
 		   access = Access, default_room_opts = DefRoomOpts,
 		   history_size = HistorySize,
 		   persist_history = PersistHistory,
-		   room_shaper = RoomShaper} =
-		State) ->
+		   room_shaper = RoomShaper} = State) ->
     case catch do_route(Host, ServerHost, Access,
 			HistorySize, PersistHistory, RoomShaper,
 			From, To, Packet, DefRoomOpts, Hops) of
@@ -521,6 +540,9 @@ terminate(_Reason, State) ->
 
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
+%%--------------------------------------------------------------------
+%%% Internal functions
+%%--------------------------------------------------------------------
 init_db(mnesia, _Host) ->
     mnesia:create_table(muc_room,
                         [{disc_copies, [node()]},
@@ -584,29 +606,25 @@ stop_supervisor(Host) ->
 do_route(Host, ServerHost, Access, HistorySize,
 	 PersistHistory, RoomShaper, From, To, Packet,
 	 DefRoomOpts, Hops) ->
-    {AccessRoute, _AccessCreate, _AccessAdmin,
-     _AccessPersistent} =
-	Access,
+    {AccessRoute, _AccessCreate, _AccessAdmin, _AccessPersistent} = Access,
     case acl:match_rule(ServerHost, AccessRoute, From) of
-      allow ->
-	  do_route1(Host, ServerHost, Access, HistorySize,
-		    PersistHistory, RoomShaper, From, To, Packet,
-		    DefRoomOpts, Hops);
-      _ ->
-	  #xmlel{attrs = Attrs} = Packet,
-	  Lang = xml:get_attr_s(<<"xml:lang">>, Attrs),
-	  ErrText = <<"Access denied by service policy">>,
-	  Err = jlib:make_error_reply(Packet,
-				      ?ERRT_FORBIDDEN(Lang, ErrText)),
-	  ejabberd_router:route_error(To, From, Err, Packet)
+	allow ->
+	    do_route1(Host, ServerHost, Access, HistorySize,
+		PersistHistory, RoomShaper,
+		From, To, Packet, DefRoomOpts, Hops);
+	_ ->
+	    #xmlel{attrs = Attrs} = Packet,
+	    Lang = xml:get_attr_s(<<"xml:lang">>, Attrs),
+	    ErrText = <<"Access denied by service policy">>,
+	    Err = jlib:make_error_reply(Packet,
+		    ?ERRT_FORBIDDEN(Lang, ErrText)),
+	    ejabberd_router:route_error(To, From, Err, Packet)
     end.
 
 do_route1(Host, ServerHost, Access, HistorySize,
 	  PersistHistory, RoomShaper, From, To, Packet,
 	  DefRoomOpts, _Hops) ->
-    {_AccessRoute, AccessCreate, AccessAdmin,
-     _AccessPersistent} =
-	Access,
+    {_AccessRoute, AccessCreate, AccessAdmin, _AccessPersistent} = Access,
     {Room, _, Nick} = jlib:jid_tolower(To),
     #xmlel{name = Name, attrs = Attrs} = Packet,
     case Room of
@@ -736,51 +754,46 @@ do_route1(Host, ServerHost, Access, HistorySize,
 		end
 	  end;
       _ ->
-	  case mnesia:dirty_read(muc_online_room, {Room, Host}) of
-	    [] ->
-		Type = xml:get_attr_s(<<"type">>, Attrs),
-		case {Name, Type} of
-		  {<<"presence">>, <<"">>} ->
-		      case check_user_can_create_room(ServerHost,
-						      AccessCreate, From, Room)
-			  of
-			true ->
-			    case start_new_room(Host, ServerHost, Access, Room,
-						HistorySize, PersistHistory,
-						RoomShaper, From, Nick,
-						DefRoomOpts)
-				of
-			      {ok, Pid} ->
-				  mod_muc_room:route(Pid, From, Nick, Packet),
-				  ok;
-			      _Err ->
-				  Err = jlib:make_error_reply(Packet,
-							      ?ERR_INTERNAL_SERVER_ERROR),
-				  ejabberd_router:route(To, From, Err)
+	    case mnesia:dirty_read(muc_online_room, {Room, Host}) of
+		[] ->
+		    Type = xml:get_attr_s(<<"type">>, Attrs),
+		    case {Name, Type} of
+			{<<"presence">>, <<"">>} ->
+			    case check_user_can_create_room(ServerHost,
+				    AccessCreate, From, Room) of
+				true ->
+				    case start_new_room(Host, ServerHost, Access,
+					    Room, HistorySize, PersistHistory,
+					    RoomShaper, From, Nick, DefRoomOpts)
+				    of
+					{ok, Pid} ->
+					    mod_muc_room:route(Pid, From, Nick, Packet),
+					    ok;
+					_Err ->
+					    Err = jlib:make_error_reply(Packet,
+						    ?ERR_INTERNAL_SERVER_ERROR),
+					    ejabberd_router:route(To, From, Err)
+				    end;
+				false ->
+				    Lang = xml:get_attr_s(<<"xml:lang">>, Attrs),
+				    ErrText = <<"Room creation is denied by service policy">>,
+				    Err = jlib:make_error_reply(
+					    Packet, ?ERRT_FORBIDDEN(Lang, ErrText)),
+				    ejabberd_router:route(To, From, Err)
 			    end;
-			false ->
+			_ ->
 			    Lang = xml:get_attr_s(<<"xml:lang">>, Attrs),
-			    ErrText =
-				<<"Room creation is denied by service policy">>,
+			    ErrText = <<"Conference room does not exist">>,
 			    Err = jlib:make_error_reply(Packet,
-							?ERRT_FORBIDDEN(Lang,
-									ErrText)),
+				    ?ERRT_ITEM_NOT_FOUND(Lang, ErrText)),
 			    ejabberd_router:route(To, From, Err)
-		      end;
-		  _ ->
-		      Lang = xml:get_attr_s(<<"xml:lang">>, Attrs),
-		      ErrText = <<"Conference room does not exist">>,
-		      Err = jlib:make_error_reply(Packet,
-						  ?ERRT_ITEM_NOT_FOUND(Lang,
-								       ErrText)),
-		      ejabberd_router:route(To, From, Err)
-		end;
-	    [R] ->
-		Pid = R#muc_online_room.pid,
-		?DEBUG("MUC: send to process ~p~n", [Pid]),
-		mod_muc_room:route(Pid, From, Nick, Packet),
-		ok
-	  end
+		    end;
+		[R] ->
+		    Pid = R#muc_online_room.pid,
+		    ?DEBUG("MUC: send to process ~p~n", [Pid]),
+		    mod_muc_room:route(Pid, From, Nick, Packet),
+		    ok
+	    end
     end.
 
 check_user_can_create_room(ServerHost, AccessCreate,
@@ -854,48 +867,42 @@ load_permanent_rooms(Host, ServerHost, Access,
 		     HistorySize, PersistHistory, RoomShaper) ->
     lists:foreach(
       fun(R) ->
-	      {Room, Host} = R#muc_room.name_host,
-	      case get_room_state_if_broadcasted({Room, Host}) of
-		  {ok, RoomState} ->
-		      mod_muc_room:start(normal_state, RoomState);
-		  error ->
-		      case mnesia:dirty_read(muc_online_room, {Room, Host}) of
-			  [] ->
-			      {ok, _Pid} = mod_muc_room:start(Host,
-							      ServerHost,
-							      Access,
-							      Room,
-							      HistorySize,
-							      PersistHistory,
-							      RoomShaper,
-							      R#muc_room.opts);
-			  _ -> ok
-		      end
-	      end
-      end,
-      get_rooms(ServerHost, Host)).
+		{Room, Host} = R#muc_room.name_host,
+		case get_room_state_if_broadcasted({Room, Host}) of
+		    {ok, RoomState} ->
+			mod_muc_room:start(normal_state, RoomState);
+		    error ->
+			case mnesia:dirty_read(muc_online_room, {Room, Host}) of
+			    [] ->
+				{ok, _Pid} = mod_muc_room:start(Host,
+					ServerHost, Access, Room,
+					HistorySize, PersistHistory, RoomShaper,
+					R#muc_room.opts);
+			    _ -> ok
+			end
+		end
+	end,
+	get_rooms(ServerHost, Host)).
 
 start_new_room(Host, ServerHost, Access, Room,
-	       HistorySize, PersistHistory, RoomShaper, From, Nick,
-	       DefRoomOpts) ->
+	    HistorySize, PersistHistory, RoomShaper, From,
+	    Nick, DefRoomOpts) ->
     case get_room_state_if_broadcasted({Room, Host}) of
-      {ok, RoomState} ->
-	  ?DEBUG("MUC: restore room '~s' from other node~n",
-		 [Room]),
-	  mod_muc_room:start(normal_state, RoomState);
-      error ->
-	  case restore_room(ServerHost, Host, Room) of
-	    error ->
-		?DEBUG("MUC: open new room '~s'~n", [Room]),
-		mod_muc_room:start(Host, ServerHost, Access, Room,
-				   HistorySize, PersistHistory, RoomShaper,
-				   From, Nick, DefRoomOpts);
-	    Opts ->
-		?DEBUG("MUC: restore room '~s'~n", [Room]),
-		mod_muc_room:start(Host, ServerHost, Access, Room,
-				   HistorySize, PersistHistory, RoomShaper,
-				   Opts)
-	  end
+	{ok, RoomState} ->
+	    ?DEBUG("MUC: restore room '~s' from other node~n", [Room]),
+	    mod_muc_room:start(normal_state, RoomState);
+	error ->
+	    case restore_room(ServerHost, Host, Room) of
+		error ->
+		    ?DEBUG("MUC: open new room '~s'~n", [Room]),
+		    mod_muc_room:start(Host, ServerHost, Access, Room,
+			HistorySize, PersistHistory, RoomShaper,
+			From, Nick, DefRoomOpts);
+		Opts ->
+		    ?DEBUG("MUC: restore room '~s'~n", [Room]),
+		    mod_muc_room:start(Host, ServerHost, Access, Room,
+			HistorySize, PersistHistory, RoomShaper, Opts)
+	    end
     end.
 
 register_room(ServerHost, Host, Room, Pid) ->
@@ -992,8 +999,7 @@ iq_disco_items(Host, From, Lang, none) ->
 				   children = []}};
 		       _ -> false
 		     end
-	     end,
-	     get_vh_rooms_all_nodes(Host));
+	     end, get_vh_rooms_all_nodes(Host));
 iq_disco_items(Host, From, Lang, Rsm) ->
     {Rooms, RsmO} = get_vh_rooms(Host, Rsm),
     RsmOut = jlib:rsm_encode(RsmO),
@@ -1021,13 +1027,10 @@ iq_disco_items(Host, From, Lang, Rsm) ->
 	     Rooms)
       ++ RsmOut.
 
-get_vh_rooms(Host,
-	     #rsm_in{max = M, direction = Direction, id = I,
-		     index = Index}) ->
+get_vh_rooms(Host, #rsm_in{max = M, direction = Direction, id = I, index = Index}) ->
     AllRooms = get_vh_rooms_all_nodes(Host),
     Count = erlang:length(AllRooms),
-    L = get_vh_rooms_direction(Direction, I, Index,
-			       AllRooms),
+    L = get_vh_rooms_direction(Direction, I, Index, AllRooms),
     L2 = if Index == undefined andalso
 	      Direction == before ->
 		lists:reverse(lists:sublist(lists:reverse(L), 1, M));
@@ -1076,6 +1079,9 @@ get_vh_rooms_direction(_Direction, _I, _Index,
 		       AllRooms) ->
     AllRooms.
 
+%% @doc Return the position of desired room in the list of rooms.
+%% The room must exist in the list. The count starts in 0.
+%% @spec (Desired::muc_online_room(), Rooms::[muc_online_room()]) -> integer()
 get_room_pos(Desired, Rooms) ->
     get_room_pos(Desired, Rooms, 0).
 
@@ -1396,11 +1402,11 @@ iq_get_vcard(Lang) ->
 		    "\nCopyright (c) 2003-2015 ProcessOne">>}]}].
 
 broadcast_service_message(Host, Msg) ->
-    lists:foreach(fun (#muc_online_room{pid = Pid}) ->
-			  gen_fsm:send_all_state_event(Pid,
-						       {service_message, Msg})
-		  end,
-		  get_vh_rooms_all_nodes(Host)).
+    lists:foreach(
+	fun(#muc_online_room{pid = Pid}) ->
+		gen_fsm:send_all_state_event(
+		    Pid, {service_message, Msg})
+	end, get_vh_rooms_all_nodes(Host)).
 
 get_vh_rooms_all_nodes(Host) ->
     Rooms = mnesia:dirty_select(
@@ -1413,8 +1419,7 @@ get_vh_rooms_all_nodes(Host) ->
     lists:ukeysort(#muc_online_room.name_host, Rooms).
 
 get_vh_rooms(Host) ->
-    mnesia:dirty_select(
-      muc_online_room,
+    mnesia:dirty_select(muc_online_room,
       ets:fun2ms(
         fun(#muc_online_room{name_host = {_, H}, pid = Pid} = R)
               when Host == H, node(Pid) == node() ->
@@ -1459,15 +1464,15 @@ opts_to_binary(Opts) ->
               Opt
       end, Opts).
 
+update_tables() ->
+    update_muc_room_table(),
+    update_muc_registered_table().
+
 muc_room_schema() ->
     {record_info(fields, muc_room), #muc_room{}}.
 
 muc_registered_schema() ->
     {record_info(fields, muc_registered), #muc_registered{}}.
-
-update_tables() ->
-    update_muc_room_table(),
-    update_muc_registered_table().
 
 update_muc_online_table() ->
     case catch mnesia:table_info(muc_online_room,

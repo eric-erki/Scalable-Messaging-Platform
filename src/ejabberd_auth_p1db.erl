@@ -1,5 +1,5 @@
 %%%----------------------------------------------------------------------
-%%% File    : ejabberd_auth_internal.erl
+%%% File    : ejabberd_auth_p1db.erl
 %%% Author  : Alexey Shchepin <alexey@process-one.net>
 %%% Purpose : Authentification via P1DB
 %%% Created : 12 Dec 2004 by Alexey Shchepin <alexey@process-one.net>

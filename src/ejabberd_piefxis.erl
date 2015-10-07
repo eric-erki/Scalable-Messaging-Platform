@@ -37,10 +37,12 @@
 
 -module(ejabberd_piefxis).
 
+-behaviour(ejabberd_config).
+
 -protocol({xep, 227, '1.0'}).
 
-%% API
--export([import_file/1, export_server/1, export_host/2]).
+-export([import_file/1, export_server/1, export_host/2,
+	 opt_type/1]).
 
 -define(CHUNK_SIZE, 1024*20). %20k
 
@@ -658,28 +660,9 @@ make_xinclude(Fn) ->
     Base = filename:basename(Fn),
     io_lib:format("<xi:include href='~s'/>", [Base]).
 
-%%%==================================
-%%%% Export user
-%% @spec (Fd, Username::string(), Host::string()) -> ok
-%% @doc Extract user information and print it.
-%% @spec (Username::string(), Host::string()) -> string()
-%% @spec (InfoName::atom(), Username::string(), Host::string()) -> string()
-%%%==================================
-%%%% Interface with ejabberd offline storage
-%% Copied from mod_offline.erl and customized
-%%%==================================
-%%%% Interface with ejabberd private storage
-%%%==================================
-%%%% Disk file access
-%% @spec () -> string()
-%% @spec (Dir::string(), FnT::string()) -> string()
-%% @spec (FnT::string(), Host::string()) -> FnH::string()
-%% @doc Make the filename for the host.
-%% Example: ``("20080804-231550", "jabber.example.org") -> "20080804-231550_jabber_example_org.xml"''
-%% @spec (Fn::string()) -> {ok, Fd}
-%% @spec (Fd) -> ok
-%% @spec (Fd, String::string()) -> ok
 print(Fd, String) ->
-%%%==================================
-%%% vim: set filetype=erlang tabstop=8 foldmarker=%%%%,%%%= foldmethod=marker:
     file:write(Fd, String).
+
+opt_type(auth_password_format) -> fun (X) -> X end;
+opt_type(_) -> [auth_password_format].
+

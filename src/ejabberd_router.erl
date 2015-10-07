@@ -32,11 +32,18 @@
 -behaviour(gen_server).
 
 %% API
--export([route/3, route_error/4, register_route/1,
-	 register_route/2, register_routes/1, unregister_route/1,
-	 unregister_routes/1, dirty_get_all_routes/0,
-	 dirty_get_all_domains/0, make_id/0, get_domain_balancing/1,
-         check_consistency/0]).
+-export([route/3,
+	 route_error/4,
+	 register_route/1,
+	 register_route/2,
+	 register_routes/1,
+	 unregister_route/1,
+	 unregister_routes/1,
+	 dirty_get_all_routes/0,
+	 dirty_get_all_domains/0,
+	 make_id/0,
+	 get_domain_balancing/1,
+	 check_consistency/0]).
 
 -export([start_link/0]).
 
@@ -73,10 +80,11 @@ start_link() ->
 
 route(From, To, Packet) ->
     case catch route_check_id(From, To, Packet) of
-      {'EXIT', Reason} ->
-	  ?ERROR_MSG("~p~nwhen processing: ~p",
-		     [Reason, {From, To, Packet}]);
-      _ -> ok
+	{'EXIT', Reason} ->
+	    ?ERROR_MSG("~p~nwhen processing: ~p",
+		       [Reason, {From, To, Packet}]);
+	_ ->
+	    ok
     end.
 
 %% Route the error packet only if the originating packet is not an error itself.
@@ -204,7 +212,7 @@ init([]) ->
     update_tables(),
     mnesia:create_table(route,
 			[{ram_copies, [node()]},
-                         {local_content, true},
+			 {local_content, true},
 			 {attributes, record_info(fields, route)}]),
     mnesia:add_table_copy(route, node(), ram_copies),
     ejabberd_cluster:subscribe(),

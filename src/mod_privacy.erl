@@ -962,6 +962,9 @@ get_user_lists(LUser, LServer, odbc) ->
             error
     end.
 
+%% From is the sender, To is the destination.
+%% If Dir = out, User@Server is the sender account (From).
+%% If Dir = in, User@Server is the destination account (To).
 check_packet(_, _User, _Server, _UserList,
 	     {#jid{luser = <<"">>, lserver = Server} = _From,
 	      #jid{lserver = Server} = _To, _},
@@ -1020,6 +1023,7 @@ check_packet(_, User, Server,
 			   Groups)
     end.
 
+%% Ptype = mesage | iq | presence_in | presence_out | other
 check_packet_aux([], _PType, _JID, _Subscription,
 		 _Groups) ->
     allow;

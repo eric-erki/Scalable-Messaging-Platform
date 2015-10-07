@@ -85,8 +85,10 @@ start_link() ->
 
 init([]) ->
     case catch mnesia:table_info(acl, storage_type) of
-        disc_copies -> mnesia:delete_table(acl);
-        _ -> ok
+        disc_copies ->
+            mnesia:delete_table(acl);
+        _ ->
+            ok
     end,
     case catch mnesia:table_info(acl, type) of
         bag -> mnesia:delete_table(acl);

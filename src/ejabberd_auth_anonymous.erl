@@ -26,17 +26,19 @@
 -module(ejabberd_auth_anonymous).
 
 -behaviour(ejabberd_config).
-
 -author('mickael.remond@process-one.net').
 
 -behaviour(ejabberd_auth).
 
--export([start/1, allow_anonymous/1,
+-export([start/1,
+	 allow_anonymous/1,
 	 is_sasl_anonymous_enabled/1,
-	 is_login_anonymous_enabled/1, anonymous_user_exist/2,
-	 allow_multiple_connections/1, register_connection/3,
-	 unregister_migrated_connection/3,
-	 unregister_connection/3]).
+	 is_login_anonymous_enabled/1,
+	 anonymous_user_exist/2,
+	 allow_multiple_connections/1,
+	 register_connection/3,
+	 unregister_connection/3,
+	 unregister_migrated_connection/3]).
 
 -export([login/2, set_password/3, check_password/3,
 	 check_password/5, try_register/3,
@@ -60,10 +62,10 @@
 
 start(Host) ->
     update_tables(),
-    mnesia:create_table(anonymous,
-			[{ram_copies, [node()]}, {type, bag},
-			 {local_content, true},
-			 {attributes, record_info(fields, anonymous)}]),
+    mnesia:create_table(anonymous, [{ram_copies, [node()]},
+				    {type, bag},
+				    {local_content, true},
+				    {attributes, record_info(fields, anonymous)}]),
     mnesia:add_table_copy(anonymous, node(), ram_copies),
     ejabberd_hooks:add(sm_register_connection_hook, Host,
 		       ?MODULE, register_connection, 100),
@@ -128,10 +130,12 @@ anonymous_user_exist(User, Server) ->
     LUser = jlib:nodeprep(User),
     LServer = jlib:nameprep(Server),
     US = {LUser, LServer},
-    case mnesia:dirty_read({anonymous, US}) of
-      [_H | _T] -> true;
-      _ -> false
-     end.
+    case catch mnesia:dirty_read({anonymous, US}) of
+	[] ->
+	    false;
+	[_H|_T] ->
+	    true
+    end.
 
 %% Remove connection from Mnesia tables
 remove_connection(SID, LUser, LServer) ->
@@ -168,7 +172,8 @@ unregister_migrated_connection(SID,
 			       #jid{luser = LUser, lserver = LServer}, _) ->
     remove_connection(SID, LUser, LServer).
 
-purge_hook(false, _LUser, _LServer) -> ok;
+purge_hook(false, _LUser, _LServer) ->
+    ok;
 purge_hook(true, LUser, LServer) ->
     ejabberd_hooks:run(anonymous_purge_hook, LServer,
 		       [LUser, LServer]).
@@ -273,10 +278,9 @@ remove_user(_User, _Server, _Password) -> not_allowed.
 plain_password_required() -> false.
 
 update_tables() ->
-    case catch mnesia:table_info(anonymous, local_content)
-	of
-      false -> mnesia:delete_table(anonymous);
-      _ -> ok
+    case catch mnesia:table_info(anonymous, local_content) of
+	false -> mnesia:delete_table(anonymous);
+	_ -> ok
     end.
 
 store_type() -> plain.

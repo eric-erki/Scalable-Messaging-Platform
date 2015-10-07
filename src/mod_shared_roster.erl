@@ -825,9 +825,6 @@ get_special_users_groups_online(Host) ->
 %% Given two lists of groupnames and their options,
 %% return the list of displayed groups to the second list
 displayed_groups(GroupsOpts, SelectedGroupsOpts) ->
-%% Given a list of group names with options,
-%% for those that have @all@ in memberlist,
-%% get the list of groups displayed
     DisplayedGroups = lists:usort(lists:flatmap(fun
 						  ({_Group, Opts}) ->
 						      [G
@@ -842,6 +839,9 @@ displayed_groups(GroupsOpts, SelectedGroupsOpts) ->
      || G <- DisplayedGroups,
         is_group_enabled(proplists:get_value(G, GroupsOpts, []))].
 
+%% Given a list of group names with options,
+%% for those that have @all@ in memberlist,
+%% get the list of groups displayed
 get_special_displayed_groups(GroupsOpts) ->
     Groups = lists:flatmap(
                fun({_Group, Opts} = GroupOpt) ->

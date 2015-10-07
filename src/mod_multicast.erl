@@ -2,8 +2,7 @@
 %%% File    : mod_multicast.erl
 %%% Author  : Badlop <badlop@process-one.net>
 %%% Purpose : Extended Stanza Addressing (XEP-0033) support
-%%% Created : 29 May 2007 by Badlop <badlop@ono.com>
-%%% Id      : $Id: mod_multicast.erl 440 2007-12-06 22:36:21Z badlop $
+%%% Created : 29 May 2007 by Badlop <badlop@process-one.net>
 %%%
 %%%
 %%% ejabberd, Copyright (C) 2002-2015   ProcessOne
@@ -650,7 +649,6 @@ check_relay(RS, LS, Gs) ->
     end.
 
 check_relay_required(RServer, LServerS, Groups) ->
-    % TODO
     case lists:suffix(str:tokens(LServerS, <<".">>),
                       str:tokens(RServer, <<".">>)) of
       true -> false;
@@ -692,7 +690,6 @@ send_query(RServerS, LServiceS, ID, XMLNS) ->
 %%%-------------------------
 
 process_iqreply_error(From, LServiceS, IQ) ->
-    % TODO
     FromS = jts(From),
     ID = IQ#iq.id,
     case str:tokens(ID, <<"/">>) of
@@ -774,33 +771,31 @@ process_discoinfo_result(From, LServiceS, Els, ID,
 process_discoinfo_result2(From, FromS, LServiceS, Els,
 			  RServer, Response, ST) ->
     Multicast_support =
-        lists:any(
-          fun(XML) ->
-                  case XML of
-                      #xmlel{name = <<"feature">>, attrs = Attrs} ->
-                          (?NS_ADDRESS) == xml:get_attr_s(<<"var">>, Attrs);
-                      _ -> false
-                  end
-          end,
-          Els),
+	lists:any(
+	    fun(XML) ->
+		    case XML of
+			#xmlel{name = <<"feature">>, attrs = Attrs} ->
+			    (?NS_ADDRESS) == xml:get_attr_s(<<"var">>, Attrs);
+			_ -> false
+		    end
+	    end,
+	    Els),
     case Multicast_support of
-        true ->
-            SenderT = sender_type(From),
-            RLimits = get_limits_xml(Els, SenderT),
-            add_response(RServer, {multicast_supported, FromS, RLimits},
-                         cached);
-        false ->
-            case ST of
-                {wait_for_info, _ID} ->
-                    Random = randoms:get_string(),
-                    ID = <<RServer/binary, $/, Random/binary>>,
-                    send_query_items(FromS, LServiceS, ID),
-                    add_response(RServer, Response, {wait_for_items, ID});
-                %% We asked a component, and it does not support XEP33
-                {wait_for_items_info, ID, Items} ->
-                    received_awaiter(FromS, RServer, Response, ID, Items,
-                                     LServiceS)
-            end
+	true ->
+	    SenderT = sender_type(From),
+	    RLimits = get_limits_xml(Els, SenderT),
+	    add_response(RServer, {multicast_supported, FromS, RLimits}, cached);
+	false ->
+	    case ST of
+		{wait_for_info, _ID} ->
+		    Random = randoms:get_string(),
+		    ID = <<RServer/binary, $/, Random/binary>>,
+		    send_query_items(FromS, LServiceS, ID),
+		    add_response(RServer, Response, {wait_for_items, ID});
+		%% We asked a component, and it does not support XEP33
+		{wait_for_items_info, ID, Items} ->
+		    received_awaiter(FromS, RServer, Response, ID, Items, LServiceS)
+	    end
     end.
 
 get_limits_xml(Els, SenderT) ->
@@ -939,7 +934,7 @@ add_response(RServer, Response, State) ->
 				   response = {Response, State}, ts = Secs}).
 
 search_server_on_cache(RServer, LServerS, _LServiceS, _Maxmins)
-  when RServer == LServerS ->
+    when RServer == LServerS ->
     route_single;
 search_server_on_cache(RServer, _LServerS, LServiceS, Maxmins) ->
     case look_server(RServer) of

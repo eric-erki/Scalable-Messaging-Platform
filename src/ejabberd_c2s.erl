@@ -101,6 +101,8 @@
 
 -endif.
 
+%% This is the timeout to apply between event when starting a new
+%% session:
 -define(C2S_OPEN_TIMEOUT, 60000).
 
 -define(C2S_HIBERNATE_TIMEOUT, 90000).
@@ -173,8 +175,7 @@
 
 -define(NS_P1_PUSHED, <<"p1:pushed">>).
 
--define(NS_P1_ATTACHMENT,
-	<<"http://process-one.net/attachement">>).
+-define(NS_P1_ATTACHMENT, <<"http://process-one.net/attachement">>).
 
 -define(C2S_P1_ACK_TIMEOUT, 10000).
 
@@ -182,6 +183,9 @@
 
 -define(MAX_OOR_MESSAGES, 1000).
 
+%%%----------------------------------------------------------------------
+%%% API
+%%%----------------------------------------------------------------------
 start(StateName,
       #state{fsm_limit_opts = Opts} = State) ->
     start(StateName, State, Opts);
@@ -198,6 +202,7 @@ start_link(SockData, Opts, FSMLimitOpts) ->
 
 socket_type() -> xml_stream.
 
+%% Return Username, Resource and presence information
 get_presence(FsmRef) ->
     (?GEN_FSM):sync_send_all_state_event(FsmRef,
 					 {get_presence}, 1000).
@@ -467,19 +472,12 @@ init([StateName, StateData, _FSMLimitOpts]) ->
 	   {ok, StateName, StateData#state{socket_monitor = MRef}}
     end.
 
+%% Return list of all available resources of contacts,
 get_subscribed(FsmRef) ->
     (?GEN_FSM):sync_send_all_state_event(FsmRef,
 					 get_subscribed, 1000).
 
-%%----------------------------------------------------------------------
-%% Func: StateName/2
-%% Returns: {next_state, NextStateName, NextStateData}          |
-%%          {next_state, NextStateName, NextStateData, Timeout} |
-%%          {stop, Reason, NewStateData}
-%%----------------------------------------------------------------------
-
-wait_for_stream({xmlstreamstart, Name, Attrs},
-		StateData) ->
+wait_for_stream({xmlstreamstart, Name, Attrs}, StateData) ->
     DefaultLang = ?MYLANG,
     case {xml:get_attr_s(<<"xmlns:stream">>, Attrs),
 	  xml:get_attr_s(<<"xmlns:flash">>, Attrs),
@@ -491,277 +489,230 @@ wait_for_stream({xmlstreamstart, Name, Attrs},
 			   [{<<"xmlns:stream">>, ?NS_STREAM} | Attrs]},
 			  StateData#state{flash_connection = true});
       {?NS_STREAM, _, _, _} ->
-            Server =
-                case StateData#state.server of
-                    <<"">> ->
-                        jlib:nameprep(xml:get_attr_s(<<"to">>, Attrs));
-                    S -> S
-                end,
-	  Lang = case xml:get_attr_s(<<"xml:lang">>, Attrs) of
-		     Lang1 when byte_size(Lang1) =< 35 ->
-			 %% As stated in BCP47, 4.4.1:
-			 %% Protocols or specifications that
-			 %% specify limited buffer sizes for
-			 %% language tags MUST allow for
-			 %% language tags of at least 35 characters.
-			 Lang1;
-		     _ ->
-			 %% Do not store long language tag to
-			 %% avoid possible DoS/flood attacks
-			 <<"">>
-		 end,
-	  IsBlacklistedIP = is_ip_blacklisted(StateData#state.ip, Lang),
-	  case lists:member(Server, ?MYHOSTS) of
-	    true when IsBlacklistedIP == false ->
-		change_shaper(StateData,
-			      jlib:make_jid(<<"">>, Server, <<"">>)),
-		case xml:get_attr_s(<<"version">>, Attrs) of
-		  <<"1.0">> ->
-		      send_header(StateData, Server, <<"1.0">>, DefaultLang),
-		      case StateData#state.authenticated of
-			false ->
-			    TLS = StateData#state.tls,
-			    TLSEnabled = StateData#state.tls_enabled,
-			    TLSRequired = StateData#state.tls_required,
-			    SASLState = cyrsasl:server_new(<<"jabber">>, Server,
-							   <<"">>, [],
-							   fun (U) ->
-								   ejabberd_auth:get_password_with_authmodule(U,
-													      Server)
-							   end,
-							   fun (U, P) ->
-								   ejabberd_auth:check_password_with_authmodule(U,
-														Server,
-														P)
-							   end,
-							   fun (U, P, D, DG) ->
-								   ejabberd_auth:check_password_with_authmodule(U,
-														Server,
-														P,
-														D,
-														DG)
-							   end,
-							   fun (U) ->
-								   ejabberd_auth:is_user_exists(U, Server)
-							   end),
-			    Mechs =
-				case TLSEnabled or not TLSRequired of
-				    true ->
-					Ms1 = cyrsasl:listmech(Server),
-					Ms2 = case is_verification_enabled(
-						     StateData#state{server = Server}) of
-						  false ->
-						      Ms1 -- [<<"EXTERNAL">>];
-						  true ->
-						      Ms1
-					      end,
-					Ms = lists:map(fun (S) ->
-								#xmlel{name = <<"mechanism">>,
-									attrs = [],
-									children = [{xmlcdata, S}]}
-							end, Ms2),
-					[#xmlel{name = <<"mechanisms">>,
-						attrs = [{<<"xmlns">>, ?NS_SASL}],
-						children = Ms}];
-				    false ->
-					[]
-				end,
-			    SockMod =
-				(StateData#state.sockmod):get_sockmod(StateData#state.socket),
-			    Zlib = StateData#state.zlib,
-			    CompressFeature = case Zlib andalso
-						     (SockMod == gen_tcp orelse
-							SockMod == p1_tls)
-						  of
+	    Server =
+		case StateData#state.server of
+		<<"">> ->
+		    jlib:nameprep(xml:get_attr_s(<<"to">>, Attrs));
+		S -> S
+	    end,
+	    Lang = case xml:get_attr_s(<<"xml:lang">>, Attrs) of
+		Lang1 when byte_size(Lang1) =< 35 ->
+		    %% As stated in BCP47, 4.4.1:
+		    %% Protocols or specifications that
+		    %% specify limited buffer sizes for
+		    %% language tags MUST allow for
+		    %% language tags of at least 35 characters.
+		    Lang1;
+		_ ->
+		    %% Do not store long language tag to
+		    %% avoid possible DoS/flood attacks
+		    <<"">>
+	    end,
+	    IsBlacklistedIP = is_ip_blacklisted(StateData#state.ip, Lang),
+	    case lists:member(Server, ?MYHOSTS) of
+		true when IsBlacklistedIP == false ->
+		    change_shaper(StateData, jlib:make_jid(<<"">>, Server, <<"">>)),
+		    case xml:get_attr_s(<<"version">>, Attrs) of
+			<<"1.0">> ->
+			    send_header(StateData, Server, <<"1.0">>, DefaultLang),
+			    case StateData#state.authenticated of
+				false ->
+				    TLS = StateData#state.tls,
+				    TLSEnabled = StateData#state.tls_enabled,
+				    TLSRequired = StateData#state.tls_required,
+				    SASLState = cyrsasl:server_new(
+					    <<"jabber">>, Server, <<"">>, [],
+					    fun (U) ->
+						    ejabberd_auth:get_password_with_authmodule(
+							U, Server)
+					    end,
+					    fun (U, P) ->
+						    ejabberd_auth:check_password_with_authmodule(
+							U, Server, P)
+					    end,
+					    fun (U, P, D, DG) ->
+						    ejabberd_auth:check_password_with_authmodule(
+							U, Server, P, D, DG)
+					    end,
+					    fun (U) ->
+						    ejabberd_auth:is_user_exists(U, Server)
+					    end),
+				    Mechs =
+					case TLSEnabled or not TLSRequired of
+					true ->
+					    Ms1 = cyrsasl:listmech(Server),
+					    Ms2 = case is_verification_enabled(
+						    StateData#state{server = Server}) of
+						false ->
+						    Ms1 -- [<<"EXTERNAL">>];
 						true ->
-						    [#xmlel{name =
-								<<"compression">>,
-							    attrs =
-								[{<<"xmlns">>,
-								  ?NS_FEATURE_COMPRESS}],
-							    children =
-								[#xmlel{name =
-									    <<"method">>,
-									attrs =
-									    [],
-									children
-									    =
-									    [{xmlcdata,
-									      <<"zlib">>}]}]}];
-						_ -> []
-					      end,
-			    TLSFeature = case TLS == true andalso
-						TLSEnabled == false andalso
-						  SockMod == gen_tcp
-					     of
-					   true ->
-					       case TLSRequired of
-						 true ->
-						     [#xmlel{name =
-								 <<"starttls">>,
-							     attrs =
-								 [{<<"xmlns">>,
-								   ?NS_TLS}],
-							     children =
-								 [#xmlel{name =
-									     <<"required">>,
-									 attrs =
-									     [],
-									 children
-									     =
-									     []}]}];
-						 _ ->
-						     [#xmlel{name =
-								 <<"starttls">>,
-							     attrs =
-								 [{<<"xmlns">>,
-								   ?NS_TLS}],
-							     children = []}]
-					       end;
-					   false -> []
-					 end,
-			    P1PushFeature = [#xmlel{name = <<"push">>,
-						    attrs =
-							[{<<"xmlns">>,
-							  ?NS_P1_PUSH}],
-						    children = []}],
-			    P1RebindFeature = [#xmlel{name = <<"rebind">>,
-						      attrs =
-							  [{<<"xmlns">>,
-							    ?NS_P1_REBIND}],
-						      children = []}],
-			    P1AckFeature = [#xmlel{name = <<"ack">>,
-						   attrs =
-						       [{<<"xmlns">>,
-							 ?NS_P1_ACK}],
-						   children = []}],
-                            StreamFeatures1 =
-                                  TLSFeature ++
-                                  CompressFeature ++
-                                  P1PushFeature ++
-                                  P1RebindFeature ++
-                                  P1AckFeature ++
-                                  Mechs,
-                            StreamFeatures =
-                                ejabberd_hooks:run_fold(
-                                  c2s_stream_features,
-                                  Server, StreamFeatures1, [Server]),
-			    send_element(StateData,
-					 #xmlel{name = <<"stream:features">>,
-						attrs = [],
-						children = format_features(
-                                                             StreamFeatures)}),
-			    fsm_next_state(wait_for_feature_request,
-					   StateData#state{server = Server,
-							   sasl_state =
-							       SASLState,
-							   lang = Lang});
-			_ ->
-			    case StateData#state.resource of
-			      <<"">> ->
-				  RosterVersioningFeature =
-				      ejabberd_hooks:run_fold(roster_get_versioning_feature,
-							      Server, [],
-							      [Server]),
-                                    StreamManagementFeature =
-                                        case stream_mgmt_enabled(StateData) of
-                                            true ->
-                                                [#xmlel{name = <<"sm">>,
-                                                        attrs = [{<<"xmlns">>, ?NS_STREAM_MGMT_2}],
-                                                        children = []},
-                                                 #xmlel{name = <<"sm">>,
-                                                        attrs = [{<<"xmlns">>, ?NS_STREAM_MGMT_3}],
-                                                        children = []}];
-                                            false ->
-                                                []
-                                        end,
-				  StreamFeatures1 = [#xmlel{name = <<"push">>,
-							   attrs =
-							       [{<<"xmlns">>,
-								 ?NS_P1_PUSH}],
-							   children = []},
+						    Ms1
+					    end,
+					    Ms = lists:map(fun (S) ->
+							    #xmlel{name = <<"mechanism">>,
+								attrs = [],
+								children = [{xmlcdata, S}]}
+						    end,
+						    Ms2),
+					    [#xmlel{name = <<"mechanisms">>,
+						    attrs = [{<<"xmlns">>, ?NS_SASL}],
+						    children = Ms}];
+					false ->
+					    []
+				    end,
+				    SockMod =
+					(StateData#state.sockmod):get_sockmod(StateData#state.socket),
+				    Zlib = StateData#state.zlib,
+				    CompressFeature = case Zlib andalso
+					((SockMod == gen_tcp) orelse (SockMod == p1_tls)) of
+					true ->
+					    [#xmlel{name = <<"compression">>,
+						    attrs = [{<<"xmlns">>, ?NS_FEATURE_COMPRESS}],
+						    children = [#xmlel{name = <<"method">>,
+							    attrs = [],
+							    children = [{xmlcdata, <<"zlib">>}]}]}];
+					_ ->
+					    []
+				    end,
+				    TLSFeature =
+					case (TLS == true) andalso
+					(TLSEnabled == false) andalso
+					(SockMod == gen_tcp) of
+					true ->
+					    case TLSRequired of
+						true ->
+						    [#xmlel{name = <<"starttls">>,
+							    attrs = [{<<"xmlns">>, ?NS_TLS}],
+							    children = [#xmlel{name = <<"required">>,
+								    attrs = [],
+								    children = []}]}];
+						_ ->
+						    [#xmlel{name = <<"starttls">>,
+							    attrs = [{<<"xmlns">>, ?NS_TLS}],
+							    children = []}]
+					    end;
+					false ->
+					    []
+				    end,
+				    P1PushFeature = [#xmlel{name = <<"push">>,
+						attrs = [{<<"xmlns">>, ?NS_P1_PUSH}],
+						children = []}],
+				    P1RebindFeature = [#xmlel{name = <<"rebind">>,
+						attrs = [{<<"xmlns">>, ?NS_P1_REBIND}],
+						children = []}],
+				    P1AckFeature = [#xmlel{name = <<"ack">>,
+						attrs = [{<<"xmlns">>, ?NS_P1_ACK}],
+						children = []}],
+				    StreamFeatures1 =
+					TLSFeature ++
+					CompressFeature ++
+					P1PushFeature ++
+					P1RebindFeature ++
+					P1AckFeature ++
+					Mechs,
+				    StreamFeatures =
+					ejabberd_hooks:run_fold(
+					    c2s_stream_features,
+					    Server, StreamFeatures1, [Server]),
+				    send_element(StateData,
+					#xmlel{name = <<"stream:features">>,
+					    attrs = [],
+					    children = format_features(StreamFeatures)}),
+				    fsm_next_state(wait_for_feature_request,
+					StateData#state{server = Server,
+					    sasl_state = SASLState,
+					    lang = Lang});
+				_ ->
+				    case StateData#state.resource of
+					<<"">> ->
+					    RosterVersioningFeature =
+						ejabberd_hooks:run_fold(roster_get_versioning_feature,
+						    Server, [],
+						    [Server]),
+					    StreamManagementFeature =
+						case stream_mgmt_enabled(StateData) of
+						true ->
+						    [#xmlel{name = <<"sm">>,
+							    attrs = [{<<"xmlns">>, ?NS_STREAM_MGMT_2}],
+							    children = []},
+							#xmlel{name = <<"sm">>,
+							    attrs = [{<<"xmlns">>, ?NS_STREAM_MGMT_3}],
+							    children = []}];
+						false ->
+						    []
+					    end,
+					    StreamFeatures1 = [#xmlel{name = <<"push">>,
+							attrs = [{<<"xmlns">>, ?NS_P1_PUSH}],
+							children = []},
 						    #xmlel{name = <<"bind">>,
-							   attrs =
-							       [{<<"xmlns">>,
-								 ?NS_BIND}],
-							   children = []},
+							attrs = [{<<"xmlns">>, ?NS_BIND}],
+							children = []},
 						    #xmlel{name = <<"session">>,
-							   attrs =
-							       [{<<"xmlns">>,
-								 ?NS_SESSION}],
-							   children = []}]
-						     ++
-						     RosterVersioningFeature ++
-                                                     StreamManagementFeature ++
-                                                     ejabberd_hooks:run_fold(c2s_post_auth_features,
-                                                                             Server, [], [Server]),
-                                  StreamFeatures =
-                                      ejabberd_hooks:run_fold(
-                                        c2s_stream_features,
-                                        Server, StreamFeatures1, [Server]),
-				  send_element(StateData,
-					       #xmlel{name =
-							  <<"stream:features">>,
-						      attrs = [],
-						      children =
-							  StreamFeatures}),
-				  fsm_next_state(wait_for_bind,
-						 StateData#state{server =
-								     Server,
-								 lang = Lang});
-			      _ ->
-				  send_element(StateData,
-					       #xmlel{name =
-							  <<"stream:features">>,
-						      attrs = [],
-						      children = []}),
-				  fsm_next_state(wait_for_session,
-						 StateData#state{server =
-								     Server,
-								 lang = Lang})
+							attrs = [{<<"xmlns">>, ?NS_SESSION}],
+							children = []}]
+						++
+						RosterVersioningFeature ++
+						StreamManagementFeature ++
+						ejabberd_hooks:run_fold(c2s_post_auth_features,
+						    Server, [], [Server]),
+					    StreamFeatures = ejabberd_hooks:run_fold(c2s_stream_features,
+						    Server, StreamFeatures1, [Server]),
+					    send_element(StateData,
+						#xmlel{name = <<"stream:features">>,
+						    attrs = [],
+						    children = StreamFeatures}),
+					    fsm_next_state(wait_for_bind,
+						StateData#state{server = Server, lang = Lang});
+					_ ->
+					    send_element(StateData,
+						#xmlel{name = <<"stream:features">>,
+						    attrs = [],
+						    children = []}),
+					    fsm_next_state(wait_for_session,
+						StateData#state{server = Server, lang = Lang})
+				    end
+			    end;
+			_ ->
+			    send_header(StateData, Server, <<"">>, DefaultLang),
+			    if not StateData#state.tls_enabled and
+					StateData#state.tls_required ->
+				    send_element(StateData,
+					?POLICY_VIOLATION_ERR(Lang,
+					    <<"Use of STARTTLS required">>)),
+				    send_trailer(StateData),
+				    {stop, normal, StateData};
+				true ->
+				    fsm_next_state(wait_for_auth,
+					StateData#state{server = Server,
+					    lang = Lang})
 			    end
-		      end;
-		  _ ->
-		      send_header(StateData, Server, <<"">>, DefaultLang),
-		      if not StateData#state.tls_enabled and
-			   StateData#state.tls_required ->
-			     send_element(StateData,
-					  ?POLICY_VIOLATION_ERR(Lang,
-								<<"Use of STARTTLS required">>)),
-			     send_trailer(StateData),
-			     {stop, normal, StateData};
-			 true ->
-			     fsm_next_state(wait_for_auth,
-					    StateData#state{server = Server,
-							    lang = Lang})
-		      end
-		end;
-	    true ->
-		IP = StateData#state.ip,
-		{true, LogReason, ReasonT} = IsBlacklistedIP,
-		?INFO_MSG("Connection attempt from blacklisted IP ~s: ~s",
-			  [jlib:ip_to_list(IP), LogReason]),
-		send_header(StateData, Server, <<"">>, DefaultLang),
-		send_element(StateData, ?POLICY_VIOLATION_ERR(Lang, ReasonT)),
-		send_trailer(StateData),
-		{stop, normal, StateData};
-	    _ ->
-		send_header(StateData, ?MYNAME, <<"">>, DefaultLang),
-		send_element(StateData, ?HOST_UNKNOWN_ERR),
-		send_trailer(StateData),
-		{stop, normal, StateData}
-	  end;
-      _ ->
-	  case Name of
-	    <<"policy-file-request">> ->
-		send_text(StateData, flash_policy_string()),
-		{stop, normal, StateData};
-	    _ ->
-		send_header(StateData, ?MYNAME, <<"">>, DefaultLang),
-		send_element(StateData, ?INVALID_NS_ERR),
-		send_trailer(StateData),
-		{stop, normal, StateData}
-	  end
+		    end;
+		true ->
+		    IP = StateData#state.ip,
+		    {true, LogReason, ReasonT} = IsBlacklistedIP,
+		    ?INFO_MSG("Connection attempt from blacklisted IP ~s: ~s",
+			[jlib:ip_to_list(IP), LogReason]),
+		    send_header(StateData, Server, <<"">>, DefaultLang),
+		    send_element(StateData, ?POLICY_VIOLATION_ERR(Lang, ReasonT)),
+		    send_trailer(StateData),
+		    {stop, normal, StateData};
+		_ ->
+		    send_header(StateData, ?MYNAME, <<"">>, DefaultLang),
+		    send_element(StateData, ?HOST_UNKNOWN_ERR),
+		    send_trailer(StateData),
+		    {stop, normal, StateData}
+	    end;
+	_ ->
+	    case Name of
+		<<"policy-file-request">> ->
+		    send_text(StateData, flash_policy_string()),
+		    {stop, normal, StateData};
+		_ ->
+		    send_header(StateData, ?MYNAME, <<"">>, DefaultLang),
+		    send_element(StateData, ?INVALID_NS_ERR),
+		    send_trailer(StateData),
+		    {stop, normal, StateData}
+	    end
     end;
 wait_for_stream(timeout, StateData) ->
     {stop, normal, StateData};
@@ -784,192 +735,188 @@ wait_for_stream(stop_or_detach, _From, StateData) ->
     {stop, normal, stopped, StateData}.
 
 wait_for_auth({xmlstreamelement, #xmlel{name = Name} = El}, StateData)
-    when ?IS_STREAM_MGMT_TAG(Name) ->
+	when ?IS_STREAM_MGMT_TAG(Name) ->
     fsm_next_state(wait_for_auth, dispatch_stream_mgmt(El, StateData));
 wait_for_auth({xmlstreamelement, El}, StateData) ->
     case is_auth_packet(El) of
-      {auth, _ID, get, {U, _, _, _}} ->
-	  #xmlel{name = Name, attrs = Attrs} =
-	      jlib:make_result_iq_reply(El),
-	  case U of
-	    <<"">> -> UCdata = [];
-	    _ -> UCdata = [{xmlcdata, U}]
-	  end,
-	  Res = case
-		  ejabberd_auth:plain_password_required(StateData#state.server)
+	{auth, _ID, get, {U, _, _, _}} ->
+	    #xmlel{name = Name, attrs = Attrs} = jlib:make_result_iq_reply(El),
+	    case U of
+		<<"">> -> UCdata = [];
+		_ -> UCdata = [{xmlcdata, U}]
+	    end,
+	    Res = case
+		ejabberd_auth:plain_password_required(StateData#state.server)
+	    of
+		false ->
+		    #xmlel{name = Name, attrs = Attrs,
+			children =
+			[#xmlel{name = <<"query">>,
+				attrs = [{<<"xmlns">>, ?NS_AUTH}],
+				children =
+				[#xmlel{name = <<"username">>,
+					attrs = [],
+					children = UCdata},
+				    #xmlel{name = <<"password">>,
+					attrs = [], children = []},
+				    #xmlel{name = <<"digest">>,
+					attrs = [], children = []},
+				    #xmlel{name = <<"resource">>,
+					attrs = [],
+					children = []}]}]};
+		true ->
+		    #xmlel{name = Name, attrs = Attrs,
+			children =
+			[#xmlel{name = <<"query">>,
+				attrs = [{<<"xmlns">>, ?NS_AUTH}],
+				children =
+				[#xmlel{name = <<"username">>,
+					attrs = [],
+					children = UCdata},
+				    #xmlel{name = <<"password">>,
+					attrs = [], children = []},
+				    #xmlel{name = <<"resource">>,
+					attrs = [],
+					children = []}]}]}
+	    end,
+	    send_element(StateData, Res),
+	    fsm_next_state(wait_for_auth, StateData);
+	{auth, _ID, set, {_U, _P, _D, <<"">>}} ->
+	    Err = jlib:make_error_reply(El,
+		    ?ERR_AUTH_NO_RESOURCE_PROVIDED((StateData#state.lang))),
+	    send_element(StateData, Err),
+	    fsm_next_state(wait_for_auth, StateData);
+	{auth, _ID, set, {U, P, D, R}} ->
+	    JID = jlib:make_jid(U, StateData#state.server, R),
+	    case JID /= error andalso
+		acl:match_rule(StateData#state.server,
+		    StateData#state.access, JID)
+		== allow
+	    of
+		true ->
+		    DGen = fun (PW) ->
+			    p1_sha:sha(<<(StateData#state.streamid)/binary, PW/binary>>)
+		    end,
+		    case ejabberd_auth:check_password_with_authmodule(U,
+			    StateData#state.server,
+			    P, D, DGen)
 		    of
-		  false ->
-		      #xmlel{name = Name, attrs = Attrs,
-			     children =
-				 [#xmlel{name = <<"query">>,
-					 attrs = [{<<"xmlns">>, ?NS_AUTH}],
-					 children =
-					     [#xmlel{name = <<"username">>,
-						     attrs = [],
-						     children = UCdata},
-					      #xmlel{name = <<"password">>,
-						     attrs = [], children = []},
-					      #xmlel{name = <<"digest">>,
-						     attrs = [], children = []},
-					      #xmlel{name = <<"resource">>,
-						     attrs = [],
-						     children = []}]}]};
-		  true ->
-		      #xmlel{name = Name, attrs = Attrs,
-			     children =
-				 [#xmlel{name = <<"query">>,
-					 attrs = [{<<"xmlns">>, ?NS_AUTH}],
-					 children =
-					     [#xmlel{name = <<"username">>,
-						     attrs = [],
-						     children = UCdata},
-					      #xmlel{name = <<"password">>,
-						     attrs = [], children = []},
-					      #xmlel{name = <<"resource">>,
-						     attrs = [],
-						     children = []}]}]}
-		end,
-	  send_element(StateData, Res),
-	  fsm_next_state(wait_for_auth, StateData);
-      {auth, _ID, set, {_U, _P, _D, <<"">>}} ->
-	  Err = jlib:make_error_reply(El,
-				      ?ERR_AUTH_NO_RESOURCE_PROVIDED((StateData#state.lang))),
-	  send_element(StateData, Err),
-	  fsm_next_state(wait_for_auth, StateData);
-      {auth, _ID, set, {U, P, D, R}} ->
-	  JID = jlib:make_jid(U, StateData#state.server, R),
-	  case JID /= error andalso
-		 acl:match_rule(StateData#state.server,
-				StateData#state.access, JID)
-		   == allow
-	      of
-	    true ->
-		DGen = fun (PW) ->
-			       p1_sha:sha(<<(StateData#state.streamid)/binary, PW/binary>>)
-		       end,
-		case ejabberd_auth:check_password_with_authmodule(U,
-								  StateData#state.server,
-								  P, D, DGen)
-		    of
-		  {true, AuthModule} ->
-                      ?INFO_MSG("(~w) Accepted legacy authentication for ~s by ~p from ~s",
-                                [StateData#state.socket,
-                                 jlib:jid_to_string(JID), AuthModule,
-                                 ejabberd_config:may_hide_data(jlib:ip_to_list(StateData#state.ip))]),
-		      ejabberd_hooks:run(c2s_auth_result, StateData#state.server,
-					 [true, U, StateData#state.server,
-					  StateData#state.ip]),
-		      case need_redirect(StateData#state{user = U}) of
-			{true, Host} ->
-			    ?INFO_MSG("(~w) Redirecting ~s to ~s",
-				      [StateData#state.socket,
-				       jlib:jid_to_string(JID), Host]),
-			    send_element(StateData, ?SERR_SEE_OTHER_HOST(Host)),
-			    send_trailer(StateData),
-			    {stop, normal, StateData};
-			false ->
-			    Conn = (StateData#state.sockmod):get_conn_type(
-                                     StateData#state.socket),
-			    Res = jlib:make_result_iq_reply(
-                                    El#xmlel{children = []}),
-			    send_element(StateData, Res),
-			    change_shaper(StateData, JID),
-			    {Fs, Ts, Bs} =
-				ejabberd_hooks:run_fold(roster_get_subscription_lists,
-							StateData#state.server,
-							{[], [], []},
-							[U,
-							 StateData#state.server]),
-			    LJID =
-				jlib:jid_tolower(jlib:jid_remove_resource(JID)),
-			    SharedSet = ?SETS:from_list([LJID|Bs]),
-			    FSet = lists:foldl(fun ?SETS:add_element/2, SharedSet, Fs),
-			    TSet = lists:foldl(fun ?SETS:add_element/2, SharedSet, Ts),
-			    PrivList =
-				ejabberd_hooks:run_fold(privacy_get_user_list,
-							StateData#state.server,
-							#userlist{},
-							[U,
-							 StateData#state.server]),
-			    NewStateData = StateData#state{user = U,
-							   resource = R,
-							   jid = JID,
-							   conn = Conn,
-							   auth_module =
-							       AuthModule,
-							   pres_f =  FSet,
-							   pres_t = TSet,
-							   privacy_list =
-							       PrivList},
-			    DebugFlag =
-				ejabberd_hooks:run_fold(c2s_debug_start_hook,
-							NewStateData#state.server,
-							false,
-							[self(), NewStateData]),
-			    open_session(session_established,
-					  NewStateData#state{debug = DebugFlag})
-		      end;
-		  _ ->
-                      ?INFO_MSG("(~w) Failed legacy authentication for ~s from ~s",
-                                [StateData#state.socket,
-                                 jlib:jid_to_string(JID),
-                                 ejabberd_config:may_hide_data(jlib:ip_to_list(StateData#state.ip))]),
-		      ejabberd_hooks:run(c2s_auth_result, StateData#state.server,
-					 [false, U, StateData#state.server,
-					  StateData#state.ip]),
-		      Err = jlib:make_error_reply(El, ?ERR_NOT_AUTHORIZED),
-		      send_element(StateData, Err),
-		      fsm_next_state(wait_for_auth, StateData)
-		end;
-	    _ ->
-		if JID == error ->
-		       ?INFO_MSG("(~w) Forbidden legacy authentication "
-				 "for username '~s' with resource '~s'",
-				 [StateData#state.socket, U, R]),
-		       Err = jlib:make_error_reply(El, ?ERR_JID_MALFORMED),
-		       send_element(StateData, Err),
-		       fsm_next_state(wait_for_auth, StateData);
-		   true ->
-		       ?INFO_MSG("(~w) Forbidden legacy authentication "
-				 "for ~s from ~s",
-				 [StateData#state.socket,
-				  jlib:jid_to_string(JID),
-				  ejabberd_config:may_hide_data(jlib:ip_to_list(StateData#state.ip))]),
-		       ejabberd_hooks:run(c2s_auth_result, StateData#state.server,
-					  [false, U, StateData#state.server,
-					   StateData#state.ip]),
-		       Err = jlib:make_error_reply(El, ?ERR_NOT_ALLOWED),
-		       send_element(StateData, Err),
-		       fsm_next_state(wait_for_auth, StateData)
-		end
-	  end;
-      _ ->
-	  #xmlel{name = Name, attrs = Attrs} = El,
-	  case {xml:get_attr_s(<<"xmlns">>, Attrs), Name} of
-	    {?NS_P1_REBIND, <<"rebind">>} ->
-		SJID = xml:get_path_s(El, [{elem, <<"jid">>}, cdata]),
-		SID = xml:get_path_s(El, [{elem, <<"sid">>}, cdata]),
-		case jlib:string_to_jid(SJID) of
-		  error ->
-		      send_element(StateData,
-				   #xmlel{name = <<"failure">>,
-					  attrs =
-					      [{<<"xmlns">>, ?NS_P1_REBIND}],
-					  children =
-					      [{xmlcdata, <<"Invalid JID">>}]}),
-		      fsm_next_state(wait_for_auth, StateData);
-		  JID ->
-		      case rebind(StateData, JID, SID) of
-			{next_state, wait_for_feature_request, NewStateData,
-			 Timeout} ->
-			    {next_state, wait_for_auth, NewStateData, Timeout};
-			Res -> Res
-		      end
-		end;
-	    _ ->
-		process_unauthenticated_stanza(StateData, El),
-		fsm_next_state(wait_for_auth, StateData)
-	  end
+			{true, AuthModule} ->
+			    ?INFO_MSG("(~w) Accepted legacy authentication for ~s by ~p from ~s",
+				[StateData#state.socket,
+				    jlib:jid_to_string(JID), AuthModule,
+				    ejabberd_config:may_hide_data(jlib:ip_to_list(StateData#state.ip))]),
+			    ejabberd_hooks:run(c2s_auth_result, StateData#state.server,
+				[true, U, StateData#state.server,
+				    StateData#state.ip]),
+			    case need_redirect(StateData#state{user = U}) of
+				{true, Host} ->
+				    ?INFO_MSG("(~w) Redirecting ~s to ~s",
+					[StateData#state.socket,
+					    jlib:jid_to_string(JID), Host]),
+				    send_element(StateData, ?SERR_SEE_OTHER_HOST(Host)),
+				    send_trailer(StateData),
+				    {stop, normal, StateData};
+				false ->
+				    Conn = (StateData#state.sockmod):get_conn_type(
+					    StateData#state.socket),
+				    Res = jlib:make_result_iq_reply(
+					    El#xmlel{children = []}),
+				    send_element(StateData, Res),
+				    change_shaper(StateData, JID),
+				    {Fs, Ts, Bs} =
+					ejabberd_hooks:run_fold(roster_get_subscription_lists,
+					    StateData#state.server,
+					    {[], [], []},
+					    [U, StateData#state.server]),
+				    LJID = jlib:jid_tolower(jlib:jid_remove_resource(JID)),
+				    SharedSet = ?SETS:from_list([LJID|Bs]),
+				    FSet = lists:foldl(fun ?SETS:add_element/2, SharedSet, Fs),
+				    TSet = lists:foldl(fun ?SETS:add_element/2, SharedSet, Ts),
+				    PrivList =
+					ejabberd_hooks:run_fold(privacy_get_user_list,
+					    StateData#state.server,
+					    #userlist{},
+					    [U, StateData#state.server]),
+				    NewStateData = StateData#state{user = U,
+					    resource = R,
+					    jid = JID,
+					    conn = Conn,
+					    auth_module =
+					    AuthModule,
+					    pres_f =  FSet,
+					    pres_t = TSet,
+					    privacy_list =
+					    PrivList},
+				    DebugFlag =
+					ejabberd_hooks:run_fold(c2s_debug_start_hook,
+					    NewStateData#state.server,
+					    false,
+					    [self(), NewStateData]),
+				    open_session(session_established,
+					NewStateData#state{debug = DebugFlag})
+			    end;
+			_ ->
+			    ?INFO_MSG("(~w) Failed legacy authentication for ~s from ~s",
+				[StateData#state.socket,
+				    jlib:jid_to_string(JID),
+				    ejabberd_config:may_hide_data(jlib:ip_to_list(StateData#state.ip))]),
+			    ejabberd_hooks:run(c2s_auth_result, StateData#state.server,
+				[false, U, StateData#state.server,
+				    StateData#state.ip]),
+			    Err = jlib:make_error_reply(El, ?ERR_NOT_AUTHORIZED),
+			    send_element(StateData, Err),
+			    fsm_next_state(wait_for_auth, StateData)
+		    end;
+		_ ->
+		    if JID == error ->
+			    ?INFO_MSG("(~w) Forbidden legacy authentication "
+				"for username '~s' with resource '~s'",
+				[StateData#state.socket, U, R]),
+			    Err = jlib:make_error_reply(El, ?ERR_JID_MALFORMED),
+			    send_element(StateData, Err),
+			    fsm_next_state(wait_for_auth, StateData);
+			true ->
+			    ?INFO_MSG("(~w) Forbidden legacy authentication "
+				"for ~s from ~s",
+				[StateData#state.socket,
+				    jlib:jid_to_string(JID),
+				    ejabberd_config:may_hide_data(jlib:ip_to_list(StateData#state.ip))]),
+			    ejabberd_hooks:run(c2s_auth_result, StateData#state.server,
+				[false, U, StateData#state.server,
+				    StateData#state.ip]),
+			    Err = jlib:make_error_reply(El, ?ERR_NOT_ALLOWED),
+			    send_element(StateData, Err),
+			    fsm_next_state(wait_for_auth, StateData)
+		    end
+	    end;
+	_ ->
+	    #xmlel{name = Name, attrs = Attrs} = El,
+	    case {xml:get_attr_s(<<"xmlns">>, Attrs), Name} of
+		{?NS_P1_REBIND, <<"rebind">>} ->
+		    SJID = xml:get_path_s(El, [{elem, <<"jid">>}, cdata]),
+		    SID = xml:get_path_s(El, [{elem, <<"sid">>}, cdata]),
+		    case jlib:string_to_jid(SJID) of
+			error ->
+			    send_element(StateData,
+				#xmlel{name = <<"failure">>,
+				    attrs =
+				    [{<<"xmlns">>, ?NS_P1_REBIND}],
+				    children =
+				    [{xmlcdata, <<"Invalid JID">>}]}),
+			    fsm_next_state(wait_for_auth, StateData);
+			JID ->
+			    case rebind(StateData, JID, SID) of
+				{next_state, wait_for_feature_request, NewStateData,
+					    Timeout} ->
+				    {next_state, wait_for_auth, NewStateData, Timeout};
+				Res -> Res
+			    end
+		    end;
+		_ ->
+		    process_unauthenticated_stanza(StateData, El),
+		    fsm_next_state(wait_for_auth, StateData)
+	    end
     end;
 wait_for_auth(timeout, StateData) ->
     {stop, normal, StateData};
@@ -1008,8 +955,7 @@ wait_for_feature_request({xmlstreamelement, El},
 				    Mech, ClientIn, ClientCertFile)
 	      of
 	    {ok, Props} ->
-		catch
-		  (StateData#state.sockmod):reset_stream(StateData#state.socket),
+		catch (StateData#state.sockmod):reset_stream(StateData#state.socket),
 		%U = xml:get_attr_s(username, Props),
 		U = proplists:get_value(username, Props, <<>>),
 		%AuthModule = xml:get_attr_s(auth_module, Props),
@@ -1037,7 +983,7 @@ wait_for_feature_request({xmlstreamelement, El},
 				     StateData#state{streamid = new_id(),
 						     authenticated = true,
 						     auth_module = AuthModule,
-                                                     sasl_state = undefined,
+						     sasl_state = undefined,
 						     user = U})
 		end;
 	    {continue, ServerOut, NewSASLState} ->
@@ -1050,10 +996,10 @@ wait_for_feature_request({xmlstreamelement, El},
 		fsm_next_state(wait_for_sasl_response,
 			       StateData#state{sasl_state = NewSASLState});
 	    {error, Error, Username} ->
-                ?INFO_MSG("(~w) Failed authentication for ~s@~s from ~s",
-                          [StateData#state.socket,
-                           Username, StateData#state.server,
-                           ejabberd_config:may_hide_data(jlib:ip_to_list(StateData#state.ip))]),
+		?INFO_MSG("(~w) Failed authentication for ~s@~s from ~s",
+			[StateData#state.socket,
+			    Username, StateData#state.server,
+			    ejabberd_config:may_hide_data(jlib:ip_to_list(StateData#state.ip))]),
 		ejabberd_hooks:run(c2s_auth_result, StateData#state.server,
 				   [false, Username, StateData#state.server,
 				    StateData#state.ip]),
@@ -1063,8 +1009,7 @@ wait_for_feature_request({xmlstreamelement, El},
 				    children =
 					[#xmlel{name = Error, attrs = [],
 						children = []}]}),
-		{next_state, wait_for_feature_request, StateData,
-		 ?C2S_OPEN_TIMEOUT};
+		{next_state, wait_for_feature_request, StateData, ?C2S_OPEN_TIMEOUT};
 	    {error, Error, Username, Txt} ->
 		if Username /= <<"">> ->
 			?INFO_MSG("(~w) Failed authentication for ~s@~s from ~s: ~s",
@@ -1348,8 +1293,7 @@ wait_for_sasl_response({xmlstreamelement, El},
 			     [#xmlel{name = Error,
 				     children =
 					 [#xmlel{name = <<"text">>,
-						 children =
-						     [{xmlcdata, Txt}]}]}]}),
+						 children = [{xmlcdata, Txt}]}]}]}),
 		{next_state, wait_for_feature_request, StateData,
 		 ?C2S_OPEN_TIMEOUT};
 	    {error, Error} ->
@@ -1448,56 +1392,59 @@ wait_for_session({xmlstreamelement, #xmlel{name = Name} = El}, StateData)
 wait_for_session({xmlstreamelement, El}, StateData) ->
     NewStateData = update_num_stanzas_in(StateData, El),
     case jlib:iq_query_info(El) of
-      #iq{type = set, xmlns = ?NS_SESSION} ->
-	  U = NewStateData#state.user,
-	  JID = NewStateData#state.jid,
-	  case acl:match_rule(NewStateData#state.server,
-			      NewStateData#state.access, JID)
-	      of
-	    allow ->
-		?INFO_MSG("(~w) Opened session for ~s",
-			  [NewStateData#state.socket, jlib:jid_to_string(JID)]),
-		Res = jlib:make_result_iq_reply(El#xmlel{children = []}),
-                NewState = send_stanza(NewStateData, Res),
-		change_shaper(NewState, JID),
-		{Fs, Ts, Bs} =
-		    ejabberd_hooks:run_fold(roster_get_subscription_lists,
-					    NewState#state.server, {[], [], []},
-					    [U, NewState#state.server]),
-		LJID = jlib:jid_tolower(jlib:jid_remove_resource(JID)),
-		SharedSet = ?SETS:from_list([LJID|Bs]),
-		FSet = lists:foldl(fun ?SETS:add_element/2, SharedSet, Fs),
-		TSet = lists:foldl(fun ?SETS:add_element/2, SharedSet, Ts),
-		PrivList =
-		    ejabberd_hooks:run_fold(privacy_get_user_list,
-					    NewState#state.server, #userlist{},
-					    [U, NewState#state.server]),
-		Conn = (NewState#state.sockmod):get_conn_type(
-                         NewState#state.socket),
-		UpdatedStateData = NewState#state{conn = Conn,
-					       pres_f =  FSet,
-					       pres_t = TSet,
-					       privacy_list = PrivList},
-		DebugFlag =
-		    ejabberd_hooks:run_fold(c2s_debug_start_hook,
-					    UpdatedStateData#state.server, false,
-					    [self(), UpdatedStateData]),
-		open_session(session_established,
-			      UpdatedStateData#state{debug = DebugFlag});
-	    _ ->
-		ejabberd_hooks:run(forbidden_session_hook,
-				   NewStateData#state.server, [JID]),
-		?INFO_MSG("(~w) Forbidden session for ~s",
-			  [NewStateData#state.socket, jlib:jid_to_string(JID)]),
-		Err = jlib:make_error_reply(El, ?ERR_NOT_ALLOWED),
-		send_element(NewStateData, Err),
-		fsm_next_state(wait_for_session, NewStateData)
-	  end;
-      _ -> fsm_next_state(wait_for_session, NewStateData)
+	#iq{type = set, xmlns = ?NS_SESSION} ->
+	    U = NewStateData#state.user,
+	    JID = NewStateData#state.jid,
+	    case acl:match_rule(NewStateData#state.server,
+		    NewStateData#state.access, JID) of
+		allow ->
+		    ?INFO_MSG("(~w) Opened session for ~s",
+			[NewStateData#state.socket, jlib:jid_to_string(JID)]),
+		    Res = jlib:make_result_iq_reply(El#xmlel{children = []}),
+		    NewState = send_stanza(NewStateData, Res),
+		    change_shaper(NewState, JID),
+		    {Fs, Ts, Bs} = ejabberd_hooks:run_fold(
+			    roster_get_subscription_lists,
+			    NewState#state.server,
+			    {[], [], []},
+			    [U, NewState#state.server]),
+		    LJID = jlib:jid_tolower(jlib:jid_remove_resource(JID)),
+		    SharedSet = ?SETS:from_list([LJID|Bs]),
+		    FSet = lists:foldl(fun ?SETS:add_element/2, SharedSet, Fs),
+		    TSet = lists:foldl(fun ?SETS:add_element/2, SharedSet, Ts),
+		    PrivList =
+			ejabberd_hooks:run_fold(
+			    privacy_get_user_list,
+			    NewState#state.server,
+			    #userlist{},
+			    [U, NewState#state.server]),
+		    Conn = (NewState#state.sockmod):get_conn_type(
+			    NewState#state.socket),
+		    UpdatedStateData = NewState#state{conn = Conn,
+			    pres_f =  FSet,
+			    pres_t = TSet,
+			    privacy_list = PrivList},
+		    DebugFlag =
+			ejabberd_hooks:run_fold(c2s_debug_start_hook,
+			    UpdatedStateData#state.server, false,
+			    [self(), UpdatedStateData]),
+		    open_session(session_established,
+			UpdatedStateData#state{debug = DebugFlag});
+		_ ->
+		    ejabberd_hooks:run(forbidden_session_hook,
+			NewStateData#state.server, [JID]),
+		    ?INFO_MSG("(~w) Forbidden session for ~s",
+			[NewStateData#state.socket, jlib:jid_to_string(JID)]),
+		    Err = jlib:make_error_reply(El, ?ERR_NOT_ALLOWED),
+		    send_element(NewStateData, Err),
+		    fsm_next_state(wait_for_session, NewStateData)
+	    end;
+	_ ->
+	    fsm_next_state(wait_for_session, NewStateData)
     end;
 wait_for_session(open_session, StateData) ->
     El = #xmlel{name = <<"iq">>,
-		attrs =
+	    attrs =
 		    [{<<"type">>, <<"set">>}, {<<"id">>, <<"session">>}],
 		children =
 		    [#xmlel{name = <<"session">>,
@@ -1535,14 +1482,14 @@ session_established({xmlstreamelement, El},
 		    StateData) ->
     FromJID = StateData#state.jid,
     case check_from(El, FromJID) of
-      'invalid-from' ->
-	  send_element(StateData, ?INVALID_FROM),
-	  send_trailer(StateData),
-	  {stop, normal, StateData};
-      _NewEl ->
-	  NSD1 = change_reception(StateData, true),
-	  NSD2 = start_keepalive_timer(NSD1),
-	  session_established2(El, NSD2)
+	'invalid-from' ->
+	    send_element(StateData, ?INVALID_FROM),
+	    send_trailer(StateData),
+	    {stop, normal, StateData};
+	_NewEl ->
+	    NSD1 = change_reception(StateData, true),
+	    NSD2 = start_keepalive_timer(NSD1),
+	    session_established2(El, NSD2)
     end;
 %% We hibernate the process to reduce memory consumption after a
 %% configurable activity timeout
@@ -1589,6 +1536,7 @@ session_established(stop_or_detach, From, StateData) ->
 	    {stop, normal, stopped, StateData}
     end.
 
+%% Process packets sent by user (coming from user on c2s XMPP connection)
 session_established2(El, StateData) ->
     #xmlel{name = Name, attrs = Attrs} = El,
     NewStateData = update_num_stanzas_in(StateData, El),
@@ -1623,21 +1571,22 @@ session_established2(El, StateData) ->
 		 _ ->
 		     case Name of
 		       <<"presence">> ->
-			   PresenceEl =
+			   PresenceEl0 =
 			       ejabberd_hooks:run_fold(c2s_update_presence,
 						       Server, NewEl,
 						       [User, Server]),
-                           PresEl = fix_packet(NewStateData, FromJID,
-                                               ToJID, PresenceEl),
+			   PresenceEl =
+				 fix_packet(NewStateData, FromJID,
+				   ToJID, PresenceEl0),
 			   case ToJID of
 			     #jid{user = User, server = Server,
 				  resource = <<"">>} ->
 				 ?DEBUG("presence_update(~p,~n\t~p,~n\t~p)",
 					[FromJID, PresenceEl, NewStateData]),
-				 presence_update(FromJID, PresEl,
+				 presence_update(FromJID, PresenceEl,
 						 NewStateData);
 			     _ ->
-				 presence_track(FromJID, ToJID, PresEl,
+				 presence_track(FromJID, ToJID, PresenceEl,
 						NewStateData)
 			   end;
 		       <<"iq">> ->
@@ -1653,15 +1602,16 @@ session_established2(El, StateData) ->
 			     #iq{xmlns = ?NS_P1_PUSH} = IQ ->
 				 process_push_iq(FromJID, ToJID, IQ, NewStateData);
 			     _ ->
-                                 NewIQEl = fix_packet(NewStateData, FromJID,
-                                                      ToJID, NewEl),
-                                 check_privacy_route(FromJID, NewStateData,
-                                                     FromJID, ToJID, NewIQEl)
+				 NewEl0 = fix_packet(NewStateData, FromJID,
+						     ToJID, NewEl),
+				 check_privacy_route(FromJID, NewStateData,
+						     FromJID, ToJID, NewEl0)
 			   end;
 		       <<"message">> ->
-			   MsgEl = fix_packet(NewStateData, FromJID, ToJID, NewEl),
+			   NewEl0 = fix_packet(NewStateData, FromJID,
+					       ToJID, NewEl),
 			   check_privacy_route(FromJID, NewStateData, FromJID,
-					       ToJID, MsgEl);
+					       ToJID, NewEl0);
 		       <<"standby">> ->
 			   StandBy = xml:get_tag_cdata(NewEl) == <<"true">>,
 			   change_standby(NewStateData, StandBy);
@@ -1686,25 +1636,6 @@ wait_for_resume(Event, StateData) ->
     ?DEBUG("Ignoring event while waiting for resumption: ~p", [Event]),
     fsm_next_state(wait_for_resume, StateData).
 
-%%----------------------------------------------------------------------
-%% Func: StateName/3
-%% Returns: {next_state, NextStateName, NextStateData}            |
-%%          {next_state, NextStateName, NextStateData, Timeout}   |
-%%          {reply, Reply, NextStateName, NextStateData}          |
-%%          {reply, Reply, NextStateName, NextStateData, Timeout} |
-%%          {stop, Reason, NewStateData}                          |
-%%          {stop, Reason, Reply, NewStateData}
-%%----------------------------------------------------------------------
-%state_name(Event, From, StateData) ->
-%    Reply = ok,
-%    {reply, Reply, state_name, StateData}.
-
-%%----------------------------------------------------------------------
-%% Func: handle_event/3
-%% Returns: {next_state, NextStateName, NextStateData}          |
-%%          {next_state, NextStateName, NextStateData, Timeout} |
-%%          {stop, Reason, NewStateData}
-%%----------------------------------------------------------------------
 handle_event({add_rosteritem, IJID, ISubscription},
 	     StateName, StateData) ->
     NewStateData = roster_change(IJID, ISubscription,
@@ -2138,19 +2069,19 @@ handle_info({route, From, To,
 				       end;
 				   _ -> {true, Attrs, StateData}
 				 end,
-       if Pass ->
-	   Attrs2 =
-	       jlib:replace_from_to_attrs(jlib:jid_to_string(From),
-					  jlib:jid_to_string(To), NewAttrs),
-           FixedPacket = #xmlel{name = Name, attrs = Attrs2, children = Els},
-	   NewState2 = send_or_enqueue_packet(NewState, From, To, FixedPacket),
-	   ejabberd_hooks:run(c2s_loop_debug,
-			      [{route, From, To, Packet}]),
-	   fsm_next_state(StateName, NewState2);
-       true ->
-	   ejabberd_hooks:run(c2s_loop_debug,
-			      [{route, From, To, Packet}]),
-	   fsm_next_state(StateName, NewState)
+    if Pass ->
+	    Attrs2 =
+		jlib:replace_from_to_attrs(jlib:jid_to_string(From),
+		    jlib:jid_to_string(To), NewAttrs),
+	    FixedPacket = #xmlel{name = Name, attrs = Attrs2, children = Els},
+	    NewState2 = send_or_enqueue_packet(NewState, From, To, FixedPacket),
+	    ejabberd_hooks:run(c2s_loop_debug,
+		[{route, From, To, Packet}]),
+	    fsm_next_state(StateName, NewState2);
+	true ->
+	    ejabberd_hooks:run(c2s_loop_debug,
+		[{route, From, To, Packet}]),
+	    fsm_next_state(StateName, NewState)
     end;
 handle_info({timeout, Timer, _}, StateName,
 	    #state{keepalive_timer = Timer, reception = true} =
@@ -2319,18 +2250,16 @@ handle_info({send_filtered, Feature, From, To, Packet}, StateName, StateData) ->
 			  end
 		   end,
     fsm_next_state(StateName, NewStateData);
-handle_info({broadcast, Type, From, Packet}, StateName,
-	    StateData) ->
-    Recipients =
-	ejabberd_hooks:run_fold(c2s_broadcast_recipients,
-				StateData#state.server, [],
-				[StateData#state.server, StateData,
-                                 Type, From, Packet]),
-    lists:foreach(fun (USR) ->
-			  ejabberd_router:route(From, jlib:make_jid(USR),
-						Packet)
-		  end,
-		  lists:usort(Recipients)),
+handle_info({broadcast, Type, From, Packet}, StateName, StateData) ->
+    Recipients = ejabberd_hooks:run_fold(
+		   c2s_broadcast_recipients, StateData#state.server,
+		   [],
+		   [StateData#state.server, StateData, Type, From, Packet]),
+    lists:foreach(
+      fun(USR) ->
+	      ejabberd_router:route(
+		From, jlib:make_jid(USR), Packet)
+      end, lists:usort(Recipients)),
     fsm_next_state(StateName, StateData);
 handle_info({change_socket, Socket}, StateName,
 	    StateData) ->
@@ -2351,8 +2280,7 @@ handle_info(Info, StateName, StateData) ->
     ?ERROR_MSG("Unexpected info: ~p", [Info]),
     fsm_next_state(StateName, StateData).
 
-print_state(State = #state{pres_t = T, pres_f = F,
-			   pres_a = A}) ->
+print_state(State = #state{pres_t = T, pres_f = F, pres_a = A}) ->
     State#state{pres_t = {pres_t, (?SETS):size(T)},
 		pres_f = {pres_f, (?SETS):size(F)},
 		pres_a = {pres_a, (?SETS):size(A)}}.
@@ -2482,8 +2410,7 @@ change_shaper(StateData, JID) ->
 
 send_text(StateData, Text) when StateData#state.mgmt_state == pending ->
     ?DEBUG("Cannot send text while waiting for resumption: ~p", [Text]);
-send_text(StateData, Text)
-    when StateData#state.xml_socket ->
+send_text(StateData, Text) when StateData#state.xml_socket ->
     ?DEBUG("Send Text on stream = ~p", [Text]),
     (StateData#state.sockmod):send_xml(StateData#state.socket,
 				       {xmlstreamraw, Text});
@@ -2510,8 +2437,7 @@ send_text(StateData, Text) ->
 
 send_element(StateData, El) when StateData#state.mgmt_state == pending ->
     ?DEBUG("Cannot send element while waiting for resumption: ~p", [El]);
-send_element(StateData, El)
-    when StateData#state.xml_socket ->
+send_element(StateData, El) when StateData#state.xml_socket ->
     ejabberd_hooks:run(feature_inspect_packet,
 		       StateData#state.server,
 		       [StateData#state.jid, StateData#state.server,
@@ -2616,12 +2542,11 @@ new_id() -> randoms:get_string().
 
 is_auth_packet(El) ->
     case jlib:iq_query_info(El) of
-      #iq{id = ID, type = Type, xmlns = ?NS_AUTH,
-	  sub_el = SubEl} ->
-	  #xmlel{children = Els} = SubEl,
-	  {auth, ID, Type,
-	   get_auth_tags(Els, <<"">>, <<"">>, <<"">>, <<"">>)};
-      _ -> false
+	#iq{id = ID, type = Type, xmlns = ?NS_AUTH, sub_el = SubEl} ->
+	    #xmlel{children = Els} = SubEl,
+	    {auth, ID, Type,
+		get_auth_tags(Els, <<"">>, <<"">>, <<"">>, <<"">>)};
+	_ -> false
     end.
 
 is_stanza(#xmlel{name = Name, attrs = Attrs}) when Name == <<"message">>;
@@ -2649,20 +2574,21 @@ get_auth_tags([#xmlel{name = Name, children = Els} | L],
     end;
 get_auth_tags([_ | L], U, P, D, R) ->
     get_auth_tags(L, U, P, D, R);
-get_auth_tags([], U, P, D, R) -> {U, P, D, R}.
+get_auth_tags([], U, P, D, R) ->
+    {U, P, D, R}.
 
 process_presence_probe(From, To, StateData) ->
     LFrom = jlib:jid_tolower(From),
     LBFrom = setelement(3, LFrom, <<"">>),
     case StateData#state.pres_last of
-      undefined -> ok;
-      _ ->
-	  Cond1 =
-		    ((?SETS):is_element(LFrom, StateData#state.pres_f)
-		       orelse
-		       LFrom /= LBFrom andalso
-			 (?SETS):is_element(LBFrom, StateData#state.pres_f)),
-	  if Cond1 ->
+	undefined ->
+	    ok;
+	_ ->
+	    Cond = ((?SETS):is_element(LFrom, StateData#state.pres_f)
+		    orelse
+		    ((LFrom /= LBFrom) andalso
+		     (?SETS):is_element(LBFrom, StateData#state.pres_f))),
+	    if Cond ->
 		 Packet = case StateData#state.reception of
 			    true -> StateData#state.pres_last;
 			    false ->
@@ -2714,6 +2640,7 @@ process_presence_probe(From, To, StateData) ->
 	  end
     end.
 
+%% User updates his presence (non-directed presence packet)
 presence_update(From, Packet, StateData) ->
     #xmlel{attrs = Attrs} = Packet,
     case xml:get_attr_s(<<"type">>, Attrs) of
@@ -2775,6 +2702,7 @@ presence_update(From, Packet, StateData) ->
 	  NewState
     end.
 
+%% User sends a directed presence packet
 presence_track(From, To, Packet, StateData) ->
     #xmlel{attrs = Attrs} = Packet,
     LTo = jlib:jid_tolower(To),
@@ -2825,6 +2753,7 @@ check_privacy_route(From, StateData, FromRoute, To,
             StateData
     end.
 
+%% Check if privacy rules allow this delivery
 privacy_check_packet(StateData, From, To, Packet,
 		     Dir) ->
     ejabberd_hooks:run_fold(privacy_check_packet,
@@ -2904,7 +2833,6 @@ format_and_check_privacy(From, StateData, Packet, JIDs, Dir) ->
 send_multiple(From, Server, JIDs, Packet) ->
     ejabberd_router_multicast:route_multicast(From, Server, JIDs, Packet).
 
-
 remove_element(E, Set) ->
     case (?SETS):is_element(E, Set) of
       true -> (?SETS):del_element(E, Set);
@@ -2913,18 +2841,16 @@ remove_element(E, Set) ->
 
 roster_change(IJID, ISubscription, StateData) ->
     LIJID = jlib:jid_tolower(IJID),
-    IsFrom = (ISubscription == both) or
-	       (ISubscription == from),
+    IsFrom = (ISubscription == both) or (ISubscription == from),
     IsTo = (ISubscription == both) or (ISubscription == to),
-    OldIsFrom = (?SETS):is_element(LIJID,
-				   StateData#state.pres_f),
-    FSet = if IsFrom ->
-		  (?SETS):add_element(LIJID, StateData#state.pres_f);
-	      true -> remove_element(LIJID, StateData#state.pres_f)
+    OldIsFrom = (?SETS):is_element(LIJID, StateData#state.pres_f),
+    FSet = if
+	       IsFrom -> (?SETS):add_element(LIJID, StateData#state.pres_f);
+	       true -> remove_element(LIJID, StateData#state.pres_f)
 	   end,
-    TSet = if IsTo ->
-		  (?SETS):add_element(LIJID, StateData#state.pres_t);
-	      true -> remove_element(LIJID, StateData#state.pres_t)
+    TSet = if
+	       IsTo -> (?SETS):add_element(LIJID, StateData#state.pres_t);
+	       true -> remove_element(LIJID, StateData#state.pres_t)
 	   end,
     case StateData#state.pres_last of
       undefined ->
@@ -2965,8 +2891,7 @@ roster_change(IJID, ISubscription, StateData) ->
     end.
 
 update_priority(Priority, Packet, StateData) ->
-    Info1 = [{ip, StateData#state.ip},
-	     {conn, StateData#state.conn},
+    Info1 = [{ip, StateData#state.ip}, {conn, StateData#state.conn},
 	     {auth_module, StateData#state.auth_module}],
     Info = case StateData#state.reception of
 	     false -> [{oor, true} | Info1];
@@ -3023,11 +2948,10 @@ process_privacy_iq(From, To,
     NewStateData.
 
 resend_offline_messages(StateData) ->
-    case
-      ejabberd_hooks:run_fold(resend_offline_messages_hook,
-			      StateData#state.server, [],
-			      [StateData#state.user, StateData#state.server])
-	of
+    case ejabberd_hooks:run_fold(resend_offline_messages_hook,
+				 StateData#state.server, [],
+				 [StateData#state.user, StateData#state.server])
+    of
       Rs -> %%when is_list(Rs) ->
 	  lists:foreach(fun ({route, From, To,
 			      #xmlel{} = Packet}) ->
@@ -3047,8 +2971,7 @@ resend_offline_messages(StateData) ->
     end.
 
 resend_subscription_requests(#state{user = User,
-				    server = Server} =
-				 StateData) ->
+				    server = Server} = StateData) ->
     PendingSubscriptions =
 	ejabberd_hooks:run_fold(resend_subscription_requests_hook,
 				Server, [], [User, Server]),
@@ -3060,20 +2983,14 @@ resend_subscription_requests(#state{user = User,
 
 get_showtag(undefined) -> <<"unavailable">>;
 get_showtag(Presence) ->
-    case xml:get_path_s(Presence,
-			[{elem, <<"show">>}, cdata])
-	of
-      <<"">> -> <<"available">>;
-      ShowTag -> ShowTag
+    case xml:get_path_s(Presence, [{elem, <<"show">>}, cdata]) of
+	<<"">> -> <<"available">>;
+	ShowTag -> ShowTag
     end.
 
 get_statustag(undefined) -> <<"">>;
 get_statustag(Presence) ->
-    case xml:get_path_s(Presence,
-			[{elem, <<"status">>}, cdata])
-	of
-      ShowTag -> ShowTag
-    end.
+    xml:get_path_s(Presence, [{elem, <<"status">>}, cdata]).
 
 process_unauthenticated_stanza(StateData, El) ->
     NewEl = case xml:get_tag_attr_s(<<"xml:lang">>, El) of
@@ -3180,6 +3097,8 @@ fsm_migrate(StateName, StateData, Node, Timeout) ->
      {Node, ?MODULE, start, [StateName, StateData]},
      Timeout}.
 
+%% fsm_reply: Generate the reply FSM tuple with different timeout,
+%% depending on the future state
 fsm_reply(Reply, session_established, StateData) ->
     {reply, Reply, session_established, StateData,
      ?C2S_HIBERNATE_TIMEOUT};
@@ -3190,29 +3109,36 @@ fsm_reply(Reply, wait_for_resume, StateData) ->
 fsm_reply(Reply, StateName, StateData) ->
     {reply, Reply, StateName, StateData, ?C2S_OPEN_TIMEOUT}.
 
+%% Used by c2s blacklist plugins
 is_ip_blacklisted(undefined, _Lang) -> false;
 is_ip_blacklisted({IP, _Port}, Lang) ->
     ejabberd_hooks:run_fold(check_bl_c2s, false, [IP, Lang]).
 
+%% Check from attributes
+%% returns invalid-from|NewElement
 check_from(El, FromJID) ->
     case xml:get_tag_attr(<<"from">>, El) of
-      false -> El;
-      {value, SJID} ->
-	  JID = jlib:string_to_jid(SJID),
-	  case JID of
-	    error -> 'invalid-from';
-	    #jid{} ->
-		if (JID#jid.luser == FromJID#jid.luser) and
-		     (JID#jid.lserver == FromJID#jid.lserver)
-		     and (JID#jid.lresource == FromJID#jid.lresource) ->
-		       El;
-		   (JID#jid.luser == FromJID#jid.luser) and
-		     (JID#jid.lserver == FromJID#jid.lserver)
-		     and (JID#jid.lresource == <<"">>) ->
-		       El;
-		   true -> 'invalid-from'
-		end
-	  end
+	false ->
+	    El;
+	{value, SJID} ->
+	    JID = jlib:string_to_jid(SJID),
+	    case JID of
+		error ->
+		    'invalid-from';
+		#jid{} ->
+		    if
+			(JID#jid.luser == FromJID#jid.luser) and
+				(JID#jid.lserver == FromJID#jid.lserver) and
+				(JID#jid.lresource == FromJID#jid.lresource) ->
+			    El;
+			(JID#jid.luser == FromJID#jid.luser) and
+				(JID#jid.lserver == FromJID#jid.lserver) and
+				(JID#jid.lresource == <<"">>) ->
+			    El;
+			true ->
+			    'invalid-from'
+		    end
+	    end
     end.
 
 start_keepalive_timer(StateData) ->

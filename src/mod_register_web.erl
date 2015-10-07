@@ -140,7 +140,10 @@ process([<<"change_password">>],
                 list_to_binary([?T(<<"There was an error changing the password: ">>),
                                 ?T(get_error_text(Error))]),
 	  {404, [], ErrorText}
-    end.
+    end;
+
+process(_Path, _Request) ->
+    {404, [], "Not Found"}.
 
 %%%----------------------------------------------------------------------
 %%% CSS
@@ -485,9 +488,16 @@ form_del_get(Host, Lang) ->
 %%                                    {error, not_allowed} |
 %%                                    {error, invalid_jid}
 register_account(Username, Host, Password) ->
+    Access = gen_mod:get_module_opt(Host, mod_register, access,
+                                    fun(A) when is_atom(A) -> A end,
+                                    all),
     case jlib:make_jid(Username, Host, <<"">>) of
       error -> {error, invalid_jid};
-      _ -> register_account2(Username, Host, Password)
+      JID ->
+        case acl:match_rule(Host, Access, JID) of
+          deny -> {error, not_allowed};
+          allow -> register_account2(Username, Host, Password)
+        end
     end.
 
 register_account2(Username, Host, Password) ->

@@ -47,6 +47,7 @@ generate_subfilter(UIDs) ->
 %% Subfilter for a single attribute
 
 subfilter({UIDAttr, UIDAttrFormat}) ->
+%% The default UiDAttrFormat is %u
     <<$(, UIDAttr/binary, $=, UIDAttrFormat/binary, $)>>;
 %% The default UiDAttrFormat is <<"%u">>
 subfilter({UIDAttr}) ->

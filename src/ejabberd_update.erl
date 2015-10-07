@@ -134,7 +134,7 @@ build_script(Dir, UpdatedBeams) ->
 	release_handler_1:check_script(
 	  LowLevelScript,
 	  [{ejabberd, "", filename:join(Dir, "..")}]),
-    Check2 = case Check of
+    Check1 = case Check of
 	{ok, []} ->
 	    ?DEBUG("script: ~p~n", [Script]),
 	    ?DEBUG("low level script: ~p~n", [LowLevelScript]),
@@ -146,7 +146,7 @@ build_script(Dir, UpdatedBeams) ->
 	    ?ERROR_MSG("check: ~p~n", [Check]),
 	    io_lib:format("~p", [Check])
     end,
-    {Script, LowLevelScript, Check2}.
+    {Script, LowLevelScript, Check1}.
 
 %% Copied from Erlang/OTP file: lib/sasl/src/systools.hrl
 -record(application, 

@@ -55,7 +55,7 @@ log_user_send(Packet, _C2SState, From, To) ->
     log_packet(From, To, Packet, From#jid.lserver),
     Packet.
 
-log_user_receive(Packet, _C2SState,_JID, From, To) ->
+log_user_receive(Packet, _C2SState, _JID, From, To) ->
     log_packet(From, To, Packet, To#jid.lserver),
     Packet.
 

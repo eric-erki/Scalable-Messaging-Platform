@@ -89,6 +89,9 @@
 
 -record(group_info, {desc, members}).
 
+%%====================================================================
+%% API
+%%====================================================================
 start_link(Host, Opts) ->
     Proc = gen_mod:get_module_proc(Host, ?MODULE),
     gen_server:start_link({local, Proc}, ?MODULE,
@@ -105,6 +108,9 @@ stop(Host) ->
     supervisor:terminate_child(ejabberd_sup, Proc),
     supervisor:delete_child(ejabberd_sup, Proc).
 
+%%--------------------------------------------------------------------
+%% Hooks
+%%--------------------------------------------------------------------
 get_user_roster(Items, {U, S} = US) ->
     SRUsers = get_user_to_groups_map(US, true),
     {NewItems1, SRUsersRest} = lists:mapfoldl(fun (Item,
@@ -135,6 +141,8 @@ get_user_roster(Items, {U, S} = US) ->
 	       || {{U1, S1}, GroupNames} <- dict:to_list(SRUsersRest)],
     SRItems ++ NewItems1.
 
+%% This function in use to rewrite the roster entries when moving or renaming
+%% them in the user contact list.
 process_item(RosterItem, _Host) ->
     USFrom = RosterItem#roster.us,
     {User, Server, _Resource} = RosterItem#roster.jid,
@@ -209,6 +217,9 @@ process_subscription(Direction, User, Server, JID,
       false -> Acc
     end.
 
+%%====================================================================
+%% gen_server callbacks
+%%====================================================================
 init([Host, Opts]) ->
     State = parse_options(Host, Opts),
     cache_tab:new(shared_roster_ldap_user,
@@ -260,6 +271,10 @@ terminate(_Reason, State) ->
 			  ?MODULE, process_item, 50).
 
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
+
+%%--------------------------------------------------------------------
+%%% Internal functions
+%%--------------------------------------------------------------------
 
 get_user_to_groups_map({_, Server} = US, SkipUS) ->
     DisplayedGroups = get_user_displayed_groups(US),
@@ -458,6 +473,7 @@ search_user_name(State, User) ->
       [] -> error
     end.
 
+%% Getting User ID part by regex pattern
 get_user_part_re(String, Pattern) ->
     case catch re:run(String, Pattern) of
       {match, Captured} ->

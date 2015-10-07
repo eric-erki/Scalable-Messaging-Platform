@@ -63,7 +63,7 @@
 
 -define(CAPTCHA_LIFETIME, 120000).
 
--define(LIMIT_PERIOD, 60 * 1000 * 1000).
+-define(LIMIT_PERIOD, 60*1000*1000).
 
 -type error() :: efbig | enodata | limit | malformed_image | timeout.
 
@@ -316,28 +316,6 @@ build_captcha_html(Id, Lang) ->
 					   {<<"value">>, <<"OK">>}],
 				      children = []}]},
 	  {FormEl, {ImgEl, TextEl, IdEl, KeyEl}};
-      _ -> captcha_not_found
-    end.
-
--spec check_captcha(binary(), binary()) -> captcha_not_found |
-                                           captcha_valid |
-                                           captcha_non_valid.
-
-check_captcha(Id, ProvidedKey) ->
-    case str:tokens(Id, <<"-">>) of
-      [_, NodeID] ->
-	  case ejabberd_cluster:get_node_by_id(NodeID) of
-	    Node when Node == node() ->
-		do_check_captcha(Id, ProvidedKey);
-	    Node ->
-		case ejabberd_cluster:call(Node, ?MODULE, check_captcha,
-                                           [Id, ProvidedKey])
-                of
-		  {'EXIT', _} -> captcha_not_found;
-		  {badrpc, _} -> captcha_not_found;
-		  Res -> Res
-		end
-	  end;
       _ -> captcha_not_found
     end.
 
@@ -661,6 +639,27 @@ lookup_captcha(Id) ->
       _ -> {error, enoent}
     end.
 
+-spec check_captcha(binary(), binary()) -> captcha_not_found |
+                                           captcha_valid |
+                                           captcha_non_valid.
+
+check_captcha(Id, ProvidedKey) ->
+    case str:tokens(Id, <<"-">>) of
+      [_, NodeID] ->
+	  case ejabberd_cluster:get_node_by_id(NodeID) of
+	    Node when Node == node() ->
+		do_check_captcha(Id, ProvidedKey);
+	    Node ->
+		case ejabberd_cluster:call(Node, ?MODULE, check_captcha,
+                                           [Id, ProvidedKey])
+                of
+		  {'EXIT', _} -> captcha_not_found;
+		  {badrpc, _} -> captcha_not_found;
+		  Res -> Res
+		end
+	  end;
+      _ -> captcha_not_found
+    end.
 do_check_captcha(Id, ProvidedKey) ->
     case ets:lookup(captcha, Id) of
       [#captcha{pid = Pid, args = Args, key = ValidKey,

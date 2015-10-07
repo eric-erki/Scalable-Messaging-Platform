@@ -81,10 +81,7 @@ update_reg_users_counter_table(Server) ->
     mnesia:sync_dirty(F).
 
 plain_password_required() ->
-    case is_scrammed() of
-      false -> false;
-      true -> true
-    end.
+    is_scrammed().
 
 store_type() ->
     case is_scrammed() of

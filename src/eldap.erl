@@ -102,6 +102,8 @@
 -define(BIND_TIMEOUT, 10000).
 
 -define(CMD_TIMEOUT, 100000).
+%% Used in gen_fsm sync calls.
+%% Used as a timeout for gen_tcp:send/2
 
 -define(CALL_TIMEOUT,
 	(?CMD_TIMEOUT) + (?BIND_TIMEOUT) + (?RETRY_TIMEOUT)).
@@ -111,6 +113,7 @@
 -define(MAX_TRANSACTION_ID, 65535).
 
 -define(MIN_TRANSACTION_ID, 0).
+%% Grace period after "soft" LDAP bind errors:
 
 -define(GRACEFUL_RETRY_TIMEOUT, 5000).
 
@@ -626,18 +629,18 @@ init([Hosts, Port, Rootdn, Passwd, Opts]) ->
                                 (false) -> false
                              end, false),
     TLSOpts = if (Verify == hard orelse Verify == soft)
-                 andalso CacertOpts == [] ->
-                      ?WARNING_MSG("TLS verification is enabled but no CA "
-                                   "certfiles configured, so verification "
-                                   "is disabled.",
-                                   []),
-                      [];
+		   andalso CacertOpts == [] ->
+		     ?WARNING_MSG("TLS verification is enabled but no CA "
+				  "certfiles configured, so verification "
+				  "is disabled.",
+				  []),
+		     [];
 		 Verify == soft ->
-                      [{verify, 1}] ++ CacertOpts ++ DepthOpts ++ CertOpts;
+		     [{verify, 1}] ++ CacertOpts ++ DepthOpts ++ CertOpts;
 		 Verify == hard ->
-                      [{verify, 2}] ++ CacertOpts ++ DepthOpts ++ CertOpts;
+		     [{verify, 2}] ++ CacertOpts ++ DepthOpts ++ CertOpts;
 		 true ->
-                      CacertOpts ++ DepthOpts ++ CertOpts
+		     CacertOpts ++ DepthOpts ++ CertOpts
 	      end,
     {ok, connecting,
      #eldap{hosts = Hosts, port = PortTemp, rootdn = Rootdn,
@@ -680,28 +683,14 @@ handle_event(close, _StateName, S) ->
 handle_event(_Event, StateName, S) ->
     {next_state, StateName, S}.
 
-%%----------------------------------------------------------------------
-%% Func: handle_sync_event/4
-%% Called when gen_fsm:sync_send_all_state_event/2,3 is invoked
-%% Returns: {next_state, NextStateName, NextStateData}            |
-%%          {next_state, NextStateName, NextStateData, Timeout}   |
-%%          {reply, Reply, NextStateName, NextStateData}          |
-%%          {reply, Reply, NextStateName, NextStateData, Timeout} |
-%%          {stop, Reason, NewStateData}                          |
-%%          {stop, Reason, Reply, NewStateData}                    
-%%----------------------------------------------------------------------
 handle_sync_event(_Event, _From, StateName, S) ->
     {reply, {StateName, S}, StateName, S}.
 
-%%----------------------------------------------------------------------
-%% Func: handle_info/3
-%% Returns: {next_state, NextStateName, NextStateData}          |
-%%          {next_state, NextStateName, NextStateData, Timeout} |
-%%          {stop, Reason, NewStateData}
-%%----------------------------------------------------------------------
-
+%%
+%% Packets arriving in various states
+%%
 handle_info({Tag, _Socket, Data}, connecting, S)
-  when Tag == tcp; Tag == ssl ->
+    when Tag == tcp; Tag == ssl ->
     activate_socket(S),
     ?DEBUG("tcp packet received when disconnected!~n~p", [Data]),
     {next_state, connecting, S};
@@ -855,11 +844,11 @@ send_command(Command, From, S) ->
     ?DEBUG("~p~n", [{Name, ejabberd_config:may_hide_data(Request)}]),
     {ok, Bytes} = 'ELDAPv3':encode('LDAPMessage', Message),
     case (S#eldap.sockmod):send(S#eldap.fd, iolist_to_binary(Bytes)) of
-    ok ->
+      ok ->
 	Timer = erlang:start_timer(?CMD_TIMEOUT, self(), {cmd_timeout, Id}),
 	New_dict = dict:store(Id, [{Timer, Command, From, Name}], S#eldap.dict),
 	{ok, S#eldap{id = Id, dict = New_dict}};
-    Error ->
+      Error ->
 	Error
     end.
 
@@ -1063,21 +1052,24 @@ check_id(_, _) -> throw({error, wrong_bind_id}).
 %%-----------------------------------------------------------------------
 %% General Helpers
 %%-----------------------------------------------------------------------
+
 cancel_timer(Timer) ->
     erlang:cancel_timer(Timer),
     receive {timeout, Timer, _} -> ok after 0 -> ok end.
 
+
 close_and_retry(S, Timeout) ->
     catch (S#eldap.sockmod):close(S#eldap.fd),
-    Queue = dict:fold(
-	      fun(_Id, [{Timer, Command, From, _Name}|_], Q) ->
-		      cancel_timer(Timer),
-		      queue:in_r({Command, From}, Q);
-		 (_, _, Q) ->
-		      Q
-	      end, S#eldap.req_q, S#eldap.dict),
-    erlang:send_after(Timeout, self(), {timeout, retry_connect}),
-    S#eldap{fd=null, req_q=Queue, dict=dict:new()}.
+    Queue = dict:fold(fun (_Id,
+			   [{Timer, Command, From, _Name} | _], Q) ->
+			      cancel_timer(Timer),
+			      queue:in_r({Command, From}, Q);
+			  (_, _, Q) -> Q
+		      end,
+		      S#eldap.req_q, S#eldap.dict),
+    erlang:send_after(Timeout, self(),
+		      {timeout, retry_connect}),
+    S#eldap{fd = null, req_q = Queue, dict = dict:new()}.
 
 close_and_retry(S) ->
     close_and_retry(S, ?RETRY_TIMEOUT).
@@ -1139,48 +1131,47 @@ polish([H | T], Res,
     polish(T, Res, [H | Ref]);
 polish([], Res, Ref) -> {Res, Ref}.
 
+%%-----------------------------------------------------------------------
+%% Connect to next server in list and attempt to bind to it.
+%%-----------------------------------------------------------------------
 connect_bind(S) ->
     Host = next_host(S#eldap.host, S#eldap.hosts),
     ?INFO_MSG("LDAP connection on ~s:~p",
 	      [Host, S#eldap.port]),
-    Opts = case S#eldap.tls of
-               tls ->
-                   [{packet, asn1}, {active, once}, {keepalive, true},
-                    binary | S#eldap.tls_options];
-               _ ->
-                   [{packet, asn1}, {active, once}, {keepalive, true},
-                    {send_timeout, ?SEND_TIMEOUT}, binary]
-           end,
+    Opts = if S#eldap.tls == tls ->
+		  [{packet, asn1}, {active, once}, {keepalive, true},
+		   binary
+		   | S#eldap.tls_options];
+	      true ->
+		  [{packet, asn1}, {active, once}, {keepalive, true},
+		   {send_timeout, ?SEND_TIMEOUT}, binary]
+	   end,
     HostS = binary_to_list(Host),
     SockMod = case S#eldap.tls of
-                  tls -> ssl;
-                  _ -> gen_tcp
-              end,
+	tls -> ssl;
+	_ -> gen_tcp
+    end,
     case SockMod:connect(HostS, S#eldap.port, Opts) of
-	{ok, Socket} ->
-            Id = bump_id(S),
-            NewS = S#eldap{host = Host, sockmod = SockMod,
-                           id = Id, fd = Socket},
-            case S#eldap.tls of
-                starttls ->
-                    starttls_request(NewS);
-                _ ->
-                    bind_request(NewS)
-            end;
-	{error, Reason} ->
-	    ?ERROR_MSG("LDAP connection failed:~n"
-                       "** Server: ~s:~p~n"
-                       "** Reason: ~p~n"
-                       "** Socket options: ~p",
-		       [Host, S#eldap.port, Reason, Opts]),
-	    NewS = close_and_retry(S),
-	    {next_state, connecting, NewS#eldap{host = Host}}
+      {ok, Socket} ->
+	  Id = bump_id(S),
+	  NewS = S#eldap{host = Host, sockmod = SockMod,
+		  id = Id, fd = Socket},
+	  case S#eldap.tls of
+	    starttls -> starttls_request(NewS);
+	    _ -> bind_request(NewS)
+	  end;
+      {error, Reason} ->
+	  ?ERROR_MSG("LDAP connection failed:~n** Server: "
+		     "~s:~p~n** Reason: ~p~n** Socket options: ~p",
+		     [Host, S#eldap.port, Reason, Opts]),
+	  NewS = close_and_retry(S),
+	  {next_state, connecting, NewS#eldap{host = Host}}
     end.
 
 bind_request(#eldap{fd = Socket, id = Id} = S) ->
     Req = #'BindRequest'{version = S#eldap.version,
 			 name = S#eldap.rootdn,
-                         authentication = {simple, S#eldap.passwd}},
+			 authentication = {simple, S#eldap.passwd}},
     Message = #'LDAPMessage'{messageID = Id,
 			     protocolOp = {bindRequest, Req}},
     ?DEBUG("Bind Request Message:~p~n", [ejabberd_config:may_hide_data(Message)]),
@@ -1213,6 +1204,7 @@ starttls_request(#eldap{fd = Socket, id = Id} = S) ->
             {next_state, connecting, NewS}
     end.
 
+%% Given last tried Server, find next one to try
 next_host(undefined, [H | _]) ->
     H;                    % First time, take first
 next_host(Host,
@@ -1231,7 +1223,6 @@ next_host(Host, [_ | T], Hosts) ->
 bump_id(#eldap{id = Id})
     when Id > (?MAX_TRANSACTION_ID) ->
     ?MIN_TRANSACTION_ID;
-
 bump_id(#eldap{id = Id}) -> Id + 1.
 
 activate_socket(#eldap{sockmod = SockMod, fd = Sock}) ->

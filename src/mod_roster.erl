@@ -43,17 +43,18 @@
 
 -behaviour(gen_mod).
 
--export([start/2, stop/1, process_iq/3, export/1, import_info/0,
-	 process_local_iq/3, get_user_roster/2, import/5,
-	 get_subscription_lists/3, get_roster/2, import_start/2,
+-export([start/2, stop/1, process_iq/3, export/1,
+	 import_info/0, process_local_iq/3, get_user_roster/2,
+	 import/5, get_subscription_lists/3, get_roster/2,
 	 get_in_pending_subscriptions/3, in_subscription/6,
 	 out_subscription/4, set_items/3, remove_user/2,
 	 get_jid_info/4, item_to_xml/1, webadmin_page/3,
 	 webadmin_user/4, get_versioning_feature/2,
 	 roster_versioning_enabled/1, roster_version/2,
+	 record_to_string/1, groups_to_string/1,
+	 import_start/2, import_stop/2,
 	 enc_key/1, enc_val/2, dec_val/2,
 	 dec_roster_key/1, dec_roster_version_key/1,
-	 record_to_string/1, groups_to_string/1, import_stop/2,
 	 invalidate_roster_cache/2]).
 
 -export([create_rosters/4, mod_opt_type/1, opt_type/1]).
@@ -231,6 +232,7 @@ roster_version_on_db(Host) ->
                            fun(B) when is_boolean(B) -> B end,
 			   false).
 
+%% Returns a list that may contain an xmlelement with the XEP-237 feature if it's enabled.
 get_versioning_feature(Acc, Host) ->
     case roster_versioning_enabled(Host) of
       true ->
@@ -331,6 +333,12 @@ write_roster_version(LUser, LServer, _InTransaction, Ver,
 write_roster_version(_LUser, _LServer, _InTransaction, _Ver, rest) ->
     error.
 
+%% Load roster from DB only if neccesary. 
+%% It is neccesary if
+%%     - roster versioning is disabled in server OR
+%%     - roster versioning is not used by the client OR
+%%     - roster versioning is used by server and client, BUT the server isn't storing versions on db OR
+%%     - the roster version from client don't match current version.
 process_iq_get(From, To, #iq{sub_el = SubEl} = IQ) ->
     LUser = From#jid.luser,
     LServer = From#jid.lserver,
@@ -505,21 +513,22 @@ get_roster_odbc(LUser, LServer) ->
 get_roster_odbc_query(LUser, LServer) ->
     Username = ejabberd_odbc:escape(LUser),
     case catch odbc_queries:get_roster(LServer, Username) of
-        {selected,
-         [<<"username">>, <<"jid">>, <<"nick">>,
-          <<"subscription">>, <<"ask">>, <<"askmessage">>,
-          <<"server">>, <<"subscribe">>, <<"type">>],
-         Items} when is_list(Items) ->
-            {ok, lists:flatmap(
-                   fun(I) ->
-                           case raw_to_record(LServer, I) of
-                               %% Bad JID in database:
-                               error -> [];
-                               R -> [R]
-                           end
-                   end, Items)};
-        _ ->
-            error
+      {selected,
+       [<<"username">>, <<"jid">>, <<"nick">>,
+	<<"subscription">>, <<"ask">>, <<"askmessage">>,
+	<<"server">>, <<"subscribe">>, <<"type">>],
+       Items}
+	  when is_list(Items) ->
+	    {ok, lists:flatmap(
+		    fun(I) ->
+			    case raw_to_record(LServer, I) of
+				%% Bad JID in database:
+				error -> [];
+				R -> [R]
+			    end
+		    end, Items)};
+	_ ->
+	    error
     end.
 
 invalidate_roster_cache(LUser, LServer) ->
@@ -761,6 +770,8 @@ push_item(User, Server, Resource, From, Item,
 		   _ -> [{<<"ver">>, RosterVersion}]
 		 end,
     ResIQ = #iq{type = set, xmlns = ?NS_ROSTER,
+%% @doc Roster push, calculate and include the version attribute.
+%% TODO: don't push to those who didn't load roster
 		id = <<"push", (randoms:get_string())/binary>>,
 		sub_el =
 		    [#xmlel{name = <<"query">>,
@@ -1175,6 +1186,9 @@ remove_user(LUser, LServer, riak) ->
 remove_user(_LUser, _LServer, rest) ->
     error.
 
+%% For each contact with Subscription:
+%% Both or From, send a "unsubscribed" presence stanza;
+%% Both or To, send a "unsubscribe" presence stanza.
 send_unsubscription_to_rosteritems(LUser, LServer) ->
     RosterItems = get_user_roster([], {LUser, LServer}),
     From = jlib:make_jid({LUser, LServer, <<"">>}),
@@ -1589,6 +1603,8 @@ update_roster_table() ->
 	  mnesia:transform_table(roster, ignore, Fields)
     end.
 
+%% Convert roster table to support virtual host
+%% Convert roster table: xattrs fields become 
 update_roster_version_table() ->
     Fields = record_info(fields, roster_version),
     case mnesia:table_info(roster_version, attributes) of

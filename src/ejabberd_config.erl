@@ -236,7 +236,9 @@ consult(File) ->
                 {ok, [Document|_]} ->
                     {ok, parserl(Document)};
                 {error, Err} ->
-                    {error, p1_yaml:format_error(Err)}
+                    Msg1 = "Cannot load " ++ File ++ ": ",
+                    Msg2 = p1_yaml:format_error(Err),
+                    {error, Msg1 ++ Msg2}
             end;
         _ ->
             case file:consult(File) of
@@ -939,22 +941,22 @@ replace_module(Module) ->
 
 replace_modules(Modules) ->
     lists:map(
-      fun({Module, Opts}) ->
-              case replace_module(Module) of
-                  {NewModule, DBType} ->
-                      emit_deprecation_warning(Module, NewModule, DBType),
-                      NewOpts = [{db_type, DBType} |
-                                 lists:keydelete(db_type, 1, Opts)],
-                      {NewModule, transform_module_options(Module, NewOpts)};
-                  NewModule ->
-                      if Module /= NewModule ->
-                              emit_deprecation_warning(Module, NewModule);
-                         true ->
-                              ok
-                      end,
-                      {NewModule, transform_module_options(Module, Opts)}
-              end
-      end, Modules).
+        fun({Module, Opts}) ->
+                case replace_module(Module) of
+                    {NewModule, DBType} ->
+                        emit_deprecation_warning(Module, NewModule, DBType),
+                        NewOpts = [{db_type, DBType} |
+                                   lists:keydelete(db_type, 1, Opts)],
+                        {NewModule, transform_module_options(Module, NewOpts)};
+                    NewModule ->
+                        if Module /= NewModule ->
+                                emit_deprecation_warning(Module, NewModule);
+                           true ->
+                                ok
+                        end,
+                        {NewModule, transform_module_options(Module, Opts)}
+                end
+        end, Modules).
 
 %% Elixir module naming
 %% ====================
@@ -989,7 +991,7 @@ strings_to_binary({A, B, C, D}) when
 	is_integer(A), is_integer(B), is_integer(C), is_integer(D) ->
     {A, B, C ,D};
 strings_to_binary(T) when is_tuple(T) ->
-    list_to_tuple(strings_to_binary(tuple_to_list(T)));
+    list_to_tuple(strings_to_binary1(tuple_to_list(T)));
 strings_to_binary(X) ->
     X.
 

@@ -30,19 +30,32 @@
 -author('alexey@process-one.net').
 
 -define(GEN_FSM, p1_fsm).
-
 -behaviour(?GEN_FSM).
 
 %% External exports
--export([start_link/10, start_link/8, start_link/2,
-	 start/10, start/8, start/2, migrate/3, route/4,
-	 moderate_room_history/2, persist_recent_messages/1,
-         expand_opts/1, encode_opts/2, decode_opts/2,
-         config_fields/0, get_role/2]).
+-export([start_link/10,
+	 start_link/8,
+	 start_link/2,
+	 start/10,
+	 start/8,
+	 start/2,
+	 migrate/3,
+	 route/4,
+	 moderate_room_history/2,
+	 persist_recent_messages/1,
+	 expand_opts/1, encode_opts/2, decode_opts/2,
+	 config_fields/0, get_role/2]).
 
--export([init/1, normal_state/2, handle_event/3,
-	 handle_sync_event/4, handle_info/3, terminate/3,
-	 print_state/1, code_change/4, opt_type/1]).
+%% gen_fsm callbacks
+-export([init/1,
+	 normal_state/2,
+	 handle_event/3,
+	 handle_sync_event/4,
+	 handle_info/3,
+	 terminate/3,
+	 code_change/4,
+	 print_state/1,
+	 opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -83,9 +96,11 @@
 
 -endif.
 
-start(Host, ServerHost, Access, Room, HistorySize,
-      PersistHistory, RoomShaper, Creator, Nick,
-      DefRoomOpts) ->
+%%%----------------------------------------------------------------------
+%%% API
+%%%----------------------------------------------------------------------
+start(Host, ServerHost, Access, Room, HistorySize, PersistHistory, RoomShaper,
+      Creator, Nick, DefRoomOpts) ->
     ?SUPERVISOR_START([Host, ServerHost, Access, Room,
 		       HistorySize, PersistHistory, RoomShaper, Creator, Nick,
 		       DefRoomOpts]).
@@ -135,23 +150,27 @@ persist_recent_messages(FsmRef) ->
     (?GEN_FSM):sync_send_all_state_event(FsmRef,
 					 persist_recent_messages).
 
+%%%----------------------------------------------------------------------
+%%% Callback functions from gen_fsm
+%%%----------------------------------------------------------------------
+
 init([Host, ServerHost, Access, Room, HistorySize,
-      PersistHistory, RoomShaper, Creator, _Nick,
-      DefRoomOpts]) ->
+      PersistHistory, RoomShaper, Creator, _Nick, DefRoomOpts]) ->
     process_flag(trap_exit, true),
     mod_muc:register_room(ServerHost, Host, Room, self()),
     Shaper = shaper:new(RoomShaper),
     State = #state{host = Host, server_host = ServerHost,
-                   access = Access, room = Room,
-                   history = lqueue_new(HistorySize),
-                   persist_history = PersistHistory,
-                   jid = jlib:make_jid(Room, Host, <<"">>),
-                   just_created = true, room_shaper = Shaper},
+		   access = Access, room = Room,
+		   history = lqueue_new(HistorySize),
+		   persist_history = PersistHistory,
+		   jid = jlib:make_jid(Room, Host, <<"">>),
+		   just_created = true,
+		   room_shaper = Shaper},
     State1 = set_opts(DefRoomOpts, State),
     State2 = set_affiliation(Creator, owner, State1),
     if (State2#state.config)#config.persistent ->
 	   mod_muc:store_room(State2#state.server_host,
-                              State2#state.host, State2#state.room,
+			      State2#state.host, State2#state.room,
 			      make_opts(State2), make_affiliations(State2));
        true -> ok
     end,
@@ -160,20 +179,20 @@ init([Host, ServerHost, Access, Room, HistorySize,
     add_to_log(room_existence, created, State2),
     add_to_log(room_existence, started, State2),
     {ok, normal_state, State2};
-init([Host, ServerHost, Access, Room, HistorySize,
-      PersistHistory, RoomShaper, Opts]) ->
+init([Host, ServerHost, Access, Room, HistorySize, PersistHistory, RoomShaper, Opts]) ->
     process_flag(trap_exit, true),
     mod_muc:register_room(ServerHost, Host, Room, self()),
     Shaper = shaper:new(RoomShaper),
-    State = set_opts(Opts,
-		     #state{host = Host, server_host = ServerHost,
-			    access = Access, room = Room,
-			    history =
-				load_history(ServerHost, Room, PersistHistory,
+    State = set_opts(Opts, #state{host = Host,
+				  server_host = ServerHost,
+				  access = Access,
+				  room = Room,
+				  history =
+				    load_history(ServerHost, Room, PersistHistory,
 					     lqueue_new(HistorySize)),
-			    persist_history = PersistHistory,
-			    jid = jlib:make_jid(Room, Host, <<"">>),
-			    room_shaper = Shaper}),
+				  persist_history = PersistHistory,
+				  jid = jlib:make_jid(Room, Host, <<"">>),
+				  room_shaper = Shaper}),
     add_to_log(room_existence, started, State),
     State1 = set_hibernate_timer_if_empty(State),
     {ok, normal_state, State1};
@@ -211,7 +230,7 @@ normal_state({route, From, <<"">>,
 		       Err = jlib:make_error_reply(Packet,
 						   ?ERRT_RESOURCE_CONSTRAINT(Lang,
 									     ErrText)),
-		       route_stanza(StateData#state.jid, From, Err),
+		       ejabberd_router:route(StateData#state.jid, From, Err),
 		       {next_state, normal_state, StateData};
 		   Now >=
 		     Activity#activity.message_time + MinMessageInterval,
@@ -289,7 +308,7 @@ normal_state({route, From, <<"">>,
 		Err = jlib:make_error_reply(Packet,
 					    ?ERRT_NOT_ACCEPTABLE(Lang,
 								 ErrText)),
-		route_stanza(StateData#state.jid, From, Err),
+		ejabberd_router:route(StateData#state.jid, From, Err),
 		{next_state, normal_state, StateData};
 	    Type when (Type == <<"">>) or (Type == <<"normal">>) ->
 		IsInvitation = is_invitation(Els),
@@ -302,7 +321,7 @@ normal_state({route, From, <<"">>,
 			   of
 			 {error, Error} ->
 			     Err = jlib:make_error_reply(Packet, Error),
-			     route_stanza(StateData#state.jid, From, Err),
+			     ejabberd_router:route(StateData#state.jid, From, Err),
 			     {next_state, normal_state, StateData};
 			 IJID ->
 			     Config = StateData#state.config,
@@ -366,7 +385,7 @@ normal_state({route, From, <<"">>,
 						      jlib:make_error_reply(Packet,
 									    ?ERRT_NOT_ACCEPTABLE(Lang,
 												 ErrText)),
-						  route_stanza(StateData#state.jid,
+						  ejabberd_router:route(StateData#state.jid,
 							       From, Err),
 						  StateData#state{last_voice_request_time
 								      = Times}
@@ -378,7 +397,7 @@ normal_state({route, From, <<"">>,
 					    Err = jlib:make_error_reply(Packet,
 									?ERRT_FORBIDDEN(Lang,
 											ErrText)),
-					    route_stanza(StateData#state.jid,
+					    ejabberd_router:route(StateData#state.jid,
 							 From, Err),
 					    StateData
 				      end,
@@ -397,7 +416,7 @@ normal_state({route, From, <<"">>,
 						      jlib:make_error_reply(Packet,
 									    ?ERRT_BAD_REQUEST(Lang,
 											      ErrText)),
-						  route_stanza(StateData#state.jid,
+						  ejabberd_router:route(StateData#state.jid,
 							       From, Err),
 						  StateData;
 					      {ok, TargetJid} ->
@@ -424,7 +443,7 @@ normal_state({route, From, <<"">>,
 					    Err = jlib:make_error_reply(Packet,
 									?ERRT_NOT_ALLOWED(Lang,
 											  ErrText)),
-					    route_stanza(StateData#state.jid,
+					    ejabberd_router:route(StateData#state.jid,
 							 From, Err),
 					    StateData
 				      end,
@@ -436,7 +455,7 @@ normal_state({route, From, <<"">>,
 		Err = jlib:make_error_reply(Packet,
 					    ?ERRT_NOT_ACCEPTABLE(Lang,
 								 ErrText)),
-		route_stanza(StateData#state.jid, From, Err),
+		ejabberd_router:route(StateData#state.jid, From, Err),
 		{next_state, normal_state, StateData}
 	  end;
       _ ->
@@ -462,7 +481,7 @@ normal_state({route, From, <<"">>,
 		ignore ->
 		    {next_state, normal_state, StateData};
 		#iq{type = T} = IQRes when T == error; T == result ->
-		    route_stanza(StateData#state.jid, From, jlib:iq_to_xml(IQRes)),
+		    ejabberd_router:route(StateData#state.jid, From, jlib:iq_to_xml(IQRes)),
 		    {next_state, normal_state, StateData};
 		#iq{type = Type, xmlns = XMLNS, lang = Lang,
 		    sub_el = #xmlel{name = SubElName, attrs = Attrs} = SubEl} = IQ
@@ -479,9 +498,9 @@ normal_state({route, From, <<"">>,
 				   process_iq_owner(From, Type, Lang, SubEl, StateData);
 			       ?NS_DISCO_INFO ->
 				   case xml:get_attr(<<"node">>, Attrs) of
-				      false -> process_iq_disco_info(From, Type, Lang, StateData);
-				      {value, _} -> {error, ?ERR_SERVICE_UNAVAILABLE}
-				   end;
+					  false -> process_iq_disco_info(From, Type, Lang, StateData);
+					  {value, _} -> {error, ?ERR_SERVICE_UNAVAILABLE}
+					end;
 			       ?NS_DISCO_ITEMS ->
 				   process_iq_disco_items(From, Type, Lang, StateData);
 			       ?NS_VCARD ->
@@ -505,7 +524,7 @@ normal_state({route, From, <<"">>,
 				       sub_el = [SubEl, Error]},
 				 StateData}
 			end,
-		    route_stanza(StateData#state.jid, From, jlib:iq_to_xml(IQRes)),
+		    ejabberd_router:route(StateData#state.jid, From, jlib:iq_to_xml(IQRes)),
 		    case NewStateData of
 			stop -> {stop, normal, StateData};
 			_ -> {next_state, normal_state, NewStateData}
@@ -513,7 +532,7 @@ normal_state({route, From, <<"">>,
 		_ ->
 		    Err = jlib:make_error_reply(Packet,
 						?ERR_FEATURE_NOT_IMPLEMENTED),
-		    route_stanza(StateData#state.jid, From, Err),
+		    ejabberd_router:route(StateData#state.jid, From, Err),
 		    {next_state, normal_state, StateData}
 	    end
     end;
@@ -582,7 +601,7 @@ normal_state({route, From, ToNick,
 		      Err = jlib:make_error_reply(Packet,
 						  ?ERRT_BAD_REQUEST(Lang,
 								    ErrText)),
-		      route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+		      ejabberd_router:route(jlib:jid_replace_resource(StateData#state.jid,
 							     ToNick),
 				   From, Err);
 		  _ ->
@@ -593,7 +612,7 @@ normal_state({route, From, ToNick,
 			    Err = jlib:make_error_reply(Packet,
 							?ERRT_ITEM_NOT_FOUND(Lang,
 									     ErrText)),
-			    route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+			    ejabberd_router:route(jlib:jid_replace_resource(StateData#state.jid,
 								   ToNick),
 					 From, Err);
 			ToJIDs ->
@@ -615,7 +634,7 @@ normal_state({route, From, ToNick,
 				   X = #xmlel{name = <<"x">>,
 					      attrs = [{<<"xmlns">>, ?NS_MUC_USER}]},
 				   PrivMsg = xml:append_subtags(Packet, [X]),
-				   [route_stanza(FromNickJID, ToJID, PrivMsg)
+				   [ejabberd_router:route(FromNickJID, ToJID, PrivMsg)
 				    || ToJID <- ToJIDs];
 			       true ->
 				   ErrText =
@@ -623,7 +642,7 @@ normal_state({route, From, ToNick,
 				   Err = jlib:make_error_reply(Packet,
 							       ?ERRT_FORBIDDEN(Lang,
 									       ErrText)),
-				   route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+				   ejabberd_router:route(jlib:jid_replace_resource(StateData#state.jid,
 									  ToNick),
 						From, Err)
 			    end
@@ -636,7 +655,7 @@ normal_state({route, From, ToNick,
 		Err = jlib:make_error_reply(Packet,
 					    ?ERRT_NOT_ACCEPTABLE(Lang,
 								 ErrText)),
-		route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+		ejabberd_router:route(jlib:jid_replace_resource(StateData#state.jid,
 						       ToNick),
 			     From, Err);
 	    {false, _} ->
@@ -644,7 +663,7 @@ normal_state({route, From, ToNick,
 		    <<"It is not allowed to send private messages">>,
 		Err = jlib:make_error_reply(Packet,
 					    ?ERRT_FORBIDDEN(Lang, ErrText)),
-		route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+		ejabberd_router:route(jlib:jid_replace_resource(StateData#state.jid,
 						       ToNick),
 			     From, Err)
 	  end,
@@ -667,13 +686,13 @@ normal_state({route, From, ToNick,
 			    Err = jlib:make_error_reply(Packet,
 							?ERRT_ITEM_NOT_FOUND(Lang,
 									     ErrText)),
-			    route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+			    ejabberd_router:route(jlib:jid_replace_resource(StateData#state.jid,
 								   ToNick),
 					 From, Err);
 			ToJID ->
 			    ID = xml:get_attr_s(<<"id">>, Attrs),
 			    F = fun(#iq{} = Reply) ->
-					route_stanza(
+					ejabberd_router:route(
 					  jlib:jid_replace_resource(
 					    StateData#state.jid, ToNick),
 					  From,
@@ -682,7 +701,7 @@ normal_state({route, From, ToNick,
 					Err = jlib:make_error_reply(
 						Packet,
 						?ERR_SERVICE_UNAVAILABLE),
-					route_stanza(
+					ejabberd_router:route(
 					  jlib:jid_replace_resource(
 					    StateData#state.jid, ToNick),
 					  From, Err)
@@ -707,7 +726,7 @@ normal_state({route, From, ToNick,
 		    Err = jlib:make_error_reply(Packet,
 						?ERRT_NOT_ACCEPTABLE(Lang,
 								     ErrText)),
-		    route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+		    ejabberd_router:route(jlib:jid_replace_resource(StateData#state.jid,
 							   ToNick),
 				 From, Err);
 		_ ->
@@ -715,7 +734,7 @@ normal_state({route, From, ToNick,
 				"not allowed in this room">>,
 		    Err = jlib:make_error_reply(Packet,
 						?ERRT_NOT_ALLOWED(Lang, ErrText)),
-		    route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+		    ejabberd_router:route(jlib:jid_replace_resource(StateData#state.jid,
 							   ToNick),
 				 From, Err)
 	    end
@@ -838,12 +857,9 @@ code_change(_OldVsn, StateName, StateData, _Extra) ->
 
 print_state(StateData) -> StateData.
 
-handle_info({process_user_presence, From},
-	    normal_state = _StateName, StateData) ->
-    RoomQueueEmpty =
-	queue:is_empty(StateData#state.room_queue),
-    RoomQueue = queue:in({presence, From},
-			 StateData#state.room_queue),
+handle_info({process_user_presence, From}, normal_state = _StateName, StateData) ->
+    RoomQueueEmpty = queue:is_empty(StateData#state.room_queue),
+    RoomQueue = queue:in({presence, From}, StateData#state.room_queue),
     StateData1 = StateData#state{room_queue = RoomQueue},
     if RoomQueueEmpty ->
 	   StateData2 = prepare_room_queue(StateData1),
@@ -907,7 +923,7 @@ handle_info({captcha_failed, From}, normal_state,
 		     Robots = (?DICT):erase(From, StateData#state.robots),
 		     Err = jlib:make_error_reply(Packet,
 						 ?ERR_NOT_AUTHORIZED),
-		     route_stanza % TODO: s/Nick/""/
+		     ejabberd_router:route % TODO: s/Nick/""/
 				 (jlib:jid_replace_resource(StateData#state.jid,
 							    Nick),
 				  From, Err),
@@ -977,7 +993,7 @@ terminate(_Reason, _StateName, StateData) ->
                             Reason == destroyed;
 			    Reason == hibernated;
                             Reason == replaced ->
-			       route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+			       ejabberd_router:route(jlib:jid_replace_resource(StateData#state.jid,
 								      Nick),
 					    Info#user.jid, Packet);
 			   true -> ok
@@ -1087,7 +1103,7 @@ process_groupchat_message(From,
 										   NSD#state.host,
 										   NSD#state.room,
 										   make_opts(NSD),
-                                                                                   make_affiliations(NSD));
+										   make_affiliations(NSD));
 							    _ -> ok
 							  end,
 							  {NSD, true};
@@ -1137,7 +1153,7 @@ process_groupchat_message(From,
 						   <<"Only moderators are allowed to change "
 						     "the subject in this room">>)
 			     end,
-		       route_stanza(StateData#state.jid, From,
+		       ejabberd_router:route(StateData#state.jid, From,
 				    jlib:make_error_reply(Packet, Err)),
 		       {next_state, normal_state, StateData}
 		 end;
@@ -1146,7 +1162,7 @@ process_groupchat_message(From,
 			     "to all occupants">>,
 		 Err = jlib:make_error_reply(Packet,
 					     ?ERRT_FORBIDDEN(Lang, ErrText)),
-		 route_stanza(StateData#state.jid, From, Err),
+		 ejabberd_router:route(StateData#state.jid, From, Err),
 		 {next_state, normal_state, StateData}
 	  end;
       false ->
@@ -1155,10 +1171,17 @@ process_groupchat_message(From,
 		"to the conference">>,
 	  Err = jlib:make_error_reply(Packet,
 				      ?ERRT_NOT_ACCEPTABLE(Lang, ErrText)),
-	  route_stanza(StateData#state.jid, From, Err),
+	  ejabberd_router:route(StateData#state.jid, From, Err),
 	  {next_state, normal_state, StateData}
     end.
 
+%% @doc Check if this non participant can send message to room.
+%%
+%% XEP-0045 v1.23:
+%% 7.9 Sending a Message to All Occupants
+%% an implementation MAY allow users with certain privileges
+%% (e.g., a room owner, room admin, or service-level admin)
+%% to send messages to the room even if those users are not occupants.
 is_user_allowed_message_nonparticipant(JID,
 				       StateData) ->
     case get_service_affiliation(JID, StateData) of
@@ -1166,6 +1189,8 @@ is_user_allowed_message_nonparticipant(JID,
       _ -> false
     end.
 
+%% @doc Get information of this participant, or default values.
+%% If the JID is not a participant, return values for a service message.
 get_participant_data(From, StateData) ->
     case (?DICT):find(jlib:jid_tolower(From),
 		      StateData#state.users)
@@ -1191,7 +1216,7 @@ process_presence(From, Nick,
 	     drop ->
 		 {next_state, normal_state, StateData};
 	     #xmlel{attrs = Attrs} = Packet ->
-		 Type = xml:get_attr_s(<<"xml:lang">>, Attrs),
+		 Type = xml:get_attr_s(<<"type">>, Attrs),
 		 Lang = xml:get_attr_s(<<"xml:lang">>, Attrs),
 		 StateData1 = case Type of
 				<<"unavailable">> ->
@@ -1244,7 +1269,7 @@ process_presence(From, Nick,
 						       Err = jlib:make_error_reply(Packet,
 										   ?ERRT_NOT_ALLOWED(Lang,
 												     ErrText)),
-						       route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+						       ejabberd_router:route(jlib:jid_replace_resource(StateData#state.jid,
 											      Nick),
 								    From, Err),
 						       StateData;
@@ -1257,7 +1282,7 @@ process_presence(From, Nick,
 						       Err = jlib:make_error_reply(Packet,
 										   ?ERRT_CONFLICT(Lang,
 												  ErrText)),
-						       route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+						       ejabberd_router:route(jlib:jid_replace_resource(StateData#state.jid,
 											      Nick), % TODO: s/Nick/""/
 								    From, Err),
 						       StateData;
@@ -1268,7 +1293,7 @@ process_presence(From, Nick,
 						       Err = jlib:make_error_reply(Packet,
 										   ?ERRT_CONFLICT(Lang,
 												  ErrText)),
-						       route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+						       ejabberd_router:route(jlib:jid_replace_resource(StateData#state.jid,
 											      Nick),
 								   From, Err),
 						       StateData;
@@ -1313,6 +1338,7 @@ is_user_online(JID, StateData) ->
     LJID = jlib:jid_tolower(JID),
     (?DICT):is_key(LJID, StateData#state.users).
 
+%% Check if the user is occupant of the room, or at least is an admin or owner.
 is_occupant_or_admin(JID, StateData) ->
     FAffiliation = get_affiliation(JID, StateData),
     FRole = get_role(JID, StateData),
@@ -1361,6 +1387,8 @@ list_to_affiliation(Affiliation) ->
       <<"none">> -> none
     end.
 
+%% Decide the fate of the message and its sender
+%% Returns: continue_delivery | forget_message | {expulse_sender, Reason}
 decide_fate_message(<<"error">>, Packet, From,
 		    StateData) ->
     PD = case check_error_kick(Packet) of
@@ -1383,6 +1411,9 @@ decide_fate_message(<<"error">>, Packet, From,
     end;
 decide_fate_message(_, _, _, _) -> continue_delivery.
 
+%% Check if the elements of this error stanza indicate
+%% that the sender is a dead participant.
+%% If so, return true to kick the participant.
 check_error_kick(Packet) ->
     case get_error_condition(Packet) of
       <<"gone">> -> true;
@@ -1921,6 +1952,8 @@ add_user_presence_un(JID, Presence, StateData) ->
 			   StateData#state.users),
     StateData#state{users = Users}.
 
+%% Find and return a list of the full JIDs of the users of Nick.
+%% Return jid record.
 find_jids_by_nick(Nick, StateData) ->
     case (?DICT):find(Nick, StateData#state.nicks) of
       {ok, [User]} -> [jlib:make_jid(User)];
@@ -1928,6 +1961,8 @@ find_jids_by_nick(Nick, StateData) ->
       error -> false
     end.
 
+%% Find and return the full JID of the user of Nick with
+%% highest-priority presence.  Return jid record.
 find_jid_by_nick(Nick, StateData) ->
     case (?DICT):find(Nick, StateData#state.nicks) of
       {ok, [User]} -> jlib:make_jid(User);
@@ -2025,7 +2060,7 @@ add_new_user(From, Nick,
       {false, _, _, _} ->
 	  Err = jlib:make_error_reply(Packet,
 				      ?ERR_SERVICE_UNAVAILABLE),
-	  route_stanza % TODO: s/Nick/""/
+	  ejabberd_router:route % TODO: s/Nick/""/
 		      (jlib:jid_replace_resource(StateData#state.jid, Nick),
 		       From, Err),
 	  StateData;
@@ -2042,7 +2077,7 @@ add_new_user(From, Nick,
 					    ?ERRT_REGISTRATION_REQUIRED(Lang,
 									ErrText)
 				      end),
-	  route_stanza % TODO: s/Nick/""/
+	  ejabberd_router:route % TODO: s/Nick/""/
 		      (jlib:jid_replace_resource(StateData#state.jid, Nick),
 		       From, Err),
 	  StateData;
@@ -2050,7 +2085,7 @@ add_new_user(From, Nick,
 	  ErrText = <<"That nickname is already in use by another occupant">>,
 	  Err = jlib:make_error_reply(Packet,
 				      ?ERRT_CONFLICT(Lang, ErrText)),
-	  route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+	  ejabberd_router:route(jlib:jid_replace_resource(StateData#state.jid,
 						 Nick),
 		       From, Err),
 	  StateData;
@@ -2058,7 +2093,7 @@ add_new_user(From, Nick,
 	  ErrText = <<"That nickname is registered by another person">>,
 	  Err = jlib:make_error_reply(Packet,
 				      ?ERRT_CONFLICT(Lang, ErrText)),
-	  route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+	  ejabberd_router:route(jlib:jid_replace_resource(StateData#state.jid,
 						 Nick),
 		       From, Err),
 	  StateData;
@@ -2088,7 +2123,7 @@ add_new_user(From, Nick,
 		Err = jlib:make_error_reply(Packet,
 					    ?ERRT_NOT_AUTHORIZED(Lang,
 								 ErrText)),
-		route_stanza % TODO: s/Nick/""/
+		ejabberd_router:route % TODO: s/Nick/""/
 			    (jlib:jid_replace_resource(StateData#state.jid,
 						       Nick),
 			     From, Err),
@@ -2107,14 +2142,14 @@ add_new_user(From, Nick,
 				      children = CaptchaEls},
 		      Robots = (?DICT):store(From, {Nick, Packet},
 					     StateData#state.robots),
-		      route_stanza(RoomJID, From, MsgPkt),
+		      ejabberd_router:route(RoomJID, From, MsgPkt),
 		      StateData#state{robots = Robots};
 		  {error, limit} ->
 		      ErrText = <<"Too many CAPTCHA requests">>,
 		      Err = jlib:make_error_reply(Packet,
 						  ?ERRT_RESOURCE_CONSTRAINT(Lang,
 									    ErrText)),
-		      route_stanza % TODO: s/Nick/""/
+		      ejabberd_router:route % TODO: s/Nick/""/
 				  (jlib:jid_replace_resource(StateData#state.jid,
 							     Nick),
 				   From, Err),
@@ -2124,7 +2159,7 @@ add_new_user(From, Nick,
 		      Err = jlib:make_error_reply(Packet,
 						  ?ERRT_INTERNAL_SERVER_ERROR(Lang,
 									      ErrText)),
-		      route_stanza % TODO: s/Nick/""/
+		      ejabberd_router:route % TODO: s/Nick/""/
 				  (jlib:jid_replace_resource(StateData#state.jid,
 							     Nick),
 				   From, Err),
@@ -2135,7 +2170,7 @@ add_new_user(From, Nick,
 		Err = jlib:make_error_reply(Packet,
 					    ?ERRT_NOT_AUTHORIZED(Lang,
 								 ErrText)),
-		route_stanza % TODO: s/Nick/""/
+		ejabberd_router:route % TODO: s/Nick/""/
 			    (jlib:jid_replace_resource(StateData#state.jid,
 						       Nick),
 			     From, Err),
@@ -2422,7 +2457,7 @@ send_new_presence1(NJID, Reason, StateData) ->
 									      =
 									      ItemEls}
 								   | Status3]}]),
-			  route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+			  ejabberd_router:route(jlib:jid_replace_resource(StateData#state.jid,
 								 Nick),
 				       Info#user.jid, Packet)
 		  end,
@@ -2482,7 +2517,7 @@ send_existing_presences1(ToJID, StateData) ->
 										children
 										    =
 										    []}]}]),
-				route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+				ejabberd_router:route(jlib:jid_replace_resource(StateData#state.jid,
 								       FromNick),
 					     RealToJID, Packet)
 			  end
@@ -2612,13 +2647,13 @@ send_nick_changing(JID, OldNick, StateData,
 									       =
 									       []}|Status110]}]),
 			  if SendOldUnavailable ->
-				 route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+				 ejabberd_router:route(jlib:jid_replace_resource(StateData#state.jid,
 									OldNick),
 					      Info#user.jid, Packet1);
 			     true -> ok
 			  end,
 			  if SendNewAvailable ->
-				 route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+				 ejabberd_router:route(jlib:jid_replace_resource(StateData#state.jid,
 									Nick),
 					      Info#user.jid, Packet2);
 			     true -> ok
@@ -2629,6 +2664,7 @@ send_nick_changing(JID, OldNick, StateData,
 lqueue_new(Max) ->
     #lqueue{queue = queue:new(), len = 0, max = Max}.
 
+%% If the message queue limit is set to 0, do not store messages.
 lqueue_in(_Item, LQ = #lqueue{max = 0}) -> LQ;
 %% Otherwise, rotate messages in the queue store.
 lqueue_in(Item,
@@ -2651,8 +2687,7 @@ lqueue_filter(F, #lqueue{queue = Q1} = LQ) ->
     Q2 = queue:filter(F, Q1),
     LQ#lqueue{queue = Q2, len = queue:len(Q2)}.
 
-add_message_to_history(FromNick, FromJID, Packet,
-		       StateData) ->
+add_message_to_history(FromNick, FromJID, Packet, StateData) ->
     HaveSubject = case xml:get_subtag(Packet, <<"subject">>)
 		      of
 		    false -> false;
@@ -2688,7 +2723,7 @@ send_history(JID, Shift, StateData) ->
     lists:foldl(fun ({Nick, Packet, HaveSubject, _TimeStamp,
 		      _Size},
 		     B) ->
-			route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+			ejabberd_router:route(jlib:jid_replace_resource(StateData#state.jid,
 							       Nick),
 				     JID, Packet),
 			B or HaveSubject
@@ -2705,7 +2740,7 @@ send_subject(JID, StateData) ->
 		    children =
 			[#xmlel{name = <<"subject">>, attrs = [],
 				children = [{xmlcdata, Subject}]}]},
-    route_stanza(StateData#state.jid, JID, Packet).
+    ejabberd_router:route(StateData#state.jid, JID, Packet).
 
 check_subject(Packet) ->
     case xml:get_subtag(Packet, <<"subject">>) of
@@ -2863,7 +2898,8 @@ process_admin_items_set(UJID, Items, Lang, StateData) ->
 	    true ->
 		mod_muc:store_room(NSD#state.server_host,
 				   NSD#state.host, NSD#state.room,
-				   make_opts(NSD), make_affiliations(NSD));
+				   make_opts(NSD),
+				   make_affiliations(NSD));
 	    _ -> ok
 	  end,
 	  {result, [], NSD};
@@ -2911,10 +2947,11 @@ process_item_change(E, SD, _UJID) ->
                     <<"301">>,
                     outcast,
                     SD),
-		SD1 = set_affiliation(JID, outcast,
-                                      set_role(JID, none, SD),
-                                      Reason),
-		kick_users_from_banned_server(JID, Reason, SD1);
+            SD1 = set_affiliation(JID,
+                outcast,
+                set_role(JID, none, SD),
+                Reason),
+            kick_users_from_banned_server(JID, Reason, SD1);
         {JID, affiliation, A, Reason}
             when (A == admin) or (A == owner) ->
             SD1 = set_affiliation(JID, A, SD, Reason),
@@ -3305,7 +3342,7 @@ send_kickban_presence1(UJID, Reason, Code, Affiliation,
 									Code}],
 								  children =
 								      []}]}]},
-			  route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+			  ejabberd_router:route(jlib:jid_replace_resource(StateData#state.jid,
 								 Nick),
 				       Info#user.jid, Packet)
 		  end,
@@ -3410,6 +3447,8 @@ is_allowed_persistent_change(XEl, StateData, From) ->
 			   AccessPersistent, From)
     end.
 
+%% Check if the Room Name and Room Description defined in the Data Form
+%% are conformant to the configured limits
 is_allowed_room_name_desc_limits(XEl, StateData) ->
     IsNameAccepted = case
 		       lists:keysearch(<<"muc#roomconfig_roomname">>, 1,
@@ -3442,6 +3481,8 @@ is_allowed_room_name_desc_limits(XEl, StateData) ->
 		     end,
     IsNameAccepted and IsDescAccepted.
 
+%% Return false if:
+%% "the password for a password-protected room is blank"
 is_password_settings_correct(XEl, StateData) ->
     Config = StateData#state.config,
     OldProtected = Config#config.password_protected,
@@ -4323,7 +4364,7 @@ destroy_room(DEl, StateData) ->
 								  children =
 								      []},
 							   DEl]}]},
-			  route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+			  ejabberd_router:route(jlib:jid_replace_resource(StateData#state.jid,
 								 Nick),
 				       Info#user.jid, Packet)
 		  end,
@@ -4578,7 +4619,7 @@ send_voice_request(From, StateData) ->
     Moderators = search_role(moderator, StateData),
     FromNick = find_nick_by_jid(From, StateData),
     lists:foreach(fun ({_, User}) ->
-			  route_stanza(StateData#state.jid, User#user.jid,
+			  ejabberd_router:route(StateData#state.jid, User#user.jid,
 				       prepare_request_form(From, FromNick,
 							    <<"">>))
 		  end,
@@ -4718,7 +4759,6 @@ check_invitation(From, Els, Lang, StateData) ->
                                    jlib:jid_to_string({StateData#state.room,
                                                        StateData#state.host,
                                                        <<"">>})]),
-
 				case
 				  (StateData#state.config)#config.password_protected
 				    of
@@ -4751,10 +4791,13 @@ check_invitation(From, Els, Lang, StateData) ->
 							     <<"">>})}],
 				   children = [{xmlcdata, Reason}]},
 			    Body]},
-	  route_stanza(StateData#state.jid, JID, Msg),
+	  ejabberd_router:route(StateData#state.jid, JID, Msg),
 	  JID
     end.
 
+%% Handle a message sent to the room by a non-participant.
+%% If it is a decline, send to the inviter.
+%% Otherwise, an error message is sent to the sender.
 handle_roommessage_from_nonparticipant(Packet, Lang,
 				       StateData, From) ->
     case catch check_decline_invitation(Packet) of
@@ -4766,6 +4809,10 @@ handle_roommessage_from_nonparticipant(Packet, Lang,
 				    StateData#state.jid, From)
     end.
 
+%% Check in the packet is a decline.
+%% If so, also returns the splitted packet.
+%% This function must be catched, 
+%% because it crashes when the packet is not a decline message.
 check_decline_invitation(Packet) ->
     #xmlel{name = <<"message">>} = Packet,
     XEl = xml:get_subtag(Packet, <<"x">>),
@@ -4775,6 +4822,8 @@ check_decline_invitation(Packet) ->
     ToJID = jlib:string_to_jid(ToString),
     {true, {Packet, XEl, DEl, ToJID}}.
 
+%% Send the decline to the inviter user.
+%% The original stanza must be slightly modified.
 send_decline_invitation({Packet, XEl, DEl, ToJID},
 			RoomJID, FromJID) ->
     FromString =
@@ -4788,24 +4837,24 @@ send_decline_invitation({Packet, XEl, DEl, ToJID},
 		  children = DEls},
     XEl2 = replace_subelement(XEl, DEl2),
     Packet2 = replace_subelement(Packet, XEl2),
-    route_stanza(RoomJID, ToJID, Packet2).
+    ejabberd_router:route(RoomJID, ToJID, Packet2).
 
+%% Given an element and a new subelement, 
+%% replace the instance of the subelement in element with the new subelement.
 replace_subelement(#xmlel{name = Name, attrs = Attrs,
 			  children = SubEls},
 		   NewSubEl) ->
     {_, NameNewSubEl, _, _} = NewSubEl,
-    SubEls2 = lists:keyreplace(NameNewSubEl, 2, SubEls,
-			       NewSubEl),
+    SubEls2 = lists:keyreplace(NameNewSubEl, 2, SubEls, NewSubEl),
     #xmlel{name = Name, attrs = Attrs, children = SubEls2}.
 
-send_error_only_occupants(Packet, Lang, RoomJID,
-			  From) ->
+send_error_only_occupants(Packet, Lang, RoomJID, From) ->
     ErrText =
 	<<"Only occupants are allowed to send messages "
 	  "to the conference">>,
     Err = jlib:make_error_reply(Packet,
 				?ERRT_NOT_ACCEPTABLE(Lang, ErrText)),
-    route_stanza(RoomJID, From, Err).
+    ejabberd_router:route(RoomJID, From, Err).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Logging
@@ -4855,7 +4904,8 @@ tab_count_user(JID) ->
       _ -> 0
     end.
 
-element_size(El) -> byte_size(xml:element_to_binary(El)).
+element_size(El) ->
+    byte_size(xml:element_to_binary(El)).
 
 fsm_limit_opts() ->
     case ejabberd_config:get_option(
@@ -4864,9 +4914,6 @@ fsm_limit_opts() ->
         undefined -> [];
         N -> [{max_queue, N}]
     end.
-
-route_stanza(From, To, El) ->
-    ejabberd_router:route(From, To, El).
 
 set_hibernate_timer_if_empty(StateData) ->
     case ?DICT:size(StateData#state.users) of

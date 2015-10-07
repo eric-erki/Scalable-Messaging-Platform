@@ -48,19 +48,19 @@
 	 get_iq_namespace/1, iq_query_info/1,
 	 iq_query_or_response_info/1, is_iq_request_type/1,
 	 iq_to_xml/1, parse_xdata_submit/1,
-         add_delay_info/3, add_delay_info/4,
-         timestamp_to_iso/1,
-	 timestamp_to_iso/2, timestamp_to_iso/3, now_to_utc_string/1,
-	 now_to_local_string/1, datetime_string_to_timestamp/1,
+	 add_delay_info/3, add_delay_info/4,
+	 timestamp_to_iso/1, timestamp_to_iso/2, timestamp_to_iso/3,
+	 now_to_utc_string/1, now_to_local_string/1,
+	 datetime_string_to_timestamp/1,
 	 term_to_base64/1, base64_to_term/1,
 	 decode_base64/1, encode_base64/1, ip_to_list/1,
 	 rsm_encode/1, rsm_encode/2, rsm_decode/1,
 	 binary_to_integer/1, binary_to_integer/2,
 	 integer_to_binary/1, integer_to_binary/2,
 	 atom_to_binary/1, binary_to_atom/1, tuple_to_binary/1,
-	 l2i/1, i2l/1, i2l/2, expr_to_term/1, term_to_expr/1,
-         string_to_usr/1, load_nif/0,
-         queue_drop_while/2]).
+	 l2i/1, i2l/1, i2l/2, queue_drop_while/2,
+	 expr_to_term/1, term_to_expr/1,
+	 string_to_usr/1, load_nif/0]).
 
 -include("ejabberd.hrl").
 -include("jlib.hrl").

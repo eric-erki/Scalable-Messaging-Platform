@@ -24,7 +24,7 @@
 	 q = []            :: [{binary() | nokey, binary()}],
 	 us = {<<>>, <<>>} :: {binary(), binary()},
 	 auth              :: {binary(), binary()} |
-	                      {auth_jid, {binary(), binary()}, jlib:jid()},
+	 {auth_jid, {binary(), binary()}, jlib:jid()},
 	 lang = <<"">>     :: binary(),
 	 data = <<"">>     :: binary(),
 	 ip                :: {inet:ip_address(), inet:port_number()},

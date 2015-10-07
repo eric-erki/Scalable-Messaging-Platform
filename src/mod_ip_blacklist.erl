@@ -44,7 +44,7 @@
 -define(PROCNAME, ?MODULE).
 
 -define(BLC2S,
-	"http://xaai.process-one.net/bl_c2s.txt").
+	<<"http://xaai.process-one.net/bl_c2s.txt">>).
 
 -define(UPDATE_INTERVAL, 6).
 
@@ -55,7 +55,6 @@
 
 start(_Host, _Opts) ->
     http_p1:start(),
-    %% http_p1:set_pool_size(10), no need to tune
     Pid = spawn(?MODULE, preinit, [self(), #state{}]),
     receive {ok, Pid, PreinitResult} -> PreinitResult end.
 
