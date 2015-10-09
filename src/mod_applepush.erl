@@ -252,7 +252,8 @@ push_from_message(Val, From, To, Packet, Notification, AppID, SendBody, SendFrom
             case ejabberd_push:build_push_packet_from_message(From, To, Packet, DeviceID, AppID,
                                                               SendBody, SendFrom, Badge,
                                                               First, FirstFromUser,
-                                                              SilentPushEnabled) of
+                                                              SilentPushEnabled,
+							      ?MODULE) of
                 skip ->
                     {stop, skipped};
                 {V, Silent} ->
@@ -318,7 +319,7 @@ do_send_offline_packet_notification(From, To, Packet, ID, AppID, SendBody, SendF
     case ejabberd_push:build_push_packet_from_message(From, To, Packet, ID, AppID,
                                                       SendBody, SendFrom, BadgeCount,
                                                       BadgeCount == 0, BadgeCount == 0,
-                                                      SilentPushEnabled) of
+                                                      SilentPushEnabled, ?MODULE) of
         skip ->
             ok;
         {V, _Silent} ->

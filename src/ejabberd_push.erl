@@ -27,7 +27,7 @@
 
 -author('alexey@process-one.net').
 
--export([build_push_packet_from_message/11]).
+-export([build_push_packet_from_message/12]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -41,7 +41,7 @@
 -define(NS_P1_ATTACHMENT, <<"http://process-one.net/attachement">>).
 -define(NS_P1_PUSH_CUSTOM, <<"p1:push:custom">>).
 
-build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom, BadgeCount, First, FirstPerUser, SilentPushesEnabled) ->
+build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom, BadgeCount, First, FirstPerUser, SilentPushesEnabled, Module) ->
     Body1 = xml:get_path_s(Packet, [{elem, <<"body">>}, cdata]),
     Body =
         case check_x_attachment(Packet) of
@@ -153,7 +153,7 @@ build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom,
                                 {_, S} when S /= <<"">> -> S;
                                 _ -> true
                             end,
-                        case build_and_customize_push_packet(DeviceID, Msg, Badge, Sound, SFrom, To, CustomFields) of
+                        case build_and_customize_push_packet(DeviceID, Msg, Badge, Sound, SFrom, To, CustomFields, Module) of
                             skip ->
                                 skip;
                             V ->
@@ -162,9 +162,9 @@ build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom,
             end
     end.
 
-build_and_customize_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields) ->
+build_and_customize_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields, Module) ->
     LServer = JID#jid.lserver,
-    case gen_mod:db_type(LServer, ?MODULE) of
+    case gen_mod:db_type(LServer, Module) of
         odbc ->
             LUser = ejabberd_odbc:escape(JID#jid.luser),
             SJID = jlib:jid_remove_resource(jlib:jid_tolower(jlib:string_to_jid(Sender))),
