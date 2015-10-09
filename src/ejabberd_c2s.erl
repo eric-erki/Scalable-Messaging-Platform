@@ -105,9 +105,6 @@
 
 -define(C2S_OPEN_TIMEOUT, 60000).
 -define(C2S_HIBERNATE_TIMEOUT, 90000).
--define(C2S_P1_ACK_TIMEOUT, 10000).
--define(MAX_OOR_TIMEOUT, 1440).
--define(MAX_OOR_MESSAGES, 1000).
 
 -define(STREAM_HEADER,
 	<<"<?xml version='1.0'?><stream:stream "
@@ -165,13 +162,6 @@
 
 -define(MGMT_UNSUPPORTED_VERSION(Xmlns),
 	?MGMT_FAILED(<<"unsupported-version">>, Xmlns)).
-
--define(NS_P1_REBIND, <<"p1:rebind">>).
--define(NS_P1_PUSH, <<"p1:push">>).
--define(NS_P1_PUSH_CUSTOM, <<"p1:push:custom">>).
--define(NS_P1_ACK, <<"p1:ack">>).
--define(NS_P1_PUSHED, <<"p1:pushed">>).
--define(NS_P1_ATTACHMENT, <<"http://process-one.net/attachement">>).
 
 %%%----------------------------------------------------------------------
 %%% API
