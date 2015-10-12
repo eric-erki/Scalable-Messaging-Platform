@@ -34,7 +34,8 @@
 	 module                  :: atom() | '_',
          function                :: atom() | '_',
          args = []               :: [aterm()] | '_' | '$1' | '$2',
-         policy = restricted     :: open | restricted | admin | user,
+         policy = restricted     :: open | restricted | admin | user
+                                  | '_' | '$3' | '$4',
          result = {res, rescode} :: rterm() | '_' | '$2',
          args_desc = none        :: none | [string()] | '_',
          result_desc = none      :: none | string() | '_',

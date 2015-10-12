@@ -496,6 +496,7 @@
         {item, ljid(), mod_roster:subscription()} | %% mod_roster/mod_shared_roster
         {exit, binary()} | %% mod_roster/mod_shared_roster
         {privacy_list, mod_privacy:userlist(), binary()} | %% mod_privacy
+        {stop_by_device_id, non_neg_integer()} | %% mod_applepush
         {blocking, unblock_all | {block | unblock, [ljid()]}}. %% mod_blocking
 
 -record(xmlelement, {name = ""     :: string(),

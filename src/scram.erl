@@ -33,9 +33,10 @@
 	 server_signature/2, client_signature/2, client_key/1,
 	 client_key/2]).
 
--spec salted_password(binary(), binary(), non_neg_integer()) -> binary().
+-spec salted_password(binary(), binary(), pos_integer()) -> binary().
 
-salted_password(Password, Salt, IterationCount) ->
+salted_password(Password, Salt, IterationCount)
+  when IterationCount > 1 ->
     hi(jlib:resourceprep(Password), Salt, IterationCount).
 
 -spec client_key(binary()) -> binary().

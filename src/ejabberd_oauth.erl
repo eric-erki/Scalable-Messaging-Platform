@@ -56,10 +56,10 @@
 -include("ejabberd_web_admin.hrl").
 
 -record(oauth_token, {
-          token = {<<"">>, <<"">>} :: {binary(), binary()},
-          us = {<<"">>, <<"">>}    :: {binary(), binary()},
-          scope = []               :: [binary()],
-          expire                   :: integer()
+          token = {<<"">>, <<"">>} :: {binary(), binary()} | '_',
+          us = {<<"">>, <<"">>}    :: {binary(), binary()} | '_',
+          scope = []               :: [binary()] | '_',
+          expire                   :: integer() | '$1'
          }).
 
 -define(EXPIRE, 3600).
@@ -292,7 +292,7 @@ process(_Handlers,
                          [{<<"href">>, <<"https://www.ejabberd.im">>},
                           {<<"title">>, <<"ejabberd XMPP server">>}],
                          <<"ejabberd">>),
-                    ?C(" is maintained by "),
+                    ?C(<<" is maintained by ">>),
                     ?XAC(<<"a">>,
                          [{<<"href">>, <<"https://www.process-one.net">>},
                           {<<"title">>, <<"ProcessOne - Leader in Instant Messaging and Push Solutions">>}],
