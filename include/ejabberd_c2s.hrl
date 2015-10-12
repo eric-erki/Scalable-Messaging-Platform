@@ -107,3 +107,15 @@
 -type c2s_state() :: #state{}.
 
 -type mgmt_state() :: disabled | inactive | active | pending | resumed.
+
+-define(C2S_P1_ACK_TIMEOUT, 10000).
+-define(MAX_OOR_TIMEOUT, 1440).
+-define(MAX_OOR_MESSAGES, 1000).
+
+-define(NS_P1_REBIND, <<"p1:rebind">>).
+-define(NS_P1_PUSH, <<"p1:push">>).
+-define(NS_P1_PUSH_CUSTOM, <<"p1:push:custom">>).
+-define(NS_P1_ACK, <<"p1:ack">>).
+-define(NS_P1_PUSHED, <<"p1:pushed">>).
+-define(NS_P1_ATTACHMENT, <<"http://process-one.net/attachement">>).
+
