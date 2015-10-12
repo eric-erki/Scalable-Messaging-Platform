@@ -225,20 +225,20 @@ handle(<<"bulk-roster-update">>, Args) ->
                    lists:filtermap(fun([{C1}, {C2}]) ->
                                            Jid1 = get_json_prop(<<"jid">>, C1),
                                            Nick1 = get_json_prop(<<"nick">>, C1, <<"">>),
-                                           Group1 = get_json_prop(<<"group">>, C1, []),
+                                           Group1 = get_json_prop(<<"group">>, C1, <<"">>),
                                            {U1, S1, _} = jlib:jid_tolower(jlib:string_to_jid(Jid1)),
                                            Jid2 = get_json_prop(<<"jid">>, C2),
                                            Nick2 = get_json_prop(<<"nick">>, C2, <<"">>),
-                                           Group2 = get_json_prop(<<"group">>, C2, []),
+                                           Group2 = get_json_prop(<<"group">>, C2, <<"">>),
                                            {U2, S2, _} = jlib:jid_tolower(jlib:string_to_jid(Jid2)),
 
                                            case {ejabberd_auth:is_user_exists(U1, S1),
                                                  ejabberd_auth:is_user_exists(U2, S2)}
                                            of
                                                {true, true} ->
-                                                   case mod_admin_p1:add_rosteritem(U2, S2, Jid1, Group1, Nick1, <<"both">>) of
-                                                       0 -> case mod_admin_p1:add_rosteritem(U1, S1, Jid2, Group2, Nick2, <<"both">>) of
-                                                                0 -> false;
+                                                   case mod_admin_extra:add_rosteritem(U2, S2, U1, S1, Nick1, Group1, <<"both">>) of
+                                                       ok -> case mod_admin_extra:add_rosteritem(U1, S1, U2, S2, Nick2, Group2, <<"both">>) of
+                                                                ok -> false;
                                                                 _ -> {true, {[{Jid1, <<"Modifing roster failed">>}]}}
                                                             end;
                                                        _ -> {true, {[{Jid2, <<"Modifing roster failed">>}]}}
@@ -254,10 +254,10 @@ handle(<<"bulk-roster-update">>, Args) ->
                    lists:filtermap(fun([JidR1, JidR2]) ->
                                            {UR1, SR1, _} = jlib:jid_tolower(jlib:string_to_jid(JidR1)),
                                            {UR2, SR2, _} = jlib:jid_tolower(jlib:string_to_jid(JidR2)),
-                                           case mod_admin_p1:delete_rosteritem(UR1, SR1, JidR2) of
-                                               0 ->
-                                                   case mod_admin_p1:delete_rosteritem(UR2, SR2, JidR1) of
-                                                       0 -> false;
+                                           case mod_admin_extra:delete_rosteritem(UR1, SR1, UR2, SR2) of
+                                               ok ->
+                                                   case mod_admin_extra:delete_rosteritem(UR2, SR2, UR1, SR1) of
+                                                       ok -> false;
                                                        _ -> {true, {[{JidR2, <<"Can't delete roster item">>}]}}
                                                    end;
                                                _ -> {true, {[{JidR1, <<"Can't delete roster item">>}]}}
