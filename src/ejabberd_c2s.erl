@@ -195,7 +195,12 @@ del_rosteritem(FsmRef, IJID) ->
 				    {del_rosteritem, IJID}).
 
 get_aux_field(Key, #state{aux_fields = Opts}) ->
-    {ok, proplists:get_value(Key, Opts, error)}.
+    case proplists:lookup(Key, Opts) of
+        none ->
+            error;
+        V ->
+            {ok, V}
+    end.
 
 set_aux_field(Key, Val, #state{aux_fields = Opts} = State) ->
     Opts1 = lists:keydelete(Key, 1, Opts),
