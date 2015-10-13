@@ -198,7 +198,7 @@ get_aux_field(Key, #state{aux_fields = Opts}) ->
     case proplists:lookup(Key, Opts) of
         none ->
             error;
-        V ->
+        {Key, V} ->
             {ok, V}
     end.
 
