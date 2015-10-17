@@ -46,7 +46,7 @@
 	 get_aux_field/2, set_aux_field/3, del_aux_field/2,
 	 get_subscription/2, broadcast/4, is_remote_socket/1,
          get_subscribed/1, transform_listen_option/2,
-         send_filtered/5]).
+         send_filtered/5, close/1]).
 
 %% API:
 -export([add_rosteritem/3, del_rosteritem/2]).
@@ -260,6 +260,7 @@ stop_or_detach(FsmRef) ->
 		ok
     end.
 
+close(FsmRef) -> (?GEN_FSM):send_event(FsmRef, closed).
 
 migrate(FsmRef, Node, After) when node(FsmRef) == node() ->
     erlang:send_after(After, FsmRef, {migrate, Node});
@@ -716,6 +717,8 @@ wait_for_stream({xmlstreamerror, _}, StateData) ->
     send_trailer(StateData),
     {stop, normal, StateData};
 wait_for_stream(closed, StateData) ->
+    {stop, normal, StateData};
+wait_for_stream(stop, StateData) ->
     {stop, normal, StateData}.
 wait_for_stream(stop_or_detach, _From, StateData) ->
     {stop, normal, stopped, StateData}.
@@ -913,6 +916,8 @@ wait_for_auth({xmlstreamerror, _}, StateData) ->
     send_trailer(StateData),
     {stop, normal, StateData};
 wait_for_auth(closed, StateData) ->
+    {stop, normal, StateData};
+wait_for_auth(stop, StateData) ->
     {stop, normal, StateData}.
 wait_for_auth(stop_or_detach,_From, StateData) ->
     {stop, normal, stopped, StateData}.
@@ -1150,6 +1155,8 @@ wait_for_feature_request({xmlstreamerror, _},
     send_trailer(StateData),
     {stop, normal, StateData};
 wait_for_feature_request(closed, StateData) ->
+    {stop, normal, StateData};
+wait_for_feature_request(stop, StateData) ->
     {stop, normal, StateData}.
 wait_for_feature_request(stop_or_detach, _From, StateData) ->
     {stop, normal, stopped, StateData}.
@@ -1306,6 +1313,8 @@ wait_for_sasl_response({xmlstreamerror, _},
     send_trailer(StateData),
     {stop, normal, StateData};
 wait_for_sasl_response(closed, StateData) ->
+    {stop, normal, StateData};
+wait_for_sasl_response(stop, StateData) ->
     {stop, normal, StateData}.
 wait_for_sasl_response(stop_or_detach, _From, StateData) ->
     {stop, normal, stopped, StateData}.
@@ -1368,6 +1377,8 @@ wait_for_bind({xmlstreamerror, _}, StateData) ->
     send_trailer(StateData),
     {stop, normal, StateData};
 wait_for_bind(closed, StateData) ->
+    {stop, normal, StateData};
+wait_for_bind(stop, StateData) ->
     {stop, normal, StateData}.
 wait_for_bind(stop_or_detach, _From, StateData) ->
     {stop, normal, stopped, StateData}.
@@ -1446,6 +1457,8 @@ wait_for_session({xmlstreamerror, _}, StateData) ->
     send_trailer(StateData),
     {stop, normal, StateData};
 wait_for_session(closed, StateData) ->
+    {stop, normal, StateData};
+wait_for_session(stop, StateData) ->
     {stop, normal, StateData}.
 wait_for_session(stop_or_detach, _From, StateData) ->
     {stop, normal, stopped, StateData}.
@@ -1520,7 +1533,9 @@ session_established(stop_or_detach, From, StateData) ->
 	    fsm_next_state(session_established, NewState);
 	true ->
 	    {stop, normal, stopped, StateData}
-    end.
+    end;
+session_established(stop, StateData) ->
+    {stop, normal, StateData}.
 
 %% Process packets sent by user (coming from user on c2s XMPP connection)
 session_established2(El, StateData) ->
