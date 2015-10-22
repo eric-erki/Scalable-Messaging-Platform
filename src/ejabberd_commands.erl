@@ -448,7 +448,7 @@ check_access_commands([], _Auth, _Method, _Command, _Arguments) ->
 check_access_commands(AccessCommands, Auth, Method, Command1, Arguments) ->
     Command =
         case {Command1#ejabberd_commands.policy, Auth} of
-            {user, {_, _, _}} ->
+            {user, {_, _, _, _}} ->
                 Command1;
             {user, _} ->
                 Command1#ejabberd_commands{
