@@ -119,7 +119,7 @@ CfgDeps = lists:flatmap(
                ({riak, true}) ->
                     [{riakc, ".*", {git, "git://github.com/basho/riak-erlang-client", {tag, "1.4.2"}}}];
                ({elixir, true}) ->
-                    [{rebar_elixir_plugin, ".*", {git, "git://github.com/yrashk/rebar_elixir_plugin"}},
+                    [{rebar_elixir_plugin, ".*", {git, "git@github.com:processone/rebar_elixir_plugin.git"}},
                      {elixir, ".*", {git, "git://github.com/elixir-lang/elixir", {branch, "v1.0"}}}];
                ({iconv, true}) ->
                     [{p1_iconv, ".*", {git, "git://github.com/processone/eiconv"}}];
@@ -135,7 +135,8 @@ CfgDeps = lists:flatmap(
                ({p1db, true}) ->
                     [{p1db, ".*", {git, "ssh://git@git.process-one.net:7999/ebe/p1db.git"}}];
                ({tools, true}) ->
-                    [{meck, "0.*", {git, "https://github.com/eproxus/meck"}}];
+                    [{meck, "0.*", {git, "https://github.com/eproxus/meck"}},
+		     {moka, ".*", {git , "git://github.com/processone/moka.git"}}];
                ({redis, true}) ->
                     [{eredis, ".*", {git, "git://github.com/wooga/eredis"}}];
                (_) ->
@@ -186,7 +187,8 @@ CfgXrefs = lists:flatmap(
 ElixirConfig = case lists:keysearch(elixir, 1, Cfg) of
                    {value, {elixir, true}} ->
                        [{plugins, [rebar_elixir_compiler, rebar_exunit] },
-                        {lib_dirs, ["deps/elixir/lib"]}];
+                        {lib_dirs, ["deps/elixir/lib"]},
+			{src_dirs, ["include"]}];
                    _ ->
                        []
                end,

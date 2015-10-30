@@ -42,22 +42,16 @@
 
 -export([start/2, stop/1,
 	% module
-	 restart_module/2, module_options/1,
+	 module_options/1,
 	% users
-	 create_account/3, delete_account/2, check_account/2, rename_account/4,
-	 check_password/3, change_password/3, check_users_registration/1,
+	 create_account/3, delete_account/2,
 	% sessions
-	 get_presence/2, get_resources/2, user_info/2,
+	 get_resources/2, user_info/2,
 	% roster
-	 add_rosteritem/6, delete_rosteritem/3,
 	 add_rosteritem_groups/5, del_rosteritem_groups/5, modify_rosteritem_groups/6,
-	 link_contacts/6, unlink_contacts/2, link_contacts/7, unlink_contacts/3,
 	 get_roster/2, get_roster_with_presence/2,
-	 add_contacts/3, remove_contacts/3, set_rosternick/3,
-	 update_roster/4,
+	 set_rosternick/3,
 	 transport_register/5,
-	% vcard
-	 set_nickname/3,
 	% router
 	 send_chat/3, send_message/4, send_stanza/3,
 	% stats
@@ -80,9 +74,9 @@
 -record(session, {usr, us, sid, priority, info}).  % keep in sync with ejabberd_sm.erl
 
 -record(muc_online_room,
-        {name_host = {<<"">>, <<"">>} :: {binary(), binary()} | {'_', '$1'} | '$1' | '_',
-         timestamp = now() :: erlang:timestamp() | '_',
-         pid = self() :: pid() | '$1' | '$2' | '_'}).
+	{name_host = {<<"">>, <<"">>} :: {binary(), binary()} | {'_', '$1'} | '$1' | '_',
+	 timestamp = now() :: erlang:timestamp() | '_',
+	 pid = self() :: pid() | '$1' | '$2' | '_'}).
 
 
 start(_Host, _Opts) ->
@@ -96,17 +90,7 @@ stop(_Host) ->
 %%%
 
 commands() ->
-    [#ejabberd_commands{name = restart_module,
-			tags = [erlang],
-			desc = "Stop an ejabberd module, reload code and start",
-			longdesc = "Returns integer code:\n"
-				   " - 0: code reloaded, module restarted\n"
-				   " - 1: error: module not loaded\n"
-				   " - 2: code not reloaded, but module restarted",
-			module = ?MODULE, function = restart_module,
-			args = [{module, binary}, {host, binary}],
-			result = {res, integer}},
-     #ejabberd_commands{name = create_account,
+    [#ejabberd_commands{name = create_account,
 			tags = [accounts],
 			desc = "Create an ejabberd user account",
 			longdesc = "This command is similar to 'register'.",
@@ -122,97 +106,7 @@ commands() ->
 			module = ?MODULE, function = delete_account,
 			args = [{user, binary}, {server, binary}],
 			result = {res, integer}},
-     #ejabberd_commands{name = rename_account,
-			tags = [accounts], desc = "Change an acount name",
-			longdesc =
-			    "Creates a new account and copies the "
-			    "roster from the old one, and updates "
-			    "the rosters of his contacts. Offline "
-			    "messages and private storage are lost.",
-			module = ?MODULE, function = rename_account,
-			args =
-			    [{user, binary}, {server, binary},
-			     {newuser, binary}, {newserver, binary}],
-			result = {res, integer}},
-     #ejabberd_commands{name = change_password,
-			tags = [accounts],
-			desc =
-			    "Change the password on behalf of the given user",
-			module = ?MODULE, function = change_password,
-			args =
-			    [{user, binary}, {server, binary},
-			     {newpass, binary}],
-			result = {res, integer}},
-     #ejabberd_commands{name = check_account,
-			tags = [accounts],
-			desc = "Check the account exists (0 yes, 1 no)",
-			module = ?MODULE, function = check_account,
-			args = [{user, binary}, {server, binary}],
-			result = {res, integer}},
-     #ejabberd_commands{name = check_password,
-			tags = [accounts],
-			desc = "Check the password is correct (0 yes, 1 no)",
-			module = ?MODULE, function = check_password,
-			args =
-			    [{user, binary}, {server, binary},
-			     {password, binary}],
-			result = {res, integer}},
-     #ejabberd_commands{name = set_nickname,
-			tags = [vcard],
-			desc = "Define user nickname",
-			longdesc =
-			    "Set/updated nickname in the user Vcard. "
-			    "Other informations are unchanged.",
-			module = ?MODULE, function = set_nickname,
-			args =
-			    [{user, binary}, {server, binary}, {nick, binary}],
-			result = {res, integer}},
-     #ejabberd_commands{name = add_rosteritem,
-			tags = [roster],
-			desc = "Add an entry in a user's roster",
-			longdesc =
-			    "Some arguments are:\n - jid: the JabberID "
-			    "of the user you would like to add in "
-			    "user roster on the server.\n - subs: "
-			    "the state of the roster item subscription.\n\n"
-			    "The allowed values of the 'subs' argument "
-			    "are: both, to, from or none.\n - none: "
-			    "presence packets are not sent between "
-			    "parties.\n - both: presence packets "
-			    "are sent in both direction.\n - to: "
-			    "the user sees the presence of the given "
-			    "JID.\n - from: the JID specified sees "
-			    "the user presence.\n\nejabberd sends "
-			    "to the user's connected client both "
-			    "the roster item and the presence.Don't "
-			    "forget that roster items should keep "
-			    "symmetric: when adding a roster item "
-			    "for a user, you have to do the symmetric "
-			    "roster item addition.\n\n",
-			module = ?MODULE, function = add_rosteritem,
-			args =
-			    [{user, binary}, {server, binary}, {jid, binary},
-			     {group, binary}, {nick, binary}, {subs, binary}],
-			result = {res, integer}},
-     #ejabberd_commands{name = delete_rosteritem,
-			tags = [roster],
-			desc = "Remove a roster item from the user's roster",
-			longdesc =
-			    "Roster items should be kept symmetric: "
-			    "when removing a roster item for a user "
-			    "you have to do the symmetric roster "
-			    "item removal. \n\nejabberd sends to "
-			    "the user's connected client both the "
-			    "roster item removel and the presence "
-			    "unsubscription.This mechanism bypass "
-			    "the standard roster approval addition "
-			    "mechanism and should only be used for "
-			    "server administration or server integration "
-			    "purpose.",
-			module = ?MODULE, function = delete_rosteritem,
-			args =
-			    [{user, binary}, {server, binary}, {jid, binary}],
-			result = {res, integer}},
+     % XXX Works only for mnesia & odbc, TODO: move to mod_roster
      #ejabberd_commands{name = add_rosteritem_groups,
 			tags = [roster],
 			desc = "Add new groups in an existing roster item",
@@ -224,6 +118,7 @@ commands() ->
 			    [{user, binary}, {server, binary}, {jid, binary},
 			     {groups, binary}, {push, binary}],
 			result = {res, integer}},
+     % XXX Works only for mnesia & odbc, TODO: move to mod_roster
      #ejabberd_commands{name = del_rosteritem_groups,
 			tags = [roster],
 			desc = "Delete groups in an existing roster item",
@@ -235,6 +130,7 @@ commands() ->
 			    [{user, binary}, {server, binary}, {jid, binary},
 			     {groups, binary}, {push, binary}],
 			result = {res, integer}},
+     % XXX Works only for mnesia & odbc, TODO: move to mod_roster
      #ejabberd_commands{name = modify_rosteritem_groups,
 			tags = [roster],
 			desc = "Modify the groups of an existing roster item",
@@ -246,80 +142,6 @@ commands() ->
 			    [{user, binary}, {server, binary}, {jid, binary},
 			     {groups, binary}, {subs, binary}, {push, binary}],
 			result = {res, integer}},
-     #ejabberd_commands{name = link_contacts,
-			tags = [roster],
-			desc = "Add a symmetrical entry in two users roster",
-			longdesc =
-			    "jid1 is the JabberID of the user1 you "
-			    "would like to add in user2 roster on "
-			    "the server.\nnick1 is the nick of user1.\ngro"
-			    "up1 is the group name when adding user1 "
-			    "to user2 roster.\njid2 is the JabberID "
-			    "of the user2 you would like to add in "
-			    "user1 roster on the server.\nnick2 is "
-			    "the nick of user2.\ngroup2 is the group "
-			    "name when adding user2 to user1 roster.\n\nTh"
-			    "is mechanism bypasses the standard roster "
-			    "approval addition mechanism and should "
-			    "only be userd for server administration "
-			    "or server integration purpose.",
-			module = ?MODULE, function = link_contacts,
-			args =
-			    [{jid1, binary}, {nick1, binary}, {group1, binary},
-			     {jid2, binary}, {nick2, binary}, {group2, binary}],
-			result = {res, integer}},
-     #ejabberd_commands{name = unlink_contacts,
-			tags = [roster],
-			desc = "Remove a symmetrical entry in two users roster",
-			longdesc =
-			    "jid1 is the JabberID of the user1.\njid2 "
-			    "is the JabberID of the user2.\n\nThis "
-			    "mechanism bypass the standard roster "
-			    "approval addition mechanism and should "
-			    "only be used for server administration "
-			    "or server integration purpose.",
-			module = ?MODULE, function = unlink_contacts,
-			args = [{jid1, binary}, {jid2, binary}],
-			result = {res, integer}},
-     #ejabberd_commands{name = add_contacts,
-			tags = [roster],
-			desc =
-			    "Call add_rosteritem with subscription "
-			    "\"both\" for a given list of contacts",
-			module = ?MODULE, function = add_contacts,
-			args =
-			    [{user, binary}, {server, binary},
-			     {contacts,
-			      {list,
-			       {contact,
-				{tuple,
-				 [{jid, binary}, {group, binary},
-				  {nick, binary}]}}}}],
-			result = {res, integer}},
-     #ejabberd_commands{name = remove_contacts,
-			tags = [roster],
-			desc = "Call del_rosteritem for a list of contacts",
-			module = ?MODULE, function = remove_contacts,
-			args =
-			    [{user, binary}, {server, binary},
-			     {contacts, {list, {jid, binary}}}],
-			result = {res, integer}},
-     #ejabberd_commands{name = check_users_registration,
-			tags = [roster],
-			desc = "List registration status for a list of users",
-			module = ?MODULE, function = check_users_registration,
-			args =
-			    [{users,
-			      {list,
-			       {auser,
-				{tuple, [{user, binary}, {server, binary}]}}}}],
-			result =
-			    {users,
-			     {list,
-			      {auser,
-			       {tuple,
-				[{user, string}, {server, string},
-				 {status, integer}]}}}}},
      #ejabberd_commands{name = get_roster,
 			tags = [roster],
 			desc = "Retrieve the roster for a given user",
@@ -373,6 +195,8 @@ commands() ->
 				 {group, string}, {nick, string},
 				 {subscription, string}, {pending, string},
 				 {show, string}, {status, string}]}}}}},
+     % XXX Works only with mnesia or odbc. Doesn't work with
+     % s2s. Doesn't work with virtual hosts.
      #ejabberd_commands{name = set_rosternick,
 			tags = [roster],
 			desc = "Set the nick of an roster item",
@@ -381,43 +205,6 @@ commands() ->
 			    [{user, binary}, {server, binary},
 			     {nick, binary}],
 			result = {res, integer}},
-     #ejabberd_commands{name = update_roster, tags = [roster],
-			desc = "Add and remove contacts from user roster in one shot",
-			module = ?MODULE, function = update_roster,
-			args = [{username, binary}, {domain, binary},
-				{add, {list, {contact, {list, {property, {tuple, [{name, binary},{value, binary}]}}}}}},
-				{delete, {list, {contact, {list, {property, {tuple, [{name, binary},{value, binary}]}}}}}}],
-			result = {res, restuple}},
-     #ejabberd_commands{name = get_offline_count,
-			tags = [offline],
-			desc = "Get the number of unread offline messages",
-                        policy = user,
-			module = mod_offline, function = get_queue_length,
-			args = [],
-			result = {res, integer}},
-     #ejabberd_commands{name = get_presence,
-			tags = [session],
-			desc =
-			    "Retrieve the resource with highest priority, "
-			    "and its presence (show and status message) "
-			    "for a given user.",
-			longdesc =
-			    "The 'jid' value contains the user jid "
-			    "with resource.\nThe 'show' value contains "
-			    "the user presence flag. It can take "
-			    "limited values:\n - available\n - chat "
-			    "(Free for chat)\n - away\n - dnd (Do "
-			    "not disturb)\n - xa (Not available, "
-			    "extended away)\n - unavailable (Not "
-			    "connected)\n\n'status' is a free text "
-			    "defined by the user client.",
-			module = ?MODULE, function = get_presence,
-			args = [{user, binary}, {server, binary}],
-			result =
-			    {presence,
-			     {tuple,
-			      [{jid, string}, {show, string},
-			       {status, string}]}}},
      #ejabberd_commands{name = get_resources,
 			tags = [session],
 			desc = "Get all available resources for a given user",
@@ -506,7 +293,7 @@ commands() ->
 			    {probe, {tuple, [{name, atom}, {value, integer}]}}}}},
      #ejabberd_commands{name = server_version,
 			tags = [],
-                        desc = "Build version of running server",
+			desc = "Build version of running server",
 			module = ?MODULE, function = server_version,
 			args = [],
 			result = {res, {list,
@@ -528,7 +315,7 @@ commands() ->
 				    {sessions, {list,
 					{session, {list,
 					    {info, {tuple, [{name, atom}, {value, string}]}}}}}}]}}},
-          #ejabberd_commands{name = purge_mam,
+	  #ejabberd_commands{name = purge_mam,
 			     tags = [mam],
 			     desc = "Purge MAM archive for old messages",
 			     longdesc = "First parameter is virtual host "
@@ -549,32 +336,8 @@ commands() ->
 
 module_options(Module) ->
     [{Host, proplists:get_value(Module, gen_mod:loaded_modules_with_opts(Host))}
-	|| Host <- ejabberd_config:get_myhosts()].
+     || Host <- ejabberd_config:get_myhosts()].
 
-restart_module(Module, Host) when is_binary(Module) ->
-    restart_module(jlib:binary_to_atom(Module), Host);
-restart_module(Module, Host) when is_atom(Module) ->
-    List = gen_mod:loaded_modules_with_opts(Host),
-    case proplists:get_value(Module, List) of
-	undefined ->
-            % not a running module, force code reload anyway
-            code:purge(Module),
-            code:delete(Module),
-            code:load_file(Module),
-	    1;
-	Opts ->
-	    gen_mod:stop_module(Host, Module),
-	    case code:soft_purge(Module) of
-		true ->
-		    code:delete(Module),
-		    code:load_file(Module),
-		    gen_mod:start_module(Host, Module, Opts),
-		    0;
-		false ->
-		    gen_mod:start_module(Host, Module, Opts),
-		    2
-	    end
-    end.
 
 %%%
 %%% Accounts
@@ -591,99 +354,11 @@ delete_account(U, S) ->
     Fun = fun () -> ejabberd_auth:remove_user(U, S) end,
     user_action(U, S, Fun, ok).
 
-change_password(U, S, P) ->
-    Fun = fun () -> ejabberd_auth:set_password(U, S, P) end,
-    user_action(U, S, Fun, ok).
-
-check_account(U, H) ->
-    case ejabberd_auth:is_user_exists(U, H) of
-        true ->
-            0;
-        false ->
-            1
-    end.
-
-check_password(U, H, P) ->
-    case ejabberd_auth:check_password(U, H, P) of
-        true ->
-            0;
-        false ->
-            1
-    end.
-
-rename_account(U, S, NU, NS) ->
-    case ejabberd_auth:is_user_exists(U, S) of
-      true ->
-	  case ejabberd_auth:get_password(U, S) of
-	    false -> 1;
-	    Password ->
-		case ejabberd_auth:try_register(NU, NS, Password) of
-		  {atomic, ok} ->
-		      OldJID = jlib:jid_to_string({U, S, <<"">>}),
-		      NewJID = jlib:jid_to_string({NU, NS, <<"">>}),
-		      Roster = get_roster2(U, S),
-		      lists:foreach(fun (#roster{jid = {RU, RS, RE},
-						 name = Nick,
-						 groups = Groups}) ->
-					    NewGroup = extract_group(Groups),
-					    {NewNick, Group} = case
-								 lists:filter(fun
-										(#roster{jid
-											     =
-											     {PU,
-											      PS,
-											      _}}) ->
-										    (PU
-										       ==
-										       U)
-										      and
-										      (PS
-											 ==
-											 S)
-									      end,
-									      get_roster2(RU,
-											  RS))
-								   of
-								 [#roster{name =
-									      OldNick,
-									  groups
-									      =
-									      OldGroups}
-								  | _] ->
-								     {OldNick,
-								      extract_group(OldGroups)};
-								 [] -> {NU, []}
-							       end,
-					    JIDStr = jlib:jid_to_string({RU, RS,
-									 RE}),
-					    link_contacts2(NewJID, NewNick,
-							   NewGroup, JIDStr,
-							   Nick, Group, true),
-					    unlink_contacts2(OldJID, JIDStr,
-							     true)
-				    end,
-				    Roster),
-		      ejabberd_auth:remove_user(U, S),
-		      0;
-		  {atomic, exists} -> 409;
-		  _ -> 1
-		end
-	  end;
-      false -> 404
-    end.
 
 %%%
 %%% Sessions
 %%%
 
-get_presence(U, S) ->
-    case ejabberd_auth:is_user_exists(U, S) of
-      true ->
-          {Resource, Show, Status} = get_presence2(U, S),
-          FullJID = jlib:jid_to_string({U, S, Resource}),
-	  {FullJID, Show, Status};
-      false -> 404
-    end.
 
 get_resources(U, S) ->
     case ejabberd_auth:is_user_exists(U, S) of
@@ -706,67 +381,14 @@ user_info(U, S) ->
 %%% Vcard
 %%%
 
-set_nickname(U, S, N) ->
-    JID = jlib:make_jid({U, S, <<"">>}),
-    Fun = fun () ->
-		  case mod_vcard:process_sm_iq(
-                         JID, JID,
-                         #iq{type = set,
-                             lang = <<"en">>,
-                             sub_el =
-                                 #xmlel{name = <<"vCard">>,
-                                        attrs = [{<<"xmlns">>, ?NS_VCARD}],
-                                        children =
-                                            [#xmlel{name = <<"NICKNAME">>,
-                                                    attrs = [],
-                                                    children =
-                                                        [{xmlcdata, N}]}]}}) of
-                      #iq{type = result} -> ok;
-                      _ -> error
-		  end
-	  end,
-    user_action(U, S, Fun, ok).
 
 %%%
 %%% Roster
 %%%
 
-add_rosteritem(U, S, JID, G, N, Subs) ->
-    add_rosteritem(U, S, JID, G, N, Subs, true).
 
-add_rosteritem(U, S, JID, G, N, Subs, Push) ->
-    Fun = fun () ->
-		  add_rosteritem2(U, S, JID, N, G, Subs, Push)
-	  end,
-    user_action(U, S, Fun, {atomic, ok}).
 
-link_contacts(JID1, Nick1, Group1, JID2, Nick2,
-	      Group2) ->
-    link_contacts(JID1, Nick1, Group1, JID2, Nick2, Group2,
-		  true).
 
-link_contacts(JID1, Nick1, Group1, JID2, Nick2, Group2,
-	      Push) ->
-    {U1, S1, _} =
-	jlib:jid_tolower(jlib:string_to_jid(JID1)),
-    {U2, S2, _} =
-	jlib:jid_tolower(jlib:string_to_jid(JID2)),
-    case {ejabberd_auth:is_user_exists(U1, S1),
-	  ejabberd_auth:is_user_exists(U2, S2)}
-	of
-      {true, true} ->
-	  case link_contacts2(JID1, Nick1, Group1, JID2, Nick2,
-			      Group2, Push)
-	      of
-	    {atomic, ok} -> 0;
-	    _ -> 1
-	  end;
-      _ -> 404
-    end.
-
-delete_rosteritem(U, S, JID) ->
-    Fun = fun () -> del_rosteritem(U, S, JID) end,
-    user_action(U, S, Fun, {atomic, ok}).
 
 unlink_contacts(JID1, JID2) ->
     unlink_contacts(JID1, JID2, true).
@@ -799,58 +421,6 @@ get_roster_with_presence(U, S) ->
       false -> 404
     end.
 
-add_contacts(U, S, Contacts) ->
-    case ejabberd_auth:is_user_exists(U, S) of
-      true ->
-	  JID1 = jlib:jid_to_string({U, S, <<"">>}),
-	  lists:foldl(fun ({JID2, Group, Nick}, Acc) ->
-			      {PU, PS, _} =
-				  jlib:jid_tolower(jlib:string_to_jid(JID2)),
-			      case ejabberd_auth:is_user_exists(PU, PS) of
-				true ->
-				    case link_contacts2(JID1, <<"">>, Group,
-							JID2, Nick, Group, true)
-					of
-				      {atomic, ok} -> Acc;
-				      _ -> 1
-				    end;
-				false -> Acc
-			      end
-		      end,
-		      0, Contacts);
-      false -> 404
-    end.
-
-remove_contacts(U, S, Contacts) ->
-    case ejabberd_auth:is_user_exists(U, S) of
-      true ->
-	  JID1 = jlib:jid_to_string({U, S, <<"">>}),
-	  lists:foldl(fun (JID2, Acc) ->
-			      {PU, PS, _} =
-				  jlib:jid_tolower(jlib:string_to_jid(JID2)),
-			      case ejabberd_auth:is_user_exists(PU, PS) of
-				true ->
-				    case unlink_contacts2(JID1, JID2, true) of
-				      {atomic, ok} -> Acc;
-				      _ -> 1
-				    end;
-				false -> Acc
-			      end
-		      end,
-		      0, Contacts);
-      false -> 404
-    end.
-
-check_users_registration(Users) ->
-    lists:map(fun ({U, S}) ->
-		      Registered = case ejabberd_auth:is_user_exists(U, S) of
-				     true -> 1;
-				     false -> 0
-				   end,
-		      {U, S, Registered}
-	      end,
-	      Users).
-
 set_rosternick(U, S, N) ->
     Fun = fun() -> change_rosternick(U, S, N) end,
     user_action(U, S, Fun, ok).
@@ -861,104 +431,57 @@ change_rosternick(User, Server, Nick) ->
     LJID = {LUser, LServer, <<"">>},
     JID = jlib:jid_to_string(LJID),
     Push = fun(Subscription) ->
-        jlib:iq_to_xml(#iq{type = set, xmlns = ?NS_ROSTER, id = <<"push">>,
-                           sub_el = [#xmlel{name = <<"query">>, attrs = [{<<"xmlns">>, ?NS_ROSTER}],
-                                     children = [#xmlel{name = <<"item">>, attrs = [{<<"jid">>, JID}, {<<"name">>, Nick}, {<<"subscription">>, atom_to_binary(Subscription, utf8)}]}]}]})
-        end,
+	jlib:iq_to_xml(#iq{type = set, xmlns = ?NS_ROSTER, id = <<"push">>,
+			   sub_el = [#xmlel{name = <<"query">>, attrs = [{<<"xmlns">>, ?NS_ROSTER}],
+				     children = [#xmlel{name = <<"item">>, attrs = [{<<"jid">>, JID}, {<<"name">>, Nick}, {<<"subscription">>, atom_to_binary(Subscription, utf8)}]}]}]})
+	end,
     Result = case roster_backend(Server) of
-        mnesia ->
-            %% XXX This way of doing can not work with s2s
-            mnesia:transaction(
-                fun() ->
-                    lists:foreach(fun(Roster) ->
-                        {U, S} = Roster#roster.us,
-                        mnesia:write(Roster#roster{name = Nick}),
-                        lists:foreach(fun(R) ->
-                            UJID = jlib:make_jid(U, S, R),
-                            ejabberd_router:route(UJID, UJID, Push(Roster#roster.subscription))
-                        end, get_resources(U, S))
-                    end, mnesia:match_object(#roster{jid = LJID, _ = '_'}))
-                end);
-        odbc ->
-            %%% XXX This way of doing does not work with several domains
-            ejabberd_odbc:sql_transaction(Server,
-                fun() ->
-                    SNick = ejabberd_odbc:escape(Nick),
-                    SJID = ejabberd_odbc:escape(JID),
-                    ejabberd_odbc:sql_query_t(
-                                ["update rosterusers"
-                                 " set nick='", SNick, "'"
-                                 " where jid='", SJID, "';"]),
-                    case ejabberd_odbc:sql_query_t(
-                        ["select username from rosterusers"
-                         " where jid='", SJID, "'"
-                         " and subscription = 'B';"]) of
-                        {selected, [<<"username">>], Users} ->
-                            lists:foreach(fun({RU}) ->
-                                lists:foreach(fun(R) ->
-                                    UJID = jlib:make_jid(RU, Server, R),
-                                    ejabberd_router:route(UJID, UJID, Push(both))
-                                end, get_resources(RU, Server))
-                            end, Users);
-                        _ ->
-                            ok
-                    end
-                end);
-        none ->
-            {error, no_roster}
+	mnesia ->
+	    %% XXX This way of doing can not work with s2s
+	    mnesia:transaction(
+		fun() ->
+		    lists:foreach(fun(Roster) ->
+			{U, S} = Roster#roster.us,
+			mnesia:write(Roster#roster{name = Nick}),
+			lists:foreach(fun(R) ->
+			    UJID = jlib:make_jid(U, S, R),
+			    ejabberd_router:route(UJID, UJID, Push(Roster#roster.subscription))
+			end, get_resources(U, S))
+		    end, mnesia:match_object(#roster{jid = LJID, _ = '_'}))
+		end);
+	odbc ->
+	    %%% XXX This way of doing does not work with several domains
+	    ejabberd_odbc:sql_transaction(Server,
+		fun() ->
+		    SNick = ejabberd_odbc:escape(Nick),
+		    SJID = ejabberd_odbc:escape(JID),
+		    ejabberd_odbc:sql_query_t(
+				["update rosterusers"
+				 " set nick='", SNick, "'"
+				 " where jid='", SJID, "';"]),
+		    case ejabberd_odbc:sql_query_t(
+			["select username from rosterusers"
+			 " where jid='", SJID, "'"
+			 " and subscription = 'B';"]) of
+			{selected, [<<"username">>], Users} ->
+			    lists:foreach(fun({RU}) ->
+				lists:foreach(fun(R) ->
+				    UJID = jlib:make_jid(RU, Server, R),
+				    ejabberd_router:route(UJID, UJID, Push(both))
+				end, get_resources(RU, Server))
+			    end, Users);
+			_ ->
+			    ok
+		    end
+		end);
+	none ->
+	    {error, no_roster}
     end,
     case Result of
-        {atomic, ok} -> ok;
-        _ -> error
+	{atomic, ok} -> ok;
+	_ -> error
     end.
 
-update_roster(User, Host, Add, Del) when is_list(Add), is_list(Del) ->
-    Server = case Host of
-        <<>> ->
-            [Default|_] = ejabberd_config:get_myhosts(),
-            Default;
-        _ ->
-            Host
-    end,
-    case ejabberd_auth:is_user_exists(User, Server) of
-        true ->
-            AddFun = fun({Item}) ->
-                    [Contact, Nick, Sub] = match(Item, [
-                                {<<"username">>, <<>>},
-                                {<<"nick">>, <<>>},
-                                {<<"subscription">>, <<"both">>}]),
-                    Jid = <<Contact/binary, "@", Server/binary>>,
-                    add_rosteritem(User, Server, Jid, <<>>, Nick, Sub)
-            end,
-            AddRes = [AddFun(I) || I <- Add],
-            case lists:all(fun(X) -> X==0 end, AddRes) of
-                true ->
-                    DelFun = fun(Contact) ->
-                            Jid = <<Contact/binary, "@", Server/binary>>,
-                            delete_rosteritem(User, Server, Jid)
-                    end,
-                    [DelFun(I) || I <- Del],
-                    {ok, "OK"};
-                false ->
-                    %% try rollback if errors
-                    DelFun = fun({Item}) ->
-                            [Contact] = match(Item, [{<<"username">>, <<>>}]),
-                            Jid = <<Contact/binary, "@", Server/binary>>,
-                            delete_rosteritem(User, Server, Jid)
-                    end,
-                    [DelFun(I) || I <- Add],
-                    String = io_lib:format("Internal error updating roster for user ~s@~s at node ~p",
-                                           [User, Host, node()]),
-                    {roster_update_error, String}
-            end;
-        false ->
-            String = io_lib:format("User ~s@~s not found at node ~p",
-                                   [User, Host, node()]),
-            {invalid_user, String}
-    end.
-
-match(Args, Spec) ->
-    [proplists:get_value(Key, Args, Default) || {Key, Default} <- Spec].
 
 %%%
 %%% Groups of Roster Item
@@ -1232,7 +755,7 @@ send_stanza(FromJID, ToJID, StanzaStr) ->
     end.
 
 start_mass_message(Host, File, Rate)
-        when is_binary(Host), is_binary(File), is_integer(Rate) ->
+	when is_binary(Host), is_binary(File), is_integer(Rate) ->
     From = jlib:make_jid(<<>>, Host, <<>>),
     Proc = gen_mod:get_module_proc(Host, ?MASSLOOP),
     Delay = 60000 div Rate,
@@ -1318,12 +841,12 @@ server_info() ->
 	Size -> Size
     end,
     {Jabs, {MegaSecs,Secs,_}} = lists:foldr(fun(Host, {J,S}) ->
-                    case catch mod_jabs:value(Host) of
-                        {'EXIT', _} -> {J,S};
-                        {Int, Now} -> {J+Int, Now};
-                        _ -> {J,S}
-                    end
-            end, {0, os:timestamp()}, Hosts),
+		    case catch mod_jabs:value(Host) of
+			{'EXIT', _} -> {J,S};
+			{Int, Now} -> {J+Int, Now};
+			_ -> {J,S}
+		    end
+	    end, {0, os:timestamp()}, Hosts),
     JabsSince = MegaSecs*1000000+Secs,
     DefaultActive = [{<<"daily_active_users">>, 0},
 		     {<<"weekly_active_users">>, 0},
@@ -1380,84 +903,7 @@ get_roster2(User, Server) ->
     LServer = jlib:nameprep(Server),
     ejabberd_hooks:run_fold(roster_get, LServer, [], [{LUser, LServer}]).
 
-add_rosteritem2(User, Server, JID, Nick, Group,
-		Subscription, Push) ->
-    {RU, RS, _} = jlib:jid_tolower(jlib:string_to_jid(JID)),
-    LJID = {RU, RS, <<>>},
-    Groups = case Group of
-	       [] -> [];
-	       _ -> [Group]
-	     end,
-    Roster = #roster{usj = {User, Server, LJID},
-		     us = {User, Server}, jid = LJID, name = Nick,
-		     ask = none,
-		     subscription = jlib:binary_to_atom(Subscription),
-		     groups = Groups},
-    Result = case gen_mod:db_type(Server, mod_roster) of
-	       mnesia ->
-		   mnesia:transaction(fun () ->
-					      case mnesia:read({roster,
-								{User, Server,
-								 LJID}})
-						  of
-						[#roster{subscription =
-							     both}] ->
-						    already_added;
-						_ -> mnesia:write(Roster)
-					      end
-				      end);
-	       odbc ->
-		   case ejabberd_odbc:sql_transaction(Server,
-						      fun () ->
-							      Username =
-								  ejabberd_odbc:escape(User),
-							      SJID =
-								  ejabberd_odbc:escape(jlib:jid_to_string(LJID)),
-							      case
-								ejabberd_odbc:sql_query_t([<<"select username from rosterusers    "
-											     "   where username='">>,
-											   Username,
-											   <<"'         and jid='">>,
-											   SJID,
-											   <<"' and subscription = 'B';">>])
-								  of
-								{selected,
-								 [<<"username">>],
-								 []} ->
-								    ItemVals =
-									mod_roster:record_to_string(Roster),
-								    ItemGroups =
-									mod_roster:groups_to_string(Roster),
-								    ejabberd_odbc:sql_query_t(odbc_queries:update_roster_sql(Username,
-															     SJID,
-															     ItemVals,
-															     ItemGroups));
-								_ ->
-								    already_added
-							      end
-						      end)
-		       of
-		       {atomic, already_added} -> {atomic, already_added};
-		       {atomic, _} -> {atomic, ok};
-		       Error -> Error
-		   end;
-		 rest -> {atomic, ok};
-		 _Other -> ?ERROR_MSG("This command is not supported with roster backend ~p", [_Other]),
-			   error
-	     end,
-    case {Result, Push} of
-      {{atomic, already_added}, _} ->
-	  ok;  %% No need for roster push
-      {{atomic, ok}, true} ->
-	  roster_push(User, Server, JID, Nick, Subscription,
-		      Groups);
-      {{atomic, ok}, false} -> ok;
-      _ -> error
-    end,
-    Result.
 
-del_rosteritem(User, Server, JID) ->
-    del_rosteritem(User, Server, JID, true).
 
 del_rosteritem(User, Server, JID, Push) ->
     {RU, RS, _} = jlib:jid_tolower(jlib:string_to_jid(JID)),
@@ -1494,21 +940,6 @@ del_rosteritem(User, Server, JID, Push) ->
       _ -> error
     end,
     Result.
-
-link_contacts2(JID1, Nick1, Group1, JID2, Nick2, Group2,
-	       Push) ->
-    {U1, S1, _} =
-	jlib:jid_tolower(jlib:string_to_jid(JID1)),
-    {U2, S2, _} =
-	jlib:jid_tolower(jlib:string_to_jid(JID2)),
-    case add_rosteritem2(U1, S1, JID2, Nick2, Group1,
-			 <<"both">>, Push)
-	of
-      {atomic, ok} ->
-	  add_rosteritem2(U2, S2, JID1, Nick1, Group2, <<"both">>,
-			  Push);
-      Error -> Error
-    end.
 
 unlink_contacts2(JID1, JID2, Push) ->
     {U1, S1, _} =

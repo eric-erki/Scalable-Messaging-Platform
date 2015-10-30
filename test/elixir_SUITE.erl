@@ -17,41 +17,50 @@
 
 -compile(export_all).
 
+init_per_suite(Config) ->
+    code:add_pathz(filename:join(test_dir(), "../include")),
+    Config.
+
 init_per_testcase(_TestCase, Config) ->
     process_flag(error_handler, ?MODULE),
     Config.
 
 all() ->
     case is_elixir_available() of
-        true ->
-            Dir = test_dir(),
-            filelib:fold_files(Dir, ".*\.exs", false,
-                               fun(Filename, Acc) -> [list_to_atom(filename:basename(Filename)) | Acc] end,
-                               []);
-        false ->
-            []
+	true ->
+	    Dir = test_dir(),
+	    filelib:fold_files(Dir, ".*\.exs", false,
+			       fun(Filename, Acc) -> [list_to_atom(filename:basename(Filename)) | Acc] end,
+			       []);
+	false ->
+	    []
     end.
 
 is_elixir_available() ->
     case catch elixir:module_info() of
-        {'EXIT',{undef,_}} ->
-            false;
-        ModInfo when is_list(ModInfo) ->
-            true
+	{'EXIT',{undef,_}} ->
+	    false;
+	ModInfo when is_list(ModInfo) ->
+	    true
     end.
 
 undefined_function(?MODULE, Func, Args) ->
     case lists:suffix(".exs", atom_to_list(Func)) of
-        true ->
-            run_elixir_test(Func);
-        false ->
-            error_handler:undefined_function(?MODULE, Func, Args)
+	true ->
+	    run_elixir_test(Func);
+	false ->
+	    error_handler:undefined_function(?MODULE, Func, Args)
     end;
 undefined_function(Module, Func, Args) ->
     error_handler:undefined_function(Module, Func,Args).
 
 run_elixir_test(Func) ->
     'Elixir.ExUnit':start([]),
+    filelib:fold_files(test_dir(), ".*\\.exs\$", true,
+		       fun (File, N) ->
+			       'Elixir.Code':require_file(list_to_binary(File)),
+			       N+1
+		       end, 0),
     'Elixir.Code':load_file(list_to_binary(filename:join(test_dir(), atom_to_list(Func)))),
     %% I did not use map syntax, so that this file can still be build under R16
     ResultMap = 'Elixir.ExUnit':run(),
