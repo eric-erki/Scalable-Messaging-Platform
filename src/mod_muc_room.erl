@@ -81,41 +81,28 @@
 
 -endif.
 
-%% Module start with or without supervisor:
--ifdef(NO_TRANSIENT_SUPERVISORS).
-
--define(SUPERVISOR_START(Args),
-	(?GEN_FSM):start(?MODULE, Args, ?FSMOPTS)).
-
--else.
-
--define(SUPERVISOR_START(Args),
-	Supervisor = gen_mod:get_module_proc(ServerHost,
-					     ejabberd_mod_muc_sup),
-	supervisor:start_child(Supervisor, Args)).
-
--endif.
-
 %%%----------------------------------------------------------------------
 %%% API
 %%%----------------------------------------------------------------------
 start(Host, ServerHost, Access, Room, HistorySize, PersistHistory, RoomShaper,
       Creator, Nick, DefRoomOpts) ->
-    ?SUPERVISOR_START([Host, ServerHost, Access, Room,
-		       HistorySize, PersistHistory, RoomShaper, Creator, Nick,
-		       DefRoomOpts]).
+    (?GEN_FSM):start(?MODULE,
+		     [Host, ServerHost, Access, Room, HistorySize,
+		      PersistHistory, RoomShaper, Creator, Nick,
+		      DefRoomOpts],
+		     ?FSMOPTS).
 
 start(Host, ServerHost, Access, Room, HistorySize,
       PersistHistory, RoomShaper, Opts) ->
-    Supervisor = gen_mod:get_module_proc(ServerHost,
-					 ejabberd_mod_muc_sup),
-    supervisor:start_child(Supervisor,
-			   [Host, ServerHost, Access, Room, HistorySize,
-			    PersistHistory, RoomShaper, Opts]).
+    (?GEN_FSM):start(?MODULE,
+		     [Host, ServerHost, Access, Room, HistorySize,
+		      PersistHistory, RoomShaper, Opts],
+		     ?FSMOPTS).
 
 start(StateName, StateData) ->
     ServerHost = StateData#state.server_host,
-    ?SUPERVISOR_START([StateName, StateData]).
+    (?GEN_FSM):start(?MODULE, [StateName, StateData],
+		     ?FSMOPTS).
 
 start_link(Host, ServerHost, Access, Room, HistorySize,
 	   PersistHistory, RoomShaper, Creator, Nick,
