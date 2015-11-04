@@ -21,8 +21,6 @@ Macros = lists:flatmap(
                    [{d, 'ROSTER_GATEWAY_WORKAROUND'}];
               ({flash_hack, true}) ->
                    [{d, 'ENABLE_FLASH_HACK'}];
-              ({transient_supervisors, false}) ->
-                   [{d, 'NO_TRANSIENT_SUPERVISORS'}];
               ({nif, true}) ->
                    [{d, 'NIF'}];
               ({db_type, mssql}) ->
