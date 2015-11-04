@@ -314,7 +314,6 @@ fi
 AC_SUBST(hipe)
 AC_SUBST(roster_gateway_workaround)
 AC_SUBST(flash_hack)
-AC_SUBST(transient_supervisors)
 AC_SUBST(full_xml)
 AC_SUBST(nif)
 AC_SUBST(db_type)
