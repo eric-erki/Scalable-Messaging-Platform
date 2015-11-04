@@ -98,7 +98,7 @@
 
 start(SockData, Opts) ->
     supervisor:start_child(ejabberd_s2s_in_sup,
-		           [SockData, Opts])).
+		           [SockData, Opts]).
 
 start_link(SockData, Opts) ->
     p1_fsm:start_link(ejabberd_s2s_in, [SockData, Opts],

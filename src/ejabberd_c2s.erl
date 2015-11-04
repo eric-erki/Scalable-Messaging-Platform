@@ -179,7 +179,7 @@ start(SockData, Opts) ->
 start(SockData, Opts, FSMLimitOpts) ->
     (?GEN_FSM):start(ejabberd_c2s,
 			 [SockData, Opts, FSMLimitOpts],
-			 FSMLimitOpts ++ (?FSMOPTS))).
+			 FSMLimitOpts ++ (?FSMOPTS)).
 
 start_link(SockData, Opts, FSMLimitOpts) ->
     (?GEN_FSM):start_link(ejabberd_c2s,

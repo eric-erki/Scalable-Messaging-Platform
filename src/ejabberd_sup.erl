@@ -186,7 +186,6 @@ init([]) ->
 	   Local,
 	   Captcha,
 	   ReceiverSupervisor,
-	   C2SSupervisor,
 	   S2SInSupervisor,
 	   S2SOutSupervisor,
 	   ServiceSupervisor,

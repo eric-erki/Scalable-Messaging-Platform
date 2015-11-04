@@ -120,7 +120,7 @@
 start(From, Host, Type) ->
     Node = node(),
     supervisor:start_child({ejabberd_s2s_out_sup, Node},
-		           [From, Host, Type])).
+		           [From, Host, Type]).
 
 start_link(From, Host, Type) ->
     p1_fsm:start_link(ejabberd_s2s_out, [From, Host, Type],

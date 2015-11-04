@@ -81,7 +81,7 @@ start(Socket, SockMod, Shaper) ->
 
 start(Socket, SockMod, Shaper, MaxStanzaSize) ->
     {ok, Pid} = supervisor:start_child(ejabberd_receiver_sup,
-				       [Socket, SockMod, Shaper, MaxStanzaSize])),
+				       [Socket, SockMod, Shaper, MaxStanzaSize]),
     Pid.
 
 -spec change_shaper(pid(), shaper:shaper()) -> ok.
