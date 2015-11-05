@@ -71,6 +71,9 @@
 -define(NS_P1_PUSH, <<"p1:push">>).
 -define(NS_P1_PUSH_APPLEPUSH, <<"p1:push:applepush">>).
 
+-define(APNS_PRIORITY_HIGH, 10).
+-define(APNS_PRIORITY_NORMAL, 5).
+
 %%====================================================================
 %% API
 %%====================================================================
@@ -403,6 +406,7 @@ handle_message(From, To, Packet, State) ->
 	xml:get_path_s(Packet,
 		       [{elem, <<"push">>}, {elem, <<"to">>}, cdata]),
     CustomFields  = get_custom_fields(Packet),
+    PriorityFlag = check_push_priority(Msg, Badge, Sound),
     Payload = make_payload(State, Msg, Badge, Sound, Sender, CustomFields),
     ID =
 	case catch erlang:list_to_integer(binary_to_list(DeviceID), 16) of
@@ -412,22 +416,9 @@ handle_message(From, To, Packet, State) ->
 		false
 	end,
     if
-	is_integer(ID) ->
-	    Command = 1,
-	    CmdID = State#state.cmd_id,
-	    {MegaSecs, Secs, _MicroSecs} = now(),
-	    Expiry = MegaSecs * 1000000 + Secs + 24 * 60 * 60,
-	    BDeviceID = <<ID:256>>,
-	    IDLen = size(BDeviceID),
-	    PayloadLen = size(Payload),
-	    Notification =
-		<<Command:8,
-		 CmdID:32,
-		 Expiry:32,
-		 IDLen:16,
-		 BDeviceID/binary,
-		 PayloadLen:16,
-		 Payload/binary>>,
+    is_integer(ID) ->
+        Notification = build_apns_notification(State#state.cmd_id,ID,Payload,
+                                               PriorityFlag),
 	    ?INFO_MSG("(~p) sending notification for ~s~n~p~npayload:~n~s~n"
 		      "Sender: ~s~n"
 		      "Receiver: ~s~n"
@@ -475,7 +466,6 @@ make_payload(State, Msg, Badge, Sound, Sender, CustomFields) ->
 		<<"\"sound\":\"", (json_escape(SoundFile))/binary, "\"">>
 	end,
     ContentAvailablePayload = <<"\"content-available\":1">>,
-
     Payloads = lists:filter(
                  fun(S) -> S /= <<"">> end,
                  [AlertPayload, BadgePayload, SoundPayload, ContentAvailablePayload]),
@@ -517,6 +507,45 @@ make_payload(State, Msg, Badge, Sound, Sender, CustomFields) ->
 	true ->
 	    Payload
     end.
+
+%% According to Apple docs: "The remote notification must trigger an alert,
+%% sound, or badge on the device. It is an error to use this (high) priority
+%% for a push that contains only the content-available key."
+check_push_priority(Msg, Badge, Sound) ->
+    BadgeSet =
+        case catch jlib:binary_to_integer(Badge) of
+            B when is_integer(B) -> true;
+            _ -> false
+        end,
+    case {Msg, BadgeSet, Sound} of
+        {<<"">>,false,<<"false">>} -> ?APNS_PRIORITY_NORMAL;
+        _ -> ?APNS_PRIORITY_HIGH
+    end.
+
+build_apns_notification(CmdID,DeviceID,Payload,PriorityFlag) ->
+    {MegaSecs, Secs, _MicroSecs} = os:timestamp(),
+    Expiry = MegaSecs * 1000000 + Secs + 24 * 60 * 60,
+    PayloadLen = size(Payload),
+
+    PayloadFrame = [<<2:8, PayloadLen:16>>, Payload],
+    ExpirationFrame = <<4:8, 4:16, Expiry:32>>,
+    PriorityFrame = <<5:8, 1:16, PriorityFlag:8>>,
+
+    TokenItemSize = 1 + 2 + 32,
+    ExpirationItemSize = 1 + 2 + 4,
+    PriorityItemSize = 1 + 2 + 1,
+    CommandIDItemSize = 1 + 2 + 4,
+    PayloadItemSize = 1 + 2 + PayloadLen,
+    FrameSize = TokenItemSize + ExpirationItemSize + PriorityItemSize
+                              + CommandIDItemSize + PayloadItemSize,
+    BDeviceID = <<DeviceID:256>>,
+    IDLen = size(BDeviceID),
+
+    [<<2:8, FrameSize:32, 3:8, 4:16, CmdID:32, %%NotificationId item
+     1:8, IDLen:16, BDeviceID/binary>>,        %%Device token item
+     PayloadFrame,
+     ExpirationFrame,
+     PriorityFrame].
 
 connect(#state{socket = undefined, certfile_mtime = undefined} = State) ->
     Gateway = State#state.gateway,
