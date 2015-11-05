@@ -1163,7 +1163,10 @@ mass_message(Host, Delay, Stanza, From, [Uid|Others]) ->
 		    [Proc, Uid, length(Others)]),
 	    stopped
     after Delay ->
-	    To = jlib:make_jid(Uid, Host, <<>>),
+	    To = case jlib:make_jid(Uid, Host, <<>>) of
+		error -> jlib:string_to_jid(Uid);
+		Ret -> Ret
+	    end,
 	    Attrs = lists:keystore(<<"id">>, 1, Stanza#xmlel.attrs,
 			{<<"id">>, <<"job:", (randoms:get_string())/binary>>}),
 	    ejabberd_router:route(From, To, Stanza#xmlel{attrs = Attrs}),
