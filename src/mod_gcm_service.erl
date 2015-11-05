@@ -67,6 +67,7 @@
 -define(NS_P1_PUSH_GCM, <<"p1:push:gcm">>).
 -define(HTTP_TIMEOUT, 10 * 1000).
 -define(HTTP_CONNECT_TIMEOUT, 10 * 1000).
+-define(GCM_PRIORITY_HIGH, <<"high">>).
 
 start_link(Host, Opts) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
@@ -261,7 +262,8 @@ handle_message(From, To, Packet, State) ->
 	  Notification = jiffy:encode(
 			   {[{<<"registration_ids">>,[DeviceID]},
 			     {<<"data">>, Payload},
-			     {<<"time_to_live">>, Expiry}]}),
+			     {<<"time_to_live">>, Expiry},
+			     {<<"priority">>, ?GCM_PRIORITY_HIGH}]}),
 	  ?DEBUG("(~p) sending notification for ~s~n~p~npayload"
 		 ":~n~p~nSender: ~s~nReceiver: ~s~nDevice "
 		 "ID: ~s~n",
