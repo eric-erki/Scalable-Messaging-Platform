@@ -798,6 +798,13 @@ handle_event({set_affiliations, Affiliations},
 handle_event(_Event, StateName, StateData) ->
     {next_state, StateName, StateData}.
 
+handle_sync_event({moderate_room_history, <<"_purge_all_room_history_">>}, _From,
+		  StateName, #state{history = History} = StateData) ->
+    NewHistory = lqueue_filter(fun (_) -> false end, History),
+    Moderated = History#lqueue.len - NewHistory#lqueue.len,
+    {reply,
+     {ok, iolist_to_binary(integer_to_list(Moderated))},
+     StateName, StateData#state{history = NewHistory}};
 handle_sync_event({moderate_room_history, Nick}, _From,
 		  StateName, #state{history = History} = StateData) ->
     NewHistory = lqueue_filter(fun ({FromNick, _TSPacket,
