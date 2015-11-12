@@ -2060,9 +2060,10 @@ subscribe_node(Host, Node, From, JID, Configuration) ->
 		    {error,
 			extended_error(?ERR_BAD_REQUEST, <<"invalid-options">>)};
 		not CanSubscribe ->
-		    %% fallback to closest XEP compatible result, assume we are not allowed to subscribe
 		    {error,
-			extended_error(?ERR_NOT_ALLOWED, <<"closed-node">>)};
+			extended_error(
+			    ?STANZA_ERROR(<<"405">>, <<"wait">>, <<"policy-violation">>),
+			    <<"too-many-subscriptions">>)};
 		true ->
 		    Owners = node_owners_call(Host, Type, Nidx, O),
 		    {PS, RG} = get_presence_and_roster_permissions(Host, Subscriber,
