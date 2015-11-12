@@ -3182,14 +3182,18 @@ change_reception(#state{reception = false} = StateData,
     case StateData#state.oor_show of
       <<"">> -> ok;
       _ ->
-	  Packet = StateData#state.pres_last,
-	  NewPriority = get_priority_from_presence(Packet),
-	  update_priority(NewPriority, Packet,
-			  StateData#state{reception = true}),
-	  presence_broadcast_to_trusted(StateData,
-					StateData#state.jid,
-					StateData#state.pres_f,
-					StateData#state.pres_a, Packet)
+            case StateData#state.pres_last of
+                undefined -> ok;
+                Packet ->
+                    NewPriority = get_priority_from_presence(Packet),
+                    update_priority(NewPriority, Packet,
+                                    StateData#state{reception = true}),
+                    presence_broadcast_to_trusted(
+                      StateData,
+                      StateData#state.jid,
+                      StateData#state.pres_f,
+                      StateData#state.pres_a, Packet)
+            end
     end,
     lists:foreach(fun ({_From, _To, FixedPacket}) ->
 			  send_element(StateData, FixedPacket)
