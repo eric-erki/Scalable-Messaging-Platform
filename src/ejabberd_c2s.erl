@@ -1521,7 +1521,9 @@ session_established(closed, StateData) ->
 	   NewState = start_keepalive_timer(NewState1),
 	   fsm_next_state(session_established, NewState);
        true -> {stop, normal, StateData}
-    end.
+    end;
+session_established(stop, StateData) ->
+    {stop, normal, StateData}.
 session_established(stop_or_detach, From, StateData) ->
     if
 	not StateData#state.reception ->
@@ -1534,9 +1536,7 @@ session_established(stop_or_detach, From, StateData) ->
 	    fsm_next_state(session_established, NewState);
 	true ->
 	    {stop, normal, stopped, StateData}
-    end;
-session_established(stop, StateData) ->
-    {stop, normal, StateData}.
+    end.
 
 %% Process packets sent by user (coming from user on c2s XMPP connection)
 session_established2(El, StateData) ->
