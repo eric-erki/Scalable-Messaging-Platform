@@ -36,6 +36,9 @@
 
 -export([process/2, mod_opt_type/1]).
 
+%% utility for other http modules
+-export([content_type/3]).
+
 -include("ejabberd.hrl").
 -include("logger.hrl").
 
