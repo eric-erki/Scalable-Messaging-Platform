@@ -35,7 +35,7 @@
 		is_element/2,
 		add_element/2,
 		del_element/2,
-		foldl/3,
+		fold/3,
 		size/1]).
 
 -type ej_set() :: ?TGB_TREE.
@@ -74,7 +74,7 @@ from_list(L) ->
 	lists:foldl(fun add_element/2, new(), L).
 
 to_list(S) -> 
-	foldl(fun(JID, Acc) -> [JID | Acc] end, [], S).
+	fold(fun(JID, Acc) -> [JID | Acc] end, [], S).
 
 is_element({N,D,R}, S) -> 
 	case gb_trees:lookup(D, S) of
@@ -112,7 +112,7 @@ size(S) ->
 					end, Acc, JIDs)
 		end,0, S).
 
-foldl(Fun, Init, S) ->
+fold(Fun, Init, S) ->
 	gb_tree_fold(fun(D,JIDs, Acc) ->
 		gb_tree_fold(fun(R, Nodes, Acc2) ->
 				gb_sets:fold(fun(Node, Acc3) ->
