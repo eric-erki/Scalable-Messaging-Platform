@@ -115,7 +115,7 @@ CfgDeps = lists:flatmap(
                ({zlib, true}) ->
                     [{p1_zlib, ".*", {git, "git://github.com/processone/zlib"}}];
                ({riak, true}) ->
-                    [{riakc, ".*", {git, "git://github.com/basho/riak-erlang-client", {tag, "1.4.2"}}}];
+		    [{riakc, ".*", {git, "git://github.com/basho/riak-erlang-client"}}];
                ({elixir, true}) ->
                     [{rebar_elixir_plugin, ".*", {git, "git@github.com:processone/rebar_elixir_plugin.git"}},
                      {elixir, ".*", {git, "git://github.com/elixir-lang/elixir", {branch, "v1.0"}}}];
@@ -133,7 +133,7 @@ CfgDeps = lists:flatmap(
                ({p1db, true}) ->
                     [{p1db, ".*", {git, "ssh://git@git.process-one.net:7999/ebe/p1db.git"}}];
                ({tools, true}) ->
-                    [{meck, "0.*", {git, "https://github.com/eproxus/meck"}},
+                    [{meck, "0.8.2", {git, "https://github.com/eproxus/meck", {tag, "0.8.2"}}},
 		     {moka, ".*", {git , "git://github.com/processone/moka.git"}}];
                ({redis, true}) ->
                     [{eredis, ".*", {git, "git://github.com/wooga/eredis"}}];
