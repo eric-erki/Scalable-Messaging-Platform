@@ -41,6 +41,7 @@
 -type ej_set() :: ?TGB_TREE.
 -export_type([ej_set/0]).
 
+
 %% Asumptions:
 %% 		It is common that roster items are of type "both", present in both pres_a and pres_f sets.
 %% 		There are relatively few different domains in the roster.
@@ -104,21 +105,21 @@ add_element({N,D,R}, S) ->
 		end.
 
 
-size(S) -> 
-	lists:foldl(fun({_Domain, JIDs}, Acc) ->
-				lists:foldl(fun({_Resource, Nodes}, Acc2) -> 
-							gb_sets:size(Nodes) + Acc2 
-					end, Acc, gb_trees:to_list(JIDs))
-		end,0, gb_trees:to_list(S)).
+size(S) ->
+	gb_tree_fold(fun(_Domain, JIDs, Acc) ->
+				gb_tree_fold(fun(_Resource, Nodes, Acc2) ->
+							gb_sets:size(Nodes) + Acc2
+					end, Acc, JIDs)
+		end,0, S).
 
-foldl(Fun, Init, S) -> 
-	lists:foldl(fun({D,JIDs}, Acc) ->
-		lists:foldl(fun({R, Nodes}, Acc2) -> 
+foldl(Fun, Init, S) ->
+	gb_tree_fold(fun(D,JIDs, Acc) ->
+		gb_tree_fold(fun(R, Nodes, Acc2) ->
 				gb_sets:fold(fun(Node, Acc3) ->
-					Fun({Node,D,R}, Acc3) 
+					Fun({Node,D,R}, Acc3)
 				end, Acc2, Nodes)
-			end, Acc, gb_trees:to_list(JIDs))
-		end, Init, gb_trees:to_list(S)).
+			end, Acc, JIDs)
+		end, Init, S).
 
 del_element({N,D,R}, S) ->
 	case gb_trees:lookup(D, S) of
@@ -145,4 +146,17 @@ del_element({N,D,R}, S) ->
 					end
 			end
 	end.
+
+% ------- Utils
+%
+gb_tree_fold(F, Initial, Tree) ->
+    gb_tree_fold1(F, Initial, gb_trees:iterator(Tree)).
+gb_tree_fold1(F, Accum, Iterator) ->
+    case gb_trees:next(Iterator) of
+        {Key, Value, Iter2} ->
+            Accum2 = F(Key, Value, Accum),
+            gb_tree_fold1(F, Accum2, Iter2);
+        none ->
+            Accum
+    end.
 
