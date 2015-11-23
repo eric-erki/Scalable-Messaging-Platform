@@ -2786,51 +2786,61 @@ try_roster_subscribe(Type, User, Server, From, To, Packet, StateData) ->
 
 %% Send presence when disconnecting
 presence_broadcast(StateData, From, JIDSet, Packet) ->
-    JIDs = ?SETS:to_list(JIDSet),
-    JIDs2 = format_and_check_privacy(From, StateData, Packet, JIDs, out),
+    JIDs2 = format_and_check_privacy(From, StateData, Packet, JIDSet, out),
     Server = StateData#state.server,
     send_multiple(From, Server, JIDs2, Packet).
 
 %% Send presence when updating presence
 presence_broadcast_to_trusted(StateData, From, Trusted, JIDSet, Packet) ->
-    JIDs = ?SETS:to_list(JIDSet),
-    JIDs_trusted = [JID || JID <- JIDs, ?SETS:is_element(JID, Trusted)],
-    JIDs2 = format_and_check_privacy(From, StateData, Packet, JIDs_trusted, out),
+    JIDs2 = ?SETS:fold(fun(JID, Accum) ->
+        case ?SETS:is_element(JID, Trusted) of
+            true ->
+                FJID = jlib:make_jid(JID),
+                case ejabberd_hooks:run_fold(
+                    privacy_check_packet, StateData#state.server,
+                    allow,
+                    [StateData#state.user,
+                     StateData#state.server,
+                     StateData#state.privacy_list,
+                     {From, FJID, Packet},
+                     out]) of
+                        deny -> Accum;
+                        allow -> [FJID|Accum]
+                end;
+            false ->
+                Accum
+        end end, [], JIDSet),
     Server = StateData#state.server,
     send_multiple(From, Server, JIDs2, Packet).
 
 %% Send presence when connecting
 presence_broadcast_first(From, StateData, Packet) ->
-    JIDsProbe = ?SETS:to_list(StateData#state.pres_t),
     PacketProbe = #xmlel{name = <<"presence">>, attrs = [{<<"type">>,<<"probe">>}], children = []},
-    JIDs2Probe = format_and_check_privacy(From, StateData, PacketProbe, JIDsProbe, out),
+    JIDs2Probe = format_and_check_privacy(From, StateData, PacketProbe, StateData#state.pres_t, out),
     Server = StateData#state.server,
     send_multiple(From, Server, JIDs2Probe, PacketProbe),
     As = ?SETS:fold(fun ?SETS:add_element/2, StateData#state.pres_f,
                      StateData#state.pres_a),
-    JIDs = ?SETS:to_list(As),
-    JIDs2 = format_and_check_privacy(From, StateData, Packet, JIDs, out),
+    JIDs2 = format_and_check_privacy(From, StateData, Packet, As, out),
     Server = StateData#state.server,
     send_multiple(From, Server, JIDs2, Packet),
     StateData#state{pres_a = As}.
 
 format_and_check_privacy(From, StateData, Packet, JIDs, Dir) ->
-    FJIDs = [jlib:make_jid(JID) || JID <- JIDs],
-    lists:filter(
-      fun(FJID) ->
-	      case ejabberd_hooks:run_fold(
-		     privacy_check_packet, StateData#state.server,
-		     allow,
-		     [StateData#state.user,
-		      StateData#state.server,
-		      StateData#state.privacy_list,
-		      {From, FJID, Packet},
-		      Dir]) of
-		  deny -> false;
-		  allow -> true
-	      end
-      end,
-      FJIDs).
+    ?SETS:fold(fun(JID, Accum) ->
+        FJID = jlib:make_jid(JID),
+        case ejabberd_hooks:run_fold(
+            privacy_check_packet, StateData#state.server,
+            allow,
+            [StateData#state.user,
+             StateData#state.server,
+             StateData#state.privacy_list,
+             {From, FJID, Packet},
+             Dir]) of
+                deny -> Accum;
+                allow -> [FJID|Accum]
+        end end, [], JIDs).
+
 
 send_multiple(From, Server, JIDs, Packet) ->
     ejabberd_router_multicast:route_multicast(From, Server, JIDs, Packet).
