@@ -223,7 +223,7 @@ Config = [{erl_opts, CompileOpts ++ Macros ++ HiPE ++ DebugInfo ++
            ++ "-include "
            ++ filename:join([Cwd, "tools"])},
           {xref_warnings, false},
-          {xref_checks, []},
+          {xref_checks, [deprecated_function_calls]},
           {xref_queries,
            [{"(XC - UC) || (XU - X - B - "
              ++ string:join(["(\"gen_transport\":_/_) - (\"eprof\":_/_)"]
