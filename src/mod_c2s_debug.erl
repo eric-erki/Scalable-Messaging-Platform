@@ -89,7 +89,7 @@ start_link(Host, Opts) ->
 debug_start(_Status, Pid, C2SState) ->
     Host = C2SState#state.server,
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    JID = jlib:jid_to_string(C2SState#state.jid),
+    JID = jid:to_string(C2SState#state.jid),
     AuthModule = C2SState#state.auth_module,
     IP = C2SState#state.ip,
     ClientInfo = #clientinfo{pid = Pid, jid = JID,
@@ -141,7 +141,7 @@ init([Host, Opts]) ->
 			     <<"/tmp/xmpplogs/">>),
     SJID = gen_mod:get_opt(users, Opts,
                            fun([S|_]) ->
-                                   case jlib:string_to_jid(S) of
+                                   case jid:from_string(S) of
                                        #jid{} = J -> J
                                    end
                            end),
@@ -182,7 +182,7 @@ handle_call({debug_start, ClientInfo}, _From,
 	    #modstate{pid = undefined, user = JID} = State) ->
     ClientJID = ClientInfo#clientinfo.jid,
     case
-      jlib:jid_remove_resource(jlib:string_to_jid(ClientJID))
+      jid:remove_resource(jid:from_string(ClientJID))
 	of
       JID ->
 	  Pid = ClientInfo#clientinfo.pid,
@@ -215,8 +215,8 @@ handle_cast({addlog,
 	    #modstate{iodevice = IOD} = State) ->
     LogEntry =
 	io_lib:format("=====~n~s - ~s~nFrom: ~s~nTo: ~s~n~s~n",
-		      [timestamp(), Direction, jlib:jid_to_string(FromJID),
-		       jlib:jid_to_string(ToJID),
+		      [timestamp(), Direction, jid:to_string(FromJID),
+		       jid:to_string(ToJID),
 		       xml:element_to_binary(Packet)]),
     file:write(IOD, LogEntry),
     {noreply, State};
@@ -261,6 +261,6 @@ mod_opt_type(logdir) ->
     end;
 mod_opt_type(users) ->
     fun ([S | _]) ->
-	    case jlib:string_to_jid(S) of #jid{} = J -> J end
+	    case jid:from_string(S) of #jid{} = J -> J end
     end;
 mod_opt_type(_) -> [host, logdir, users].

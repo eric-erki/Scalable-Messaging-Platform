@@ -213,7 +213,7 @@ push_from_message(Val, From, To, Packet, Notification, AppID, SendBody, SendFrom
 
 route_push_notification(Host, JID, AppId, PushPacket) ->
     PushService = get_push_service(Host, JID, AppId),
-    ServiceJID = jlib:make_jid(<<"">>, PushService, <<"">>),
+    ServiceJID = jid:make(<<"">>, PushService, <<"">>),
     ejabberd_router:route(JID, ServiceJID, PushPacket).
 
 
@@ -318,7 +318,7 @@ process_sm_iq(From, To, #iq{type = Type, sub_el = SubEl} = IQ) ->
             case lookup_cache(To, DeviceID) of
                 [{_ID, AppID, _SendBody, _SendFrom, _LocalBadge}] ->
                     PushService = get_push_service(Host, To, AppID),
-                    ServiceJID = jlib:make_jid(<<"">>, PushService, <<"">>),
+                    ServiceJID = jid:make(<<"">>, PushService, <<"">>),
                     if
                         From#jid.lserver == ServiceJID#jid.lserver ->
                             delete_cache(To, DeviceID),
@@ -335,7 +335,7 @@ process_sm_iq(From, To, #iq{type = Type, sub_el = SubEl} = IQ) ->
             case lookup_cache(To, OldDeviceID) of
 		[{_ID, AppID, _SendBody, _SendFrom, _LocalBadge}] ->
 		    PushService = get_push_service(Host, To, AppID),
-		    ServiceJID = jlib:make_jid(<<"">>, PushService, <<"">>),
+		    ServiceJID = jid:make(<<"">>, PushService, <<"">>),
 		    if
 			From#jid.lserver == ServiceJID#jid.lserver ->
 			    update_cache(To, OldDeviceID, NewDeviceID),
@@ -357,7 +357,7 @@ process_sm_iq(From, To, #iq{type = Type, sub_el = SubEl} = IQ) ->
 device_reset_badge(Host, To, DeviceID, AppID, Badge) ->
     ?INFO_MSG("Sending reset badge (~p) push to ~p ~p", [Badge, To, DeviceID]),
     PushService = get_push_service(Host, To, AppID),
-    ServiceJID = jlib:make_jid(<<"">>, PushService, <<"">>),
+    ServiceJID = jid:make(<<"">>, PushService, <<"">>),
     LBadge = jlib:integer_to_binary(Badge),
     Packet1 =
         #xmlel{name = <<"message">>, attrs = [],
@@ -385,7 +385,7 @@ resend_badge(To) ->
                     lists:foreach(fun({ID, AppID, SendBody, SendFrom, LocalBadge}) ->
                         ?DEBUG("lookup: ~p~n", [{ID, AppID, SendBody, SendFrom, LocalBadge}]),
                         PushService = get_push_service(Host, To, AppID),
-                        ServiceJID = jlib:make_jid(<<"">>, PushService, <<"">>),
+                        ServiceJID = jid:make(<<"">>, PushService, <<"">>),
                         Offline = ejabberd_hooks:run_fold(
                                     count_offline_messages,
                                     Host,
@@ -424,7 +424,7 @@ multi_resend_badge(JIDs) ->
 
 offline_resend_badge() ->
     USs = mnesia:dirty_all_keys(gcm_cache),
-    JIDs = lists:map(fun({U, S}) -> jlib:make_jid(U, S, <<"">>) end, USs),
+    JIDs = lists:map(fun({U, S}) -> jid:make(U, S, <<"">>) end, USs),
     multi_resend_badge(JIDs).
 
 lookup_cache(JID) ->
@@ -758,7 +758,7 @@ delete_cache_sql(JID) ->
 
 
 remove_user(User, Server) ->
-    delete_cache(jlib:make_jid(User, Server, <<"">>)).
+    delete_cache(jid:make(User, Server, <<"">>)).
 
 get_push_service(Host, JID, AppID) ->
     PushServices =
@@ -911,7 +911,7 @@ init_host(VHost, ValidEncryptedList) ->
 %% Debug commands
 %% JID is of form
 get_tokens_by_jid(JIDString) when is_binary(JIDString) ->
-	get_tokens_by_jid(jlib:string_to_jid(JIDString));
+	get_tokens_by_jid(jid:from_string(JIDString));
 get_tokens_by_jid(#jid{luser = LUser, lserver = LServer}) ->
     LUS = {LUser, LServer},
     [I || {gcm_cache,_,I,_} <- mnesia:dirty_read(gcm_cache, LUS)].

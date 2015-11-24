@@ -231,7 +231,7 @@ Config = [{erl_opts, CompileOpts ++ Macros ++ HiPE ++ DebugInfo ++
           {eunit_compile_opts, [{i, "tools"}]},
           {post_hooks, PostHooks ++ CfgPostHooks},
           {port_env, [{"CFLAGS", "-g -O2 -Wall"}]},
-          {port_specs, [{"priv/lib/jlib.so", ["c_src/jlib.c"]}]},
+          {port_specs, [{"priv/lib/jid.so", ["c_src/jid.c"]}]},
           {deps, AllDeps}] ++ ElixirConfig,
 %io:format("ejabberd configuration:~n  ~p~n", [Config]),
 Config.

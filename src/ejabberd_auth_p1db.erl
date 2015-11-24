@@ -85,14 +85,14 @@ key2us(Key) ->
     {LUser, LServer}.
 
 server_prefix(Server) ->
-    LServer = jlib:nameprep(Server),
+    LServer = jid:nameprep(Server),
     <<LServer/binary, 0>>.
 
 check_password(_User, _Server, <<>>) ->
     false;
 check_password(User, Server, Password) ->
-    LUser = jlib:nodeprep(User),
-    LServer = jlib:nameprep(Server),
+    LUser = jid:nodeprep(User),
+    LServer = jid:nameprep(Server),
     if LUser /= error, LServer /= error ->
             US = us2key(LUser, LServer),
             case p1db:get(passwd, US) of
@@ -113,8 +113,8 @@ check_password(User, Server, Password) ->
     end.
 
 check_password(User, Server, Password, Digest, DigestGen) ->
-    LUser = jlib:nodeprep(User),
-    LServer = jlib:nameprep(Server),
+    LUser = jid:nodeprep(User),
+    LServer = jid:nameprep(Server),
     if LUser /= error, LServer /= error ->
             US = us2key(LUser, LServer),
             case p1db:get(passwd, US) of
@@ -137,8 +137,8 @@ check_password(User, Server, Password, Digest, DigestGen) ->
 -spec set_password(binary(), binary(), binary()) ->
                           ok | {error, invalid_jid} | p1db:error().
 set_password(User, Server, Password) ->
-    LUser = jlib:nodeprep(User),
-    LServer = jlib:nameprep(Server),
+    LUser = jid:nodeprep(User),
+    LServer = jid:nameprep(Server),
     if (LUser == error) or (LServer == error) ->
             {error, invalid_jid};
        true ->
@@ -155,8 +155,8 @@ set_password(User, Server, Password) ->
 
 %% @spec (User, Server, Password) -> {atomic, ok} | {atomic, exists} | {error, invalid_jid} | {aborted, Reason}
 try_register(User, Server, PasswordList) ->
-    LUser = jlib:nodeprep(User),
-    LServer = jlib:nameprep(Server),
+    LUser = jid:nodeprep(User),
+    LServer = jid:nameprep(Server),
     Password = iolist_to_binary(PasswordList),
     if (LUser == error) or (LServer == error) ->
             {error, invalid_jid};
@@ -215,8 +215,8 @@ get_vh_registered_users_number(Server, _) ->
     get_vh_registered_users_number(Server).
 
 get_password(User, Server) ->
-    LUser = jlib:nodeprep(User),
-    LServer = jlib:nameprep(Server),
+    LUser = jid:nodeprep(User),
+    LServer = jid:nameprep(Server),
     if LUser /= error, LServer /= error ->
             US = us2key(LUser, LServer),
             case p1db:get(passwd, US) of
@@ -238,8 +238,8 @@ get_password(User, Server) ->
     end.
 
 get_password_s(User, Server) ->
-    LUser = jlib:nodeprep(User),
-    LServer = jlib:nameprep(Server),
+    LUser = jid:nodeprep(User),
+    LServer = jid:nameprep(Server),
     if LUser /= error, LServer /= error ->
             US = us2key(LUser, LServer),
             case p1db:get(passwd, US) of
@@ -253,8 +253,8 @@ get_password_s(User, Server) ->
 
 %% @spec (User, Server) -> true | false | {error, Error}
 is_user_exists(User, Server) ->
-    LUser = jlib:nodeprep(User),
-    LServer = jlib:nameprep(Server),
+    LUser = jid:nodeprep(User),
+    LServer = jid:nameprep(Server),
     if LUser /= error, LServer /= error ->
             US = us2key(LUser, LServer),
             case p1db:get(passwd, US) of
@@ -270,8 +270,8 @@ is_user_exists(User, Server) ->
 %% @doc Remove user.
 %% Note: it returns ok even if there was some problem removing the user.
 remove_user(User, Server) ->
-    LUser = jlib:nodeprep(User),
-    LServer = jlib:nameprep(Server),
+    LUser = jid:nodeprep(User),
+    LServer = jid:nameprep(Server),
     if LUser /= error, LServer /= error ->
             US = us2key(LUser, LServer),
             p1db:delete(passwd, US),
@@ -283,8 +283,8 @@ remove_user(User, Server) ->
 %% @spec (User, Server, Password) -> ok | not_exists | not_allowed | bad_request
 %% @doc Remove user if the provided password is correct.
 remove_user(User, Server, Password) ->
-    LUser = jlib:nodeprep(User),
-    LServer = jlib:nameprep(Server),
+    LUser = jid:nodeprep(User),
+    LServer = jid:nameprep(Server),
     if LUser /= error, LServer /= error ->
             US = us2key(LUser, LServer),
             case p1db:get(passwd, US) of

@@ -83,7 +83,7 @@ socket_handoff([SJID],
                Socket, SockMod, _Buf, _Opts) ->
     case get_auth_admin(Auth) of
         {ok, {_User, _Server}} ->
-            case jlib:string_to_jid(SJID) of
+            case jid:from_string(SJID) of
                 #jid{} = JID when JID#jid.luser /= <<"">> ->
                     SockMod:send(
                       Socket,
@@ -132,7 +132,7 @@ get_auth_admin(Auth) ->
                 gen_mod:get_module_opt(
                   ?MYNAME, ?MODULE, access,
                   fun(A) when is_atom(A) -> A end, none),
-            case jlib:string_to_jid(SJID) of
+            case jid:from_string(SJID) of
                 error -> {unauthorized, <<"badformed-jid">>};
                 #jid{user = <<"">>, server = User} ->
                     get_auth_account(?MYNAME, AccessRule, User, ?MYNAME, Pass);
@@ -147,7 +147,7 @@ get_auth_account(HostOfRule, AccessRule, User, Server, Pass) ->
     case ejabberd_auth:check_password(User, Server, Pass) of
         true ->
             case is_acl_match(HostOfRule, AccessRule,
-                              jlib:make_jid(User, Server, <<"">>)) of
+                              jid:make(User, Server, <<"">>)) of
                 false -> {unauthorized, <<"unprivileged-account">>};
                 true -> {ok, {User, Server}}
             end;

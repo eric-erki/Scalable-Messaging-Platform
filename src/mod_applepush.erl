@@ -266,7 +266,7 @@ push_from_message(Val, From, To, Packet, Notification, AppID, SendBody, SendFrom
 
 route_push_notification(Host, JID, AppId, PushPacket) ->
     PushService = get_push_service(Host, JID, AppId),
-    ServiceJID = jlib:make_jid(<<"">>, PushService, <<"">>),
+    ServiceJID = jid:make(<<"">>, PushService, <<"">>),
     ejabberd_router:route(JID, ServiceJID, PushPacket).
 
 
@@ -378,7 +378,7 @@ process_sm_iq(From, To, #iq{type = Type, sub_el = SubEl} = IQ) ->
             case lookup_cache(To, DeviceID) of
                 [{_ID, AppID, _SendBody, _SendFrom, _LocalBadge}] ->
                     PushService = get_push_service(Host, To, AppID),
-                    ServiceJID = jlib:make_jid(<<"">>, PushService, <<"">>),
+                    ServiceJID = jid:make(<<"">>, PushService, <<"">>),
                     if
                         From#jid.lserver == ServiceJID#jid.lserver ->
                             delete_cache(To, DeviceID),
@@ -456,8 +456,8 @@ change_customizations(odbc, User, Items) ->
     F = fun() ->
                 lists:map(
                   fun({From, IsMute, IsDelete, Sound}) ->
-                          SJID = jlib:jid_remove_resource(jlib:jid_tolower(jlib:string_to_jid(From))),
-                          LSender = ejabberd_odbc:escape(jlib:jid_to_string(SJID)),
+                          SJID = jid:remove_resource(jid:tolower(jid:from_string(From))),
+                          LSender = ejabberd_odbc:escape(jid:to_string(SJID)),
 
                           ejabberd_odbc:sql_query_t([<<"DELETE FROM push_customizations WHERE username = '">>, LUser,
                                                      <<"' AND match_jid = '">>, LSender, <<"';">>]),
@@ -481,8 +481,8 @@ change_customizations(p1db, User, Items) ->
     LServer = User#jid.lserver,
     lists:foreach(
       fun({From, IsMute, IsDelete, Sound}) ->
-	      #jid{luser = U, lserver = S} = jlib:string_to_jid(From),
-	      Sender = jlib:jid_to_string({U, S, <<>>}),
+	      #jid{luser = U, lserver = S} = jid:from_string(From),
+	      Sender = jid:to_string({U, S, <<>>}),
 	      Key = usj2key(LUser, LServer, Sender),
 	      p1db:delete(push_customizations, Key),
 	      if not IsDelete andalso IsMute ->
@@ -556,7 +556,7 @@ get_customizations(_Db, _User, _Items) ->
 device_reset_badge(Host, To, DeviceID, AppID, Badge) ->
     ?INFO_MSG("Sending reset badge (~p) push to ~p ~p", [Badge, To, DeviceID]),
     PushService = get_push_service(Host, To, AppID),
-    ServiceJID = jlib:make_jid(<<"">>, PushService, <<"">>),
+    ServiceJID = jid:make(<<"">>, PushService, <<"">>),
     LBadge = jlib:integer_to_binary(Badge),
     Packet1 =
         #xmlel{name = <<"message">>, attrs = [],
@@ -584,7 +584,7 @@ resend_badge(To) ->
                     lists:foreach(fun({ID, AppID, SendBody, SendFrom, LocalBadge}) ->
                         ?DEBUG("lookup: ~p~n", [{ID, AppID, SendBody, SendFrom, LocalBadge}]),
                         PushService = get_push_service(Host, To, AppID),
-                        ServiceJID = jlib:make_jid(<<"">>, PushService, <<"">>),
+                        ServiceJID = jid:make(<<"">>, PushService, <<"">>),
                         Offline = ejabberd_hooks:run_fold(
                                     count_offline_messages,
                                     Host,
@@ -624,7 +624,7 @@ multi_resend_badge(JIDs) ->
 
 offline_resend_badge() ->
     USs = mnesia:dirty_all_keys(applepush_cache),
-    JIDs = lists:map(fun({U, S}) -> jlib:make_jid(U, S, <<"">>) end, USs),
+    JIDs = lists:map(fun({U, S}) -> jid:make(U, S, <<"">>) end, USs),
     multi_resend_badge(JIDs).
 
 lookup_cache(JID) ->
@@ -970,7 +970,7 @@ delete_cache_sql(JID) ->
 
 
 remove_user(User, Server) ->
-    delete_cache(jlib:make_jid(User, Server, <<"">>)).
+    delete_cache(jid:make(User, Server, <<"">>)).
 
 
 get_push_service(Host, JID, AppID) ->
@@ -1005,7 +1005,7 @@ get_push_service(Host, JID, AppID) ->
     PushService.
 
 read_push_customizations(LUser, LServer, #jid{luser = U, lserver = S}) ->
-    SJID = jlib:jid_to_string({U, S, <<>>}),
+    SJID = jid:to_string({U, S, <<>>}),
     Key = usj2key(LUser, LServer, SJID),
     case p1db:get(push_customizations, Key) of
 	{ok, Val, _VClock} ->
@@ -1107,8 +1107,8 @@ update_deviceid_p1db(DeviceID, LUser, LServer, Notify) ->
                         if
                             Notify ->
                                 ejabberd_sm:route(
-                                  jlib:make_jid(OldLUser, OldLServer, <<"">>),
-                                  jlib:make_jid(OldLUser, OldLServer, <<"">>),
+                                  jid:make(OldLUser, OldLServer, <<"">>),
+                                  jid:make(OldLUser, OldLServer, <<"">>),
                                   {broadcast, {stop_by_device_id, DeviceID}});
                             true ->
                                 ok
@@ -1269,7 +1269,7 @@ init_host(VHost, ValidEncryptedList) ->
 %% Debug commands
 %% JID is of form
 get_tokens_by_jid(JIDString) when is_binary(JIDString) ->
-	get_tokens_by_jid(jlib:string_to_jid(JIDString));
+	get_tokens_by_jid(jid:from_string(JIDString));
 get_tokens_by_jid(#jid{luser = LUser, lserver = LServer}) ->
     LUS = {LUser, LServer},
     [erlang:integer_to_list(I, 16) || {applepush_cache,_,I,_} <-

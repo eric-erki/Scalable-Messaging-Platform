@@ -137,7 +137,7 @@ get_subnodes_tree(Host, Node) ->
     end.
 
 create_node(Host, Node, Type, Owner, Options, Parents) ->
-    BJID = jlib:jid_tolower(jlib:jid_remove_resource(Owner)),
+    BJID = jid:tolower(jid:remove_resource(Owner)),
     Key = enc_key({Host, Node}),
     case p1db:get(pubsub_node, Key) of
 	{ok, _Val, _VClock} ->
@@ -214,11 +214,11 @@ nodeid_to_nidx(NodeId) -> enc_key(NodeId).
 nidx_to_nodeid(Nidx) -> dec_key(Nidx).
 
 enc_key({{U,S,R}, Node}) ->
-    <<(jlib:jid_to_string({U,S,R}))/binary, 0, Node/binary>>;
+    <<(jid:to_string({U,S,R}))/binary, 0, Node/binary>>;
 enc_key({Host, Node}) ->
     <<Host/binary, 0, Node/binary>>;
 enc_key({U,S,R}) ->
-    <<(jlib:jid_to_string({U,S,R}))/binary, 0>>;
+    <<(jid:to_string({U,S,R}))/binary, 0>>;
 enc_key(Host) ->
     <<Host/binary, 0>>.
 dec_key(Key) ->
@@ -227,7 +227,7 @@ dec_key(Key) ->
 	N ->
 	    SLen = N - 1,
 	    <<Head:SLen/binary, 0, Node/binary>> = Key,
-	    case jlib:string_to_usr(Head) of
+	    case jid:string_to_usr(Head) of
 		{<<>>, Host, <<>>} -> {Host, Node};
 		USR -> {USR, Node}
 	    end

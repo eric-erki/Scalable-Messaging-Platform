@@ -143,7 +143,7 @@ commands() ->
 muc_delete_room(RoomJid, <<>>) ->
     muc_delete_room(RoomJid, none);
 muc_delete_room(RoomJid, Reason) ->
-    #jid{luser = RoomName, lserver = Host} = jlib:string_to_jid(RoomJid),
+    #jid{luser = RoomName, lserver = Host} = jid:from_string(RoomJid),
     %%TODO: check get_room_pid/2 . It is working well on cluster?  table muc_online_room is set to local_content
     case get_room_pid(RoomName, Host) of
         room_not_found ->
@@ -158,7 +158,7 @@ muc_delete_room(RoomJid, Reason) ->
 %% muc-create-room
 %%
 muc_create_room(RoomString, RoomHost, UserString) ->
-    #jid{luser = U, lserver = S} = From = jlib:string_to_jid(UserString),
+    #jid{luser = U, lserver = S} = From = jid:from_string(UserString),
     Nodes = lists:flatmap(
 	      fun(R) ->
 		      case ejabberd_sm:get_session_pid(U, S, R) of
@@ -168,7 +168,7 @@ muc_create_room(RoomString, RoomHost, UserString) ->
 	      end, ejabberd_sm:get_user_resources(U, S)),
     case Nodes of
 	[Node|_] ->
-	    #jid{luser = Name} = jlib:string_to_jid(RoomString),
+	    #jid{luser = Name} = jid:from_string(RoomString),
 	    Host = iolist_to_binary(RoomHost),
 	    Nick = From#jid.luser,
 	    case catch ejabberd_cluster:call(Node, mod_muc, create_room,
@@ -196,7 +196,7 @@ muc_create_room(RoomString, RoomHost, UserString) ->
 %%
 muc_add_member(RoomString, RoomHost, UserString) ->
     SenderJid = get_senderjid(RoomHost),
-    RoomJid = jlib:string_to_jid(RoomString),
+    RoomJid = jid:from_string(RoomString),
     XmlEl = build_member_stanza(UserString, RoomString),
     ejabberd_router:route(SenderJid, RoomJid, XmlEl),
     {ok, ""}.
@@ -216,7 +216,7 @@ build_member_stanza(UserString, RoomString) ->
 %%
 muc_remove_member(RoomString, RoomHost, UserString) ->
     SenderJid = get_senderjid(RoomHost),
-    RoomJid = jlib:string_to_jid(RoomString),
+    RoomJid = jid:from_string(RoomString),
     XmlEl = build_demember_stanza(UserString, RoomString),
     ejabberd_router:route(SenderJid, RoomJid, XmlEl),
     {ok, ""}.
@@ -236,7 +236,7 @@ build_demember_stanza(UserString, RoomString) ->
 %%
 muc_kick_user(RoomString, RoomHost, UserString) ->
     SenderJid = get_senderjid(RoomHost),
-    RoomJid = jlib:string_to_jid(RoomString),
+    RoomJid = jid:from_string(RoomString),
     case get_occupant_nick(RoomJid, UserString) of
 	{ok, Nick} ->
 	    XmlEl = build_kick_stanza(Nick, RoomString),
@@ -249,9 +249,9 @@ muc_kick_user(RoomString, RoomHost, UserString) ->
     end.
 
 get_occupant_nick(RoomJid, UserString) ->
-    case jlib:string_to_jid(iolist_to_binary(UserString)) of
+    case jid:from_string(iolist_to_binary(UserString)) of
 	#jid{luser = LUser, lserver = LServer, lresource = LResource} = JID ->
-	    LJID = jlib:jid_tolower(JID),
+	    LJID = jid:tolower(JID),
 	    case get_room_occupants(RoomJid#jid.luser, RoomJid#jid.lserver) of
 		{ok, Occupants} ->
 		    if LResource /= <<"">> ->
@@ -356,7 +356,7 @@ usec_to_now(Int) ->
 %%
 muc_send_system_message(RoomString, RoomHost, BodyBin, Activity) ->
     SenderJid = get_senderjid(RoomHost),
-    RoomJid = jlib:string_to_jid(RoomString),
+    RoomJid = jid:from_string(RoomString),
     case xml_stream:parse_element(Activity) of
 	{xmlel, _, _, _} = ActivityEl ->
 	    XmlEl = build_systemmessage_stanza(BodyBin, ActivityEl, RoomString),
@@ -381,18 +381,18 @@ get_senderjid(RoomHost) ->
     SenderJidBinary = gen_mod:get_module_opt(
                         RoomHost, ?MODULE,
                         senderjid, fun(X) -> X end, ""),
-    SenderJid = jlib:string_to_jid(SenderJidBinary),
+    SenderJid = jid:from_string(SenderJidBinary),
     SenderJid.
 
 %%
 %% muc-kick-user
 %%
 kick_user(JID) ->
-    {User, Server, _R} = jlib:string_to_usr(JID),
+    {User, Server, _R} = jid:string_to_usr(JID),
     Resources = ejabberd_sm:get_user_resources(User, Server),
     lists:foreach(fun(Resource) ->
 			  {LUser, LServer, LResource} =
-			      jlib:jid_tolower({User, Server, Resource}),
+			      jid:tolower({User, Server, Resource}),
 			  C2SPid = ejabberd_sm:get_session_pid(
 				     LUser, LServer, LResource),
 			  catch ejabberd_c2s:stop_or_detach(C2SPid)

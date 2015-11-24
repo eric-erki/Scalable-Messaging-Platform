@@ -106,7 +106,7 @@ register_route(Domain) ->
 -spec register_route(binary(), local_hint()) -> ok.
 
 register_route(Domain, LocalHint) ->
-    case jlib:nameprep(Domain) of
+    case jid:nameprep(Domain) of
         error ->
             erlang:error({invalid_domain, Domain});
         LDomain when LocalHint /= undefined ->
@@ -132,7 +132,7 @@ register_routes(Domains) ->
 -spec unregister_route(binary()) -> term().
 
 unregister_route(Domain) ->
-    case jlib:nameprep(Domain) of
+    case jid:nameprep(Domain) of
         error ->
             erlang:error({invalid_domain, Domain});
         LDomain ->
@@ -339,8 +339,8 @@ do_route(From, To, Packet) ->
 
 do_route(OrigFrom, OrigTo, OrigPacket, IsBounce) ->
     ?DEBUG("route~n\tfrom ~s~n\tto ~s~n\tpacket ~p~n",
-	   [jlib:jid_to_string(OrigFrom),
-	    jlib:jid_to_string(OrigTo),
+	   [jid:to_string(OrigFrom),
+	    jid:to_string(OrigTo),
 	    OrigPacket]),
     case ejabberd_hooks:run_fold(filter_packet,
 				 {OrigFrom, OrigTo, OrigPacket}, []) of
@@ -401,7 +401,7 @@ allow_host1(MyHost, VHost) ->
 	     {host_access, MyHost},
 	     fun(A) when is_atom(A) -> A end,
 	     all),
-    JID = jlib:make_jid(<<"">>, VHost, <<"">>),
+    JID = jid:make(<<"">>, VHost, <<"">>),
     acl:match_rule(MyHost, Rule, JID) == allow.
 
 bounce_packet(From, To, #xmlel{attrs = Attrs} = Packet) ->
@@ -420,8 +420,8 @@ balancing_route(Pids, From, To, Packet) ->
     LDstDomain = To#jid.lserver,
     Value = case get_domain_balancing(LDstDomain) of
                 random -> now();
-                source -> jlib:jid_tolower(From);
-                destination -> jlib:jid_tolower(To);
+                source -> jid:tolower(From);
+                destination -> jid:tolower(To);
                 bare_source -> {From#jid.luser, From#jid.lserver};
                 bare_destination -> {To#jid.luser, To#jid.lserver};
                 broadcast -> broadcast

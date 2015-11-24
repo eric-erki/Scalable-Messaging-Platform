@@ -229,13 +229,13 @@ b(S) ->
     iolist_to_binary(S).
 
 nodeprep(S) ->
-    jlib:nodeprep(b(S)).
+    jid:nodeprep(b(S)).
 
 nameprep(S) ->
-    jlib:nameprep(b(S)).
+    jid:nameprep(b(S)).
 
 resourceprep(S) ->
-    jlib:resourceprep(b(S)).
+    jid:resourceprep(b(S)).
 
 normalize_specs(Specs) ->
     [normalize_spec(Spec) || Spec <- Specs].
@@ -318,7 +318,7 @@ match_acl(ACL, IP, Host) when tuple_size(IP) == 4;
               false
       end, get_aclspecs(ACL, Host));
 match_acl(ACL, JID, Host) ->
-    {User, Server, Resource} = jlib:jid_tolower(JID),
+    {User, Server, Resource} = jid:tolower(JID),
     lists:any(
       fun(Spec) ->
               case Spec of

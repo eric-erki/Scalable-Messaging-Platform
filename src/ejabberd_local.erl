@@ -289,8 +289,8 @@ code_change(_OldVsn, State, _Extra) ->
 do_route(From, To, Packet) ->
     ?DEBUG("local route~n\tfrom ~s~n\tto ~s~n\tpacket "
 	   "~P~n",
-	   [jlib:jid_to_string(From),
-	    jlib:jid_to_string(To),
+	   [jid:to_string(From),
+	    jid:to_string(To),
 	    Packet, 8]),
     if To#jid.luser /= <<"">> ->
 	   ejabberd_sm:route(From, To, Packet);

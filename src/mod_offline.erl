@@ -248,8 +248,8 @@ store_offline_msg(Host, {User, _}, Msgs, Len, MaxOfflineMsgs, p1db) ->
                                from = From, to = To,
                                packet = #xmlel{attrs = Attrs} = El} = Msg) ->
                       NewAttrs = jlib:replace_from_to_attrs(
-                                   jlib:jid_to_string(From),
-                                   jlib:jid_to_string(To),
+                                   jid:to_string(From),
+                                   jid:to_string(To),
                                    Attrs),
                       NewEl = El#xmlel{attrs = NewAttrs},
                       USNKey = usn2key(LUser, LServer, Now),
@@ -277,7 +277,7 @@ store_offline_msg(Host, {User, _}, Msgs, Len, MaxOfflineMsgs,
 
 get_max_user_messages(AccessRule, {User, Server}, Host) ->
     case acl:match_rule(
-	   Host, AccessRule, jlib:make_jid(User, Server, <<"">>)) of
+	   Host, AccessRule, jid:make(User, Server, <<"">>)) of
 	Max when is_integer(Max) -> Max;
 	infinity -> infinity;
 	_ -> ?MAX_USER_MESSAGES
@@ -404,8 +404,8 @@ find_x_expire(TimeStamp, [El | Els]) ->
     end.
 
 pop_offline_messages(Ls, User, Server) ->
-    LUser = jlib:nodeprep(User),
-    LServer = jlib:nameprep(Server),
+    LUser = jid:nodeprep(User),
+    LServer = jid:nameprep(Server),
     pop_offline_messages(Ls, LUser, LServer,
 			 gen_mod:db_type(LServer, ?MODULE)).
 
@@ -514,7 +514,7 @@ pop_offline_messages(Ls, LUser, LServer, riak) ->
     end.
 
 remove_expired_messages(Server) ->
-    LServer = jlib:nameprep(Server),
+    LServer = jid:nameprep(Server),
     remove_expired_messages(LServer,
 			    gen_mod:db_type(LServer, ?MODULE)).
 
@@ -540,7 +540,7 @@ remove_expired_messages(_LServer, p1db) -> {atomic, ok};
 remove_expired_messages(_LServer, riak) -> {atomic, ok}.
 
 remove_old_messages(Days, Server) ->
-    LServer = jlib:nameprep(Server),
+    LServer = jid:nameprep(Server),
     remove_old_messages(Days, LServer,
 			gen_mod:db_type(LServer, ?MODULE)).
 
@@ -581,8 +581,8 @@ remove_old_messages(_Days, _LServer, riak) ->
     {atomic, ok}.
 
 remove_user(User, Server) ->
-    LUser = jlib:nodeprep(User),
-    LServer = jlib:nameprep(Server),
+    LUser = jid:nodeprep(User),
+    LServer = jid:nameprep(Server),
     remove_user(LUser, LServer,
 		gen_mod:db_type(LServer, ?MODULE)).
 
@@ -703,8 +703,8 @@ offline_msg_to_route(LServer, #offline_msg{} = R) ->
      jlib:add_delay_info(R#offline_msg.packet, LServer, R#offline_msg.timestamp,
 			 <<"Offline Storage">>)};
 offline_msg_to_route(_LServer, #xmlel{} = El) ->
-    To = jlib:string_to_jid(xml:get_tag_attr_s(<<"to">>, El)),
-    From = jlib:string_to_jid(xml:get_tag_attr_s(<<"from">>, El)),
+    To = jid:from_string(xml:get_tag_attr_s(<<"to">>, El)),
+    From = jid:from_string(xml:get_tag_attr_s(<<"from">>, El)),
     if (To /= error) and (From /= error) ->
             {route, From, To, El};
        true ->
@@ -770,8 +770,8 @@ format_user_queue(Msgs, DBType)
 							 [Year, Month, Day,
 							  Hour, Minute,
 							  Second])),
-		      SFrom = jlib:jid_to_string(From),
-		      STo = jlib:jid_to_string(To),
+		      SFrom = jid:to_string(From),
+		      STo = jid:to_string(To),
 		      Attrs2 = jlib:replace_from_to_attrs(SFrom, STo, Attrs),
 		      Packet = #xmlel{name = Name, attrs = Attrs2,
 				      children = Els},
@@ -800,8 +800,8 @@ format_user_queue(Msgs, odbc) ->
 	      Msgs).
 
 user_queue(User, Server, Query, Lang) ->
-    LUser = jlib:nodeprep(User),
-    LServer = jlib:nameprep(Server),
+    LUser = jid:nodeprep(User),
+    LServer = jid:nameprep(Server),
     US = {LUser, LServer},
     DBType = gen_mod:db_type(LServer, ?MODULE),
     Res = user_queue_parse_query(LUser, LServer, Query,
@@ -950,7 +950,7 @@ user_queue_parse_query(LUser, LServer, Query, odbc) ->
     end.
 
 us_to_list({User, Server}) ->
-    jlib:jid_to_string({User, Server, <<"">>}).
+    jid:to_string({User, Server, <<"">>}).
 
 get_queue_length(LUser, LServer) ->
     get_queue_length(LUser, LServer,
@@ -1007,7 +1007,7 @@ get_messages_subset2(Max, Length, MsgsAll, DBType)
     {MsgsFirstN, Msgs2} = lists:split(FirstN, MsgsAll),
     MsgsLastN = lists:nthtail(Length - FirstN - FirstN,
 			      Msgs2),
-    NoJID = jlib:make_jid(<<"...">>, <<"...">>, <<"">>),
+    NoJID = jid:make(<<"...">>, <<"...">>, <<"">>),
     IntermediateMsg = #offline_msg{timestamp = now(),
 				   from = NoJID, to = NoJID,
 				   packet =
@@ -1024,8 +1024,8 @@ get_messages_subset2(Max, Length, MsgsAll, odbc) ->
     MsgsFirstN ++ [IntermediateMsg] ++ MsgsLastN.
 
 webadmin_user(Acc, User, Server, Lang) ->
-    QueueLen = get_queue_length(jlib:nodeprep(User),
-				jlib:nameprep(Server)),
+    QueueLen = get_queue_length(jid:nodeprep(User),
+				jid:nameprep(Server)),
     FQueueLen = [?AC(<<"queue/">>,
 		     (iolist_to_binary(integer_to_list(QueueLen))))],
     Acc ++
@@ -1036,8 +1036,8 @@ webadmin_user(Acc, User, Server, Lang) ->
 		   <<"Remove All Offline Messages">>)].
 
 delete_all_msgs(User, Server) ->
-    LUser = jlib:nodeprep(User),
-    LServer = jlib:nameprep(Server),
+    LUser = jid:nodeprep(User),
+    LServer = jid:nameprep(Server),
     delete_all_msgs(LUser, LServer,
 		    gen_mod:db_type(LServer, ?MODULE)).
 
@@ -1089,8 +1089,8 @@ webadmin_user_parse_query(Acc, _Action, _User, _Server,
 
 %% Returns as integer the number of offline messages for a given user
 count_offline_messages(User, Server) ->
-    LUser = jlib:nodeprep(User),
-    LServer = jlib:nameprep(Server),
+    LUser = jid:nodeprep(User),
+    LServer = jid:nameprep(Server),
     DBType = gen_mod:db_type(LServer, ?MODULE),
     count_offline_messages(LUser, LServer, DBType).
 
@@ -1197,8 +1197,8 @@ p1db_to_offmsg({LUser, LServer, Now}, Val) ->
                   (_, M) -> M
                end, OffMsg0, binary_to_term(Val)),
     El = OffMsg#offline_msg.packet,
-    #jid{} = To = jlib:string_to_jid(xml:get_tag_attr_s(<<"to">>, El)),
-    #jid{} = From = jlib:string_to_jid(xml:get_tag_attr_s(<<"from">>, El)),
+    #jid{} = To = jid:from_string(xml:get_tag_attr_s(<<"to">>, El)),
+    #jid{} = From = jid:from_string(xml:get_tag_attr_s(<<"from">>, El)),
     OffMsg#offline_msg{from = From, to = To}.
 
 offmsg_to_p1db(#offline_msg{packet = Pkt, expire = T}) ->
@@ -1264,9 +1264,9 @@ import_start(LServer, DBType) ->
 import(LServer, {odbc, _}, DBType, <<"spool">>,
        [LUser, XML, _Seq, _TimeStamp]) ->
     El = #xmlel{} = xml_stream:parse_element(XML),
-    From = #jid{} = jlib:string_to_jid(
+    From = #jid{} = jid:from_string(
                       xml:get_attr_s(<<"from">>, El#xmlel.attrs)),
-    To = #jid{} = jlib:string_to_jid(
+    To = #jid{} = jid:from_string(
                     xml:get_attr_s(<<"to">>, El#xmlel.attrs)),
     Stamp = xml:get_path_s(El, [{elem, <<"delay">>},
                                 {attr, <<"stamp">>}]),

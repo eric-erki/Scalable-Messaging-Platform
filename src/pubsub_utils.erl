@@ -691,7 +691,7 @@ export(_Server) ->
 			    iolist_to_binary(string:join([string:right(integer_to_list(I),6,$0)||I<-[C1,C2,C3]],":"))),
 		    MODIFICATION = ejabberd_odbc:escape(
 			    iolist_to_binary(string:join([string:right(integer_to_list(I),6,$0)||I<-[M1,M2,M3]],":"))),
-		    PUBLISHER = ejabberd_odbc:escape(jlib:jid_to_string(Cusr)),
+		    PUBLISHER = ejabberd_odbc:escape(jid:to_string(Cusr)),
 		    [PayloadEl] = [{xmlel,A,B,C} || {xmlelement,A,B,C} <- Payload],
 		    PAYLOAD = ejabberd_odbc:escape(xml:element_to_binary(PayloadEl)),
 		    ["delete from pubsub_item where itemid='", ITEMID, "';\n"
@@ -713,7 +713,7 @@ export(_Server) ->
 				affiliation = Affiliation,
 				subscriptions = Subscriptions}) ->
 		    STATEID = integer_to_list(Stateid),
-		    JID = ejabberd_odbc:escape(jlib:jid_to_string(Jid)),
+		    JID = ejabberd_odbc:escape(jid:to_string(Jid)),
 		    NODEID = integer_to_list(Nodeidx),
 		    AFFILIATION = string:substr(atom_to_list(Affiliation),1,1),
 		    SUBSCRIPTIONS = parse_subscriptions(Subscriptions),
@@ -736,7 +736,7 @@ export(_Server) ->
 				owners = Owners,
 				options = Options}) ->
 		    HOST = case Hostid of
-			{U,S,R} -> ejabberd_odbc:escape(jlib:jid_to_string({U,S,R}));
+			{U,S,R} -> ejabberd_odbc:escape(jid:to_string({U,S,R}));
 			_ -> ejabberd_odbc:escape(Hostid)
 		    end,
 		    NODE = ejabberd_odbc:escape(Nodeid),
@@ -752,7 +752,7 @@ export(_Server) ->
 				io_lib:format("~p", [Val]), "');\n"] || {Name,Val} <- Options],
 			"delete from pubsub_node_owner where nodeid='", NODEID, "';\n",
 			[["insert into pubsub_node_owner(nodeid,owner)\n"
-				" values (", NODEID, ", '", jlib:jid_to_string(Usr), "');\n"] || Usr <- Owners],"\n"];
+				" values (", NODEID, ", '", jid:to_string(Usr), "');\n"] || Usr <- Owners],"\n"];
 		(_Host, _R) ->
 		    []
 	    end}].

@@ -190,7 +190,7 @@ handle_info({timeout, _TRef, {ping, JID}}, State) ->
     F = fun (Response) ->
 		gen_server:cast(Pid, {iq_pong, JID, Response})
 	end,
-    From = jlib:make_jid(<<"">>, State#state.host, <<"">>),
+    From = jid:make(<<"">>, State#state.host, <<"">>),
     ejabberd_local:route_iq(From, JID, IQ, F),
     Timers = add_timer(JID, State#state.ping_interval,
 		       State#state.timers),
@@ -226,7 +226,7 @@ user_send(Packet, _C2SState, JID, _From) ->
 %% Internal functions
 %%====================================================================
 add_timer(JID, Interval, Timers) ->
-    LJID = jlib:jid_tolower(JID),
+    LJID = jid:tolower(JID),
     NewTimers = case (?DICT):find(LJID, Timers) of
 		  {ok, OldTRef} ->
 		      cancel_timer(OldTRef), (?DICT):erase(LJID, Timers);
@@ -237,7 +237,7 @@ add_timer(JID, Interval, Timers) ->
     (?DICT):store(LJID, TRef, NewTimers).
 
 del_timer(JID, Timers) ->
-    LJID = jlib:jid_tolower(JID),
+    LJID = jid:tolower(JID),
     case (?DICT):find(LJID, Timers) of
       {ok, TRef} ->
 	  cancel_timer(TRef), (?DICT):erase(LJID, Timers);

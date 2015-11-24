@@ -51,7 +51,7 @@ set_node(#pubsub_node{nodeid = {Key, _}, owners = Owners, options = Options} = N
     end.
 
 create_node(Key, Node, Type, Owner, Options, Parents) ->
-    OwnerJID = jlib:jid_tolower(jlib:jid_remove_resource(Owner)),
+    OwnerJID = jid:tolower(jid:remove_resource(Owner)),
     case find_node(Key, Node) of
 	false ->
 	    Nidx = pubsub_index:new(node),
@@ -159,7 +159,7 @@ get_subnodes_tree(Host, Node, From) ->
 %%====================================================================
 oid(Key, Name) -> {Key, Name}.
 
-%% Key    = jlib:jid() | host()
+%% Key    = jid:jid() | host()
 %% Node = string()
 -spec(find_node/2 ::
     (
@@ -173,7 +173,7 @@ find_node(Key, Node) ->
 	[Node] -> Node
     end.
 
-%% Key     = jlib:jid() | host()
+%% Key     = jid:jid() | host()
 %% Default = term()
 %% Options = [{Key = atom(), Value = term()}]
 find_opt(Key, Default, Options) ->

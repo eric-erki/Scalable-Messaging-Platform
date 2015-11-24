@@ -254,7 +254,7 @@ process_request(Data, IP, HOpts) ->
 		   "dressing' xmlns='",
 		   (?NS_HTTP_BIND)/binary, "'/>">>};
 	    XmppDomain ->
-                NXmppDomain = jlib:nameprep(XmppDomain),
+                NXmppDomain = jid:nameprep(XmppDomain),
 		Sid = make_sid(),
 		case start(NXmppDomain, Sid, <<"">>, IP, HOpts) of
 		  {error, _} ->
@@ -979,7 +979,7 @@ prepare_response(Sess, Rid, OutputEls, StreamStart) ->
 									    children
 										=
 										[{xmlcdata,
-										  jlib:jid_to_string(JID)}]}]}]}]})};
+										  jid:to_string(JID)}]}]}]}]})};
       {ok, ROutPacket} ->
 	  OutPacket = lists:reverse(ROutPacket),
 	  ?DEBUG("OutPacket: ~p", [OutputEls ++ OutPacket]),
@@ -1334,4 +1334,4 @@ get_session(SID) ->
 
 make_random_jid(Host) ->
     User = randoms:get_string(),
-    jlib:make_jid(User, Host, randoms:get_string()).
+    jid:make(User, Host, randoms:get_string()).

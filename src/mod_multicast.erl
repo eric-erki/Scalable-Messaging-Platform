@@ -877,7 +877,7 @@ process_discoitems_result(From, LServiceS, ID, Els) ->
                                              attrs = Attrs} ->
                                           SJID = xml:get_attr_s(
                                                    <<"jid">>, Attrs),
-                                          case jlib:string_to_jid(SJID) of
+                                          case jid:from_string(SJID) of
                                               #jid{luser = <<"">>,
                                                    lserver = S,
                                                    lresource = <<"">>} ->
@@ -1194,9 +1194,9 @@ make_reply(internal_server_error, Lang, ErrText) ->
 make_reply(forbidden, Lang, ErrText) ->
     ?ERRT_FORBIDDEN(Lang, ErrText).
 
-stj(String) -> jlib:string_to_jid(String).
+stj(String) -> jid:from_string(String).
 
-jts(String) -> jlib:jid_to_string(String).
+jts(String) -> jid:to_string(String).
 
 mod_opt_type(access) ->
     fun (A) when is_atom(A) -> A end;

@@ -65,8 +65,8 @@ store_type() ->
 
 %% @spec (User, Server, Password) -> true | false | {error, Error}
 check_password(User, Server, Password) ->
-    LServer = jlib:nameprep(Server),
-    LUser = jlib:nodeprep(User),
+    LServer = jid:nameprep(Server),
+    LUser = jid:nodeprep(User),
     if (LUser == error) or (LServer == error) ->
             false;
        (LUser == <<>>) or (LServer == <<>>) ->
@@ -115,8 +115,8 @@ check_password(User, Server, Password) ->
 %% @spec (User, Server, Password, Digest, DigestGen) -> true | false | {error, Error}
 check_password(User, Server, Password, Digest,
 	       DigestGen) ->
-    LServer = jlib:nameprep(Server),
-    LUser = jlib:nodeprep(User),
+    LServer = jid:nameprep(Server),
+    LUser = jid:nodeprep(User),
     if (LUser == error) or (LServer == error) ->
             false;
        (LUser == <<>>) or (LServer == <<>>) ->
@@ -151,8 +151,8 @@ check_password(User, Server, Password, Digest,
 %% @spec (User::string(), Server::string(), Password::string()) ->
 %%       ok | {error, invalid_jid}
 set_password(User, Server, Password) ->
-    LServer = jlib:nameprep(Server),
-    LUser = jlib:nodeprep(User),
+    LServer = jid:nameprep(Server),
+    LUser = jid:nodeprep(User),
     if (LUser == error) or (LServer == error) ->
             {error, invalid_jid};
        (LUser == <<>>) or (LServer == <<>>) ->
@@ -187,8 +187,8 @@ set_password(User, Server, Password) ->
 
 %% @spec (User, Server, Password) -> {atomic, ok} | {atomic, exists} | {error, invalid_jid}
 try_register(User, Server, Password) ->
-    LServer = jlib:nameprep(Server),
-    LUser = jlib:nodeprep(User),
+    LServer = jid:nameprep(Server),
+    LUser = jid:nodeprep(User),
     if (LUser == error) or (LServer == error) ->
             {error, invalid_jid};
        (LUser == <<>>) or (LServer == <<>>) ->
@@ -228,7 +228,7 @@ dirty_get_registered_users() ->
 		  Servers).
 
 get_vh_registered_users(Server) ->
-    case jlib:nameprep(Server) of
+    case jid:nameprep(Server) of
         error -> [];
         <<>> -> [];
         LServer ->
@@ -240,7 +240,7 @@ get_vh_registered_users(Server) ->
     end.
 
 get_vh_registered_users(Server, Opts) ->
-    case jlib:nameprep(Server) of
+    case jid:nameprep(Server) of
         error -> [];
         <<>> -> [];
         LServer ->
@@ -252,7 +252,7 @@ get_vh_registered_users(Server, Opts) ->
     end.
 
 get_vh_registered_users_number(Server) ->
-    case jlib:nameprep(Server) of
+    case jid:nameprep(Server) of
         error -> 0;
         <<>> -> 0;
         LServer ->
@@ -264,7 +264,7 @@ get_vh_registered_users_number(Server) ->
     end.
 
 get_vh_registered_users_number(Server, Opts) ->
-    case jlib:nameprep(Server) of
+    case jid:nameprep(Server) of
         error -> 0;
         <<>> -> 0;
         LServer ->
@@ -276,8 +276,8 @@ get_vh_registered_users_number(Server, Opts) ->
     end.
 
 get_password(User, Server) ->
-    LServer = jlib:nameprep(Server),
-    LUser = jlib:nodeprep(User),
+    LServer = jid:nameprep(Server),
+    LUser = jid:nodeprep(User),
     if (LUser == error) or (LServer == error) ->
             false;
        (LUser == <<>>) or (LServer == <<>>) ->
@@ -307,8 +307,8 @@ get_password(User, Server) ->
     end.
 
 get_password_s(User, Server) ->
-    LServer = jlib:nameprep(Server),
-    LUser = jlib:nodeprep(User),
+    LServer = jid:nameprep(Server),
+    LUser = jid:nodeprep(User),
     if (LUser == error) or (LServer == error) ->
             <<"">>;
        (LUser == <<>>) or (LServer == <<>>) ->
@@ -327,8 +327,8 @@ get_password_s(User, Server) ->
 
 %% @spec (User, Server) -> true | false | {error, Error}
 is_user_exists(User, Server) ->
-    LServer = jlib:nameprep(Server),
-    LUser = jlib:nodeprep(User),
+    LServer = jid:nameprep(Server),
+    LUser = jid:nodeprep(User),
     if (LUser == error) or (LServer == error) ->
             false;
        (LUser == <<>>) or (LServer == <<>>) ->
@@ -350,8 +350,8 @@ is_user_exists(User, Server) ->
 %% @doc Remove user.
 %% Note: it may return ok even if there was some problem removing the user.
 remove_user(User, Server) ->
-    LServer = jlib:nameprep(Server),
-    LUser = jlib:nodeprep(User),
+    LServer = jid:nameprep(Server),
+    LUser = jid:nodeprep(User),
     if (LUser == error) or (LServer == error) ->
             error;
        (LUser == <<>>) or (LServer == <<>>) ->
@@ -365,8 +365,8 @@ remove_user(User, Server) ->
 %% @spec (User, Server, Password) -> ok | error | not_exists | not_allowed
 %% @doc Remove user if the provided password is correct.
 remove_user(User, Server, Password) ->
-    LServer = jlib:nameprep(Server),
-    LUser = jlib:nodeprep(User),
+    LServer = jid:nameprep(Server),
+    LUser = jid:nodeprep(User),
     if (LUser == error) or (LServer == error) ->
             error;
        (LUser == <<>>) or (LServer == <<>>) ->
@@ -451,7 +451,7 @@ set_password_scram_t(Username,
                            <<"'">>]).
 
 convert_to_scram(Server) ->
-    LServer = jlib:nameprep(Server),
+    LServer = jid:nameprep(Server),
     if
         LServer == error;
         LServer == <<>> ->

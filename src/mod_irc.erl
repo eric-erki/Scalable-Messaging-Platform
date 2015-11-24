@@ -596,7 +596,7 @@ process_irc_register(ServerHost, Host, From, _To,
     end.
 
 get_data(ServerHost, Host, From) ->
-    LServer = jlib:nameprep(ServerHost),
+    LServer = jid:nameprep(ServerHost),
     get_data(LServer, Host, From,
              gen_mod:db_type(LServer, ?MODULE)).
 
@@ -633,7 +633,7 @@ get_data(LServer, Host, From, riak) ->
     end;
 get_data(LServer, Host, From, odbc) ->
     SJID =
-	ejabberd_odbc:escape(jlib:jid_to_string(jlib:jid_tolower(jlib:jid_remove_resource(From)))),
+	ejabberd_odbc:escape(jid:to_string(jid:tolower(jid:remove_resource(From)))),
     SHost = ejabberd_odbc:escape(Host),
     case catch ejabberd_odbc:sql_query(LServer,
 				       [<<"select data from irc_custom where jid='">>,
@@ -751,12 +751,12 @@ get_form(_ServerHost, _Host, _, _, _Lang) ->
     {error, ?ERR_SERVICE_UNAVAILABLE}.
 
 set_data(ServerHost, Host, From, Data) ->
-    LServer = jlib:nameprep(ServerHost),
+    LServer = jid:nameprep(ServerHost),
     set_data(LServer, Host, From, data_to_binary(From, Data),
 	     gen_mod:db_type(LServer, ?MODULE)).
 
 set_data(_LServer, Host, From, Data, mnesia) ->
-    {LUser, LServer, _} = jlib:jid_tolower(From),
+    {LUser, LServer, _} = jid:tolower(From),
     US = {LUser, LServer},
     F = fun () ->
 		mnesia:write(#irc_custom{us_host = {US, Host},
@@ -764,21 +764,21 @@ set_data(_LServer, Host, From, Data, mnesia) ->
 	end,
     mnesia:transaction(F);
 set_data(LServer, Host, From, Data, p1db) ->
-    {LUser, LServer, _} = jlib:jid_tolower(From),
+    {LUser, LServer, _} = jid:tolower(From),
     USHKey = ush2key(LUser, LServer, Host),
     case p1db:insert(irc_custom, USHKey, term_to_binary(Data)) of
         ok -> {atomic, ok};
         {error, _} = Err -> {aborted, Err}
     end;
 set_data(LServer, Host, From, Data, riak) ->
-    {LUser, LServer, _} = jlib:jid_tolower(From),
+    {LUser, LServer, _} = jid:tolower(From),
     US = {LUser, LServer},
     {atomic, ejabberd_riak:put(#irc_custom{us_host = {US, Host},
                                            data = Data},
 			       irc_custom_schema())};
 set_data(LServer, Host, From, Data, odbc) ->
     SJID =
-	ejabberd_odbc:escape(jlib:jid_to_string(jlib:jid_tolower(jlib:jid_remove_resource(From)))),
+	ejabberd_odbc:escape(jid:to_string(jid:tolower(jid:remove_resource(From)))),
     SHost = ejabberd_odbc:escape(Host),
     SData = ejabberd_odbc:encode_term(Data),
     F = fun () ->
@@ -957,7 +957,7 @@ adhoc_join(From, To,
 								    <<"invite">>,
 								attrs =
 								    [{<<"from">>,
-								      jlib:jid_to_string(From)}],
+								      jid:to_string(From)}],
 								children =
 								    [#xmlel{name
 										=
@@ -988,7 +988,7 @@ adhoc_join(From, To,
                                                                 Lang,
                                                                 <<"Join the IRC channel in this Jabber ID: ~s">>),
                                                               [RoomJID]))}]}]},
-			ejabberd_router:route(jlib:string_to_jid(RoomJID), From,
+			ejabberd_router:route(jid:from_string(RoomJID), From,
 					      Invite),
 			adhoc:produce_response(Request,
 					       #adhoc_response{status =
@@ -1284,7 +1284,7 @@ data_to_binary(JID, Data) ->
 					 ?ERROR_MSG("failed to convert "
 						    "parameter ~p for user ~s",
 						    [Param,
-						     jlib:jid_to_string(JID)]);
+						     jid:to_string(JID)]);
 				    true ->
 					 ?ERROR_MSG("failed to convert "
 						    "parameter ~p",
@@ -1357,7 +1357,7 @@ update_table() ->
             fun(#irc_custom{us_host = {_, H}}) -> H end,
             fun(#irc_custom{us_host = {{U, S}, H},
                             data = Data} = R) ->
-		    JID = jlib:make_jid(U, S, <<"">>),
+		    JID = jid:make(U, S, <<"">>),
                     R#irc_custom{us_host = {{iolist_to_binary(U),
                                              iolist_to_binary(S)},
                                             iolist_to_binary(H)},
@@ -1375,8 +1375,8 @@ export(_Server) ->
               case str:suffix(Host, IRCHost) of
                   true ->
                       SJID = ejabberd_odbc:escape(
-                               jlib:jid_to_string(
-                                 jlib:make_jid(U, S, <<"">>))),
+                               jid:to_string(
+                                 jid:make(U, S, <<"">>))),
                       SIRCHost = ejabberd_odbc:escape(IRCHost),
                       SData = ejabberd_odbc:encode_term(Data),
                       [[<<"delete from irc_custom where jid='">>, SJID,
@@ -1399,20 +1399,20 @@ import_start(LServer, DBType) ->
 
 import(_LServer, {odbc, _}, mnesia, <<"irc_custom">>,
        [SJID, IRCHost, SData, _TimeStamp]) ->
-    #jid{luser = U, lserver = S} = jlib:string_to_jid(SJID),
+    #jid{luser = U, lserver = S} = jid:from_string(SJID),
     Data = ejabberd_odbc:decode_term(SData),
     mnesia:dirty_write(
       #irc_custom{us_host = {{U, S}, IRCHost},
                   data = Data});
 import(_LServer, {odbc, _}, p1db, <<"irc_custom">>,
        [SJID, IRCHost, SData, _TimeStamp]) ->
-    #jid{luser = U, lserver = S} = jlib:string_to_jid(SJID),
+    #jid{luser = U, lserver = S} = jid:from_string(SJID),
     Data = ejabberd_odbc:decode_term(SData),
     USHKey = ush2key(U, S, IRCHost),
     p1db:async_insert(irc_custom, USHKey, term_to_binary(Data));
 import(_LServer, {odbc, _}, riak, <<"irc_custom">>,
        [SJID, IRCHost, SData, _TimeStamp]) ->
-    #jid{luser = U, lserver = S} = jlib:string_to_jid(SJID),
+    #jid{luser = U, lserver = S} = jid:from_string(SJID),
     Data = ejabberd_odbc:decode_term(SData),
     ejabberd_riak:put(
       #irc_custom{us_host = {{U, S}, IRCHost},

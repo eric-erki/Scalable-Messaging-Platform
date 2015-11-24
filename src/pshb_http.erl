@@ -66,7 +66,7 @@ process([_Domain | _Rest] = LocalPath,
 get_auth(Auth) ->
     case Auth of
       {SJID, P} ->
-	  case jlib:string_to_jid(SJID) of
+	  case jid:from_string(SJID) of
 	    error -> undefined;
 	    #jid{user = U, server = S} ->
 		case ejabberd_auth:check_password(U, S, P) of
@@ -148,7 +148,7 @@ out(Module, Args, 'PUT', [_D, _Node, Slug] = Uri,
     publish_item(Module, Args, Uri, Slug, UD);
 out(Module, _Args, 'DELETE', [_D, Node, Id] = Uri,
     {User, UDomain}) ->
-    Jid = jlib:make_jid({User, UDomain, <<"">>}),
+    Jid = jid:make({User, UDomain, <<"">>}),
     case Module:delete_item(get_host(Uri),
 			    iolist_to_binary(Node), Jid, Id)
 	of
@@ -158,7 +158,7 @@ out(Module, _Args, 'DELETE', [_D, Node, Id] = Uri,
 out(Module, Args, 'PUT', [_Domain, Node] = Uri,
     {User, UDomain}) ->
     Host = get_host(Uri),
-    Jid = jlib:make_jid({User, UDomain, <<"">>}),
+    Jid = jid:make({User, UDomain, <<"">>}),
     Payload = xml_stream:parse_element(Args#request.data),
     ConfigureElement = case xml:get_subtag(Payload,
 					   <<"configure">>)
@@ -206,7 +206,7 @@ out(Module, Args, 'POST', [Domain] = Uri,
 			 false -> [];
 			 #xmlel{children = SubEls} -> SubEls
 		       end,
-    Jid = jlib:make_jid({User, UDomain, <<"">>}),
+    Jid = jid:make({User, UDomain, <<"">>}),
     case Module:create_node(Host, Domain, Node, Jid, Type,
 			    all, ConfigureElement)
 	of
@@ -221,7 +221,7 @@ out(Module, Args, 'POST', [Domain] = Uri,
 out(Module, _Args, 'DELETE', [_Domain, Node] = Uri,
     {User, UDomain}) ->
     Host = get_host(Uri),
-    Jid = jlib:make_jid({User, UDomain, <<"">>}),
+    Jid = jid:make({User, UDomain, <<"">>}),
     case Module:delete_node(Host, Node, Jid) of
       {error, Error} -> error(Error);
       {result, _} -> {200, [], []}
@@ -270,7 +270,7 @@ publish_item(Module, Args, [Domain, Node | _R] = Uri,
     [FilteredPayload] = xml:remove_cdata([Payload]),
     case Module:publish_item(get_host(Uri), Domain,
 			     get_collection(Uri),
-			     jlib:make_jid(User, Domain, <<"">>), Slug,
+			     jid:make(User, Domain, <<"">>), Slug,
 			     [FilteredPayload])
 	of
       {result, [_]} ->
@@ -317,7 +317,7 @@ item_to_entry(Args, Domain, Node, Id,
 		     children = SubEl},
 	      #pubsub_item{modification = {Secs, JID}}) ->
     Date = calendar:now_to_local_time(Secs),
-    {_User, Domain, _} = jlib:jid_tolower(JID),
+    {_User, Domain, _} = jid:tolower(JID),
     SubEl2 = [#xmlel{name = <<"app:edited">>, attrs = [],
 		     children = [{xmlcdata, w3cdtf(Date)}]},
 	      #xmlel{name = <<"updated">>, attrs = [],
@@ -327,7 +327,7 @@ item_to_entry(Args, Domain, Node, Id,
 			 [#xmlel{name = <<"name">>, attrs = [],
 				 children =
 				     [{xmlcdata,
-				       jlib:jid_to_string(JID)}]}]},
+				       jid:to_string(JID)}]}]},
 	      #xmlel{name = <<"link">>,
 		     attrs =
 			 [{<<"rel">>, <<"edit">>},

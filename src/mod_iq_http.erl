@@ -75,7 +75,7 @@ process_iq(_From, _To, #iq{sub_el = SubEl} = IQ) ->
 process_local_iq(#jid{lserver = Host} = From,
 		 #iq{sub_el = #xmlel{children= Payload} = SubEl} = IQ) ->
     URL = get_url(Host),
-    Params = [{<<"from">>, jlib:jid_to_string(From)}],
+    Params = [{<<"from">>, jid:to_string(From)}],
     case catch jiffy:decode(xml:get_cdata(Payload))
 	of
 	{error, _Reason} ->

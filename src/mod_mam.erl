@@ -165,8 +165,8 @@ stop(Host) ->
     ok.
 
 remove_user(User, Server) ->
-    LUser = jlib:nodeprep(User),
-    LServer = jlib:nameprep(Server),
+    LUser = jid:nodeprep(User),
+    LServer = jid:nameprep(Server),
     remove_user(LUser, LServer,
 		gen_mod:db_type(LServer, ?MODULE)).
 
@@ -253,7 +253,7 @@ user_send_packet(Pkt, C2SState, JID, Peer) ->
 muc_filter_message(Pkt, #state{config = Config} = MUCState,
 		  RoomJID, From, FromNick) ->
     if Config#config.mam ->
-	    By = jlib:jid_to_string(RoomJID),
+	    By = jid:to_string(RoomJID),
 	    NewPkt = strip_my_archived_tag(Pkt, By),
 	    case store_muc(MUCState, NewPkt, RoomJID, From, FromNick) of
 		{ok, ID} ->
@@ -377,10 +377,10 @@ process_iq(LServer, From, To, IQ, SubEl, Fs, MsgType) ->
 			  {_, _, _} = jlib:datetime_string_to_timestamp(Data),
 			  With, RSM};
 		    ({<<"with">>, [Data|_]}, {Start, End, _, RSM}) ->
-			 {Start, End, jlib:jid_tolower(jlib:string_to_jid(Data)), RSM};
+			 {Start, End, jid:tolower(jid:from_string(Data)), RSM};
 		    ({<<"withroom">>, [Data|_]}, {Start, End, _, RSM}) ->
 			 {Start, End,
-			  {room, jlib:jid_tolower(jlib:string_to_jid(Data))},
+			  {room, jid:tolower(jid:from_string(Data))},
 			  RSM};
 		    ({<<"withtext">>, [Data|_]}, {Start, End, _, RSM}) ->
 			 {Start, End, {text, Data}, RSM};
@@ -416,7 +416,7 @@ strip_my_archived_tag(Pkt, LServer) ->
     NewEls = lists:filter(
 	    fun(#xmlel{name = Tag, attrs = Attrs})
 			when Tag == <<"archived">>; Tag == <<"stanza-id">> ->
-		    case catch jlib:nameprep(
+		    case catch jid:nameprep(
 			    xml:get_attr_s(
 				<<"by">>, Attrs)) of
 			LServer ->
@@ -434,7 +434,7 @@ should_archive_peer(C2SState,
 				   always = Always,
 				   never = Never},
 		    Peer) ->
-    LPeer = jlib:jid_tolower(Peer),
+    LPeer = jid:tolower(Peer),
     case lists:member(LPeer, Always) of
 	true ->
 	    true;
@@ -477,7 +477,7 @@ store_muc(MUCState, Pkt, RoomJID, Peer, Nick) ->
     case should_archive_muc(MUCState, Peer) of
 	true ->
 	    LServer = MUCState#state.server_host,
-	    {U, S, _} = jlib:jid_tolower(RoomJID),
+	    {U, S, _} = jid:tolower(RoomJID),
 	    store(Pkt, LServer, {U, S}, groupchat, Peer, Nick, recv,
 		  gen_mod:db_type(LServer, ?MODULE));
 	false ->
@@ -485,7 +485,7 @@ store_muc(MUCState, Pkt, RoomJID, Peer, Nick) ->
     end.
 
 store(Pkt, _, {LUser, LServer}, Type, Peer, Nick, _Dir, mnesia) ->
-    LPeer = {PUser, PServer, _} = jlib:jid_tolower(Peer),
+    LPeer = {PUser, PServer, _} = jid:tolower(Peer),
     TS = now(),
     ID = jlib:integer_to_binary(now_to_usec(TS)),
     case mnesia:dirty_write(
@@ -522,7 +522,7 @@ store(Pkt, LServer, {LUser, LHost}, Type, Peer, Nick, Dir, rest) ->
     SPeer = Peer#jid.luser,
     SUser = case Type of
 		chat -> LUser;
-		groupchat -> jlib:jid_to_string({LUser, LHost, <<>>})
+		groupchat -> jid:to_string({LUser, LHost, <<>>})
 	    end,
     ID = jlib:integer_to_binary(now_to_usec(Now)),
     T = case gen_mod:get_module_opt(LServer, ?MODULE, store_body_only,
@@ -558,13 +558,13 @@ store(Pkt, LServer, {LUser, LHost}, Type, Peer, Nick, _Dir, DBType)
     ID = TS = jlib:integer_to_binary(TSinteger),
     SUser = case Type of
 		chat -> LUser;
-		groupchat -> jlib:jid_to_string({LUser, LHost, <<>>})
+		groupchat -> jid:to_string({LUser, LHost, <<>>})
 	    end,
-    BarePeer = jlib:jid_to_string(
-		 jlib:jid_tolower(
-		   jlib:jid_remove_resource(Peer))),
-    LPeer = jlib:jid_to_string(
-	      jlib:jid_tolower(Peer)),
+    BarePeer = jid:to_string(
+		 jid:tolower(
+		   jid:remove_resource(Peer))),
+    LPeer = jid:to_string(
+	      jid:tolower(Peer)),
     XML = xml:element_to_binary(Pkt),
     Body = xml:get_subtag_cdata(Pkt, <<"body">>),
     Key = case DBType of
@@ -725,7 +725,7 @@ select_and_start(LServer, From, To, Start, End, With, RSM, MsgType, DBType) ->
 	chat ->
 	    case With of
 		{room, {_, _, <<"">>} = WithJID} ->
-		    select(LServer, jlib:make_jid(WithJID), Start, End,
+		    select(LServer, jid:make(WithJID), Start, End,
 			   WithJID, RSM, MsgType, DBType);
 		_ ->
 		    select(LServer, From, Start, End,
@@ -801,7 +801,7 @@ select(LServer, #jid{luser = LUser} = JidRequestor,
 		   [{<<"username">>, LUser},
 		    {<<"type">>, <<"chat">>}];
 	       {groupchat, _Role} ->
-		   [{<<"username">>, jlib:jid_to_string(JidRequestor)},
+		   [{<<"username">>, jid:to_string(JidRequestor)},
 		    {<<"type">>, <<"groupchat">>}]
 	   end,
     After = case RSM of
@@ -933,7 +933,7 @@ select(LServer, #jid{luser = LUser} = JidRequestor,
        Start, End, With, RSM, MsgType, {DBType, Host}) ->
     User = case MsgType of
 	       chat -> LUser;
-	       {groupchat, _Role, _MUCState} -> jlib:jid_to_string(JidRequestor)
+	       {groupchat, _Role, _MUCState} -> jid:to_string(JidRequestor)
 	   end,
     {Query, CountQuery} = make_sql_query(User, LServer,
 					 Start, End, With, RSM),
@@ -968,7 +968,7 @@ select(LServer, #jid{luser = LUser} = JidRequestor,
 	       fun([TS, XML, PeerBin, Kind, Nick]) ->
 		       #xmlel{} = El = xml_stream:parse_element(XML),
 		       Now = usec_to_now(jlib:binary_to_integer(TS)),
-		       PeerJid = jlib:jid_tolower(jlib:string_to_jid(PeerBin)),
+		       PeerJid = jid:tolower(jid:from_string(PeerBin)),
 		       T = if Kind /= <<"">> ->
 				   jlib:binary_to_atom(Kind);
 			      true -> chat
@@ -997,9 +997,9 @@ build_xml_from_json(User, Attrs, StoreBody) ->
 	    Peer = proplists:get_value(<<"peer">>, Attrs, <<"">>),
 	    {From, To} = case Dir of
 			     send ->
-				 {jlib:jid_to_string(User), Peer};
+				 {jid:to_string(User), Peer};
 			     recv ->
-				 {Peer, jlib:jid_to_string(User)}
+				 {Peer, jid:to_string(User)}
 			 end,
 	    #xmlel{name = <<"message">>,
 		   attrs = [{<<"type">>, <<"chat">>},
@@ -1028,9 +1028,9 @@ maybe_update_from_to(Pkt, JidRequestor, Peer, chat, _Nick) ->
     case xml:get_attr_s(<<"type">>, Pkt#xmlel.attrs) of
 	<<"groupchat">> when Peer /= undefined ->
 	    Pkt2 = xml:replace_tag_attr(<<"to">>,
-					jlib:jid_to_string(JidRequestor),
+					jid:to_string(JidRequestor),
 					Pkt),
-	    xml:replace_tag_attr(<<"from">>, jlib:jid_to_string(Peer),
+	    xml:replace_tag_attr(<<"from">>, jid:to_string(Peer),
 				 Pkt2);
 	_ -> Pkt
     end;
@@ -1043,12 +1043,12 @@ maybe_update_from_to(#xmlel{children = Els} = Pkt, JidRequestor,
 			    children =
 				[#xmlel{name = <<"item">>,
 					attrs = [{<<"jid">>,
-						  jlib:jid_to_string(Peer)}]}]}];
+						  jid:to_string(Peer)}]}]}];
 		_ ->
 		    []
 	    end,
     Pkt1 = Pkt#xmlel{children = Items ++ Els},
-    Pkt2 = jlib:replace_from(jlib:jid_replace_resource(JidRequestor, Nick), Pkt1),
+    Pkt2 = jlib:replace_from(jid:replace_resource(JidRequestor, Nick), Pkt1),
     jlib:remove_attr(<<"to">>, Pkt2).
 
 is_bare_copy(#jid{luser = U, lserver = S, lresource = R}, To) ->
@@ -1242,11 +1242,11 @@ make_sql_query(User, _LServer, Start, End, With, RSM) ->
 			  ejabberd_odbc:escape(Txt), <<"')">>];
 		     {_, _, <<>>} ->
 			 [<<" and bare_peer='">>,
-			  ejabberd_odbc:escape(jlib:jid_to_string(With)),
+			  ejabberd_odbc:escape(jid:to_string(With)),
 			  <<"'">>];
 		     {_, _, _} ->
 			 [<<" and peer='">>,
-			  ejabberd_odbc:escape(jlib:jid_to_string(With)),
+			  ejabberd_odbc:escape(jid:to_string(With)),
 			  <<"'">>];
 		     none ->
 			 []
@@ -1325,9 +1325,9 @@ datetime_to_now(DateTime, USecs) ->
 get_jids(Els) ->
     lists:flatmap(
       fun(#xmlel{name = <<"jid">>} = El) ->
-	      J = jlib:string_to_jid(xml:get_tag_cdata(El)),
-	      [jlib:jid_tolower(jlib:jid_remove_resource(J)),
-	       jlib:jid_tolower(J)];
+	      J = jid:from_string(xml:get_tag_cdata(El)),
+	      [jid:tolower(jid:remove_resource(J)),
+	       jid:tolower(J)];
 	 (_) ->
 	      []
       end, Els).
@@ -1415,7 +1415,7 @@ dec_key(Key) ->
     end.
 
 enc_val(_, [SPeer, SNick, SType, XML]) ->
-    term_to_binary([{peer, #jid{} = jlib:string_to_jid(SPeer)},
+    term_to_binary([{peer, #jid{} = jid:from_string(SPeer)},
 		    {nick, SNick},
 		    {type, jlib:binary_to_atom(SType)},
 		    {packet, XML}]).
@@ -1426,7 +1426,7 @@ dec_val(_, Bin) ->
     #jid{} = Peer = proplists:get_value(peer, Opts),
     Nick = proplists:get_value(nick, Opts, <<"">>),
     Type = proplists:get_value(type, Opts, chat),
-    [jlib:jid_to_string(Peer), Nick, jlib:atom_to_binary(Type), Packet].
+    [jid:to_string(Peer), Nick, jlib:atom_to_binary(Type), Packet].
 
 enc_prefs(_, [Default, Always, Never]) ->
     prefs_to_p1db(#archive_prefs{

@@ -219,8 +219,8 @@ get_vcard_module(Server) ->
 
 get_rosteritem_name([], _, _) -> <<"">>;
 get_rosteritem_name([ModVcard], U, S) ->
-    From = jlib:make_jid(<<"">>, S, jlib:atom_to_binary(?MODULE)),
-    To = jlib:make_jid(U, S, <<"">>),
+    From = jid:make(<<"">>, S, jlib:atom_to_binary(?MODULE)),
+    To = jid:make(U, S, <<"">>),
     case lists:member(To#jid.lserver, ?MYHOSTS) of
         true ->
             IQ = {iq, <<"">>, get, <<"vcard-temp">>, <<"">>,
@@ -283,11 +283,11 @@ process_item(RosterItem, Host) ->
 	    %% existing roster groups.
 	    [] ->
 		mod_roster:out_subscription(UserTo, ServerTo,
-					    jlib:make_jid(UserFrom, ServerFrom,
+					    jid:make(UserFrom, ServerFrom,
 							  <<"">>),
 					    unsubscribe),
 		mod_roster:in_subscription(aaaa, UserFrom, ServerFrom,
-					   jlib:make_jid(UserTo, ServerTo,
+					   jid:make(UserTo, ServerTo,
 							 <<"">>),
 					   unsubscribe, <<"">>),
 		RosterItem#roster{subscription = both, ask = none};
@@ -312,8 +312,8 @@ set_new_rosteritems(UserFrom, ServerFrom, UserTo,
     RIFrom = build_roster_record(UserFrom, ServerFrom,
 				 UserTo, ServerTo, NameTo, GroupsFrom),
     set_item(UserFrom, ServerFrom, ResourceTo, RIFrom),
-    JIDTo = jlib:make_jid(UserTo, ServerTo, <<"">>),
-    JIDFrom = jlib:make_jid(UserFrom, ServerFrom, <<"">>),
+    JIDTo = jid:make(UserTo, ServerTo, <<"">>),
+    JIDFrom = jid:make(UserFrom, ServerFrom, <<"">>),
     RITo = build_roster_record(UserTo, ServerTo, UserFrom,
 			       ServerFrom, UserFrom, []),
     set_item(UserTo, ServerTo, <<"">>, RITo),
@@ -342,14 +342,14 @@ set_item(User, Server, Resource, Item) ->
 		    [#xmlel{name = <<"query">>,
 			    attrs = [{<<"xmlns">>, ?NS_ROSTER}],
 			    children = [mod_roster:item_to_xml(Item)]}]},
-    ejabberd_router:route(jlib:make_jid(User, Server,
+    ejabberd_router:route(jid:make(User, Server,
 					Resource),
-			  jlib:make_jid(<<"">>, Server, <<"">>),
+			  jid:make(<<"">>, Server, <<"">>),
 			  jlib:iq_to_xml(ResIQ)).
 
 get_subscription_lists({F, T, B}, User, Server) ->
-    LUser = jlib:nodeprep(User),
-    LServer = jlib:nameprep(Server),
+    LUser = jid:nodeprep(User),
+    LServer = jid:nameprep(Server),
     US = {LUser, LServer},
     DisplayedGroups = get_user_displayed_groups(US),
     SRUsers = lists:usort(lists:flatmap(fun (Group) ->
@@ -361,10 +361,10 @@ get_subscription_lists({F, T, B}, User, Server) ->
 
 get_jid_info({Subscription, Groups}, User, Server,
 	     JID) ->
-    LUser = jlib:nodeprep(User),
-    LServer = jlib:nameprep(Server),
+    LUser = jid:nodeprep(User),
+    LServer = jid:nameprep(Server),
     US = {LUser, LServer},
-    {U1, S1, _} = jlib:jid_tolower(JID),
+    {U1, S1, _} = jid:tolower(JID),
     US1 = {U1, S1},
     DisplayedGroups = get_user_displayed_groups(US),
     SRUsers = lists:foldl(fun (Group, Acc1) ->
@@ -394,7 +394,7 @@ in_subscription(Acc, User, Server, JID, Type,
 out_subscription(UserFrom, ServerFrom, JIDTo,
 		 unsubscribed) ->
     #jid{luser = UserTo, lserver = ServerTo} = JIDTo,
-    JIDFrom = jlib:make_jid(UserFrom, ServerFrom, <<"">>),
+    JIDFrom = jid:make(UserFrom, ServerFrom, <<"">>),
     mod_roster:out_subscription(UserTo, ServerTo, JIDFrom,
 				unsubscribe),
     mod_roster:in_subscription(aaaa, UserFrom, ServerFrom,
@@ -407,11 +407,11 @@ out_subscription(User, Server, JID, Type) ->
 
 process_subscription(Direction, User, Server, JID,
 		     _Type, Acc) ->
-    LUser = jlib:nodeprep(User),
-    LServer = jlib:nameprep(Server),
+    LUser = jid:nodeprep(User),
+    LServer = jid:nameprep(Server),
     US = {LUser, LServer},
     {U1, S1, _} =
-	jlib:jid_tolower(jlib:jid_remove_resource(JID)),
+	jid:tolower(jid:remove_resource(JID)),
     US1 = {U1, S1},
     DisplayedGroups = get_user_displayed_groups(US),
     SRUsers = lists:usort(lists:flatmap(fun (Group) ->
@@ -789,7 +789,7 @@ get_group_explicit_users(Host, Group, odbc) ->
       {selected, [<<"jid">>], Rs} ->
 	  lists:map(fun ([JID]) ->
 			    {U, S, _} =
-				jlib:jid_tolower(jlib:string_to_jid(JID)),
+				jid:tolower(jid:from_string(JID)),
 			    {U, S}
 		    end,
 		    Rs);
@@ -1127,8 +1127,8 @@ remove_user(User, Server) ->
     push_user_to_members(User, Server, remove).
 
 push_user_to_members(User, Server, Subscription) ->
-    LUser = jlib:nodeprep(User),
-    LServer = jlib:nameprep(Server),
+    LUser = jid:nodeprep(User),
+    LServer = jid:nameprep(Server),
     GroupsOpts = groups_with_opts(LServer),
     SpecialGroups =
 	get_special_displayed_groups(GroupsOpts),
@@ -1202,8 +1202,8 @@ push_item(User, Server, Item) ->
 					    attrs = [{<<"xmlns">>, ?NS_ROSTER}],
 					    children = [item_to_xml(Item)]}]}),
     lists:foreach(fun (Resource) ->
-			  JID = jlib:make_jid(User, Server, Resource),
-			  ejabberd_router:route(jlib:jid_remove_resource(JID), JID, Stanza)
+			  JID = jid:make(User, Server, Resource),
+			  ejabberd_router:route(jid:remove_resource(JID), JID, Stanza)
 		  end,
 		  ejabberd_sm:get_user_resources(User, Server)).
 
@@ -1218,7 +1218,7 @@ push_roster_item(User, Server, ContactU, ContactS,
 
 item_to_xml(Item) ->
     Attrs1 = [{<<"jid">>,
-	       jlib:jid_to_string(Item#roster.jid)}],
+	       jid:to_string(Item#roster.jid)}],
     Attrs2 = case Item#roster.name of
 	       <<"">> -> Attrs1;
 	       Name -> [{<<"name">>, Name} | Attrs1]
@@ -1476,7 +1476,7 @@ shared_roster_group_parse_query(Host, Group, Query) ->
 					     <<"@all@">> -> USs;
 					     <<"@online@">> -> USs;
 					     _ ->
-						 case jlib:string_to_jid(SJID)
+						 case jid:from_string(SJID)
 						     of
 						   JID
 						       when is_record(JID,
@@ -1536,7 +1536,7 @@ get_opt(Opts, Opt, Default) ->
     end.
 
 us_to_list({User, Server}) ->
-    jlib:jid_to_string({User, Server, <<"">>}).
+    jid:to_string({User, Server, <<"">>}).
 
 split_grouphost(Host, Group) ->
     case str:tokens(Group, <<"@">>) of
@@ -1546,8 +1546,8 @@ split_grouphost(Host, Group) ->
 
 broadcast_subscription(User, Server, ContactJid, Subscription) ->
     ejabberd_sm:route(
-		      jlib:make_jid(<<"">>, Server, <<"">>),
-		      jlib:make_jid(User, Server, <<"">>),
+		      jid:make(<<"">>, Server, <<"">>),
+		      jid:make(User, Server, <<"">>),
                       {broadcast, {item, ContactJid,
 				   Subscription}}).
 
@@ -1564,7 +1564,7 @@ displayed_groups_update(Members, DisplayedGroups, Subscription) ->
 	end, Members).
 
 make_jid_s(U, S) ->
-    ejabberd_odbc:escape(jlib:jid_to_string(jlib:jid_tolower(jlib:make_jid(U,
+    ejabberd_odbc:escape(jid:to_string(jid:tolower(jid:make(U,
 									   S,
 									   <<"">>)))).
 
@@ -1718,9 +1718,9 @@ export(_Server) ->
             when LServer == Host ->
               SGroup = ejabberd_odbc:escape(Group),
               SJID = ejabberd_odbc:escape(
-                       jlib:jid_to_string(
-                         jlib:jid_tolower(
-                           jlib:make_jid(U, S, <<"">>)))),
+                       jid:to_string(
+                         jid:tolower(
+                           jid:make(U, S, <<"">>)))),
               [[<<"delete from sr_user where jid='">>, SJID,
                 <<"'and grp='">>, Group, <<"';">>],
                [<<"insert into sr_user(jid, grp) values ('">>,
@@ -1742,7 +1742,7 @@ import(LServer, {odbc, _}, mnesia, <<"sr_group">>,
     mnesia:dirty_write(G);
 import(LServer, {odbc, _}, mnesia, <<"sr_user">>,
        [SJID, Group, _TimeStamp]) ->
-    #jid{luser = U, lserver = S} = jlib:string_to_jid(SJID),
+    #jid{luser = U, lserver = S} = jid:from_string(SJID),
     User = #sr_user{us = {U, S}, group_host = {Group, LServer}},
     mnesia:dirty_write(User);
 import(LServer, {odbc, _}, riak, <<"sr_group">>,
@@ -1751,7 +1751,7 @@ import(LServer, {odbc, _}, riak, <<"sr_group">>,
                   opts = ejabberd_odbc:decode_term(SOpts)},
     ejabberd_riak:put(G, sr_group_schema(), [{'2i', [{<<"host">>, LServer}]}]);
 import(LServer, {odbc, _}, riak, <<"sr_user">>, [SJID, Group|_]) ->
-    #jid{luser = U, lserver = S} = jlib:string_to_jid(SJID),
+    #jid{luser = U, lserver = S} = jid:from_string(SJID),
     User = #sr_user{us = {U, S}, group_host = {Group, LServer}},
     ejabberd_riak:put(User, sr_user_schema(),
                       [{i, {{U, S}, {Group, LServer}}},
@@ -1765,7 +1765,7 @@ import(LServer, {odbc, _}, p1db, <<"sr_group">>,
     p1db:async_insert(sr_opts, GHKey, Val);
 import(LServer, {odbc, _}, p1db, <<"sr_user">>,
        [SJID, Group, _TimeStamp]) ->
-    #jid{luser = U, lserver = S} = jlib:string_to_jid(SJID),
+    #jid{luser = U, lserver = S} = jid:from_string(SJID),
     US = {U, S},
     GHUSKey = ghus2key(Group, LServer, US),
     USHGKey = ushg2key(US, LServer, Group),
@@ -1843,7 +1843,7 @@ command_group_delete(Host, Id) ->
     code_to_restuple(mod_shared_roster:delete_group(Host, Id)).
 
 command_add_user(Host, Id, User) ->
-    Jid = jlib:string_to_jid(User),
+    Jid = jid:from_string(User),
     case Jid of
         error ->
             {error, "Invalid JID"};
@@ -1852,7 +1852,7 @@ command_add_user(Host, Id, User) ->
     end.
 
 command_remove_user(Host, Id, User) ->
-    Jid = jlib:string_to_jid(User),
+    Jid = jid:from_string(User),
     case Jid of
         error ->
             {error, "Invalid JID"};
@@ -1863,7 +1863,7 @@ command_remove_user(Host, Id, User) ->
 command_list_users(Host, Id) ->
     Users = mod_shared_roster:get_group_explicit_users(Host, Id),
     Jids = lists:map(fun({User, Server}) ->
-                             jlib:jid_to_string(jlib:make_jid(User, Server, <<"">>))
+                             jid:to_string(jid:make(User, Server, <<"">>))
                      end, Users),
     {{ok, ""}, Jids}.
 

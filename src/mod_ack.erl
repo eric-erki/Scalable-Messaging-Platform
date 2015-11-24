@@ -137,9 +137,9 @@ feature_inspect_packet(JID, Server,
     case HasReceipts of
       _ when Type == <<"error">> -> ok;
       {true, ID} ->
-	  case {jlib:string_to_jid(xml:get_attr_s(<<"from">>,
+	  case {jid:from_string(xml:get_attr_s(<<"from">>,
 						  Attrs)),
-		jlib:string_to_jid(xml:get_attr_s(<<"to">>, Attrs))}
+		jid:from_string(xml:get_attr_s(<<"to">>, Attrs))}
 	      of
 	    {#jid{} = From, #jid{} = To} ->
 		Pkt = {From, To, El},
@@ -273,7 +273,7 @@ process_ack_request(AckTagName,
 		    #xmlel{name = <<"message">>} = Packet) ->
     case has_receipt_request(Packet) of
       {true, ID} ->
-	  BareTo = jlib:jid_remove_resource(To),
+	  BareTo = jid:remove_resource(To),
 	  Message = #xmlel{name = <<"message">>,
 			   attrs = [{<<"id">>, ID}],
 			   children =
@@ -336,7 +336,7 @@ are_receipts_supported(Server,
 ping(From, To, Server, JID, El) ->
     ID = randoms:get_string(),
     add_timer(Server, {iq, ID}, JID, {From, To, El}),
-    ejabberd_router:route(jlib:make_jid(<<"">>, Server,
+    ejabberd_router:route(jid:make(<<"">>, Server,
 					<<"">>),
 			  JID,
 			  #xmlel{name = <<"iq">>,
@@ -348,13 +348,13 @@ ping(From, To, Server, JID, El) ->
 					     children = []}]}).
 
 add_timer(Host, ID, JID, Packet) ->
-    {U, S, R} = jlib:jid_tolower(JID),
+    {U, S, R} = jid:tolower(JID),
     C2SPid = ejabberd_sm:get_session_pid(U, S, R),
     ?GEN_SERVER:cast(gen_mod:get_module_proc(Host, ?PROCNAME),
 		    {add, ID, C2SPid, Packet}).
 
 del_timer(Host, ID, JID) ->
-    {U, S, R} = jlib:jid_tolower(JID),
+    {U, S, R} = jid:tolower(JID),
     C2SPid = ejabberd_sm:get_session_pid(U, S, R),
     ?GEN_SERVER:cast(gen_mod:get_module_proc(Host, ?PROCNAME),
 		    {del, ID, C2SPid}).

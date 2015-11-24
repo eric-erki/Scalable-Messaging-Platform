@@ -116,9 +116,9 @@ reopen_log(Host) ->
 
 packet(#xmlel{name = <<"message">>, attrs = Attrs} = Pkt, _C2SState, JID, To) ->
     case xml:get_attr_s(<<"type">>, Attrs) of
-	<<"normal">> -> log(JID#jid.lserver, JID, chat, [jlib:jid_to_string(To)]);
-	<<"chat">> -> log(JID#jid.lserver, JID, chat, [jlib:jid_to_string(To)]);
-	<<"groupchat">> -> log(JID#jid.lserver, JID, groupchat, [jlib:jid_to_string(To)]);
+	<<"normal">> -> log(JID#jid.lserver, JID, chat, [jid:to_string(To)]);
+	<<"chat">> -> log(JID#jid.lserver, JID, chat, [jid:to_string(To)]);
+	<<"groupchat">> -> log(JID#jid.lserver, JID, groupchat, [jid:to_string(To)]);
 	_ -> ok
     end,
     Pkt;
@@ -257,8 +257,8 @@ do_log(State, JID, Event, Specific) ->
         false ->
             TimeStamp = timestamp(),
             Host = State#state.host,
-            User = jlib:jid_to_string(jlib:jid_remove_resource(
-					jlib:jid_tolower(JID))),
+            User = jid:to_string(jid:remove_resource(
+					jid:tolower(JID))),
             {EventID, EventName} = event(Event),
             Node = atom_to_list(erlang:node()),
             Mandatory = join(lists:map(

@@ -193,7 +193,7 @@ try_register(User, Server, Password) ->
     case is_user_exists(User, Server) of
       true -> {atomic, exists};
       false ->
-	  LServer = jlib:nameprep(Server),
+	  LServer = jid:nameprep(Server),
 	  case lists:member(LServer, ?MYHOSTS) of
 	    true ->
                 MaxUsers = ejabberd_config:get_option({max_users, LServer},
@@ -377,7 +377,7 @@ remove_user(User, Server) ->
     lists:foreach(fun (M) -> M:remove_user(User, Server)
 		  end,
 		  auth_modules(Server)),
-    ejabberd_hooks:run(remove_user, jlib:nameprep(Server),
+    ejabberd_hooks:run(remove_user, jid:nameprep(Server),
 		       [User, Server]),
     ok.
 
@@ -395,7 +395,7 @@ remove_user(User, Server, Password) ->
 		    error, auth_modules(Server)),
     case R of
       ok ->
-	  ejabberd_hooks:run(remove_user, jlib:nameprep(Server),
+	  ejabberd_hooks:run(remove_user, jid:nameprep(Server),
 			     [User, Server]);
       _ -> none
     end,
@@ -446,7 +446,7 @@ auth_modules() ->
 
 %% Return the list of authenticated modules for a given host
 auth_modules(Server) ->
-    LServer = jlib:nameprep(Server),
+    LServer = jid:nameprep(Server),
     Default = case gen_mod:default_db(LServer) of
 		  mnesia -> internal;
 		  DBType -> DBType
@@ -491,10 +491,10 @@ import(_LServer, {odbc, _}, odbc, <<"users">>, _) ->
 create_users(UserPattern, PassPattern, Server, Total, DBType) ->
     lists:foreach(
       fun(I) ->
-              LUser = jlib:nodeprep(
+              LUser = jid:nodeprep(
                         iolist_to_binary([UserPattern, integer_to_list(I)])),
               Pass = iolist_to_binary([PassPattern, integer_to_list(I)]),
-              LServer = jlib:nameprep(Server),
+              LServer = jid:nameprep(Server),
               US = {LUser, LServer},
               case DBType of
                   mnesia ->

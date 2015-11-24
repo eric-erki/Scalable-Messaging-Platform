@@ -385,7 +385,7 @@ get_env(App, Key, Default) ->
 offline_message_hook(_From, #jid{lserver=LServer}, _Packet) ->
     cast(LServer, {inc, offline_message}).
 resend_offline_messages_hook(Ls, _User, Server) ->
-    cast(jlib:nameprep(Server), {inc, resend_offline_messages}),
+    cast(jid:nameprep(Server), {inc, resend_offline_messages}),
     Ls.
 
 sm_register_connection_hook(_SID, #jid{luser=LUser,lserver=LServer}, Info) ->
@@ -405,17 +405,17 @@ sm_remove_connection_hook(_SID, #jid{lserver=LServer}, Info) ->
     cast(LServer, {inc, Hook}).
 
 roster_in_subscription(Ls, _User, Server, _To, _Type, _Reason) ->
-    cast(jlib:nameprep(Server), {inc, roster_in_subscription}),
+    cast(jid:nameprep(Server), {inc, roster_in_subscription}),
     Ls.
 roster_out_subscription(_User, Server, _To, _Type) ->
-    cast(jlib:nameprep(Server), {inc, roster_out_subscription}).
+    cast(jid:nameprep(Server), {inc, roster_out_subscription}).
 
 user_available_hook(#jid{lserver=LServer}) ->
     cast(LServer, {inc, user_available_hook}).
 unset_presence_hook(_User, Server, _Resource, _Status) ->
-    cast(jlib:nameprep(Server), {inc, unset_presence_hook}).
+    cast(jid:nameprep(Server), {inc, unset_presence_hook}).
 set_presence_hook(_User, Server, _Resource, _Presence) ->
-    cast(jlib:nameprep(Server), {inc, set_presence_hook}).
+    cast(jid:nameprep(Server), {inc, set_presence_hook}).
 
 user_send_packet(#xmlel{name=Name, attrs=Attrs} = Packet,
                  _C2SState, #jid{lserver=LServer}, _To) ->
@@ -467,9 +467,9 @@ backend_api_badauth(LServer, _Method, _Path) ->
     cast(LServer, {inc, backend_api_badauth}).
 
 remove_user(_User, Server) ->
-    cast(jlib:nameprep(Server), {inc, remove_user}).
+    cast(jid:nameprep(Server), {inc, remove_user}).
 register_user(_User, Server) ->
-    cast(jlib:nameprep(Server), {inc, register_user}).
+    cast(jid:nameprep(Server), {inc, register_user}).
 
 %muc_create(_Host, ServerHost, _Room, _JID) ->
 %    cast(ServerHost, {inc, muc_rooms}),

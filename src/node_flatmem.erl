@@ -106,8 +106,8 @@ unsubscribe_node(Nidx, Sender, Subscriber, SubId) ->
     node_flat:unsubscribe_node(Nidx, Sender, Subscriber, SubId).
 
 publish_item(Nidx, Publisher, PublishModel, _MaxItems, _ItemId, _Payload) ->
-    SubKey = jlib:jid_tolower(Publisher),
-    GenKey = jlib:jid_remove_resource(SubKey),
+    SubKey = jid:tolower(Publisher),
+    GenKey = jid:remove_resource(SubKey),
     GenState = get_state(Nidx, GenKey),
     SubState = case SubKey of
 	GenKey -> GenState;

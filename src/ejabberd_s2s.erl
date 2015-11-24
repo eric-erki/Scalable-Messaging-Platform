@@ -308,8 +308,8 @@ code_change(_OldVsn, State, _Extra) ->
 do_route(From, To, Packet) ->
     ?DEBUG("s2s manager~n\tfrom ~s~n\tto ~s~n\tpacket "
 	   "~P~n",
-	   [jlib:jid_to_string(From),
-	    jlib:jid_to_string(To),
+	   [jid:to_string(From),
+	    jid:to_string(To),
 	    Packet, 8]),
     case find_connection(From, To) of
       {atomic, Pid} when is_pid(Pid) ->
@@ -317,8 +317,8 @@ do_route(From, To, Packet) ->
 	  #xmlel{name = Name, attrs = Attrs, children = Els} =
 	      Packet,
 	  NewAttrs =
-	      jlib:replace_from_to_attrs(jlib:jid_to_string(From),
-					 jlib:jid_to_string(To), Attrs),
+	      jlib:replace_from_to_attrs(jid:to_string(From),
+					 jid:to_string(To), Attrs),
 	  #jid{lserver = MyServer} = From,
 	  ejabberd_hooks:run(s2s_send_packet, MyServer,
 			     [From, To, Packet]),
@@ -385,7 +385,7 @@ choose_pid(From, Pids) ->
 	      Ps -> Ps
 	    end,
     Pid =
-	lists:nth(erlang:phash(jlib:jid_remove_resource(From),
+	lists:nth(erlang:phash(jid:remove_resource(From),
 			       length(Pids1)),
 		  Pids1),
     ?DEBUG("Using ejabberd_s2s_out ~p~n", [Pid]),
@@ -429,7 +429,7 @@ new_connection(MyServer, Server, From, FromTo,
 
 max_s2s_connections_number_per_node({From, To}) ->
     case acl:match_rule(From, max_s2s_connections,
-			jlib:make_jid(<<"">>, To, <<"">>))
+			jid:make(<<"">>, To, <<"">>))
 	of
       Max when is_integer(Max) -> Max;
       _ -> ?DEFAULT_MAX_S2S_CONNECTIONS_NUMBER_PER_NODE
@@ -552,7 +552,7 @@ allow_host1(MyHost, S2SHost) ->
              s2s_access,
              fun(A) when is_atom(A) -> A end,
              all),
-    JID = jlib:make_jid(<<"">>, S2SHost, <<"">>),
+    JID = jid:make(<<"">>, S2SHost, <<"">>),
     case acl:match_rule(MyHost, Rule, JID) of
         deny -> false;
         allow ->
@@ -641,7 +641,7 @@ get_cert_domains(Cert) ->
 				       true -> error
 				    end,
 				if D /= error ->
-				       case jlib:string_to_jid(D) of
+				       case jid:from_string(D) of
 					 #jid{luser = <<"">>, lserver = LD,
 					      lresource = <<"">>} ->
 					     [LD];
@@ -677,7 +677,7 @@ get_cert_domains(Cert) ->
 							      when
 								is_binary(D) ->
 							      case
-								jlib:string_to_jid((D))
+								jid:from_string((D))
 								  of
 								#jid{luser =
 									 <<"">>,
@@ -700,7 +700,7 @@ get_cert_domains(Cert) ->
 						    ({dNSName, D})
 							when is_list(D) ->
 							case
-							  jlib:string_to_jid(list_to_binary(D))
+							  jid:from_string(list_to_binary(D))
 							    of
 							  #jid{luser = <<"">>,
 							       lserver = LD,

@@ -282,8 +282,8 @@ logged() ->
     lists:reverse(lists:map(fun (#filter_log{date = Date,
 					     from = From, to = To,
 					     message = Msg}) ->
-				    {Date, jlib:jid_to_string(From),
-				     jlib:jid_to_string(To), Msg}
+				    {Date, jid:to_string(From),
+				     jid:to_string(To), Msg}
 			    end,
 			    ets:tab2list(filter_log))).
 
@@ -293,7 +293,7 @@ logged(Limit) when is_integer(Limit) ->
     FinalList = if Len < Limit -> List;
 		   true -> lists:nthtail(Len - Limit, List)
 		end,
-    [{Date, jlib:jid_to_string(From), jlib:jid_to_string(To), Msg}
+    [{Date, jid:to_string(From), jid:to_string(To), Msg}
 	|| #filter_log{date=Date, from=From, to=To, message=Msg}
 	    <- lists:reverse(FinalList)].
 

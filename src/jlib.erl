@@ -35,16 +35,11 @@
                            binary_to_integer/1,
                            integer_to_binary/1]}).
 
--on_load(load_nif/0).
-
 -export([make_result_iq_reply/1, make_error_reply/3,
 	 make_error_reply/2, make_error_element/2,
 	 make_correct_from_to_attrs/3, replace_from_to_attrs/3,
 	 replace_from_to/3, replace_from_attrs/2, replace_from/2,
-	 remove_attr/2, make_jid/3, make_jid/1, split_jid/1, string_to_jid/1,
-	 jid_to_string/1, is_nodename/1, tolower/1, nodeprep/1,
-	 nameprep/1, resourceprep/1, jid_tolower/1,
-	 jid_remove_resource/1, jid_replace_resource/2,
+	 remove_attr/2, tolower/1,
 	 get_iq_namespace/1, iq_query_info/1,
 	 iq_query_or_response_info/1, is_iq_request_type/1,
 	 iq_to_xml/1, parse_xdata_submit/1,
@@ -59,13 +54,17 @@
 	 integer_to_binary/1, integer_to_binary/2,
 	 atom_to_binary/1, binary_to_atom/1, tuple_to_binary/1,
 	 l2i/1, i2l/1, i2l/2, queue_drop_while/2,
-	 expr_to_term/1, term_to_expr/1,
-	 string_to_usr/1, load_nif/0]).
+	 expr_to_term/1, term_to_expr/1]).
+
+%% The following functions are deprecated and will be removed soon
+%% Use corresponding functions from jid.erl instead
+-export([make_jid/3, make_jid/1, split_jid/1, string_to_jid/1,
+	 jid_to_string/1, is_nodename/1, nodeprep/1,
+	 nameprep/1, resourceprep/1, jid_tolower/1,
+	 jid_remove_resource/1, jid_replace_resource/2]).
 
 -include("ejabberd.hrl").
 -include("jlib.hrl").
-
--export_type([jid/0]).
 
 %send_iq(From, To, ID, SubTags) ->
 %    ok.
@@ -169,8 +168,8 @@ replace_from_to_attrs(From, To, Attrs) ->
 replace_from_to(From, To,
 		#xmlel{name = Name, attrs = Attrs, children = Els}) ->
     NewAttrs =
-	replace_from_to_attrs(jlib:jid_to_string(From),
-			      jlib:jid_to_string(To), Attrs),
+	replace_from_to_attrs(jid:to_string(From),
+			      jid:to_string(To), Attrs),
     #xmlel{name = Name, attrs = NewAttrs, children = Els}.
 
 -spec replace_from_attrs(binary(), [attr()]) -> [attr()].
@@ -183,7 +182,7 @@ replace_from_attrs(From, Attrs) ->
 
 replace_from(From,
 	     #xmlel{name = Name, attrs = Attrs, children = Els}) ->
-    NewAttrs = replace_from_attrs(jlib:jid_to_string(From),
+    NewAttrs = replace_from_attrs(jid:to_string(From),
 				  Attrs),
     #xmlel{name = Name, attrs = NewAttrs, children = Els}.
 
@@ -197,72 +196,29 @@ remove_attr(Attr,
 -spec make_jid(binary(), binary(), binary()) -> jid() | error.
 
 make_jid(User, Server, Resource) ->
-    case nodeprep(User) of
-      error -> error;
-      LUser ->
-	  case nameprep(Server) of
-	    error -> error;
-	    LServer ->
-		case resourceprep(Resource) of
-		  error -> error;
-		  LResource ->
-		      #jid{user = User, server = Server, resource = Resource,
-			   luser = LUser, lserver = LServer,
-			   lresource = LResource}
-		end
-	  end
-    end.
+    jid:make(User, Server, Resource).
 
 -spec make_jid({binary(), binary(), binary()}) -> jid() | error.
 
 make_jid({User, Server, Resource}) ->
-    make_jid(User, Server, Resource).
-
--spec string_to_usr(binary()) -> {binary(), binary(), binary()} | error.
-
-string_to_usr(_S) ->
-    erlang:nif_error(nif_not_loaded).
+    jid:make({User, Server, Resource}).
 
 %% This is the reverse of make_jid/1
--spec split_jid(jid()) -> {binary(), binary(), binary()} | error.                              
-split_jid(#jid{user = U, server = S, resource = R}) ->
-    {U, S, R};
-split_jid(_) ->
-    error.
+-spec split_jid(jid()) -> {binary(), binary(), binary()} | error.
+
+split_jid(J) -> jid:split(J).
 
 -spec string_to_jid(binary()) -> jid() | error.
 
-string_to_jid(S) ->
-    case string_to_usr(S) of
-        error -> error;
-        USR -> make_jid(USR)
-    end.
+string_to_jid(S) -> jid:from_string(S).
 
 -spec jid_to_string(jid() | ljid()) -> binary().
 
-jid_to_string(#jid{user = User, server = Server,
-		   resource = Resource}) ->
-    jid_to_string({User, Server, Resource});
-jid_to_string({N, S, R}) ->
-    Node = iolist_to_binary(N),
-    Server = iolist_to_binary(S),
-    Resource = iolist_to_binary(R),
-    S1 = case Node of
-	   <<"">> -> <<"">>;
-	   _ -> <<Node/binary, "@">>
-	 end,
-    S2 = <<S1/binary, Server/binary>>,
-    S3 = case Resource of
-	   <<"">> -> S2;
-	   _ -> <<S2/binary, "/", Resource/binary>>
-	 end,
-    S3.
+jid_to_string(J) -> jid:to_string(J).
 
 -spec is_nodename(binary()) -> boolean().
 
-is_nodename(Node) ->
-    N = nodeprep(Node),
-    (N /= error) and (N /= <<>>).
+is_nodename(Node) -> jid:is_nodename(Node).
 
 %tolower_c(C) when C >= $A, C =< $Z ->
 %    C + 32;
@@ -300,66 +256,30 @@ tolower_s([]) -> [].
 
 -spec nodeprep(binary()) -> binary() | error.
 
-nodeprep("") -> <<>>;
-nodeprep(S) when byte_size(S) < 1024 ->
-    R = stringprep:nodeprep(S),
-    if byte_size(R) < 1024 -> R;
-       true -> error
-    end;
-nodeprep(_) -> error.
+nodeprep(S) -> jid:nodeprep(S).
 
 -spec nameprep(binary()) -> binary() | error.
 
-nameprep(S) when byte_size(S) < 1024 ->
-    R = stringprep:nameprep(S),
-    if byte_size(R) < 1024 -> R;
-       true -> error
-    end;
-nameprep(_) -> error.
+nameprep(S) -> jid:nameprep(S).
 
 -spec resourceprep(binary()) -> binary() | error.
 
-resourceprep(S) when byte_size(S) < 1024 ->
-    R = stringprep:resourceprep(S),
-    if byte_size(R) < 1024 -> R;
-       true -> error
-    end;
-resourceprep(_) -> error.
+resourceprep(S) -> jid:resourceprep(S).
 
 -spec jid_tolower(jid() | ljid()) -> error | ljid().
 
-jid_tolower(#jid{luser = U, lserver = S,
-		 lresource = R}) ->
-    {U, S, R};
-jid_tolower({U, S, R}) ->
-    case nodeprep(U) of
-      error -> error;
-      LUser ->
-	  case nameprep(S) of
-	    error -> error;
-	    LServer ->
-		case resourceprep(R) of
-		  error -> error;
-		  LResource -> {LUser, LServer, LResource}
-		end
-	  end
-    end.
+jid_tolower(J) -> jid:tolower(J).
 
 -spec jid_remove_resource(jid()) -> jid();
                          (ljid()) -> ljid().
 
-jid_remove_resource(#jid{} = JID) ->
-    JID#jid{resource = <<"">>, lresource = <<"">>};
-jid_remove_resource({U, S, _R}) -> {U, S, <<"">>}.
+jid_remove_resource(JID) ->
+    jid:remove_resource(JID).
 
 -spec jid_replace_resource(jid(), binary()) -> error | jid().
 
 jid_replace_resource(JID, Resource) ->
-    case resourceprep(Resource) of
-      error -> error;
-      LResource ->
-	  JID#jid{resource = Resource, lresource = LResource}
-    end.
+    jid:replace_resource(JID, Resource).
 
 -spec get_iq_namespace(xmlel()) -> binary().
 
@@ -635,7 +555,7 @@ add_delay_info(El, From, Time, Desc) ->
 		       -> xmlel() | error.
 
 create_delay_tag(TimeStamp, FromJID, Desc) when is_tuple(FromJID) ->
-    From = jlib:jid_to_string(FromJID),
+    From = jid:to_string(FromJID),
     Stamp = now_to_utc_string(TimeStamp, 3),
     Children = case Desc of
 		 <<"">> -> [];
@@ -647,7 +567,7 @@ create_delay_tag(TimeStamp, FromJID, Desc) when is_tuple(FromJID) ->
 		{<<"stamp">>, Stamp}],
 	   children = Children};
 create_delay_tag(DateTime, Host, Desc) when is_binary(Host) ->
-    FromJID = jlib:make_jid(<<"">>, Host, <<"">>),
+    FromJID = jid:make(<<"">>, Host, <<"">>),
     create_delay_tag(DateTime, FromJID, Desc).
 
 -type tz() :: {binary(), {integer(), integer()}} | {integer(), integer()} | utc.
@@ -966,100 +886,6 @@ i2l(L, N) when is_binary(L) ->
       C when C > N -> L;
       _ -> i2l(<<$0, L/binary>>, N)
     end.
-
-load_nif() ->
-    load_nif(get_so_path()).
-
-load_nif(LibDir) ->
-    SOPath = filename:join(LibDir, "jlib"),
-    case catch erlang:load_nif(SOPath, 0) of
-        ok ->
-            ok;
-        Err ->
-            error_logger:warning_msg("unable to load jlib NIF: ~p~n", [Err]),
-            Err
-    end.
-
-get_so_path() ->
-    case os:getenv("EJABBERD_SO_PATH") of
-        false ->
-            EbinDir = filename:dirname(code:which(?MODULE)),
-            AppDir = filename:dirname(EbinDir),
-            filename:join([AppDir, "priv", "lib"]);
-        Path ->
-            Path
-    end.
-
-%%%===================================================================
-%%% Unit tests
-%%%===================================================================
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
-
-permute(Xs) ->
-    permute(Xs, []).
-
-permute([X|Xs], Ys) ->
-    [[X|T] || T <- permute(Xs ++ Ys, [])] ++ permute(Xs, [X|Ys]);
-permute([], []) ->
-    [[]];
-permute([], _Ys) ->
-    [].
-
-string_to_usr_empty_test() ->
-    ?assertEqual(error, jlib:string_to_usr(<<"">>)).
-
-string_to_usr_server_test() ->
-    ?assertEqual({<<"">>, <<"server">>, <<"">>},
-                 jlib:string_to_usr(<<"server">>)).
-
-string_to_usr_amp_test() ->
-    ?assertEqual(error, jlib:string_to_usr(<<"@">>)),
-    ?assertEqual(error, jlib:string_to_usr(<<"@server">>)),
-    ?assertEqual(error, jlib:string_to_usr(<<"user@">>)),
-    ?assertEqual({<<"user">>, <<"server">>, <<"">>},
-                 jlib:string_to_usr(<<"user@server">>)).
-
-string_to_usr_slash_test() ->
-    ?assertEqual(error, jlib:string_to_usr(<<"/">>)),
-    ?assertEqual(error, jlib:string_to_usr(<<"/resource">>)),
-    ?assertEqual(error, jlib:string_to_usr(<<"server/">>)),
-    ?assertEqual({<<"">>, <<"server">>, <<"resource">>},
-                 jlib:string_to_usr(<<"server/resource">>)).
-
-string_to_usr_amp_slash_test() ->
-    ?assertEqual(error, jlib:string_to_usr(<<"@/">>)),
-    ?assertEqual(error, jlib:string_to_usr(<<"@/resource">>)),
-    ?assertEqual(error, jlib:string_to_usr(<<"@server/">>)),
-    ?assertEqual(error, jlib:string_to_usr(<<"@server/resource">>)),
-    ?assertEqual(error, jlib:string_to_usr(<<"user@/">>)),
-    ?assertEqual(error, jlib:string_to_usr(<<"user@server/">>)),
-    ?assertEqual(error, jlib:string_to_usr(<<"user@/resource">>)),
-    ?assertEqual({<<"user">>, <<"server">>, <<"resource">>},
-                 jlib:string_to_usr(<<"user@server/resource">>)).
-
-string_to_usr_double_amp_test() ->
-    ?assertEqual(error, jlib:string_to_usr(<<"@@">>)),
-    ?assertEqual(error, jlib:string_to_usr(<<"@@resource">>)),
-    ?assertEqual(error, jlib:string_to_usr(<<"@server@">>)),
-    ?assertEqual(error, jlib:string_to_usr(<<"@server@resource">>)),
-    ?assertEqual(error, jlib:string_to_usr(<<"user@@">>)),
-    ?assertEqual(error, jlib:string_to_usr(<<"user@server@">>)),
-    ?assertEqual(error, jlib:string_to_usr(<<"user@@resource">>)),
-    ?assertEqual(error, jlib:string_to_usr(<<"user@server@resource">>)).
-
-string_to_usr_resource_test() ->
-    lists:foreach(
-      fun(R) ->
-              ?assertEqual({<<"">>, <<"server">>, R},
-                           jlib:string_to_usr(<<"server/", R/binary>>)),
-              ?assertEqual({<<"user">>, <<"server">>, R},
-                           jlib:string_to_usr(<<"user@server/", R/binary>>))
-      end,
-      [list_to_binary(X) || X <- permute([$@, $/, $x, $y, $z])]).
-
--endif.
-
 
 -spec queue_drop_while(fun((term()) -> boolean()), ?TQUEUE) -> ?TQUEUE.
 

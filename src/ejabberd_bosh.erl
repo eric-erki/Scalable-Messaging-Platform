@@ -762,8 +762,8 @@ bounce_els_from_obuf(State) ->
 				     Name == <<"iq">> ->
 				FromS = xml:get_attr_s(<<"from">>, Attrs),
 				ToS = xml:get_attr_s(<<"to">>, Attrs),
-				case {jlib:string_to_jid(FromS),
-				      jlib:string_to_jid(ToS)}
+				case {jid:from_string(FromS),
+				      jid:from_string(ToS)}
 				    of
 				  {#jid{} = From, #jid{} = To} ->
 				      ejabberd_router:route(From, To, El);
@@ -968,7 +968,7 @@ attrs_to_body_attrs(Attrs) ->
 			      <<"xmpp:restart">> ->
 				  [{'xmpp:restart', to_bool(Val)} | Acc];
 			      <<"to">> ->
-				  [{to, jlib:nameprep(Val)} | Acc];
+				  [{to, jid:nameprep(Val)} | Acc];
 			      <<"wait">> -> [{wait, to_int(Val, 0)} | Acc];
 			      <<"ack">> -> [{ack, to_int(Val, 0)} | Acc];
 			      <<"sid">> -> [{sid, Val} | Acc];
@@ -1110,6 +1110,6 @@ start_shaper_timer(Timeout) ->
 
 make_random_jid(Host) ->
     User = randoms:get_string(),
-    jlib:make_jid(User, Host, randoms:get_string()).
+    jid:make(User, Host, randoms:get_string()).
 
 make_socket(Pid, IP) -> {http_bind, Pid, IP}.

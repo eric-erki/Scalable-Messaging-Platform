@@ -70,8 +70,8 @@ offline_packet(From, To, Packet) ->
             if (Type == <<"normal">>) or (Type == <<"">>) or
                (Type == <<"chat">>),
                Body /= <<"">> ->
-                    SFrom = jlib:jid_to_string(From),
-                    STo = jlib:jid_to_string(To),
+                    SFrom = jid:to_string(From),
+                    STo = jid:to_string(To),
                     Params =
                         [{"notification_type", "offline"},
                          {"from", SFrom},
@@ -91,7 +91,7 @@ user_available(JID) ->
     Host = JID#jid.lserver,
     case gen_mod:get_module_opt(Host, ?MODULE, user_available, fun v_fun/1) of
         {URL, AuthToken} ->
-            SJID = jlib:jid_to_string(JID),
+            SJID = jid:to_string(JID),
             Params =
                 [{"notification_type", "available"},
                  {"jid", SJID},
@@ -103,11 +103,11 @@ user_available(JID) ->
     end.
 
 set_presence(User, Server, Resource, _Presence) ->
-    Host = jlib:nameprep(Server),
+    Host = jid:nameprep(Server),
     case gen_mod:get_module_opt(Host, ?MODULE, set_presence, fun v_fun/1) of
         {URL, AuthToken} ->
-            JID = jlib:make_jid(User, Server, Resource),
-            SJID = jlib:jid_to_string(JID),
+            JID = jid:make(User, Server, Resource),
+            SJID = jid:to_string(JID),
             Params =
                 [{"notification_type", "set-presence"},
                  {"jid", SJID},
@@ -119,11 +119,11 @@ set_presence(User, Server, Resource, _Presence) ->
     end.
 
 user_unavailable(User, Server, Resource, _Status) ->
-    Host = jlib:nameprep(Server),
+    Host = jid:nameprep(Server),
     case gen_mod:get_module_opt(Host, ?MODULE, unset_presence, fun v_fun/1) of
         {URL, AuthToken} ->
-            JID = jlib:make_jid(User, Server, Resource),
-            SJID = jlib:jid_to_string(JID),
+            JID = jid:make(User, Server, Resource),
+            SJID = jid:to_string(JID),
             Params =
                 [{"notification_type", "unavailable"},
                  {"jid", SJID},

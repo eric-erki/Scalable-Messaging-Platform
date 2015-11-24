@@ -113,7 +113,7 @@ stop(Host) ->
 -define(NODEJID(To, Name, Node),
 	#xmlel{name = <<"item">>,
 	       attrs =
-		   [{<<"jid">>, jlib:jid_to_string(To)},
+		   [{<<"jid">>, jid:to_string(To)},
 		    {<<"name">>, ?T(Lang, Name)}, {<<"node">>, Node}],
 	       children = []}).
 
@@ -291,7 +291,7 @@ adhoc_sm_items(Acc, From, #jid{lserver = LServer} = To,
 		  end,
 	  Nodes = [#xmlel{name = <<"item">>,
 			  attrs =
-			      [{<<"jid">>, jlib:jid_to_string(To)},
+			      [{<<"jid">>, jid:to_string(To)},
 			       {<<"name">>, ?T(Lang, <<"Configuration">>)},
 			       {<<"node">>, <<"config">>}],
 			  children = []}],
@@ -414,7 +414,7 @@ get_permission_level(JID) ->
 	  allow ->
 	      PermLev = get_permission_level(From),
 	      case get_local_items({PermLev, LServer}, LNode,
-				   jlib:jid_to_string(To), Lang)
+				   jid:to_string(To), Lang)
 		  of
 		{result, Res} -> {result, Res};
 		{error, Error} -> {error, Error}
@@ -436,7 +436,7 @@ get_local_items(Acc, From, #jid{lserver = LServer} = To,
 	    allow ->
 		PermLev = get_permission_level(From),
 		case get_local_items({PermLev, LServer}, [],
-				     jlib:jid_to_string(To), Lang)
+				     jid:to_string(To), Lang)
 		    of
 		  {result, Res} -> {result, Items ++ Res};
 		  {error, _Error} -> {result, Items}
@@ -1816,7 +1816,7 @@ set_form(From, Host, ?NS_ADMINL(<<"add-user">>), _Lang,
     AccountString = get_value(<<"accountjid">>, XData),
     Password = get_value(<<"password">>, XData),
     Password = get_value(<<"password-verify">>, XData),
-    AccountJID = jlib:string_to_jid(AccountString),
+    AccountJID = jid:from_string(AccountString),
     User = AccountJID#jid.luser,
     Server = AccountJID#jid.lserver,
     true = lists:member(Server, ?MYHOSTS),
@@ -1830,7 +1830,7 @@ set_form(From, Host, ?NS_ADMINL(<<"delete-user">>),
 				   XData),
     [_ | _] = AccountStringList,
     ASL2 = lists:map(fun (AccountString) ->
-			     JID = jlib:string_to_jid(AccountString),
+			     JID = jid:from_string(AccountString),
 			     User = JID#jid.luser,
 			     Server = JID#jid.lserver,
 			     true = Server == Host orelse
@@ -1845,7 +1845,7 @@ set_form(From, Host, ?NS_ADMINL(<<"delete-user">>),
 set_form(From, Host, ?NS_ADMINL(<<"end-user-session">>),
 	 _Lang, XData) ->
     AccountString = get_value(<<"accountjid">>, XData),
-    JID = jlib:string_to_jid(AccountString),
+    JID = jid:from_string(AccountString),
     LUser = JID#jid.luser,
     LServer = JID#jid.lserver,
     true = LServer == Host orelse
@@ -1870,7 +1870,7 @@ set_form(From, Host, ?NS_ADMINL(<<"end-user-session">>),
 set_form(From, Host,
 	 ?NS_ADMINL(<<"get-user-password">>), Lang, XData) ->
     AccountString = get_value(<<"accountjid">>, XData),
-    JID = jlib:string_to_jid(AccountString),
+    JID = jid:from_string(AccountString),
     User = JID#jid.luser,
     Server = JID#jid.lserver,
     true = Server == Host orelse
@@ -1890,7 +1890,7 @@ set_form(From, Host,
 	 ?NS_ADMINL(<<"change-user-password">>), _Lang, XData) ->
     AccountString = get_value(<<"accountjid">>, XData),
     Password = get_value(<<"password">>, XData),
-    JID = jlib:string_to_jid(AccountString),
+    JID = jid:from_string(AccountString),
     User = JID#jid.luser,
     Server = JID#jid.lserver,
     true = Server == Host orelse
@@ -1901,7 +1901,7 @@ set_form(From, Host,
 set_form(From, Host,
 	 ?NS_ADMINL(<<"get-user-lastlogin">>), Lang, XData) ->
     AccountString = get_value(<<"accountjid">>, XData),
-    JID = jlib:string_to_jid(AccountString),
+    JID = jid:from_string(AccountString),
     User = JID#jid.luser,
     Server = JID#jid.lserver,
     true = Server == Host orelse
@@ -1936,7 +1936,7 @@ set_form(From, Host,
 set_form(From, Host, ?NS_ADMINL(<<"user-stats">>), Lang,
 	 XData) ->
     AccountString = get_value(<<"accountjid">>, XData),
-    JID = jlib:string_to_jid(AccountString),
+    JID = jid:from_string(AccountString),
     User = JID#jid.luser,
     Server = JID#jid.lserver,
     true = Server == Host orelse
@@ -2029,7 +2029,7 @@ stop_node(From, Host, ENode, Action, XData) ->
 						     ?NS_XDATA},
 						    {<<"type">>, <<"submit">>}],
 					       children = SubEls}]},
-	  To = jlib:make_jid(<<"">>, Host, <<"">>),
+	  To = jid:make(<<"">>, Host, <<"">>),
 	  mod_announce:announce_commands(empty, From, To, Request)
     end,
     Time = timer:seconds(Delay),

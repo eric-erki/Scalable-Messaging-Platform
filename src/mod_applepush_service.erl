@@ -257,8 +257,8 @@ handle_info({ssl, Socket, Packet}, State)
                     ?ERROR_MSG("PUSH ERROR for ~p: ~p", [JID, Status]),
 		    if
 			Status == 8 ->
-			    From = jlib:make_jid(<<"">>, State#state.host, <<"">>),
-                            BJID = jlib:jid_remove_resource(JID),
+			    From = jid:make(<<"">>, State#state.host, <<"">>),
+                            BJID = jid:remove_resource(JID),
                             ejabberd_router:route(
                               From, BJID,
                               #xmlel{name = <<"iq">>,
@@ -731,12 +731,12 @@ parse_feedback_buf(Buf, State) ->
 		      [State#state.host, erlang:integer_to_list(DeviceID, 16)]),
 	    case dict:find(DeviceID, State#state.device_cache) of
 		{ok, {_Counter, JID}} ->
-                    BJID = jlib:jid_remove_resource(JID),
+                    BJID = jid:remove_resource(JID),
                     ?INFO_MSG("(~p) sending feedback for ~s to ~s~n",
                               [State#state.host,
                                erlang:integer_to_list(DeviceID, 16),
-                               jlib:jid_to_string(BJID)]),
-		    From = jlib:make_jid(<<"">>, State#state.host, <<"">>),
+                               jid:to_string(BJID)]),
+		    From = jid:make(<<"">>, State#state.host, <<"">>),
 		    ejabberd_router:route(
 		      From, BJID,
 		      #xmlel{name = <<"iq">>,

@@ -113,4 +113,4 @@ static ErlNifFunc nif_funcs[] =
     {"string_to_usr", 1, string_to_usr}
   };
 
-ERL_NIF_INIT(jlib, nif_funcs, load, NULL, NULL, NULL)
+ERL_NIF_INIT(jid, nif_funcs, load, NULL, NULL, NULL)

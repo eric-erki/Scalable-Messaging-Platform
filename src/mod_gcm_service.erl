@@ -400,9 +400,9 @@ update_device_id(JID, OldDeviceID, CanonicalID, State) ->
     ?INFO_MSG("(~p) refreshing ID: old: ~s -> new: "
 	      "~s to ~s~n",
 	      [State#state.host, OldDeviceID, CanonicalID,
-	       jlib:jid_to_string(JID)]),
-    From = jlib:make_jid(<<"">>, State#state.host, <<"">>),
-    BJID = jlib:jid_remove_resource(JID),
+	       jid:to_string(JID)]),
+    From = jid:make(<<"">>, State#state.host, <<"">>),
+    BJID = jid:remove_resource(JID),
     ejabberd_router:route(From, BJID,
 			  #xmlel{name = <<"iq">>,
 				 attrs =
@@ -535,14 +535,14 @@ iq_disco(Lang) ->
 	    attrs = [{<<"var">>, ?NS_DISCO_INFO}], children = []}].
 
 disable_push(JID, DeviceID, State) ->
-    From = jlib:make_jid(<<"">>, State#state.host, <<"">>),
+    From = jid:make(<<"">>, State#state.host, <<"">>),
     {Mega, Sec, Micro} = now(),
     TimeStamp = (Mega * 1000000 * 1000000 + Sec * 1000000 +
 		   Micro)
 		  div 1000,
-    BJID = jlib:jid_remove_resource(JID),
+    BJID = jid:remove_resource(JID),
     ?INFO_MSG("(~p) disabling push for device ~s with JID ~s~n",
-	      [State#state.host, DeviceID, jlib:jid_to_string(BJID)]),
+	      [State#state.host, DeviceID, jid:to_string(BJID)]),
     ejabberd_router:route(From, BJID,
 			  #xmlel{name = <<"iq">>,
 				 attrs =

@@ -37,7 +37,7 @@
 
 salted_password(Password, Salt, IterationCount)
   when IterationCount > 1 ->
-    hi(jlib:resourceprep(Password), Salt, IterationCount).
+    hi(jid:resourceprep(Password), Salt, IterationCount).
 
 -spec client_key(binary()) -> binary().
 

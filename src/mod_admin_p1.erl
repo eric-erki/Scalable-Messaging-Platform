@@ -395,9 +395,9 @@ unlink_contacts(JID1, JID2) ->
 
 unlink_contacts(JID1, JID2, Push) ->
     {U1, S1, _} =
-	jlib:jid_tolower(jlib:string_to_jid(JID1)),
+	jid:tolower(jid:from_string(JID1)),
     {U2, S2, _} =
-	jlib:jid_tolower(jlib:string_to_jid(JID2)),
+	jid:tolower(jid:from_string(JID2)),
     case {ejabberd_auth:is_user_exists(U1, S1),
 	  ejabberd_auth:is_user_exists(U2, S2)}
 	of
@@ -426,10 +426,10 @@ set_rosternick(U, S, N) ->
     user_action(U, S, Fun, ok).
 
 change_rosternick(User, Server, Nick) ->
-    LUser = jlib:nodeprep(User),
-    LServer = jlib:nameprep(Server),
+    LUser = jid:nodeprep(User),
+    LServer = jid:nameprep(Server),
     LJID = {LUser, LServer, <<"">>},
-    JID = jlib:jid_to_string(LJID),
+    JID = jid:to_string(LJID),
     Push = fun(Subscription) ->
 	jlib:iq_to_xml(#iq{type = set, xmlns = ?NS_ROSTER, id = <<"push">>,
 			   sub_el = [#xmlel{name = <<"query">>, attrs = [{<<"xmlns">>, ?NS_ROSTER}],
@@ -444,7 +444,7 @@ change_rosternick(User, Server, Nick) ->
 			{U, S} = Roster#roster.us,
 			mnesia:write(Roster#roster{name = Nick}),
 			lists:foreach(fun(R) ->
-			    UJID = jlib:make_jid(U, S, R),
+			    UJID = jid:make(U, S, R),
 			    ejabberd_router:route(UJID, UJID, Push(Roster#roster.subscription))
 			end, get_resources(U, S))
 		    end, mnesia:match_object(#roster{jid = LJID, _ = '_'}))
@@ -466,7 +466,7 @@ change_rosternick(User, Server, Nick) ->
 			{selected, [<<"username">>], Users} ->
 			    lists:foreach(fun({RU}) ->
 				lists:foreach(fun(R) ->
-				    UJID = jlib:make_jid(RU, Server, R),
+				    UJID = jid:make(RU, Server, R),
 				    ejabberd_router:route(UJID, UJID, Push(both))
 				end, get_resources(RU, Server))
 			    end, Users);
@@ -489,7 +489,7 @@ change_rosternick(User, Server, Nick) ->
 
 add_rosteritem_groups(User, Server, JID,
 		      NewGroupsString, PushString) ->
-    {U1, S1, _} = jlib:jid_tolower(jlib:string_to_jid(JID)),
+    {U1, S1, _} = jid:tolower(jid:from_string(JID)),
     NewGroups = str:tokens(NewGroupsString, <<";">>),
     Push = jlib:binary_to_atom(PushString),
     case {ejabberd_auth:is_user_exists(U1, S1),
@@ -507,7 +507,7 @@ add_rosteritem_groups(User, Server, JID,
 
 del_rosteritem_groups(User, Server, JID,
 		      NewGroupsString, PushString) ->
-    {U1, S1, _} = jlib:jid_tolower(jlib:string_to_jid(JID)),
+    {U1, S1, _} = jid:tolower(jid:from_string(JID)),
     NewGroups = str:tokens(NewGroupsString, <<";">>),
     Push = jlib:binary_to_atom(PushString),
     case {ejabberd_auth:is_user_exists(U1, S1),
@@ -527,7 +527,7 @@ modify_rosteritem_groups(User, Server, JID,
 			 NewGroupsString, SubsString, PushString) ->
     Nick = <<"">>,
     Subs = jlib:binary_to_atom(SubsString),
-    {_, _, _} = jlib:jid_tolower(jlib:string_to_jid(JID)),
+    {_, _, _} = jid:tolower(jid:from_string(JID)),
     NewGroups = str:tokens(NewGroupsString, <<";">>),
     Push = jlib:binary_to_atom(PushString),
     case ejabberd_auth:is_user_exists(User, Server) of
@@ -558,7 +558,7 @@ del_rosteritem_groups2(User, Server, JID, NewGroups,
 modify_rosteritem_groups2(User, Server, JID2, NewGroups,
 			  _Push, _Nick, _Subs)
     when NewGroups == [] ->
-    JID1 = jlib:jid_to_string(jlib:make_jid(User, Server,
+    JID1 = jid:to_string(jid:make(User, Server,
 					    <<"">>)),
     case unlink_contacts(JID1, JID2) of
       0 -> ok;
@@ -577,10 +577,10 @@ change_rosteritem_group(User, Server, JID, GroupsFun,
 
 change_rosteritem_group(User, Server, JID, GroupsFun,
 			Push, NewGroups, Nick, Subs) ->
-    {RU, RS, _} = jlib:jid_tolower(jlib:string_to_jid(JID)),
+    {RU, RS, _} = jid:tolower(jid:from_string(JID)),
     LJID = {RU, RS, <<>>},
-    LUser = jlib:nodeprep(User),
-    LServer = jlib:nameprep(Server),
+    LUser = jid:nodeprep(User),
+    LServer = jid:nameprep(Server),
     Result = case roster_backend(LServer) of
 	       mnesia ->
 		   mnesia:transaction(fun () ->
@@ -607,7 +607,7 @@ change_rosteritem_group(User, Server, JID, GroupsFun,
 							 Username =
 							     ejabberd_odbc:escape(User),
 							 SJID =
-							     ejabberd_odbc:escape(jlib:jid_to_string(LJID)),
+							     ejabberd_odbc:escape(jid:to_string(LJID)),
 							 case
 							   ejabberd_odbc:sql_query_t([<<"select nick, subscription from rosterusers "
 											"      where username='">>,
@@ -695,7 +695,7 @@ transport_register(Host, TransportString, JIDString,
 		   Username, Password) ->
     TransportAtom = jlib:binary_to_atom(TransportString),
     case {lists:member(Host, ?MYHOSTS),
-	  jlib:string_to_jid(JIDString)}
+	  jid:from_string(JIDString)}
 	of
       {true, JID} when is_record(JID, jid) ->
 	  case catch apply(gen_transport, register, [Host, TransportAtom,
@@ -717,8 +717,8 @@ transport_register(Host, TransportString, JIDString,
 %%%
 
 send_chat(FromJID, ToJID, Msg) ->
-    From = jlib:string_to_jid(FromJID),
-    To = jlib:string_to_jid(ToJID),
+    From = jid:from_string(FromJID),
+    To = jid:from_string(ToJID),
     Stanza = #xmlel{name = <<"message">>,
 		    attrs = [{<<"type">>, <<"chat">>}],
 		    children =
@@ -728,8 +728,8 @@ send_chat(FromJID, ToJID, Msg) ->
     0.
 
 send_message(FromJID, ToJID, Sub, Msg) ->
-    From = jlib:string_to_jid(FromJID),
-    To = jlib:string_to_jid(ToJID),
+    From = jid:from_string(FromJID),
+    To = jid:from_string(ToJID),
     Stanza = #xmlel{name = <<"message">>,
 		    attrs = [{<<"type">>, <<"normal">>}],
 		    children =
@@ -746,9 +746,9 @@ send_stanza(FromJID, ToJID, StanzaStr) ->
       Stanza ->
 	  #xmlel{attrs = Attrs} = Stanza,
 	  From =
-	      jlib:string_to_jid(proplists:get_value(<<"from">>,
+	      jid:from_string(proplists:get_value(<<"from">>,
 						     Attrs, FromJID)),
-	  To = jlib:string_to_jid(proplists:get_value(<<"to">>,
+	  To = jid:from_string(proplists:get_value(<<"to">>,
 						      Attrs, ToJID)),
 	  ejabberd_router:route(From, To, Stanza),
 	  0
@@ -756,7 +756,7 @@ send_stanza(FromJID, ToJID, StanzaStr) ->
 
 start_mass_message(Host, File, Rate)
 	when is_binary(Host), is_binary(File), is_integer(Rate) ->
-    From = jlib:make_jid(<<>>, Host, <<>>),
+    From = jid:make(<<>>, Host, <<>>),
     Proc = gen_mod:get_module_proc(Host, ?MASSLOOP),
     Delay = 60000 div Rate,
     case global:whereis_name(Proc) of
@@ -899,14 +899,14 @@ server_health() ->
 %% -----------------------------
 
 get_roster2(User, Server) ->
-    LUser = jlib:nodeprep(User),
-    LServer = jlib:nameprep(Server),
+    LUser = jid:nodeprep(User),
+    LServer = jid:nameprep(Server),
     ejabberd_hooks:run_fold(roster_get, LServer, [], [{LUser, LServer}]).
 
 
 
 del_rosteritem(User, Server, JID, Push) ->
-    {RU, RS, _} = jlib:jid_tolower(jlib:string_to_jid(JID)),
+    {RU, RS, _} = jid:tolower(jid:from_string(JID)),
     LJID = {RU, RS, <<>>},
     Result = case roster_backend(Server) of
 	       mnesia ->
@@ -921,7 +921,7 @@ del_rosteritem(User, Server, JID, Push) ->
 							      Username =
 								  ejabberd_odbc:escape(User),
 							      SJID =
-								  ejabberd_odbc:escape(jlib:jid_to_string(LJID)),
+								  ejabberd_odbc:escape(jid:to_string(LJID)),
 							      odbc_queries:del_roster(Server,
 										      Username,
 										      SJID)
@@ -943,9 +943,9 @@ del_rosteritem(User, Server, JID, Push) ->
 
 unlink_contacts2(JID1, JID2, Push) ->
     {U1, S1, _} =
-	jlib:jid_tolower(jlib:string_to_jid(JID1)),
+	jid:tolower(jid:from_string(JID1)),
     {U2, S2, _} =
-	jlib:jid_tolower(jlib:string_to_jid(JID2)),
+	jid:tolower(jid:from_string(JID2)),
     case del_rosteritem(U1, S1, JID2, Push) of
       {atomic, ok} -> del_rosteritem(U2, S2, JID1, Push);
       Error -> Error
@@ -953,10 +953,10 @@ unlink_contacts2(JID1, JID2, Push) ->
 
 roster_push(User, Server, JID, Nick, Subscription,
 	    Groups) ->
-    TJID = jlib:string_to_jid(JID),
-    {TU, TS, _} = jlib:jid_tolower(TJID),
+    TJID = jid:from_string(JID),
+    {TU, TS, _} = jid:tolower(TJID),
 
-    mod_roster:invalidate_roster_cache(jlib:nodeprep(User), jlib:nameprep(Server)),
+    mod_roster:invalidate_roster_cache(jid:nodeprep(User), jid:nameprep(Server)),
 
     Presence = #xmlel{name = <<"presence">>,
 		      attrs =
@@ -992,14 +992,14 @@ roster_push(User, Server, JID, Nick, Subscription,
 							children =
 							    ItemGroups}]}]}),
     lists:foreach(fun (Resource) ->
-			  UJID = jlib:make_jid(User, Server, Resource),
+			  UJID = jid:make(User, Server, Resource),
 			  ejabberd_router:route(TJID, UJID, Presence),
 			  ejabberd_router:route(UJID, UJID, Result),
 			  case Subscription of
 			    <<"remove">> -> none;
 			    _ ->
 				lists:foreach(fun (TR) ->
-						      ejabberd_router:route(jlib:make_jid(TU,
+						      ejabberd_router:route(jid:make(TU,
 											  TS,
 											  TR),
 									    UJID,
@@ -1037,7 +1037,7 @@ format_roster([#roster{jid = JID, name = Nick,
 		       groups = Group, subscription = Subs, ask = Ask}
 	       | Items],
 	      Structs) ->
-    JidBinary = jlib:jid_to_string(jlib:make_jid(JID)),
+    JidBinary = jid:to_string(jid:make(JID)),
     Struct = {JidBinary, Group,
 	      Nick, iolist_to_binary(atom_to_list(Subs)),
 	      iolist_to_binary(atom_to_list(Ask))},
@@ -1060,7 +1060,7 @@ format_roster_with_presence([#roster{jid = JID,
 		 _Other -> {<<"">>, <<"unavailable">>, <<"">>}
 	       end,
     {Resource, Show, Status} = Presence,
-    Struct = {jlib:jid_to_string(jlib:make_jid(User, Server, <<>>)),
+    Struct = {jid:to_string(jid:make(User, Server, <<>>)),
 	      Resource, extract_group(Group), Nick,
 	      iolist_to_binary(atom_to_list(Subs)),
 	      iolist_to_binary(atom_to_list(Ask)), Show, Status},
@@ -1163,8 +1163,8 @@ mass_message(Host, Delay, Stanza, From, [Uid|Others]) ->
 		    [Proc, Uid, length(Others)]),
 	    stopped
     after Delay ->
-	    To = case jlib:make_jid(Uid, Host, <<>>) of
-		error -> jlib:string_to_jid(Uid);
+	    To = case jid:make(Uid, Host, <<>>) of
+		error -> jid:from_string(Uid);
 		Ret -> Ret
 	    end,
 	    Attrs = lists:keystore(<<"id">>, 1, Stanza#xmlel.attrs,

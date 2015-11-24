@@ -107,7 +107,7 @@ stop(_Host) ->
 %% ----------
 
 check_permissions(#request{auth={SJID, Pass}}, Command) ->
-    case jlib:string_to_jid(SJID) of
+    case jid:from_string(SJID) of
 	#jid{user = User, server = Server} = JID ->
 	    Access = gen_mod:get_module_opt(Server, ?MODULE, access,
 						 mod_opt_type(access),
@@ -249,11 +249,11 @@ handle(<<"bulk-roster-update">>, Args, _Versions) ->
                                            Jid1 = get_json_prop(<<"jid">>, C1),
                                            Nick1 = get_json_prop(<<"nick">>, C1, <<"">>),
                                            Group1 = get_json_prop(<<"group">>, C1, <<"">>),
-                                           {U1, S1, _} = jlib:jid_tolower(jlib:string_to_jid(Jid1)),
+                                           {U1, S1, _} = jid:tolower(jid:from_string(Jid1)),
                                            Jid2 = get_json_prop(<<"jid">>, C2),
                                            Nick2 = get_json_prop(<<"nick">>, C2, <<"">>),
                                            Group2 = get_json_prop(<<"group">>, C2, <<"">>),
-                                           {U2, S2, _} = jlib:jid_tolower(jlib:string_to_jid(Jid2)),
+                                           {U2, S2, _} = jid:tolower(jid:from_string(Jid2)),
 
                                            case {ejabberd_auth:is_user_exists(U1, S1),
                                                  ejabberd_auth:is_user_exists(U2, S2)}
@@ -275,8 +275,8 @@ handle(<<"bulk-roster-update">>, Args, _Versions) ->
     Err2 = case lists:keyfind(<<"remove">>, 1, Args) of
                {<<"remove">>, ListR} ->
                    lists:filtermap(fun([JidR1, JidR2]) ->
-                                           {UR1, SR1, _} = jlib:jid_tolower(jlib:string_to_jid(JidR1)),
-                                           {UR2, SR2, _} = jlib:jid_tolower(jlib:string_to_jid(JidR2)),
+                                           {UR1, SR1, _} = jid:tolower(jid:from_string(JidR1)),
+                                           {UR2, SR2, _} = jid:tolower(jid:from_string(JidR2)),
                                            case mod_admin_extra:delete_rosteritem(UR1, SR1, UR2, SR2) of
                                                ok ->
                                                    case mod_admin_extra:delete_rosteritem(UR2, SR2, UR1, SR1) of

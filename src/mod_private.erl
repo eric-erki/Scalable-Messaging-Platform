@@ -312,8 +312,8 @@ dec_key(Key) ->
     [Server, User, XMLNS].
 
 remove_user(User, Server) ->
-    LUser = jlib:nodeprep(User),
-    LServer = jlib:nameprep(Server),
+    LUser = jid:nodeprep(User),
+    LServer = jid:nameprep(Server),
     remove_user(LUser, LServer,
 		gen_mod:db_type(Server, ?MODULE)).
 

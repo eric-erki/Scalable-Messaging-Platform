@@ -63,7 +63,7 @@ modules() ->
      mod_vcard_xupdate].
 
 export(Server, Output) ->
-    LServer = jlib:nameprep(iolist_to_binary(Server)),
+    LServer = jid:nameprep(iolist_to_binary(Server)),
     Modules = modules(),
     IO = prepare_output(Output),
     lists:foreach(
@@ -73,7 +73,7 @@ export(Server, Output) ->
     close_output(Output, IO).
 
 export(Server, Output, Module) ->
-    LServer = jlib:nameprep(iolist_to_binary(Server)),
+    LServer = jid:nameprep(iolist_to_binary(Server)),
     IO = prepare_output(Output),
     lists:foreach(
       fun({Table, ConvertFun}) ->
@@ -89,7 +89,7 @@ import(Server, Dir, ToType) ->
       end, modules()).
 
 import(Mod, Server, Dir, ToType) ->
-    LServer = jlib:nameprep(iolist_to_binary(Server)),
+    LServer = jid:nameprep(iolist_to_binary(Server)),
     try Mod:import_start(LServer, ToType)
     catch error:undef -> ok end,
     lists:foreach(

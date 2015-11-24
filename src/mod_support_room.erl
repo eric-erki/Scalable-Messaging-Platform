@@ -248,7 +248,7 @@ init([Host, ServerHost, Access, Room, HistorySize,
                    access = Access, room = Room,
                    history = lqueue_new(HistorySize),
                    persist_history = PersistHistory,
-                   jid = jlib:make_jid(Room, Host, <<"">>),
+                   jid = jid:make(Room, Host, <<"">>),
                    just_created = true, room_shaper = Shaper},
     State1 = set_opts(DefRoomOpts, State),
     State2 = set_affiliation(Creator, owner, State1),
@@ -259,7 +259,7 @@ init([Host, ServerHost, Access, Room, HistorySize,
        true -> ok
     end,
     ?INFO_MSG("Created SUPPORT room ~s@~s by ~s",
-	      [Room, Host, jlib:jid_to_string(Creator)]),
+	      [Room, Host, jid:to_string(Creator)]),
     add_to_log(room_existence, created, State2),
     add_to_log(room_existence, started, State2),
     {ok, normal_state, State2};
@@ -275,7 +275,7 @@ init([Host, ServerHost, Access, Room, HistorySize,
 				load_history(ServerHost, Room, PersistHistory,
 					     lqueue_new(HistorySize)),
 			    persist_history = PersistHistory,
-			    jid = jlib:make_jid(Room, Host, <<"">>),
+			    jid = jid:make(Room, Host, <<"">>),
 			    room_shaper = Shaper}),
     add_to_log(room_existence, started, State),
     State1 = set_hibernate_timer_if_empty(State),
@@ -329,7 +329,7 @@ normal_state({route, From, <<"">>,
                                            children = Els},
                                 route_stanza(
                                   make_chat_jid(US, StateData),
-                                  jlib:make_jid(AgentLJID),
+                                  jid:make(AgentLJID),
                                   Packet),
                                 StateData
                         end;
@@ -437,13 +437,13 @@ normal_state({route, From, Resource,
 	     StateData) ->
     case is_agent(From, StateData) of
         true ->
-            UserJID = jlib:string_to_jid(Resource),
+            UserJID = jid:from_string(Resource),
             case UserJID of
                 error ->
                     {next_state, normal_state, StateData};
                 #jid{} ->
                     US = {UserJID#jid.luser, UserJID#jid.lserver},
-                    AgentLJID = jlib:jid_tolower(From),
+                    AgentLJID = jid:tolower(From),
                     StateData1 =
                         case (?DICT):find(US, StateData#state.user_status) of
                             {ok, UserData} ->
@@ -464,7 +464,7 @@ normal_state({route, From, Resource,
                                                            [{xmlcdata, Text}]}]},
                                         route_stanza(
                                           make_chat_jid(US, StateData),
-                                          jlib:make_jid(AgentLJID),
+                                          jid:make(AgentLJID),
                                           Packet),
                                         StateData;
                                     {connecting, AgentLJID} ->
@@ -478,7 +478,7 @@ normal_state({route, From, Resource,
                                     {connecting, AgentLJID2} ->
                                         SText = io_lib:format(
                                                   "~s is assigned to the user",
-                                                  [jlib:jid_to_string(
+                                                  [jid:to_string(
                                                      AgentLJID2)]),
                                         Text = iolist_to_binary(SText),
                                         Packet =
@@ -491,13 +491,13 @@ normal_state({route, From, Resource,
                                                            [{xmlcdata, Text}]}]},
                                         route_stanza(
                                           make_chat_jid(US, StateData),
-                                          jlib:make_jid(AgentLJID),
+                                          jid:make(AgentLJID),
                                           Packet),
                                         StateData;
                                     {talking, AgentLJID2} ->
                                         SText = io_lib:format(
                                                   "~s is handling the user",
-                                                  [jlib:jid_to_string(
+                                                  [jid:to_string(
                                                      AgentLJID2)]),
                                         Text = iolist_to_binary(SText),
                                         Packet =
@@ -510,7 +510,7 @@ normal_state({route, From, Resource,
                                                            [{xmlcdata, Text}]}]},
                                         route_stanza(
                                           make_chat_jid(US, StateData),
-                                          jlib:make_jid(AgentLJID),
+                                          jid:make(AgentLJID),
                                           Packet),
                                         StateData
                                 end;
@@ -526,7 +526,7 @@ normal_state({route, From, Resource,
                                 %                   [{xmlcdata, Text}]}]},
                                 %route_stanza(
                                 %  make_chat_jid(US, StateData),
-                                %  jlib:make_jid(AgentLJID),
+                                %  jid:make(AgentLJID),
                                 %  Packet),
                                 %StateData
                                 SD = direct_connect(US, AgentLJID, StateData),
@@ -562,17 +562,17 @@ normal_state({route, From, ToNick,
 		      Err = jlib:make_error_reply(Packet,
 						  ?ERRT_ITEM_NOT_FOUND(Lang,
 								       ErrText)),
-		      route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+		      route_stanza(jid:replace_resource(StateData#state.jid,
 							     ToNick),
 				   From, Err)
 		end;
 	    ToJID ->
 		{ok, #user{nick = FromNick}} =
-		    (?DICT):find(jlib:jid_tolower(FromFull),
+		    (?DICT):find(jid:tolower(FromFull),
 				 StateData#state.users),
 		{ToJID2, Packet2} = handle_iq_vcard(FromFull, ToJID,
 						    StanzaId, NewId, Packet),
-		route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+		route_stanza(jid:replace_resource(StateData#state.jid,
 						       FromNick),
 			     ToJID2, Packet2)
 	  end;
@@ -586,7 +586,7 @@ normal_state({route, From, ToNick,
 		Err = jlib:make_error_reply(Packet,
 					    ?ERRT_NOT_ACCEPTABLE(Lang,
 								 ErrText)),
-		route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+		route_stanza(jid:replace_resource(StateData#state.jid,
 						       ToNick),
 			     From, Err)
 	  end;
@@ -598,7 +598,7 @@ normal_state({route, From, ToNick,
 			    "not allowed in this room">>,
 		Err = jlib:make_error_reply(Packet,
 					    ?ERRT_NOT_ALLOWED(Lang, ErrText)),
-		route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+		route_stanza(jid:replace_resource(StateData#state.jid,
 						       ToNick),
 			     From, Err)
 	  end
@@ -661,12 +661,12 @@ handle_event({destroy, Reason}, _StateName,
 						 end},
 				      StateData),
     ?INFO_MSG("Destroyed SUPPORT room ~s with reason: ~p",
-	      [jlib:jid_to_string(StateData#state.jid), Reason]),
+	      [jid:to_string(StateData#state.jid), Reason]),
     add_to_log(room_existence, destroyed, StateData),
     {stop, normal, StateData#state{shutdown_reason = destroyed}};
 handle_event(destroy, StateName, StateData) ->
     ?INFO_MSG("Destroyed SUPPORT room ~s",
-	      [jlib:jid_to_string(StateData#state.jid)]),
+	      [jid:to_string(StateData#state.jid)]),
     handle_event({destroy, none}, StateName, StateData);
 handle_event({set_affiliation, JID, Affiliation},
 	     StateName, StateData) ->
@@ -792,7 +792,7 @@ handle_info({captcha_failed, From}, normal_state,
 		     Err = jlib:make_error_reply(Packet,
 						 ?ERR_NOT_AUTHORIZED),
 		     route_stanza % TODO: s/Nick/""/
-				 (jlib:jid_replace_resource(StateData#state.jid,
+				 (jid:replace_resource(StateData#state.jid,
 							    Nick),
 				  From, Err),
 		     StateData#state{robots = Robots};
@@ -820,7 +820,7 @@ handle_info({timeout, Timer, {ring, AgentLJID, US}}, StateName,
                                     ]},
                     route_stanza(
                       make_chat_jid(US, StateData),
-                      jlib:make_jid(AgentLJID),
+                      jid:make(AgentLJID),
                       Packet),
                     SD1 = change_agent_status(AgentLJID, waiting, US, StateData),
                     SD2 = update_agent_queue(AgentLJID, SD1),
@@ -902,7 +902,7 @@ terminate(_Reason, _StateName, StateData) ->
                             Reason == destroyed;
 			    Reason == hibernated;
                             Reason == replaced ->
-			       route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+			       route_stanza(jid:replace_resource(StateData#state.jid,
 								      Nick),
 					    Info#user.jid, Packet);
 			   true -> ok
@@ -1022,7 +1022,7 @@ process_groupchat_message(From,
 		 case IsAllowed of
 		   true ->
 			   send_multiple(
-			      jlib:jid_replace_resource(StateData#state.jid, FromNick),
+			      jid:replace_resource(StateData#state.jid, FromNick),
 			      StateData#state.server_host,
 			      StateData#state.users,
 			      Packet),
@@ -1079,7 +1079,7 @@ is_user_allowed_message_nonparticipant(JID,
     end.
 
 get_participant_data(From, StateData) ->
-    case (?DICT):find(jlib:jid_tolower(From),
+    case (?DICT):find(jid:tolower(From),
 		      StateData#state.users)
 	of
       {ok, #user{nick = FromNick, role = Role}} ->
@@ -1098,7 +1098,7 @@ process_presence(From, _Nick,
                 if
                     Type == <<"unavailable">>;
                     Type == <<"error">> ->
-                        LFrom = jlib:jid_tolower(From),
+                        LFrom = jid:tolower(From),
                             case (?DICT):find(LFrom, StateData#state.agent_status) of
                                 {ok, Statuses} ->
                                     AgentStatus =
@@ -1139,7 +1139,7 @@ process_presence(From, _Nick,
                                 error -> StateData
                             end;
                     Type == <<"">> ->
-                        LFrom = jlib:jid_tolower(From),
+                        LFrom = jid:tolower(From),
                         case (?DICT):is_key(LFrom, StateData#state.agent_status) of
                             false ->
                                 AgentStatus =
@@ -1160,7 +1160,7 @@ process_presence(From, _Nick,
                                    children = []},
                         route_stanza(
                           StateData#state.jid,
-                          jlib:jid_remove_resource(From),
+                          jid:remove_resource(From),
                           Subscribed),
                         Subscribe =
                             #xmlel{name = <<"presence">>,
@@ -1168,7 +1168,7 @@ process_presence(From, _Nick,
                                    children = []},
                         route_stanza(
                           StateData#state.jid,
-                          jlib:jid_remove_resource(From),
+                          jid:remove_resource(From),
                           Subscribe),
                         StateData;
                     true -> StateData
@@ -1205,7 +1205,7 @@ process_presence(From, _Nick,
                                                            [{xmlcdata, Text}]}]},
                                 route_stanza(
                                   make_chat_jid(US, StateData),
-                                  jlib:make_jid(AgentLJID),
+                                  jid:make(AgentLJID),
                                   Packet),
                                 SD1 = change_agent_status(AgentLJID, waiting, US, StateData),
                                 SD2 = update_agent_queue(AgentLJID, SD1),
@@ -1240,7 +1240,7 @@ process_presence(From, _Nick,
     end.
 
 is_user_online(JID, StateData) ->
-    LJID = jlib:jid_tolower(JID),
+    LJID = jid:tolower(JID),
     (?DICT):is_key(LJID, StateData#state.users).
 
 is_occupant_or_admin(JID, StateData) ->
@@ -1268,7 +1268,7 @@ is_user_online_iq(StanzaId, JID, StateData)
     when JID#jid.lresource == <<"">> ->
     try stanzaid_unpack(StanzaId) of
       {OriginalId, Resource} ->
-	  JIDWithResource = jlib:jid_replace_resource(JID,
+	  JIDWithResource = jid:replace_resource(JID,
 						      Resource),
 	  {is_user_online(JIDWithResource, StateData), OriginalId,
 	   JIDWithResource}
@@ -1278,7 +1278,7 @@ is_user_online_iq(StanzaId, JID, StateData)
 
 handle_iq_vcard(FromFull, ToJID, StanzaId, NewId,
 		Packet) ->
-    ToBareJID = jlib:jid_remove_resource(ToJID),
+    ToBareJID = jid:remove_resource(ToJID),
     IQ = jlib:iq_query_info(Packet),
     handle_iq_vcard2(FromFull, ToJID, ToBareJID, StanzaId,
 		     NewId, IQ, Packet).
@@ -1360,7 +1360,7 @@ set_affiliation(JID, Affiliation, StateData, Reason) ->
 set_affiliation(JID, Affiliation,
                 #state{config = #config{persistent = true}} = StateData,
                 Reason, p1db) ->
-    {LUser, LServer, _} = jlib:jid_tolower(JID),
+    {LUser, LServer, _} = jid:tolower(JID),
     Room = StateData#state.room,
     Host = StateData#state.host,
     AffKey = mod_support:rhus2key(Room, Host, LUser, LServer),
@@ -1374,7 +1374,7 @@ set_affiliation(JID, Affiliation,
     end,
     StateData;
 set_affiliation(JID, Affiliation, StateData, Reason, _) ->
-    LJID = jlib:jid_remove_resource(jlib:jid_tolower(JID)),
+    LJID = jid:remove_resource(jid:tolower(JID)),
     Affiliations = case Affiliation of
 		     none ->
 			 (?DICT):erase(LJID, StateData#state.affiliations);
@@ -1399,7 +1399,7 @@ set_affiliations(Affiliations,
               fun({_JID, {none, _Reason}}) ->
                       ok;
                  ({JID, {Affiliation, Reason}}) ->
-                      {LUser, LServer, _} = jlib:jid_tolower(JID),
+                      {LUser, LServer, _} = jid:tolower(JID),
                       AffKey = mod_support:rhus2key(Room, Host, LUser, LServer),
                       Val = term_to_binary([{affiliation, Affiliation},
                                             {reason, Reason}]),
@@ -1469,11 +1469,11 @@ get_affiliation(JID, #state{config = #config{persistent = true}} = StateData,
             none
     end;
 get_affiliation(JID, StateData, _DBType) ->
-    LJID = jlib:jid_tolower(JID),
+    LJID = jid:tolower(JID),
     case (?DICT):find(LJID, StateData#state.affiliations) of
         {ok, Affiliation} -> Affiliation;
         _ ->
-            LJID1 = jlib:jid_remove_resource(LJID),
+            LJID1 = jid:remove_resource(LJID),
             case (?DICT):find(LJID1, StateData#state.affiliations)
             of
                 {ok, Affiliation} -> Affiliation;
@@ -1484,7 +1484,7 @@ get_affiliation(JID, StateData, _DBType) ->
                     of
                         {ok, Affiliation} -> Affiliation;
                         _ ->
-                            LJID3 = jlib:jid_remove_resource(LJID2),
+                            LJID3 = jid:remove_resource(LJID2),
                             case (?DICT):find(LJID3,
                                               StateData#state.affiliations)
                             of
@@ -1534,7 +1534,7 @@ get_service_affiliation(JID, StateData) ->
     end.
 
 set_role(JID, Role, StateData) ->
-    LJID = jlib:jid_tolower(JID),
+    LJID = jid:tolower(JID),
     LJIDs = case LJID of
 	      {U, S, <<"">>} ->
 		  (?DICT):fold(fun (J, _, Js) ->
@@ -1582,7 +1582,7 @@ set_role(JID, Role, StateData) ->
       StateData#state{users = Users, nicks = Nicks}).
 
 get_role(JID, StateData) ->
-    LJID = jlib:jid_tolower(JID),
+    LJID = jid:tolower(JID),
     case (?DICT):find(LJID, StateData#state.users) of
       {ok, #user{role = Role}} -> Role;
       _ -> none
@@ -1626,7 +1626,7 @@ get_max_users_admin_threshold(StateData) ->
                            5).
 
 get_user_activity(JID, StateData) ->
-    case treap:lookup(jlib:jid_tolower(JID),
+    case treap:lookup(jid:tolower(JID),
 		      StateData#state.activity)
 	of
       {ok, _P, A} -> A;
@@ -1656,7 +1656,7 @@ store_user_activity(JID, UserActivity, StateData) ->
 			       mod_support, min_presence_interval,
                                fun(I) when is_integer(I), I>=0 -> I end,
                                0),
-    Key = jlib:jid_tolower(JID),
+    Key = jid:tolower(JID),
     Now = now_to_usec(now()),
     Activity1 = clean_treap(StateData#state.activity,
 			    {1, -Now}),
@@ -1739,7 +1739,7 @@ prepare_room_queue(StateData) ->
     end.
 
 add_online_user(JID, Nick, Role, StateData) ->
-    LJID = jlib:jid_tolower(JID),
+    LJID = jid:tolower(JID),
     Users = (?DICT):store(LJID,
 			  #user{jid = JID, nick = Nick, role = Role},
 			  StateData#state.users),
@@ -1759,7 +1759,7 @@ add_online_user(JID, Nick, Role, StateData) ->
 make_chat_jid(US, StateData) ->
     {U, S} = US,
     Resource = <<U/binary, "@", S/binary>>,
-    jlib:jid_replace_resource(StateData#state.jid, Resource).
+    jid:replace_resource(StateData#state.jid, Resource).
 
 change_user_status(US, Status, StateData) ->
     case (?DICT):find(US, StateData#state.user_status) of
@@ -1878,7 +1878,7 @@ io:format("asd ~p~n", [{StateData#state.available_agents, StateData#state.user_q
                                    }]},
             route_stanza(
               make_chat_jid(US, StateData3),
-              jlib:make_jid(AgentLJID),
+              jid:make(AgentLJID),
               Packet),
             try_connect(StateData3)
     end.
@@ -1904,7 +1904,7 @@ direct_connect(US, AgentLJID, StateData) ->
                 end;
             error ->
                 {LUser, LServer} = US,
-                UserJID = jlib:make_jid(LUser, LServer, <<"">>),
+                UserJID = jid:make(LUser, LServer, <<"">>),
                 TS = now(),
                 Data = #user{jid = UserJID,
                              status = {talking, AgentLJID},
@@ -1944,7 +1944,7 @@ direct_connect(US, AgentLJID, StateData) ->
     end.
 
 get_agent_nick_and_avatar(AgentLJID) ->
-    IQ = mod_vcard:process_sm_iq(<<"">>, jlib:make_jid(AgentLJID), #iq{type=get}),
+    IQ = mod_vcard:process_sm_iq(<<"">>, jid:make(AgentLJID), #iq{type=get}),
     {N,A} = case IQ#iq.sub_el of
                 [#xmlel{name = <<"vCard">>}=El|_] ->
                     {xml:get_path_s(El, [{elem, <<"NICKNAME">>}, cdata]),
@@ -1976,7 +1976,7 @@ send_to_user(AgentLJID, US, Els, StateData, First) ->
                             attrs = [{<<"type">>, <<"chat">>}],
                             children = [#xmlel{name = <<"agent">>,
                                                attrs = Attrs} | Els]},
-            add_history(US, jlib:make_jid(AgentLJID), Packet, StateData),
+            add_history(US, jid:make(AgentLJID), Packet, StateData),
             route_stanza(
               StateData#state.jid,
               JID,
@@ -2062,7 +2062,7 @@ check_for_push_message(US, UserData, AgentLJID, Els, StateData) ->
                                        [{xmlcdata, Text}]}]},
             route_stanza(
               make_chat_jid(US, StateData),
-              jlib:make_jid(AgentLJID),
+              jid:make(AgentLJID),
               Packet),
             {StateData, true};
         {<<":push ",Tail/binary>>, Avail, true} ->
@@ -2079,7 +2079,7 @@ check_for_push_message(US, UserData, AgentLJID, Els, StateData) ->
                                                [{xmlcdata, Text}]}]},
                     route_stanza(
                       make_chat_jid(US, StateData),
-                      jlib:make_jid(AgentLJID),
+                      jid:make(AgentLJID),
                       Packet);
                 false ->
                     Text = send_push(US, UserData, AgentLJID, Tail),
@@ -2093,7 +2093,7 @@ check_for_push_message(US, UserData, AgentLJID, Els, StateData) ->
                                                [{xmlcdata, Text}]}]},
                     route_stanza(
                       make_chat_jid(US, StateData),
-                      jlib:make_jid(AgentLJID),
+                      jid:make(AgentLJID),
                       Packet)
             end,
             {StateData, true};
@@ -2111,7 +2111,7 @@ check_for_push_message(US, UserData, AgentLJID, Els, StateData) ->
                                        [{xmlcdata, Text}]}]},
             route_stanza(
               make_chat_jid(US, StateData),
-              jlib:make_jid(AgentLJID),
+              jid:make(AgentLJID),
               Packet),
             {StateData, true};
         {_, false, true} ->
@@ -2127,7 +2127,7 @@ check_for_push_message(US, UserData, AgentLJID, Els, StateData) ->
                                        [{xmlcdata, Text}]}]},
             route_stanza(
               make_chat_jid(US, StateData),
-              jlib:make_jid(AgentLJID),
+              jid:make(AgentLJID),
               Packet),
             {StateData, true};
         _ ->
@@ -2288,7 +2288,7 @@ get_history(US, Since, StateData) ->
 send_history(US, AgentLJID, History, StateData) ->
     lists:foreach(
       fun({Now, Sender, Body}) ->
-              SSender = jlib:jid_to_string(Sender),
+              SSender = jid:to_string(Sender),
               Text = <<"<", SSender/binary, "> ", Body/binary>>,
               {T_string, Tz_string} = jlib:timestamp_to_iso(calendar:now_to_universal_time(Now), utc),
               Delay = #xmlel{name = <<"delay">>, attrs = [{<<"xmlns">>, ?NS_DELAY},
@@ -2304,7 +2304,7 @@ send_history(US, AgentLJID, History, StateData) ->
                           Delay]},
               route_stanza(
                 make_chat_jid(US, StateData),
-                jlib:make_jid(AgentLJID),
+                jid:make(AgentLJID),
                 Packet)
       end, History).
 
@@ -2350,7 +2350,7 @@ filter_presence(#xmlel{name = <<"presence">>,
 	   children = FEls}.
 
 add_user_presence(JID, Presence, StateData) ->
-    LJID = jlib:jid_tolower(JID),
+    LJID = jid:tolower(JID),
     FPresence = filter_presence(Presence),
     Users = (?DICT):update(LJID,
 			   fun (#user{} = User) ->
@@ -2361,14 +2361,14 @@ add_user_presence(JID, Presence, StateData) ->
 
 find_jids_by_nick(Nick, StateData) ->
     case (?DICT):find(Nick, StateData#state.nicks) of
-      {ok, [User]} -> [jlib:make_jid(User)];
-      {ok, Users} -> [jlib:make_jid(LJID) || LJID <- Users];
+      {ok, [User]} -> [jid:make(User)];
+      {ok, Users} -> [jid:make(LJID) || LJID <- Users];
       error -> false
     end.
 
 find_jid_by_nick(Nick, StateData) ->
     case (?DICT):find(Nick, StateData#state.nicks) of
-      {ok, [User]} -> jlib:make_jid(User);
+      {ok, [User]} -> jid:make(User);
       {ok, [FirstUser | Users]} ->
 	  #user{last_presence = FirstPresence} =
 	      (?DICT):fetch(FirstUser, StateData#state.users),
@@ -2386,7 +2386,7 @@ find_jid_by_nick(Nick, StateData) ->
 					  end
 				  end,
 				  {FirstUser, FirstPresence}, Users),
-	  jlib:make_jid(LJID);
+	  jid:make(LJID);
       error -> false
     end.
 
@@ -2410,8 +2410,8 @@ get_priority_from_presence(PresencePacket) ->
 nick_collision(User, Nick, StateData) ->
     UserOfNick = find_jid_by_nick(Nick, StateData),
     (UserOfNick /= false andalso
-      jlib:jid_remove_resource(jlib:jid_tolower(UserOfNick))
-	/= jlib:jid_remove_resource(jlib:jid_tolower(User))).
+      jid:remove_resource(jid:tolower(UserOfNick))
+	/= jid:remove_resource(jid:tolower(User))).
 
 add_new_user(From, Nick,
 	     #xmlel{attrs = Attrs, children = Els} = Packet,
@@ -2446,7 +2446,7 @@ add_new_user(From, Nick,
 	  Err = jlib:make_error_reply(Packet,
 				      ?ERR_SERVICE_UNAVAILABLE),
 	  route_stanza % TODO: s/Nick/""/
-		      (jlib:jid_replace_resource(StateData#state.jid, Nick),
+		      (jid:replace_resource(StateData#state.jid, Nick),
 		       From, Err),
 	  StateData;
       {_, _, _, none} ->
@@ -2463,14 +2463,14 @@ add_new_user(From, Nick,
 									ErrText)
 				      end),
 	  route_stanza % TODO: s/Nick/""/
-		      (jlib:jid_replace_resource(StateData#state.jid, Nick),
+		      (jid:replace_resource(StateData#state.jid, Nick),
 		       From, Err),
 	  StateData;
       {_, true, _, _} ->
 	  ErrText = <<"That nickname is already in use by another occupant">>,
 	  Err = jlib:make_error_reply(Packet,
 				      ?ERRT_CONFLICT(Lang, ErrText)),
-	  route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+	  route_stanza(jid:replace_resource(StateData#state.jid,
 						 Nick),
 		       From, Err),
 	  StateData;
@@ -2478,7 +2478,7 @@ add_new_user(From, Nick,
 	  ErrText = <<"That nickname is registered by another person">>,
 	  Err = jlib:make_error_reply(Packet,
 				      ?ERRT_CONFLICT(Lang, ErrText)),
-	  route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+	  route_stanza(jid:replace_resource(StateData#state.jid,
 						 Nick),
 		       From, Err),
 	  StateData;
@@ -2534,14 +2534,14 @@ add_new_user(From, Nick,
 					    ?ERRT_NOT_AUTHORIZED(Lang,
 								 ErrText)),
 		route_stanza % TODO: s/Nick/""/
-			    (jlib:jid_replace_resource(StateData#state.jid,
+			    (jid:replace_resource(StateData#state.jid,
 						       Nick),
 			     From, Err),
 		StateData;
 	    captcha_required ->
 		SID = xml:get_attr_s(<<"id">>, Attrs),
 		RoomJID = StateData#state.jid,
-		To = jlib:jid_replace_resource(RoomJID, Nick),
+		To = jid:replace_resource(RoomJID, Nick),
 		Limiter = {From#jid.luser, From#jid.lserver},
 		case ejabberd_captcha:create_captcha(SID, RoomJID, To,
 						     Lang, Limiter, From)
@@ -2560,7 +2560,7 @@ add_new_user(From, Nick,
 						  ?ERRT_RESOURCE_CONSTRAINT(Lang,
 									    ErrText)),
 		      route_stanza % TODO: s/Nick/""/
-				  (jlib:jid_replace_resource(StateData#state.jid,
+				  (jid:replace_resource(StateData#state.jid,
 							     Nick),
 				   From, Err),
 		      StateData;
@@ -2570,7 +2570,7 @@ add_new_user(From, Nick,
 						  ?ERRT_INTERNAL_SERVER_ERROR(Lang,
 									      ErrText)),
 		      route_stanza % TODO: s/Nick/""/
-				  (jlib:jid_replace_resource(StateData#state.jid,
+				  (jid:replace_resource(StateData#state.jid,
 							     Nick),
 				   From, Err),
 		      StateData
@@ -2581,7 +2581,7 @@ add_new_user(From, Nick,
 					    ?ERRT_NOT_AUTHORIZED(Lang,
 								 ErrText)),
 		route_stanza % TODO: s/Nick/""/
-			    (jlib:jid_replace_resource(StateData#state.jid,
+			    (jid:replace_resource(StateData#state.jid,
 						       Nick),
 			     From, Err),
 		StateData
@@ -2744,7 +2744,7 @@ send_update_presence(JID, StateData) ->
     send_update_presence(JID, <<"">>, StateData).
 
 send_update_presence(JID, Reason, StateData) ->
-    LJID = jlib:jid_tolower(JID),
+    LJID = jid:tolower(JID),
     LJIDs = case LJID of
 	      {U, S, <<"">>} ->
 		  (?DICT):fold(fun (J, _, Js) ->
@@ -2770,13 +2770,13 @@ send_new_presence(NJID, StateData) ->
 
 send_new_presence(NJID, Reason, StateData) ->
     #user{nick = Nick} =
-	(?DICT):fetch(jlib:jid_tolower(NJID),
+	(?DICT):fetch(jid:tolower(NJID),
 		      StateData#state.users),
     LJID = find_jid_by_nick(Nick, StateData),
     {ok,
      #user{jid = RealJID, role = Role,
 	   last_presence = Presence}} =
-	(?DICT):find(jlib:jid_tolower(LJID),
+	(?DICT):find(jid:tolower(LJID),
 		     StateData#state.users),
     Affiliation = get_affiliation(LJID, StateData),
     SAffiliation = affiliation_to_list(Affiliation),
@@ -2788,7 +2788,7 @@ send_new_presence(NJID, Reason, StateData) ->
 					  of
 					true ->
 					    [{<<"jid">>,
-					      jlib:jid_to_string(RealJID)},
+					      jid:to_string(RealJID)},
 					     {<<"affiliation">>, SAffiliation},
 					     {<<"role">>, SRole}];
 					_ ->
@@ -2848,21 +2848,21 @@ send_new_presence(NJID, Reason, StateData) ->
 									      =
 									      ItemEls}
 								   | Status3]}]),
-			  route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+			  route_stanza(jid:replace_resource(StateData#state.jid,
 								 Nick),
 				       Info#user.jid, Packet)
 		  end,
 		  (?DICT):to_list(StateData#state.users)).
 
 send_existing_presences(ToJID, StateData) ->
-    LToJID = jlib:jid_tolower(ToJID),
+    LToJID = jid:tolower(ToJID),
     {ok, #user{jid = RealToJID, role = Role}} =
 	(?DICT):find(LToJID, StateData#state.users),
     lists:foreach(fun ({FromNick, _Users}) ->
 			  LJID = find_jid_by_nick(FromNick, StateData),
 			  #user{jid = FromJID, role = FromRole,
 				last_presence = Presence} =
-			      (?DICT):fetch(jlib:jid_tolower(LJID),
+			      (?DICT):fetch(jid:tolower(LJID),
 					    StateData#state.users),
 			  case RealToJID of
 			    FromJID -> ok;
@@ -2875,7 +2875,7 @@ send_existing_presences(ToJID, StateData) ->
 						of
 					      true ->
 						  [{<<"jid">>,
-						    jlib:jid_to_string(FromJID)},
+						    jid:to_string(FromJID)},
 						   {<<"affiliation">>,
 						    affiliation_to_list(FromAffiliation)},
 						   {<<"role">>,
@@ -2902,7 +2902,7 @@ send_existing_presences(ToJID, StateData) ->
 										children
 										    =
 										    []}]}]),
-				route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+				route_stanza(jid:replace_resource(StateData#state.jid,
 								       FromNick),
 					     RealToJID, Packet)
 			  end
@@ -2953,13 +2953,13 @@ add_message_to_history(FromNick, FromJID, Packet,
 		end,
     {T_string, Tz_string} = jlib:timestamp_to_iso(TimeStamp, utc),
     Delay = [#xmlel{name = <<"delay">>, attrs = [{<<"xmlns">>, ?NS_DELAY},
-                                                 {<<"from">>, jlib:jid_to_string(SenderJid)},
+                                                 {<<"from">>, jid:to_string(SenderJid)},
                                                  {<<"stamp">>, <<T_string/binary, Tz_string/binary>>}],
                     children = [{xmlcdata, <<>>}]}],
 
     TSPacket = xml:append_subtags(Packet, Delay),
     SPacket =
-	jlib:replace_from_to(jlib:jid_replace_resource(StateData#state.jid,
+	jlib:replace_from_to(jid:replace_resource(StateData#state.jid,
 						       FromNick),
 			     StateData#state.jid, TSPacket),
     Size = element_size(SPacket),
@@ -2973,7 +2973,7 @@ send_history(JID, Shift, StateData) ->
     lists:foldl(fun ({Nick, Packet, HaveSubject, _TimeStamp,
 		      _Size},
 		     B) ->
-			route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+			route_stanza(jid:replace_resource(StateData#state.jid,
 							       Nick),
 				     JID, Packet),
 			B or HaveSubject
@@ -3074,7 +3074,7 @@ items_with_affiliation(SAffiliation, StateData) ->
 			     attrs =
 				 [{<<"affiliation">>,
 				   affiliation_to_list(Affiliation)},
-				  {<<"jid">>, jlib:jid_to_string(JID)}],
+				  {<<"jid">>, jid:to_string(JID)}],
 			     children =
 				 [#xmlel{name = <<"reason">>, attrs = [],
 					 children = [{xmlcdata, Reason}]}]};
@@ -3083,7 +3083,7 @@ items_with_affiliation(SAffiliation, StateData) ->
 			     attrs =
 				 [{<<"affiliation">>,
 				   affiliation_to_list(Affiliation)},
-				  {<<"jid">>, jlib:jid_to_string(JID)}],
+				  {<<"jid">>, jid:to_string(JID)}],
 			     children = []}
 	      end,
 	      search_affiliation(SAffiliation, StateData)).
@@ -3096,7 +3096,7 @@ user_to_item(#user{role = Role, nick = Nick, jid = JID},
 	       [{<<"role">>, role_to_list(Role)},
 		{<<"affiliation">>, affiliation_to_list(Affiliation)},
 		{<<"nick">>, Nick},
-		{<<"jid">>, jlib:jid_to_string(JID)}],
+		{<<"jid">>, jid:to_string(JID)}],
 	   children = []}.
 
 search_role(Role, StateData) ->
@@ -3150,8 +3150,8 @@ process_admin_items_set(UJID, Items, Lang, StateData) ->
       {result, Res} ->
 	  ?INFO_MSG("Processing SUPPORT admin query from ~s in "
 		    "room ~s:~n ~p",
-		    [jlib:jid_to_string(UJID),
-		     jlib:jid_to_string(StateData#state.jid), Res]),
+		    [jid:to_string(UJID),
+		     jid:to_string(StateData#state.jid), Res]),
 	  NSD = lists:foldl(fun (E, SD) ->
 				    case catch case E of
 						 {JID, affiliation, owner, _}
@@ -3288,7 +3288,7 @@ find_changed_items(UJID, UAffiliation, URole,
 		   Lang, StateData, Res) ->
     TJID = case xml:get_attr(<<"jid">>, Attrs) of
 	     {value, S} ->
-		 case jlib:string_to_jid(S) of
+		 case jid:from_string(S) of
 		   error ->
 		       ErrText = iolist_to_binary(
                                    io_lib:format(translate:translate(
@@ -3349,9 +3349,9 @@ find_changed_items(UJID, UAffiliation, URole,
 									StateData)
 						    of
 						  [{OJID, _}] ->
-						      jlib:jid_remove_resource(OJID)
+						      jid:remove_resource(OJID)
 							/=
-							jlib:jid_tolower(jlib:jid_remove_resource(UJID));
+							jid:tolower(jid:remove_resource(UJID));
 						  _ -> true
 						end;
 					    _ -> false
@@ -3365,7 +3365,7 @@ find_changed_items(UJID, UAffiliation, URole,
 				  Reason = xml:get_path_s(Item,
 							  [{elem, <<"reason">>},
 							   cdata]),
-				  MoreRes = [{jlib:jid_remove_resource(Jidx),
+				  MoreRes = [{jid:remove_resource(Jidx),
 					      affiliation, SAffiliation, Reason}
 					     || Jidx <- JIDs],
 				  find_changed_items(UJID, UAffiliation, URole,
@@ -3397,9 +3397,9 @@ find_changed_items(UJID, UAffiliation, URole,
 								  StateData)
 					      of
 					    [{OJID, _}] ->
-						jlib:jid_remove_resource(OJID)
+						jid:remove_resource(OJID)
 						  /=
-						  jlib:jid_tolower(jlib:jid_remove_resource(UJID));
+						  jid:tolower(jid:remove_resource(UJID));
 					    _ -> true
 					  end;
 				      _ -> false
@@ -3561,7 +3561,7 @@ send_kickban_presence(JID, Reason, Code, StateData) ->
 
 send_kickban_presence(JID, Reason, Code, NewAffiliation,
 		      StateData) ->
-    LJID = jlib:jid_tolower(JID),
+    LJID = jid:tolower(JID),
     LJIDs = case LJID of
 	      {U, S, <<"">>} ->
 		  (?DICT):fold(fun (J, _, Js) ->
@@ -3591,10 +3591,10 @@ send_kickban_presence(JID, Reason, Code, NewAffiliation,
 send_kickban_presence1(UJID, Reason, Code, Affiliation,
 		       StateData) ->
     {ok, #user{jid = RealJID, nick = Nick}} =
-	(?DICT):find(jlib:jid_tolower(UJID),
+	(?DICT):find(jid:tolower(UJID),
 		     StateData#state.users),
     SAffiliation = affiliation_to_list(Affiliation),
-    BannedJIDString = jlib:jid_to_string(RealJID),
+    BannedJIDString = jid:to_string(RealJID),
     lists:foreach(fun ({_LJID, Info}) ->
 			  JidAttrList = case Info#user.role == moderator orelse
 					       (StateData#state.config)#config.anonymous
@@ -3637,7 +3637,7 @@ send_kickban_presence1(UJID, Reason, Code, Affiliation,
 									Code}],
 								  children =
 								      []}]}]},
-			  route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+			  route_stanza(jid:replace_resource(StateData#state.jid,
 								 Nick),
 				       Info#user.jid, Packet)
 		  end,
@@ -3672,8 +3672,8 @@ process_iq_owner(From, set, Lang, SubEl, StateData) ->
 		end;
 	    [#xmlel{name = <<"destroy">>} = SubEl1] ->
 		?INFO_MSG("Destroyed SUPPORT room ~s by the owner ~s",
-			  [jlib:jid_to_string(StateData#state.jid),
-			   jlib:jid_to_string(From)]),
+			  [jid:to_string(StateData#state.jid),
+			   jid:to_string(From)]),
 		add_to_log(room_existence, destroyed, StateData),
 		destroy_room(SubEl1, StateData);
 	    Items ->
@@ -3833,7 +3833,7 @@ is_password_settings_correct(XEl, StateData) ->
 		    {<<"var">>, Var}],
 	       children =
 		   [#xmlel{name = <<"value">>, attrs = [],
-			   children = [{xmlcdata, jlib:jid_to_string(JID)}]}
+			   children = [{xmlcdata, jid:to_string(JID)}]}
 		    || JID <- JIDList]}).
 
 get_default_room_maxusers(RoomState) ->
@@ -3869,7 +3869,7 @@ get_config(Lang, StateData, From) ->
                             translate:translate(
                               Lang,
                               <<"Configuration of room ~s">>),
-                            [jlib:jid_to_string(StateData#state.jid)]))}]},
+                            [jid:to_string(StateData#state.jid)]))}]},
 	   #xmlel{name = <<"field">>,
 		  attrs =
 		      [{<<"type">>, <<"hidden">>},
@@ -4288,7 +4288,7 @@ set_xoption([{<<"support#roomconfig_captcha_whitelist">>,
 	      Vals}
 	     | Opts],
 	    Config) ->
-    JIDs = [jlib:string_to_jid(Val) || Val <- Vals],
+    JIDs = [jid:from_string(Val) || Val <- Vals],
     ?SET_JIDMULTI_XOPT(captcha_whitelist, JIDs);
 set_xoption([{<<"FORM_TYPE">>, _} | Opts], Config) ->
     set_xoption(Opts, Config);
@@ -4607,7 +4607,7 @@ destroy_room(DEl, StateData) ->
 								  children =
 								      []},
 							   DEl]}]},
-			  route_stanza(jlib:jid_replace_resource(StateData#state.jid,
+			  route_stanza(jid:replace_resource(StateData#state.jid,
 								 Nick),
 				       Info#user.jid, Packet)
 		  end,
@@ -4774,7 +4774,7 @@ get_supportroom_disco_items(StateData) ->
 		      #xmlel{name = <<"item">>,
 			     attrs =
 				 [{<<"jid">>,
-				   jlib:jid_to_string({StateData#state.room,
+				   jid:to_string({StateData#state.room,
 						       StateData#state.host,
 						       Nick})},
 				  {<<"name">>, Nick}],
@@ -4807,7 +4807,7 @@ add_to_log(_Type, _Data, _StateData) ->
 %% Users number checking
 
 tab_add_online_user(JID, StateData) ->
-    {LUser, LServer, LResource} = jlib:jid_tolower(JID),
+    {LUser, LServer, LResource} = jid:tolower(JID),
     US = {LUser, LServer},
     Room = StateData#state.room,
     Host = StateData#state.host,
@@ -4816,7 +4816,7 @@ tab_add_online_user(JID, StateData) ->
 				       room = Room, host = Host}).
 
 tab_remove_online_user(JID, StateData) ->
-    {LUser, LServer, LResource} = jlib:jid_tolower(JID),
+    {LUser, LServer, LResource} = jid:tolower(JID),
     US = {LUser, LServer},
     Room = StateData#state.room,
     Host = StateData#state.host,
@@ -4825,7 +4825,7 @@ tab_remove_online_user(JID, StateData) ->
 					      room = Room, host = Host}).
 
 tab_count_user(JID) ->
-    {LUser, LServer, _} = jlib:jid_tolower(JID),
+    {LUser, LServer, _} = jid:tolower(JID),
     US = {LUser, LServer},
     case catch ets:select(support_online_users,
 			  [{#support_online_users{us = US, _ = '_'}, [], [[]]}])

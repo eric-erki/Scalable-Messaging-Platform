@@ -52,7 +52,7 @@ mech_new(_Host, _GetPassword, _CheckPassword,
     {ok, #state{certfile = CertFile, is_user_exists = IsUserExists}}.
 
 mech_step(State, ClientIn) ->
-    {JID, Username} = case jlib:string_to_jid(ClientIn) of
+    {JID, Username} = case jid:from_string(ClientIn) of
                           #jid{user = User} = J ->
                               {J, User};
                           error ->
@@ -88,8 +88,8 @@ find_jid_to_authenticate(JIDs,
                               user = User} = JID) ->
     case lists:member(
            {LUser, LServer, <<"">>},
-           [jlib:jid_tolower(
-              jlib:jid_remove_resource(J))
+           [jid:tolower(
+              jid:remove_resource(J))
             || J <- JIDs]) of
         true ->
             JID;
@@ -114,7 +114,7 @@ get_jids(Cert) ->
 			case 'XmppAddr':decode(
 			       'XmppAddr', XmppAddr) of
 			    {ok, D} when is_binary(D) ->
-				case jlib:string_to_jid(D) of
+				case jid:from_string(D) of
 				    JID = #jid{} ->
 					[JID];
 				    _ ->

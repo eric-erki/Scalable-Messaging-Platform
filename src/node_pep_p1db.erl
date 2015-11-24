@@ -99,9 +99,9 @@ purge_node(Nidx, Owner) ->
     node_flat_p1db:purge_node(Nidx, Owner).
 
 get_entity_affiliations(Host, Owner) ->
-    {_, D, _} = SubKey = jlib:jid_tolower(Owner),
-    SubKey = jlib:jid_tolower(Owner),
-    GenKey = jlib:jid_remove_resource(SubKey),
+    {_, D, _} = SubKey = jid:tolower(Owner),
+    SubKey = jid:tolower(Owner),
+    GenKey = jid:remove_resource(SubKey),
     States = node_flat_p1db:get_states_by_prefix(GenKey),
     NodeTree = mod_pubsub:tree(Host),
     Reply = lists:foldl(fun (#pubsub_state{stateid = {_, N}, affiliation = A}, Acc) ->
@@ -123,8 +123,8 @@ set_affiliation(Nidx, Owner, Affiliation) ->
     node_flat_p1db:set_affiliation(Nidx, Owner, Affiliation).
 
 get_entity_subscriptions(Host, Owner) ->
-    {U, D, _} = SubKey = jlib:jid_tolower(Owner),
-    GenKey = jlib:jid_remove_resource(SubKey),
+    {U, D, _} = SubKey = jid:tolower(Owner),
+    GenKey = jid:remove_resource(SubKey),
     States = case SubKey of
 	GenKey ->
 	    node_flat_p1db:get_states_by_prefix({U, D, '_'});

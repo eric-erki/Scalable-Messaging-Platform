@@ -68,26 +68,26 @@ json_to_rosteritems(LServer, LUser, {[{<<"roster">>, Roster}]}) ->
 fields_to_roster(_LServer, _LUser, Item, []) -> Item;
 fields_to_roster(LServer, LUser, Item,
                  [{<<"username">>, Username} | Rest]) ->
-    case jlib:make_jid(Username, LServer, <<>>) of
+    case jid:make(Username, LServer, <<>>) of
         error ->
             ?ERROR_MSG("Invalid roster item for user ~s: username ~s", [LUser, Username]),
             fields_to_roster(LServer, LUser, Item, Rest);
         JID ->
             US = {LUser, LServer},
-            USJ = {LUser, LServer, jlib:jid_tolower(JID)},
+            USJ = {LUser, LServer, jid:tolower(JID)},
             USR = {JID#jid.user, JID#jid.server, JID#jid.resource},
             fields_to_roster(LServer, LUser,
                              Item#roster{usj = USJ, us = US, jid = USR}, Rest)
     end;
 fields_to_roster(LServer, LUser, Item,
                  [{<<"jid">>, JidBin} | Rest]) ->
-    case jlib:string_to_jid((JidBin)) of
+    case jid:from_string((JidBin)) of
         error ->
             ?ERROR_MSG("Invalid roster item for user ~s: jid ~s", [LUser, JidBin]),
             fields_to_roster(LServer, LUser, Item, Rest);
         JID ->
             US = {LUser, LServer},
-            USJ = {LUser, LServer, jlib:jid_tolower(JID)},
+            USJ = {LUser, LServer, jid:tolower(JID)},
             USR = {JID#jid.user, JID#jid.server, JID#jid.resource},
             fields_to_roster(LServer, LUser,
                              Item#roster{usj = USJ, us = US, jid = USR}, Rest)

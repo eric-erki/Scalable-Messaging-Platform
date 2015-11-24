@@ -96,20 +96,20 @@ get_pool_name_for(Host) ->
 
 
 remove_user(User, Server) ->
-    remove_all_history(jlib:make_jid(User, Server, <<"">>)).
+    remove_all_history(jid:make(User, Server, <<"">>)).
 
 log_out( #xmlel{name = <<"message">>, attrs = Attrs} = OrigPacket,
             _C2SState, From, To) ->
     case filter_chat_packet(OrigPacket) of
       true ->
 	  Packet = xml:replace_tag_attr(<<"from">>,
-					jlib:jid_to_string(jlib:jid_remove_resource(From)),
+					jid:to_string(jid:remove_resource(From)),
 					OrigPacket),
 	  Collection = get_collection(From, To, Packet),
 	  Timestamp = get_datetime_string_for_db(now()),
 	  ID = xml:get_attr_s(<<"id">>, Attrs),
 	  JID =
-	      ejabberd_odbc:escape(jlib:jid_to_string(jlib:jid_remove_resource(From))),
+	      ejabberd_odbc:escape(jid:to_string(jid:remove_resource(From))),
 	  Text =
 	      ejabberd_odbc:escape(xml:element_to_binary(Packet)),
 	  Query = [<<"CALL ">>, log_msg(From#jid.lserver),
@@ -120,7 +120,7 @@ log_out( #xmlel{name = <<"message">>, attrs = Attrs} = OrigPacket,
 	  case ejabberd_odbc:sql_query(get_pool_name_for(From#jid.server),
 				  lists:flatten(Query)) of
             {error, Cause} ->
-                ?ERROR_MSG("Error storing history message sent by ~p to ~p: ~p", [jlib:jid_to_string(From), jlib:jid_to_string(To), Cause]);
+                ?ERROR_MSG("Error storing history message sent by ~p to ~p: ~p", [jid:to_string(From), jid:to_string(To), Cause]);
             _ ->
                 ok
         end;
@@ -129,7 +129,7 @@ log_out( #xmlel{name = <<"message">>, attrs = Attrs} = OrigPacket,
 	  case parse_read_notification(OrigPacket) of
 	    {read, ID} ->
 		JID =
-		    ejabberd_odbc:escape(jlib:jid_to_string(jlib:jid_remove_resource(From))),
+		    ejabberd_odbc:escape(jid:to_string(jid:remove_resource(From))),
 		Query = [<<"CALL ">>, set_read(From#jid.lserver),
 			 <<"('">>, JID, <<"','">>, ejabberd_odbc:escape(ID),
 			 <<"', '">>, ejabberd_odbc:escape(Timestamp), <<"')">>],
@@ -147,7 +147,7 @@ log_out( #xmlel{name = <<"message">>, attrs = Attrs} = OrigPacket,
 log_out(Packet, _C2SState,_From, _To) -> Packet.
 
 get_collection(From, To, Packet) ->
-    str:join(lists:usort([jlib:jid_to_string(jlib:jid_remove_resource(From))
+    str:join(lists:usort([jid:to_string(jid:remove_resource(From))
 			  | get_target(To, Packet)]),
 	     <<":">>).
 
@@ -168,9 +168,9 @@ get_target(To, Packet) ->
 		[xml:get_attr_s(<<"jid">>, Attrs)
 		 || #xmlel{name = <<"address">>, attrs = Attrs}
 			<- Addresses];
-	    _ -> [jlib:jid_to_string(jlib:jid_remove_resource(To))]
+	    _ -> [jid:to_string(jid:remove_resource(To))]
 	  end;
-      _ -> [jlib:jid_to_string(jlib:jid_remove_resource(To))]
+      _ -> [jid:to_string(jid:remove_resource(To))]
     end.
 
 parse_read_notification(Packet) ->
@@ -221,15 +221,15 @@ log_message_to_user(From, To,
 	of
       true ->
 	  Packet = xml:replace_tag_attr(<<"from">>,
-					jlib:jid_to_string(jlib:jid_remove_resource(From)),
+					jid:to_string(jid:remove_resource(From)),
 					OrigPacket),
 	  Collection = get_collection(From, To, Packet),
 	  Timestamp = get_datetime_string_for_db(now()),
 	  ID = xml:get_attr_s(<<"id">>, Attrs),
 	  JIDTo =
-	      ejabberd_odbc:escape(jlib:jid_to_string(jlib:jid_remove_resource(To))),
+	      ejabberd_odbc:escape(jid:to_string(jid:remove_resource(To))),
 	  JIDFrom =
-	      ejabberd_odbc:escape(jlib:jid_to_string(jlib:jid_remove_resource(From))),
+	      ejabberd_odbc:escape(jid:to_string(jid:remove_resource(From))),
 	  Text =
 	      ejabberd_odbc:escape(xml:element_to_binary(Packet)),
 	  Query = [<<"CALL ">>, log_msg(To#jid.lserver), <<"('">>,
@@ -240,7 +240,7 @@ log_message_to_user(From, To,
 	  case ejabberd_odbc:sql_query(get_pool_name_for(To#jid.server),
 				  lists:flatten(Query)) of
             {error, Cause} ->
-                ?ERROR_MSG("Error storing history message received by ~p from ~p: ~p", [jlib:jid_to_string(To), jlib:jid_to_string(From), Cause]);
+                ?ERROR_MSG("Error storing history message received by ~p from ~p: ~p", [jid:to_string(To), jid:to_string(From), Cause]);
             _ ->
                 ok
         end;
@@ -249,7 +249,7 @@ log_message_to_user(From, To,
 	    {ok, MsgID, Status}
 		when Status /= <<"on-sender-server">> ->
 		JIDTo =
-		    ejabberd_odbc:escape(jlib:jid_to_string(jlib:jid_remove_resource(To))),
+		    ejabberd_odbc:escape(jid:to_string(jid:remove_resource(To))),
 		Timestamp =
 		    ejabberd_odbc:escape(get_datetime_string_for_db(now())),
 		Query = [<<"CALL ">>,
@@ -349,7 +349,7 @@ parse_message_from_db(User, At, Message) ->
       {error, Error} ->
 	  ?ERROR_MSG("Error parsing message from DB. User:~p "
 		     "Message: ~p  At: ~p Error:~p",
-		     [jlib:jid_to_string(jlib:jid_remove_resource(User)),
+		     [jid:to_string(jid:remove_resource(User)),
 		      Message, At, Error]),
 	  [];
       El -> [El]
@@ -359,7 +359,7 @@ get_user_history(JID, StartingDate, Index, Max) ->
     Date =
 	get_datetime_string_for_db(jlib:datetime_string_to_timestamp(StartingDate)),
     JIDStr =
-	jlib:jid_to_string(jlib:jid_remove_resource(JID)),
+	jid:to_string(jid:remove_resource(JID)),
     Query = [<<"SELECT SQL_CALC_FOUND_ROWS message, "
 	       "at, is_read, deliver_status FROM messages_vie"
 	       "w WHERE jid='">>,
@@ -380,7 +380,7 @@ get_user_history(JID, StartingDate, Index, Max) ->
 
 remove_conversation(JID, Conversation) ->
     JIDStr =
-	jlib:jid_to_string(jlib:jid_remove_resource(JID)),
+	jid:to_string(jid:remove_resource(JID)),
     Query = [<<"CALL ">>,
 	     remove_conversation_history(JID#jid.lserver), <<"('">>,
 	     ejabberd_odbc:escape(JIDStr), <<"','">>,
@@ -398,7 +398,7 @@ remove_conversation(JID, Conversation) ->
 
 remove_all_history(JID) ->
     JIDStr =
-	jlib:jid_to_string(jlib:jid_remove_resource(JID)),
+	jid:to_string(jid:remove_resource(JID)),
     Query = [<<"CALL ">>,
 	     remove_user_history(JID#jid.lserver), <<"('">>, JIDStr,
 	     <<"')">>],

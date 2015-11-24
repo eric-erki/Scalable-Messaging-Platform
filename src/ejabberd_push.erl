@@ -62,8 +62,8 @@ build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom,
         Body == <<"">> andalso (not SilentPushesEnabled orelse Composing /= false) ->
             skip;
         true ->
-            BFrom = jlib:jid_remove_resource(From),
-            SFrom = jlib:jid_to_string(BFrom),
+            BFrom = jid:remove_resource(From),
+            SFrom = jid:to_string(BFrom),
             IncludeBody =
                 case {Body, SendBody} of
                     {<<"">>, _} ->
@@ -167,8 +167,8 @@ build_and_customize_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, Custo
     case gen_mod:db_type(LServer, Module) of
         odbc ->
             LUser = ejabberd_odbc:escape(JID#jid.luser),
-            SJID = jlib:jid_remove_resource(jlib:jid_tolower(jlib:string_to_jid(Sender))),
-            LSender = ejabberd_odbc:escape(jlib:jid_to_string(SJID)),
+            SJID = jid:remove_resource(jid:tolower(jid:from_string(Sender))),
+            LSender = ejabberd_odbc:escape(jid:to_string(SJID)),
             case ejabberd_odbc:sql_query(LServer,
                                          [<<"SELECT mute, sound FROM push_customizations WHERE username = '">>, LUser,
                                           <<"' AND match_jid = '">>, LSender, <<"';">>]) of
@@ -181,7 +181,7 @@ build_and_customize_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, Custo
             end;
 	p1db ->
 	    LUser = JID#jid.luser,
-	    SenderJID = jlib:string_to_jid(Sender),
+	    SenderJID = jid:from_string(Sender),
 	    case mod_applepush:read_push_customizations(LUser, LServer, SenderJID) of
 		{ok, Opts} ->
 		    Mute = proplists:get_bool(mute, Opts),
@@ -210,7 +210,7 @@ build_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields) ->
                  false -> <<"false">>;
                  _ -> Sound
              end,
-    Receiver = jlib:jid_to_string(JID),
+    Receiver = jid:to_string(JID),
     #xmlel{name = <<"message">>,
            attrs = [],
            children =
