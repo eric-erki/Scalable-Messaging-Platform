@@ -323,10 +323,14 @@ need_to_store(LServer, Packet) ->
        and (Type /= <<"headline">>) ->
 	    case gen_mod:get_module_opt(
 		   LServer, ?MODULE, store_empty_body,
-		   fun(V) when is_boolean(V) -> V end,
-		   true) of
+		   fun(V) when is_boolean(V) -> V;
+		      (unless_chat_state) -> unless_chat_state
+		   end,
+		   unless_chat_state) of
 		false ->
 		    xml:get_subtag(Packet, <<"body">>) /= false;
+		unless_chat_state ->
+		    not jlib:is_standalone_chat_state(Packet);
 		true ->
 		    true
 	    end;
@@ -1397,7 +1401,9 @@ mod_opt_type(p1db_group) ->
 mod_opt_type(pool_size) ->
     fun (N) when is_integer(N) -> N end;
 mod_opt_type(store_empty_body) ->
-    fun (V) when is_boolean(V) -> V end;
+    fun (V) when is_boolean(V) -> V;
+        (unless_chat_state) -> unless_chat_state
+    end;
 mod_opt_type(_) ->
     [access_max_user_messages, db_type, p1db_group,
      pool_size, store_empty_body].
