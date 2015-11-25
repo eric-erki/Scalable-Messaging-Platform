@@ -226,9 +226,12 @@ permute([], []) ->
 permute([], _Ys) ->
     [].
 
+start_test() ->
+    ?assertEqual(ok, application:start(p1_stringprep)).
+
 make_1_test() ->
     USR = {U, S, R} = {<<"user">>, <<"server">>, <<"resource">>},
-    ?assertEqual(
+    ?assertMatch(
        #jid{user = U, server = S, resource = R},
        jid:make(USR)).
 
@@ -272,7 +275,7 @@ remove_resource_jid_test() ->
     ?assertEqual(RJID, jid:remove_resource(JID)).
 
 remove_resource_ljid_test() ->
-    USR = {U, S, R} = {<<"user">>, <<"server">>, <<"resource">>},
+    USR = {U, S, _} = {<<"user">>, <<"server">>, <<"resource">>},
     ?assertEqual({U, S, <<"">>}, jid:remove_resource(USR)).
 
 replace_resource_test() ->
