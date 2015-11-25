@@ -226,6 +226,89 @@ permute([], []) ->
 permute([], _Ys) ->
     [].
 
+make_1_test() ->
+    USR = {U, S, R} = {<<"user">>, <<"server">>, <<"resource">>},
+    ?assertEqual(
+       #jid{user = U, server = S, resource = R},
+       jid:make(USR)).
+
+make_3_test() ->
+    {U, S, R} = {<<"user">>, <<"server">>, <<"resource">>},
+    ?assertMatch(
+       #jid{user = U, server = S, resource = R},
+       jid:make(U, S, R)).
+
+split_test() ->
+    USR = {U, S, R} = {<<"user">>, <<"server">>, <<"resource">>},
+    JID = #jid{user = U, luser = U, server = S, lserver = S,
+	       resource = R, lresource = R},
+    ?assertMatch(USR, jid:split(JID)).
+
+from_string_test() ->
+    SJID = <<"user@server/resource">>,
+    {U, S, R} = {<<"user">>, <<"server">>, <<"resource">>},
+    JID = #jid{user = U, luser = U, server = S, lserver = S,
+	       resource = R, lresource = R},
+    ?assertEqual(JID, jid:from_string(SJID)).
+
+to_string_test() ->
+    SJID = <<"user@server/resource">>,
+    {U, S, R} = {<<"user">>, <<"server">>, <<"resource">>},
+    JID = #jid{user = U, luser = U, server = S, lserver = S,
+	       resource = R, lresource = R},
+    ?assertEqual(SJID, jid:to_string(JID)).
+
+to_lower_test() ->
+    USR = {U, S, R} = {<<"user">>, <<"server">>, <<"resource">>},
+    JID = #jid{user = U, luser = U, server = S, lserver = S,
+	       resource = R, lresource = R},
+    ?assertEqual(USR, jid:tolower(JID)).
+
+remove_resource_jid_test() ->
+    {U, S, R} = {<<"user">>, <<"server">>, <<"resource">>},
+    JID = #jid{user = U, luser = U, server = S, lserver = S,
+	       resource = R, lresource = R},
+    RJID = JID#jid{resource = <<"">>, lresource = <<"">>},
+    ?assertEqual(RJID, jid:remove_resource(JID)).
+
+remove_resource_ljid_test() ->
+    USR = {U, S, R} = {<<"user">>, <<"server">>, <<"resource">>},
+    ?assertEqual({U, S, <<"">>}, jid:remove_resource(USR)).
+
+replace_resource_test() ->
+    {U, S, R} = {<<"user">>, <<"server">>, <<"resource">>},
+    JID = #jid{user = U, luser = U, server = S, lserver = S,
+	       resource = R, lresource = R},
+    RJID = JID#jid{resource = <<"r">>, lresource = <<"r">>},
+    ?assertEqual(RJID, jid:replace_resource(JID, <<"r">>)).
+
+is_nodename_empty_test() ->
+    ?assertEqual(false, jid:is_nodename(<<"">>)).
+
+is_nodename_test() ->
+    ?assertEqual(true, jid:is_nodename(<<"user">>)).
+
+nodeprep_long_string_test() ->
+    S = list_to_binary(lists:duplicate(1024, $u)),
+    ?assertEqual(error, jid:nodeprep(S)).
+
+nodeprep_test() ->
+    ?assertEqual(<<"user">>, jid:nodeprep(<<"user">>)).
+
+nameprep_long_string_test() ->
+    S = list_to_binary(lists:duplicate(1024, $s)),
+    ?assertEqual(error, jid:nameprep(S)).
+
+nameprep_test() ->
+    ?assertEqual(<<"server">>, jid:nameprep(<<"server">>)).
+
+resourceprep_long_string_test() ->
+    S = list_to_binary(lists:duplicate(1024, $r)),
+    ?assertEqual(error, jid:resourceprep(S)).
+
+resourceprep_test() ->
+    ?assertEqual(<<"resource">>, jid:resourceprep(<<"resource">>)).
+
 string_to_usr_empty_test() ->
     ?assertEqual(error, jid:string_to_usr(<<"">>)).
 
