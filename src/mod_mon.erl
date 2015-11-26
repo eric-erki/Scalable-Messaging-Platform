@@ -211,7 +211,7 @@ handle_cast({set, log, Value}, State) ->
 handle_cast({set, Probe, Value}, State) ->
     put(Probe, Value),
     {noreply, State};
-handle_cast({avg, Probe, Value}, State) ->
+handle_cast({sum, Probe, Value}, State) ->
     case get(Probe) of
         {Old, Count} -> put(Probe, {Old+Value, Count+1});
         _ -> put(Probe, {Value, 1})
@@ -458,7 +458,7 @@ privacy_iq_get(Acc, #jid{lserver=LServer}, _To, _Iq, _) ->
 backend_api_call(LServer, _Method, _Path) ->
     cast(LServer, {inc, backend_api_call}).
 backend_api_response_time(LServer, _Method, _Path, Ms) ->
-    cast(LServer, {avg, backend_api_response_time, Ms}).
+    cast(LServer, {sum, backend_api_response_time, Ms}).
 backend_api_timeout(LServer, _Method, _Path) ->
     cast(LServer, {inc, backend_api_timeout}).
 backend_api_error(LServer, _Method, _Path) ->
