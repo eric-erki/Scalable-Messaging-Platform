@@ -649,28 +649,20 @@ compute_average(Probe) ->
 %% Cache sync
 %%====================================================================
 
-init_backend(Host, {statsd, Server}) ->
+init_backend(Host, {statsd, EndPoint}) ->
     case application:load(statsderl) of
         ok ->
+            {Ip, Port} = backend_ip_port(EndPoint, {127,0,0,1}, 2003),
             application:set_env(statsderl, base_key, binary_to_list(Host)),
-            case catch inet:getaddr(binary_to_list(Server), inet) of
-                {ok, Ip} -> application:set_env(statsderl, hostname, Ip);
-                _ -> ?WARNING_MSG("statsd have undefined endpoint: can not resolve ~p", [Server])
-            end,
+            application:set_env(statsderl, hostname, Ip),
+            application:set_env(statsderl, port, Port),
             application:start(statsderl),
             statsd;
         _ ->
             none
     end;
 init_backend(Host, statsd) ->
-    case application:load(statsderl) of
-        ok ->
-            application:set_env(statsderl, base_key, binary_to_list(Host)),
-            application:start(statsderl),
-            statsd;
-        _ ->
-            none
-    end;
+    init_backend(Host, {statsd, <<"127.0.0.1:2003">>});
 init_backend(Host, mnesia) ->
     Table = gen_mod:get_module_proc(Host, mon),
     mnesia:create_table(Table,
@@ -679,14 +671,40 @@ init_backend(Host, mnesia) ->
                          {record_name, mon},
                          {attributes, record_info(fields, mon)}]),
     mnesia;
-init_backend(Host, grapherl) ->
-    init_backend(Host, {grapherl, {127,0,0,1}, 11111});
-init_backend(Host, {grapherl, Server, Port}) ->
-    application:set_env(grapherl, {backend_ip, Host}, Server),
+init_backend(Host, {grapherl, EndPoint}) ->
+    {Ip, Port} = backend_ip_port(EndPoint, {127,0,0,1}, 11111),
+    application:set_env(grapherl, {backend_ip, Host}, Ip),
     application:set_env(grapherl, {backend_port, Host}, Port),
     grapherl;
+init_backend(Host, grapherl) ->
+    init_backend(Host, {grapherl, <<"127.0.0.1:11111">>});
 init_backend(_, _) ->
     none.
+
+backend_ip_port(EndPoint, DefaultServer, DefaultPort) when is_binary(EndPoint) ->
+    case string:tokens(binary_to_list(EndPoint), ":") of
+        [Ip] -> {backend_ip(Ip, DefaultServer), DefaultPort};
+        [Ip, Port|_] -> {backend_ip(Ip, DefaultServer), backend_port(Port, DefaultPort)};
+        _ ->
+            ?WARNING_MSG("backend endoint is invalid: ~p", [EndPoint]),
+            {DefaultServer, DefaultPort}
+    end.
+backend_ip(Server, Default) when is_list(Server) ->
+    case catch inet:getaddr(Server, inet) of
+        {ok, IpAddr} ->
+            IpAddr;
+        _ ->
+            ?WARNING_MSG("backend address is invalid: ~p, fallback to ~p", [Server, Default]),
+            Default
+    end.
+backend_port(Port, Default) when is_list(Port) ->
+    case catch list_to_integer(Port) of
+        I when is_integer(I) ->
+            I;
+        _ ->
+            ?WARNING_MSG("backend port is invalid: ~p, fallback to ~p", [Port, Default]),
+            Default
+    end.
 
 % push_metrics must be called only by master vhost (1st listed vhost) and take care
 % to agregate values of all vhosts or not, depending on backend.
