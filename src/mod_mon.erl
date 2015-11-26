@@ -868,8 +868,10 @@ health_check(Host, all) ->
            {client_roster_time, <<"roster response is slow">>, <<"roster broken">>}]}]).
 
 jabs_count(Host) ->
-    {Count, _} = mod_jabs:value(Host),
-    Count.
+    case catch mod_jabs:value(Host) of
+        {'EXIT', _} -> 0;
+        {Count, _} -> Count
+    end.
 
 %%====================================================================
 %% Health check helpers
