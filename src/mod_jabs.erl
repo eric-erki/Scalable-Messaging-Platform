@@ -74,15 +74,21 @@ stop(Host) ->
     supervisor:delete_child(ejabberd_sup, Proc).
 
 value(Host) ->
-    case gen_server:call(process(Host), values, ?CALL_TIMEOUT) of
-        [] ->
-            gen_server:call(process(Host), value, ?CALL_TIMEOUT);
-        Values ->
-            lists:foldl(
-                fun ({_N, C, S}, {CAcc, SAcc}) when S<SAcc -> {CAcc+C, S};
-                    ({_N, C, _S}, {CAcc, SAcc}) -> {CAcc+C, SAcc}
-                end,
-                {0, os:timestamp()}, Values)
+    Proc = process(Host),
+    case whereis(Proc) of
+        undefined ->
+            undefined;
+        _ ->
+            case gen_server:call(Proc, values, ?CALL_TIMEOUT) of
+                [] ->
+                    gen_server:call(Proc, value, ?CALL_TIMEOUT);
+                Values ->
+                    lists:foldl(
+                        fun ({_N, C, S}, {CAcc, SAcc}) when S<SAcc -> {CAcc+C, S};
+                            ({_N, C, _S}, {CAcc, SAcc}) -> {CAcc+C, SAcc}
+                        end,
+                        {0, os:timestamp()}, Values)
+            end
     end.
 
 reset(Host) ->
