@@ -525,6 +525,7 @@ reload_config() ->
 %%%
 
 join_cluster(NodeBin) ->
+    join_p1db(NodeBin),
     ejabberd_cluster:join(list_to_atom(binary_to_list(NodeBin))).
 
 leave_cluster(NodeBin) ->
