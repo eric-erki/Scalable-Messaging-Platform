@@ -528,6 +528,7 @@ join_cluster(NodeBin) ->
     ejabberd_cluster:join(list_to_atom(binary_to_list(NodeBin))).
 
 leave_cluster(NodeBin) ->
+    leave_p1db(NodeBin),
     ejabberd_cluster:leave(list_to_atom(binary_to_list(NodeBin))).
 
 list_cluster() ->
