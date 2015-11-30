@@ -337,8 +337,13 @@ can_use_nick(_LServer, Host, JID, Nick, p1db) ->
         {error, _} ->
             true
     end;
+<<<<<<< HEAD
 can_use_nick(LServer, Host, JID, Nick, riak) ->
     {LUser, LServer, _} = jid:tolower(JID),
+=======
+can_use_nick(_LServer, Host, JID, Nick, riak) ->
+    {LUser, LServer, _} = jlib:jid_tolower(JID),
+>>>>>>> 8ed1801... Fix MUC join from S2S connection with riak backend (EJABS-2568)
     LUS = {LUser, LServer},
     case ejabberd_riak:get_by_index(muc_registered,
 				    muc_registered_schema(),
