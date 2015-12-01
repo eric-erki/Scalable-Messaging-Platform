@@ -3641,13 +3641,15 @@ process_push_iq(From, To,
 				AppID0 = xml:get_path_s(El,
                                                         [{elem, <<"appid">>},
                                                          cdata]),
-				AppID = case {xml:get_path_s(Notification, [{elem, <<"type">>}, cdata]),
-                                              Sandbox} of
+				Type = xml:get_path_s(Notification, [{elem, <<"type">>}, cdata]),
+				AppID = case {Type, Sandbox} of
                                             {<<"applepush">>, <<"true">>} ->
                                                 <<AppID0/binary, "_dev">>;
                                             _ ->
                                                 AppID0
                                         end,
+				?INFO_MSG("Enabling p1:push with gateway type ~p for ~s with appid: ~p",
+				          [Type,jid:to_string(StateData#state.jid),AppID]),
 				case catch
 				       {jlib:binary_to_integer(SKeepAlive),
 					jlib:binary_to_integer(SOORTimeout)}
