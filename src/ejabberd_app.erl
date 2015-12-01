@@ -242,7 +242,7 @@ start_apps() ->
     ejabberd:start_app(p1_zlib),
     http_p1:start(),
     p1db_start(),
-    ejabberd:start_app(p1_cache_tab).
+    ejabberd:start_app(cache_tab).
 
 opt_type(net_ticktime) ->
     fun (P) when is_integer(P), P > 0 -> P end;
