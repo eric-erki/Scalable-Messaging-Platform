@@ -188,6 +188,9 @@ init_db(p1db, Host) ->
                                {dec_key, fun ?MODULE:dec_key/1},
                                {enc_val, fun ?MODULE:enc_val/2},
                                {dec_val, fun ?MODULE:dec_val/2}]}]);
+init_db(rest, Host) ->
+    rest:start(Host),
+    ok;
 init_db(_, _) ->
     ok.
 
@@ -255,6 +258,35 @@ store_offline_msg(Host, {User, _}, Msgs, Len, MaxOfflineMsgs, p1db) ->
                       USNKey = usn2key(LUser, LServer, Now),
                       Val = offmsg_to_p1db(Msg#offline_msg{packet = NewEl}),
                       p1db:insert(offline_msg, USNKey, Val)
+              end, Msgs)
+    end;
+store_offline_msg(Host, {User, _}, Msgs, Len, MaxOfflineMsgs, rest) ->
+    Count = if MaxOfflineMsgs =/= infinity ->
+                    Len + count_offline_messages(User, Host);
+               true -> 0
+            end,
+    if
+        Count > MaxOfflineMsgs ->
+            discard_warn_sender(Msgs);
+        true ->
+            lists:foreach(
+              fun(#offline_msg{us = {LUser, LServer}, timestamp = Now,
+                               from = From, to = To,
+                               packet = #xmlel{attrs = _Attrs} = El} = Msg) ->
+			Path = offline_rest_path(LUser, LServer),
+			%% Retry 2 times, with a backoff of 500millisec
+			case rest:with_retry(post, [LServer, Path, [],
+				    {[{<<"peer">>, jlib:jid_to_string(From)},
+				      {<<"packet">>, xml:element_to_binary(El)},
+				      {<<"timestamp">>, jlib:now_to_utc_string(Now,3)} ]}], 2, 500) of
+			    {ok, Code, _} when Code == 200 orelse Code == 201 ->
+				ok;
+			    Err ->
+				?ERROR_MSG("failed to store packet for user ~s and peer ~s:"
+				    " ~p.  Packet: ~p",
+				    [From, To, Err, Msg]),
+				{error, Err}
+			end
               end, Msgs)
     end;
 store_offline_msg(Host, {User, _}, Msgs, Len, MaxOfflineMsgs,
@@ -511,6 +543,29 @@ pop_offline_messages(Ls, LUser, LServer, riak) ->
             end;
 	_ ->
 	    Ls
+    end;
+pop_offline_messages(Ls, LUser, LServer, rest) ->
+    Path = offline_rest_path(LUser, LServer, <<"pop">>),
+    case rest:with_retry(post, [LServer, Path, [], []], 2, 500) of
+        {ok, 200, Resp} ->
+                To = jlib:make_jid(LUser, LServer, <<>>),
+                Ls ++ lists:flatmap(
+                        fun ({Item}) ->
+                                From = jlib:string_to_jid(proplists:get_value(<<"peer">>, Item, <<>>)),
+                                Timestamp = proplists:get_value(<<"timestamp">>, Item, <<>>),
+                                Packet = proplists:get_value(<<"packet">>, Item, <<>>),
+                                case xml_stream:parse_element(Packet) of
+                                    {error,Reason} ->
+                                        ?ERROR_MSG("Bad packet XML received from rest offline: ~p : ~p ", [Packet, Reason]),
+                                        [];
+                                    El ->
+                                        [{route, From, To, jlib:add_delay_info(El, LServer, Timestamp, <<"Offline Storage">>)}]
+                                end
+                        end,
+                        Resp);
+        Other ->
+            ?ERROR_MSG("Unexpected response for offline pop: ~p", [Other]),
+            Ls
     end.
 
 remove_expired_messages(Server) ->
@@ -537,7 +592,8 @@ remove_expired_messages(_LServer, mnesia) ->
     mnesia:transaction(F);
 remove_expired_messages(_LServer, odbc) -> {atomic, ok};
 remove_expired_messages(_LServer, p1db) -> {atomic, ok};
-remove_expired_messages(_LServer, riak) -> {atomic, ok}.
+remove_expired_messages(_LServer, riak) -> {atomic, ok};
+remove_expired_messages(_LServer, rest) -> {atomic, ok}. %%not supported
 
 remove_old_messages(Days, Server) ->
     LServer = jid:nameprep(Server),
@@ -578,6 +634,8 @@ remove_old_messages(Days, LServer, odbc) ->
 remove_old_messages(_Days, _LServer, p1db) ->
     {atomic, ok};
 remove_old_messages(_Days, _LServer, riak) ->
+    {atomic, ok};
+remove_old_messages(_Days, _LServer, rest) -> %%Not supported
     {atomic, ok}.
 
 remove_user(User, Server) ->
@@ -607,7 +665,11 @@ remove_user(LUser, LServer, p1db) ->
     end;
 remove_user(LUser, LServer, riak) ->
     {atomic, ejabberd_riak:delete_by_index(offline_msg,
-                                           <<"us">>, {LUser, LServer})}.
+                                           <<"us">>, {LUser, LServer})};
+remove_user(LUser, LServer, rest) ->
+    delete_all_msgs(LUser, LServer, rest).
+
+
 
 jid_to_binary(#jid{user = U, server = S, resource = R,
                    luser = LU, lserver = LS, lresource = LR}) ->
@@ -674,6 +736,11 @@ get_offline_els(LUser, LServer, DBType)
               {route, From, To, Packet} = offline_msg_to_route(LServer, Msg),
               jlib:replace_from_to(From, To, Packet)
       end, Msgs);
+
+get_offline_els(_LUser, _LServer, rest) ->
+    %AFAIK this is only used by ejabberd_piefis
+    throw({not_implemented,rest});
+
 get_offline_els(LUser, LServer, odbc) ->
     Username = ejabberd_odbc:escape(LUser),
     case catch ejabberd_odbc:sql_query(LServer,
@@ -1069,7 +1136,16 @@ delete_all_msgs(LUser, LServer, riak) ->
 delete_all_msgs(LUser, LServer, odbc) ->
     Username = ejabberd_odbc:escape(LUser),
     odbc_queries:del_spool_msg(LServer, Username),
-    {atomic, ok}.
+    {atomic, ok};
+
+delete_all_msgs(LUser, LServer, rest) ->
+    Path = offline_rest_path(LUser, LServer),
+    case rest:with_retry(delete, [LServer, Path], 2, 500) of
+        {ok, 200, _ } ->
+            {atomic, ok};
+        Error ->
+            {aborder, Error}
+    end.
 
 webadmin_user_parse_query(_, <<"removealloffline">>,
 			  User, Server, _Query) ->
@@ -1128,6 +1204,16 @@ count_offline_messages(LUser, LServer, riak) ->
         _ ->
             0
     end;
+count_offline_messages(LUser, LServer, rest) ->
+    Path = offline_rest_path(LUser, LServer, <<"count">>),
+    case rest:with_retry(get, [LServer, Path], 2, 500) of
+        {ok, 200, {Resp}}  ->
+            proplists:get_value(<<"count">>, Resp, []);
+        Other ->
+            ?ERROR_MSG("Unexpected response for offline count: ~p", [Other]),
+            0
+    end;
+
 count_offline_messages(_Acc, User, Server) ->
     N = count_offline_messages(User, Server),
     {stop, N}.
@@ -1160,6 +1246,15 @@ count_records_cont(Cont, Count) ->
 
 offline_msg_schema() ->
     {record_info(fields, offline_msg), #offline_msg{}}.
+
+offline_rest_path(User, Server) ->
+    Base = ejabberd_config:get_option({ext_api_path_offline, LServer},
+                                      fun(X) -> iolist_to_binary(X) end,
+                                      <<"/offline">>),
+    <<Base/binary, "/", User/binary>>.
+offline_rest_path(User, Server, Path) ->
+    Base = offline_rest_path(User, Server),
+    <<Base/binary, "/", Path/binary>>.
 
 us2key(LUser, LServer) ->
     <<LServer/binary, 0, LUser/binary>>.

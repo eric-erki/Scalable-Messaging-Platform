@@ -45,7 +45,7 @@
 	 iq_to_xml/1, parse_xdata_submit/1,
 	 add_delay_info/3, add_delay_info/4,
 	 timestamp_to_iso/1, timestamp_to_iso/2, timestamp_to_iso/3,
-	 now_to_utc_string/1, now_to_local_string/1,
+	 now_to_utc_string/1, now_to_utc_string/2, now_to_local_string/1,
 	 datetime_string_to_timestamp/1,
 	 term_to_base64/1, base64_to_term/1,
 	 decode_base64/1, encode_base64/1, ip_to_list/1,
@@ -568,7 +568,10 @@ add_delay_info(El, From, Time, Desc) ->
 
 create_delay_tag(TimeStamp, FromJID, Desc) when is_tuple(FromJID) ->
     From = jid:to_string(FromJID),
-    Stamp = now_to_utc_string(TimeStamp, 3),
+    Stamp = case TimeStamp of
+                L when is_binary(L) -> L; %%Assume timestamp is already formatted
+                _ -> now_to_utc_string(TimeStamp, 3)
+            end,
     Children = case Desc of
 		 <<"">> -> [];
 		 _ -> [{xmlcdata, Desc}]

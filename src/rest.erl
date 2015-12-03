@@ -27,7 +27,7 @@
 
 -behaviour(ejabberd_config).
 
--export([start/1, stop/1, get/2, get/3, post/4,
+-export([start/1, stop/1, get/2, get/3, post/4, delete/2,
 	 request/6, with_retry/4, opt_type/1]).
 
 -include("logger.hrl").
@@ -66,6 +66,9 @@ get(Server, Path) ->
     request(Server, get, Path, [], "application/json", <<>>).
 get(Server, Path, Params) ->
     request(Server, get, Path, Params, "application/json", <<>>).
+
+delete(Server, Path) ->
+    request(Server, delete, Path, [], "application/json", <<>>).
 
 post(Server, Path, Params, Content) ->
     Data = case catch jiffy:encode(Content) of

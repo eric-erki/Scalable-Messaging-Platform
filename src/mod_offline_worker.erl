@@ -52,7 +52,8 @@ receive_all(US, Msgs, DBType) ->
 		  mnesia -> Msgs;
 		  odbc -> lists:reverse(Msgs);
                   p1db -> Msgs;
-		  riak -> Msgs
+		  riak -> Msgs;
+                  rest -> Msgs
 		end
     end.
 

@@ -124,6 +124,7 @@ request(Method, URLRaw, HdrsRaw, Body, Opts) ->
     Request = case Method of
 		get -> {URL, Hdrs};
 		head -> {URL, Hdrs};
+		delete -> {URL, Hdrs};
 		_ -> % post, etc.
 		    {URL, Hdrs,
 		     to_list(proplists:get_value(<<"content-type">>, HdrsRaw, [])),
