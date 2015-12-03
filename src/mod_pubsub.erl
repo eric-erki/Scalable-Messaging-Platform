@@ -3632,6 +3632,7 @@ get_option(Options, Var, Def) ->
 
 node_options(Host, Type) ->
     case config(serverhost(Host), default_node_config) of
+	undefined -> node_plugin_options(Host, Type);
 	[] -> node_plugin_options(Host, Type);
 	Config -> Config
     end.
