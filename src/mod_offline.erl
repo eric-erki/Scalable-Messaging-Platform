@@ -1248,7 +1248,7 @@ offline_msg_schema() ->
     {record_info(fields, offline_msg), #offline_msg{}}.
 
 offline_rest_path(User, Server) ->
-    Base = ejabberd_config:get_option({ext_api_path_offline, LServer},
+    Base = ejabberd_config:get_option({ext_api_path_offline, Server},
                                       fun(X) -> iolist_to_binary(X) end,
                                       <<"/offline">>),
     <<Base/binary, "/", User/binary>>.
