@@ -523,7 +523,8 @@ analyze_ip_xff({IPLast, Port}, XFF, Host) ->
 				[jlib:ip_to_list(IPLast)],
     TrustedProxies = ejabberd_config:get_option(
                        {trusted_proxies, Host},
-                       fun(TPs) ->
+                       fun(all) -> all;
+                          (TPs) ->
                                [iolist_to_binary(TP) || TP <- TPs]
                        end, []),
     IPClient = case is_ipchain_trusted(ProxiesIPs,
@@ -985,5 +986,6 @@ send_flash_policy(State) ->
 
 opt_type(listen) -> fun (V) -> V end;
 opt_type(trusted_proxies) ->
-    fun (TPs) -> [iolist_to_binary(TP) || TP <- TPs] end;
+    fun (all) -> all;
+        (TPs) -> [iolist_to_binary(TP) || TP <- TPs] end;
 opt_type(_) -> [listen, trusted_proxies].
