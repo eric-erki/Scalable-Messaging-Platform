@@ -347,7 +347,7 @@ accept(ListenSocket, Module, Port, Opts, Interval) ->
     NewInterval = check_rate_limit(Interval),
     case gen_tcp:accept(ListenSocket) of
 	{ok, Socket} ->
-	    {_, _, USec} = now(),
+	    {_, _, USec} = p1_time_compat:timestamp(),
 	    Acceptor = acceptor_name((USec rem accept_pool_size()) + 1, Module, Port),
 	    case gen_tcp:controlling_process(Socket, whereis(Acceptor)) of
 		ok ->

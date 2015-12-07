@@ -490,7 +490,7 @@ handle_sync_event({http_get, _Rid, _Wait, _Hold}, _From,
     {reply, {ok, {prebind, JID}}, StateName,
      StateData#state{jid = undefined}};
 handle_sync_event({http_get, Rid, Wait, Hold}, From, StateName, StateData) ->
-    TNow = tnow(),
+    TNow = p1_time_compat:system_time(micro_seconds),
     if (Hold > 0) and
 	((StateData#state.output == []) or (StateData#state.rid < Rid)) and
 	((TNow - StateData#state.ctime) < (Wait*1000*1000)) and
@@ -652,7 +652,7 @@ process_http_put(#http_put{rid = Rid, attrs = Attrs,
 			   end
 		     end
 	       end,
-    TNow = tnow(),
+    TNow = p1_time_compat:system_time(micro_seconds),
     LastPoll = if Payload == [] -> TNow;
 		  true -> 0
 	       end,
@@ -1274,11 +1274,6 @@ get_max_pause({Host, _}) ->
 			   ?MAX_PAUSE);
 get_max_pause(_) -> ?MAX_PAUSE.
 
-%% Current time as integer
-tnow() ->
-    {TMegSec, TSec, TMSec} = now(),
-    (TMegSec * 1000000 + TSec) * 1000000 + TMSec.
-
 check_default_xmlns(#xmlel{name = Name, attrs = Attrs,
 			   children = Els} =
 			El) ->
@@ -1310,7 +1305,7 @@ check_bind_module(XmppDomain) ->
     end.
 
 make_sid() ->
-    <<(p1_sha:sha(term_to_binary({now(), make_ref()})))/binary,
+    <<(p1_sha:sha(term_to_binary({p1_time_compat:timestamp(), make_ref()})))/binary,
       "-", (ejabberd_cluster:node_id())/binary>>.
 
 get_session(SID) ->

@@ -928,8 +928,7 @@ create_cache() ->
 			 {attributes, record_info(fields, multicastc)}]).
 
 add_response(RServer, Response, State) ->
-    Secs =
-	calendar:datetime_to_gregorian_seconds(calendar:now_to_datetime(now())),
+    Secs = calendar:datetime_to_gregorian_seconds(calendar:local_time()),
     mnesia:dirty_write(#multicastc{rserver = RServer,
 				   response = {Response, State}, ts = Secs}).
 
@@ -942,8 +941,7 @@ search_server_on_cache(RServer, _LServerS, LServiceS, Maxmins) ->
             query_info(RServer, LServiceS, not_supported),
             route_single;
         {cached, {Response, State}, TS} ->
-            Now =
-                calendar:datetime_to_gregorian_seconds(calendar:now_to_datetime(now())),
+            Now = calendar:datetime_to_gregorian_seconds(calendar:local_time()),
             Response2 =
                 case State of
                     cached ->
@@ -996,7 +994,7 @@ purge() ->
     Maxmins_positive = (?MAXTIME_CACHE_POSITIVE),
     Maxmins_negative = (?MAXTIME_CACHE_NEGATIVE),
     Now =
-	calendar:datetime_to_gregorian_seconds(calendar:now_to_datetime(now())),
+        calendar:datetime_to_gregorian_seconds(calendar:local_time()),
     purge(Now, {Maxmins_positive, Maxmins_negative}).
 
 purge(Now, Maxmins) ->

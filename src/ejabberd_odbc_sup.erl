@@ -133,14 +133,14 @@ get_shard(Host, Key) ->
     erlang:phash2(Key, get_shard_size(Host)) + 1.
 
 get_random_pid(Host) ->
-    get_random_pid(Host, now()).
+    get_random_pid(Host, p1_time_compat:monotonic_time()).
 
 get_random_pid(Host, Term) ->
     I = erlang:phash2(Term, get_pool_size(Host)) + 1,
     ejabberd_odbc:get_proc(Host, I).
 
 get_random_pid_shard(Host, Key) ->
-    get_random_pid_shard(Host, Key, now()).
+    get_random_pid_shard(Host, Key, p1_time_compat:timestamp()).
 
 get_random_pid_shard(Host, Key, Term) ->
     I = erlang:phash2(Term, get_pool_size(Host)) + 1,

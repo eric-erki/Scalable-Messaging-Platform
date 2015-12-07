@@ -341,7 +341,7 @@ store_packet(From, To, Packet) ->
 		    case check_event(From, To, Packet) of
 			true ->
 			    #jid{luser = LUser, lserver = LServer} = To,
-			    TimeStamp = now(),
+			    TimeStamp = p1_time_compat:timestamp(),
 			    #xmlel{children = Els} = Packet,
 			    Expire = find_x_expire(TimeStamp, Els),
 			    Worker = mod_offline_sup:get_worker_for(To#jid.lserver, To#jid.luser),
@@ -450,7 +450,7 @@ pop_offline_messages(Ls, LUser, LServer, mnesia) ->
 	end,
     case mnesia:transaction(F) of
       {atomic, Rs} ->
-	  TS = now(),
+	  TS = p1_time_compat:timestamp(),
 	  Ls ++
 	    lists:map(fun (R) ->
 			      offline_msg_to_route(LServer, R)
@@ -491,7 +491,7 @@ pop_offline_messages(Ls, LUser, LServer, p1db) ->
     USPrefix = us_prefix(LUser, LServer),
     case p1db:get_by_prefix(offline_msg, USPrefix) of
         {ok, L} ->
-            TS = now(),
+            TS = p1_time_compat:timestamp(),
             Msgs = lists:flatmap(
                      fun({Key, Val, _VClock}) ->
                              DelRes = p1db:delete(offline_msg, Key),
@@ -525,7 +525,7 @@ pop_offline_messages(Ls, LUser, LServer, riak) ->
                   fun(#offline_msg{timestamp = T}) ->
                           ok = ejabberd_riak:delete(offline_msg, T)
                   end, Rs),
-                TS = now(),
+                TS = p1_time_compat:timestamp(),
                 Ls ++ lists:map(
                         fun (R) ->
                                 offline_msg_to_route(LServer, R)
@@ -574,7 +574,7 @@ remove_expired_messages(Server) ->
 			    gen_mod:db_type(LServer, ?MODULE)).
 
 remove_expired_messages(_LServer, mnesia) ->
-    TimeStamp = now(),
+    TimeStamp = p1_time_compat:timestamp(),
     F = fun () ->
 		mnesia:write_lock_table(offline_msg),
 		mnesia:foldl(fun (Rec, _Acc) ->
@@ -601,8 +601,7 @@ remove_old_messages(Days, Server) ->
 			gen_mod:db_type(LServer, ?MODULE)).
 
 remove_old_messages(Days, _LServer, mnesia) ->
-    {MegaSecs, Secs, _MicroSecs} = now(),
-    S = MegaSecs * 1000000 + Secs - 60 * 60 * 24 * Days,
+    S = p1_time_compat:system_time(seconds) - 60 * 60 * 24 * Days,
     MegaSecs1 = S div 1000000,
     Secs1 = S rem 1000000,
     TimeStamp = {MegaSecs1, Secs1, 0},
@@ -1075,7 +1074,7 @@ get_messages_subset2(Max, Length, MsgsAll, DBType)
     MsgsLastN = lists:nthtail(Length - FirstN - FirstN,
 			      Msgs2),
     NoJID = jid:make(<<"...">>, <<"...">>, <<"">>),
-    IntermediateMsg = #offline_msg{timestamp = now(),
+    IntermediateMsg = #offline_msg{timestamp = p1_time_compat:timestamp(),
 				   from = NoJID, to = NoJID,
 				   packet =
 				       #xmlel{name = <<"...">>, attrs = [],
@@ -1367,10 +1366,9 @@ import(LServer, {odbc, _}, DBType, <<"spool">>,
                                 {attr, <<"stamp">>}]),
     TS = case jlib:datetime_string_to_timestamp(Stamp) of
              {MegaSecs, Secs, _} ->
-                 {_, _, USecs} = now(),
-                 {MegaSecs, Secs, USecs};
+                 {MegaSecs, Secs, 0};
              undefined ->
-                 now()
+                 p1_time_compat:timestamp()
          end,
     US = {LUser, LServer},
     Expire = find_x_expire(TS, El#xmlel.children),

@@ -283,8 +283,7 @@ enable_offline_notification(JID, Notification, SendBody, SendFrom, AppID1) ->
 			    <<"">> -> AppID1;
 			    A -> A
 			end,
-		    {MegaSecs, Secs, _MicroSecs} = now(),
-		    TimeStamp = MegaSecs * 1000000 + Secs,
+		    TimeStamp = p1_time_compat:system_time(seconds),
 		    store_cache(JID, ID1, AppID, SendBody, SendFrom, TimeStamp);
 		_ ->
 		    ok

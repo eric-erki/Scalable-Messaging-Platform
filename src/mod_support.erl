@@ -66,7 +66,7 @@
 
 -record(support_online_room,
         {name_host = {<<"">>, <<"">>} :: {binary(), binary()} | {'_', '$1'} | '$1' | '_',
-         timestamp = now() :: erlang:timestamp() | '_',
+         timestamp = p1_time_compat:timestamp() :: erlang:timestamp() | '_',
          pid = self() :: pid() | '$1' | '$2' | '_'}).
 
 -record(support_registered,
@@ -857,7 +857,7 @@ start_new_room(Host, ServerHost, Access, Room,
 register_room(ServerHost, Host, Room, Pid) ->
     R = #support_online_room{name_host = {Room, Host},
 			 pid = Pid,
-			 timestamp = now()},
+			 timestamp = p1_time_compat:timestamp()},
     Proc = gen_mod:get_module_proc(ServerHost, ?PROCNAME),
     lists:foreach(
       fun(Node) when Node == node() ->
@@ -1041,7 +1041,7 @@ flush() -> receive _ -> flush() after 0 -> ok end.
 
 iq_get_unique(From) ->
     {xmlcdata,
-     p1_sha:sha(term_to_binary([From, now(),
+     p1_sha:sha(term_to_binary([From, p1_time_compat:timestamp(),
 			     randoms:get_string()]))}.
 
 get_nick(ServerHost, Host, From) ->

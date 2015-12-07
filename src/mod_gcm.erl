@@ -230,8 +230,7 @@ enable_offline_notification(JID, Notification, SendBody, SendFrom, AppID1) ->
 			    <<"">> -> AppID1;
 			    A -> A
 			end,
-		    {MegaSecs, Secs, _MicroSecs} = now(),
-		    TimeStamp = MegaSecs * 1000000 + Secs,
+		    TimeStamp = p1_time_compat:system_time(seconds),
 		    store_cache(JID, ID1, AppID, SendBody, SendFrom, TimeStamp);
 		_ ->
 		    ok
@@ -684,8 +683,7 @@ update_cache(JID, OldDeviceID, NewDeviceID) ->
     case lookup_cache(JID, OldDeviceID) of
 	[{_ID, AppID, SendBody, SendFrom, _LocalBadge}] ->
 	    delete_cache(JID, OldDeviceID),
-	    {MegaSecs, Secs, _MicroSecs} = now(),
-	    TimeStamp = MegaSecs * 1000000 + Secs,
+	    TimeStamp = p1_time_compat:system_time(seconds),
 	    store_cache(JID, NewDeviceID, AppID, SendBody, SendFrom, TimeStamp);
 	_ -> ok
     end.

@@ -295,7 +295,7 @@ write_roster_version_t(LUser, LServer) ->
     write_roster_version(LUser, LServer, true).
 
 write_roster_version(LUser, LServer, InTransaction) ->
-    Ver = p1_sha:sha(term_to_binary(now())),
+    Ver = p1_sha:sha(term_to_binary(p1_time_compat:unique_integer())),
     write_roster_version(LUser, LServer, InTransaction, Ver,
 			 gen_mod:db_type(LServer, ?MODULE)),
     Ver.
@@ -333,7 +333,7 @@ write_roster_version(LUser, LServer, _InTransaction, Ver,
 write_roster_version(_LUser, _LServer, _InTransaction, _Ver, rest) ->
     error.
 
-%% Load roster from DB only if neccesary. 
+%% Load roster from DB only if neccesary.
 %% It is neccesary if
 %%     - roster versioning is disabled in server OR
 %%     - roster versioning is not used by the client OR
@@ -1604,7 +1604,7 @@ update_roster_table() ->
     end.
 
 %% Convert roster table to support virtual host
-%% Convert roster table: xattrs fields become 
+%% Convert roster table: xattrs fields become
 update_roster_version_table() ->
     Fields = record_info(fields, roster_version),
     case mnesia:table_info(roster_version, attributes) of

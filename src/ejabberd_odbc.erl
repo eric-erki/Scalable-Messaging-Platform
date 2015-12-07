@@ -149,7 +149,7 @@ sql_query_on_all_connections(Host, Query) ->
     F = fun (Pid) ->
 		(?GEN_FSM):sync_send_event(Pid,
 					   {sql_cmd, {sql_query, Query},
-					    erlang:now()},
+					    p1_time_compat:monotonic_time(milli_seconds)},
 					   ?TRANSACTION_TIMEOUT)
 	end,
     lists:map(F, ejabberd_odbc_sup:get_pids(Host)).
@@ -161,7 +161,7 @@ sql_query_on_all_connections(Host, Key, Query) ->
     F = fun (Pid) ->
 		(?GEN_FSM):sync_send_event(Pid,
 					   {sql_cmd, {sql_query, Query},
-					    erlang:now()},
+					    p1_time_compat:monotonic_time(milli_seconds)},
 					   ?TRANSACTION_TIMEOUT)
 	end,
     lists:map(F, ejabberd_odbc_sup:get_pids_shard(Host, Key)).
@@ -213,7 +213,7 @@ sql_call(Host, Msg) ->
 	undefined ->
 	    (?GEN_FSM):sync_send_event(
 	      ejabberd_odbc_sup:get_random_pid(Host),
-	      {sql_cmd, Msg, now()},
+	      {sql_cmd, Msg, p1_time_compat:monotonic_time(milli_seconds)},
 	      ?TRANSACTION_TIMEOUT);
 	_State -> nested_op(Msg)
     end.
@@ -223,14 +223,16 @@ sql_call(Host, Key, Msg) ->
       undefined ->
 	    (?GEN_FSM):sync_send_event(
 	      ejabberd_odbc_sup:get_random_pid_shard(Host, Key),
-	      {sql_cmd, Msg, now()},
+	      {sql_cmd, Msg,
+	       p1_time_compat:monotonic_time(milli_seconds)},
 	      ?TRANSACTION_TIMEOUT);
 	_State -> nested_op(Msg)
     end.
 
 keep_alive(PID) ->
     (?GEN_FSM):sync_send_event(PID,
-			       {sql_cmd, {sql_query, ?KEEPALIVE_QUERY}, now()},
+			       {sql_cmd, {sql_query, ?KEEPALIVE_QUERY},
+                                p1_time_compat:monotonic_time(milli_seconds)},
 			       ?KEEPALIVE_TIMEOUT).
 
 -spec sql_query_t(sql_query()) -> sql_query_result().
@@ -449,7 +451,7 @@ print_state(State) -> State.
 %%%----------------------------------------------------------------------
 
 run_sql_cmd(Command, From, State, Timestamp) ->
-    case timer:now_diff(now(), Timestamp) div 1000 of
+    case p1_time_compat:monotonic_time(milli_seconds) - Timestamp of
       Age when Age < (?TRANSACTION_TIMEOUT) ->
 	  put(?NESTING_KEY, ?TOP_LEVEL_TXN),
 	  put(?STATE_KEY, State),

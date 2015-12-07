@@ -38,7 +38,7 @@ start() ->
       end, lists:seq(1, pool_size())).
 
 init() ->
-    {A1, A2, A3} = now(), random:seed(A1, A2, A3), loop().
+    random:seed(p1_time_compat:timestamp()), loop().
 
 loop() ->
     receive
@@ -48,7 +48,7 @@ loop() ->
     end.
 
 get_string() ->
-    {_, _, USec} = now(),
+    {_, _, USec} = p1_time_compat:timestamp(),
     Proc = get_proc((USec rem pool_size()) + 1),
     Proc ! {self(), get_random, 65536 * 65536},
     receive

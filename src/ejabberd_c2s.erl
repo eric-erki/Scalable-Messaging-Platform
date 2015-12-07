@@ -399,7 +399,7 @@ init([{SockMod, Socket}, Opts, FSMLimitOpts]) ->
 			       tls_required = StartTLSRequired,
 			       tls_enabled = TLSEnabled,
 			       tls_options = TLSOpts,
-			       sid = {now(), self()},
+			       sid = {p1_time_compat:timestamp(), self()},
 			       streamid = new_id(), access = Access,
 			       shaper = Shaper, ip = IP,
 			       mgmt_state = StreamMgmtState,
@@ -2678,7 +2678,7 @@ presence_update(From, Packet, StateData) ->
 	  FromUnavail = (StateData#state.pres_last == undefined),
 	  ?DEBUG("from unavail = ~p~n", [FromUnavail]),
 	  NewStateData = StateData#state{pres_last = Packet,
-					 pres_timestamp = now()},
+					 pres_timestamp = p1_time_compat:timestamp()},
 	  NewState = if FromUnavail ->
 			    ejabberd_hooks:run(user_available_hook,
 					       NewStateData#state.server,
@@ -3473,7 +3473,7 @@ rebind(StateData, JID, StreamID) ->
 	    {rebind, NewStateData} ->
 		?INFO_MSG("(~w) Reopened session for ~s",
 			  [StateData#state.socket, jid:to_string(JID)]),
-		SID = {now(), self()},
+		SID = {p1_time_compat:timestamp(), self()},
 		StateData2 = NewStateData#state{socket =
 						    StateData#state.socket,
 						sockmod =
@@ -3751,7 +3751,7 @@ process_push_iq(From, To,
 
 maybe_add_delay(El, TZ, From, Desc) ->
     maybe_add_delay(El, TZ, From, Desc,
-		    calendar:now_to_universal_time(now())).
+		    calendar:universal_time()).
 
 maybe_add_delay(El, TZ, From, Desc, {_, _, _} = TimeStamp) ->
     maybe_add_delay(El, TZ, From, Desc,
@@ -4371,7 +4371,7 @@ mgmt_queue_add(StateData, El) ->
 	       Num ->
 		   Num + 1
 	     end,
-    NewQueue = queue:in({NewNum, now(), El}, StateData#state.mgmt_queue),
+    NewQueue = queue:in({NewNum, p1_time_compat:timestamp(), El}, StateData#state.mgmt_queue),
     NewState = StateData#state{mgmt_queue = NewQueue,
 			       mgmt_stanzas_out = NewNum},
     check_queue_length(NewState).
@@ -4588,7 +4588,7 @@ csi_queue_add(#state{csi_queue = Queue} = StateData, Stanza) ->
       true -> csi_queue_add(csi_queue_flush(StateData), Stanza);
       false ->
 	  From = xml:get_tag_attr_s(<<"from">>, Stanza),
-	  NewQueue = lists:keystore(From, 1, Queue, {From, now(), Stanza}),
+	  NewQueue = lists:keystore(From, 1, Queue, {From, p1_time_compat:timestamp(), Stanza}),
 	  StateData#state{csi_queue = NewQueue}
     end.
 

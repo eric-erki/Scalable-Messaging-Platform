@@ -314,7 +314,7 @@ normal_state({route, From, <<"">>,
             end;
         _ ->
             US = {From#jid.luser, From#jid.lserver},
-            TS = now(),
+            TS = p1_time_compat:timestamp(),
             add_history(US, From, MPacket, StateData),
             StateData1 =
                 case (?DICT):find(US, StateData#state.user_status) of
@@ -609,7 +609,7 @@ normal_state(hibernate, #state{config = Config} = StateData) ->
 	0 ->
 	    StateData1 = StateData#state{shutdown_reason = hibernated},
 	    if Config#config.persistent ->
-		    TS = now_to_usec(now()),
+		    TS = p1_time_compat:system_time(micro_seconds),
 		    Config1 = Config#config{hibernate_time = TS},
 		    StateData2 = StateData1#state{config = Config1},
 		    mod_support:store_room(StateData2#state.server_host,
@@ -1182,7 +1182,7 @@ process_presence(From, _Nick,
                         {ok, Data} ->
                             Data;
                         _ ->
-                            TS = now(),
+                            TS = p1_time_compat:timestamp(),
                             #user{jid = From,
                                   status = waiting,
                                   ts = TS}
@@ -1657,7 +1657,7 @@ store_user_activity(JID, UserActivity, StateData) ->
                                fun(I) when is_integer(I), I>=0 -> I end,
                                0),
     Key = jid:tolower(JID),
-    Now = now_to_usec(now()),
+    Now = p1_time_compat:system_time(micro_seconds),
     Activity1 = clean_treap(StateData#state.activity,
 			    {1, -Now}),
     Activity = case treap:lookup(Key, Activity1) of
@@ -1798,7 +1798,7 @@ update_agent_queue(AgentLJID, StateData) ->
             Len = length(Statuses),
             AvailableAgents =
                 queue_insert(
-                  AgentLJID, {Len, now()}, ok,
+                  AgentLJID, {Len, p1_time_compat:timestamp()}, ok,
                   StateData#state.available_agents),
             StateData#state{available_agents = AvailableAgents};
         error ->
@@ -1905,7 +1905,7 @@ direct_connect(US, AgentLJID, StateData) ->
             error ->
                 {LUser, LServer} = US,
                 UserJID = jid:make(LUser, LServer, <<"">>),
-                TS = now(),
+                TS = p1_time_compat:timestamp(),
                 Data = #user{jid = UserJID,
                              status = {talking, AgentLJID},
                              ts = TS},
@@ -2259,7 +2259,7 @@ add_history(US, From, Packet, StateData) ->
         <<"">> ->
             ok;
         _ ->
-            TS = now2ts(now()),
+            TS = p1_time_compat:system_time(micro_seconds),
             mod_support:add_history(
               StateData#state.server_host,
               StateData#state.room,
@@ -2663,7 +2663,7 @@ count_stanza_shift(Nick, Els, StateData) ->
 	       false -> 0;
 	       _ ->
 		   Sec =
-		       calendar:datetime_to_gregorian_seconds(calendar:now_to_universal_time(now()))
+		       calendar:datetime_to_gregorian_seconds(calendar:universal_time())
 			 - Seconds,
 		   count_seconds_shift(Sec, HL)
 	     end,
@@ -2944,7 +2944,7 @@ add_message_to_history(FromNick, FromJID, Packet,
 		    false -> false;
 		    _ -> true
 		  end,
-    TimeStamp = calendar:now_to_universal_time(now()),
+    TimeStamp = calendar:universal_time(),
     SenderJid = case
 		  (StateData#state.config)#config.anonymous
 		    of

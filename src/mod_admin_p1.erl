@@ -75,7 +75,7 @@
 
 -record(muc_online_room,
 	{name_host = {<<"">>, <<"">>} :: {binary(), binary()} | {'_', '$1'} | '$1' | '_',
-	 timestamp = now() :: erlang:timestamp() | '_',
+	 timestamp = p1_time_compat:timestamp() :: erlang:timestamp() | '_',
 	 pid = self() :: pid() | '$1' | '$2' | '_'}).
 
 
@@ -1187,7 +1187,7 @@ purge_mam(Host, Days) ->
     end.
 
 purge_mam(Host, Days, odbc) ->
-    Timestamp = now_to_usec(now()) - (3600*24 * Days * 1000000),
+    Timestamp = p1_time_compat:system_time(micro_seconds) - (3600*24 * Days * 1000000),
     case ejabberd_odbc:sql_query(Host,
 				 [<<"DELETE FROM archive "
 				   "WHERE timestamp < ">>,
@@ -1264,9 +1264,6 @@ workers_number(Supervisor) ->
 
 seconds_to_now(Secs) ->
     {Secs div 1000000, Secs rem 1000000, 0}.
-
-now_to_usec({MSec, Sec, USec}) ->
-    (MSec*1000000 + Sec)*1000000 + USec.
 
 build_stamp(Module) ->
     {Y,M,D,HH,MM,SS} = proplists:get_value(time, Module:module_info(compile)),

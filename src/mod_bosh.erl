@@ -51,7 +51,7 @@
 -include("bosh.hrl").
 
 -record(bosh, {sid = <<"">>      :: binary() | '_',
-               timestamp = now() :: erlang:timestamp() | '_',
+               timestamp = p1_time_compat:timestamp() :: erlang:timestamp() | '_',
                pid = self()      :: pid() | '$1'}).
 
 -record(state, {}).
@@ -114,7 +114,7 @@ get_human_html_xmlel() ->
 					   "client that supports it.">>}]}]}]}.
 
 open_session(SID, Pid) ->
-    Session = #bosh{sid = SID, timestamp = now(), pid = Pid},
+    Session = #bosh{sid = SID, timestamp = p1_time_compat:timestamp(), pid = Pid},
     lists:foreach(
       fun(Node) when Node == node() ->
 	      gen_server:call(?MODULE, {write, Session});

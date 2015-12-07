@@ -203,7 +203,7 @@ normal_state({route, From, <<"">>,
 	  case xml:get_attr_s(<<"type">>, Attrs) of
 	    <<"groupchat">> ->
 		Activity = get_user_activity(From, StateData),
-		Now = now_to_usec(now()),
+		Now = p1_time_compat:system_time(micro_seconds),
 		MinMessageInterval =
 		    trunc(gen_mod:get_module_opt(StateData#state.server_host,
 						 mod_muc, min_message_interval,
@@ -344,7 +344,7 @@ normal_state({route, From, <<"">>,
 						(StateData#state.config)#config.voice_request_min_interval,
 					    BareFrom =
 						jid:remove_resource(jid:tolower(From)),
-					    NowPriority = -now_to_usec(now()),
+					    NowPriority = -p1_time_compat:system_time(micro_seconds),
 					    CleanPriority = NowPriority +
 							      MinInterval *
 								1000000,
@@ -528,7 +528,7 @@ normal_state({route, From, Nick,
 	      #xmlel{name = <<"presence">>} = Packet},
 	     StateData) ->
     Activity = get_user_activity(From, StateData),
-    Now = now_to_usec(now()),
+    Now = p1_time_compat:system_time(micro_seconds),
     MinPresenceInterval =
 	trunc(gen_mod:get_module_opt(StateData#state.server_host,
 				     mod_muc, min_presence_interval,
@@ -733,7 +733,7 @@ normal_state(hibernate, #state{config = Config} = StateData) ->
 	0 ->
 	    StateData1 = StateData#state{shutdown_reason = hibernated},
 	    if Config#config.persistent ->
-		    TS = now_to_usec(now()),
+		    TS = p1_time_compat:system_time(micro_seconds),
 		    Config1 = Config#config{hibernate_time = TS},
 		    StateData2 = StateData1#state{config = Config1},
 		    mod_muc:store_room(StateData2#state.server_host,
@@ -1775,7 +1775,7 @@ store_user_activity(JID, UserActivity, StateData) ->
 				     0)
 	      * 1000),
     Key = jid:tolower(JID),
-    Now = now_to_usec(now()),
+    Now = p1_time_compat:system_time(micro_seconds),
     Activity1 = clean_treap(StateData#state.activity,
 			    {1, -Now}),
     Activity = case treap:lookup(Key, Activity1) of
@@ -2248,9 +2248,8 @@ count_stanza_shift(Nick, Els, StateData) ->
     Shift1 = case Seconds of
 	       false -> 0;
 	       _ ->
-		   Sec =
-		       calendar:datetime_to_gregorian_seconds(calendar:now_to_universal_time(now()))
-			 - Seconds,
+		   Sec = calendar:datetime_to_gregorian_seconds(calendar:universal_time())
+                         - Seconds,
 		   count_seconds_shift(Sec, HL)
 	     end,
     MaxStanzas = extract_history(Els, <<"maxstanzas">>),
@@ -2526,9 +2525,6 @@ send_existing_presences1(ToJID, StateData) ->
 		  end,
 		  (?DICT):to_list(StateData#state.nicks)).
 
-now_to_usec({MSec, Sec, USec}) ->
-    (MSec * 1000000 + Sec) * 1000000 + USec.
-
 change_nick(JID, Nick, StateData) ->
     LJID = jid:tolower(JID),
     {ok, #user{nick = OldNick}} = (?DICT):find(LJID,
@@ -2699,7 +2695,7 @@ add_message_to_history(FromNick, FromJID, Packet, StateData) ->
 		    false -> false;
 		    _ -> true
 		  end,
-    TimeStamp = now(),
+    TimeStamp = p1_time_compat:timestamp(),
     AddrPacket = case (StateData#state.config)#config.anonymous of
 		   true -> Packet;
 		   false ->
@@ -4890,7 +4886,7 @@ handle_roommessage_from_nonparticipant(Packet, Lang,
 
 %% Check in the packet is a decline.
 %% If so, also returns the splitted packet.
-%% This function must be catched, 
+%% This function must be catched,
 %% because it crashes when the packet is not a decline message.
 check_decline_invitation(Packet) ->
     #xmlel{name = <<"message">>} = Packet,
@@ -4918,7 +4914,7 @@ send_decline_invitation({Packet, XEl, DEl, ToJID},
     Packet2 = replace_subelement(Packet, XEl2),
     ejabberd_router:route(RoomJID, ToJID, Packet2).
 
-%% Given an element and a new subelement, 
+%% Given an element and a new subelement,
 %% replace the instance of the subelement in element with the new subelement.
 replace_subelement(#xmlel{name = Name, attrs = Attrs,
 			  children = SubEls},

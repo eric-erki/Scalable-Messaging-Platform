@@ -100,13 +100,13 @@ out(Module, Args, 'GET', [Domain, Node] = Uri, _User) ->
 		      ?DEBUG("Items : ~p ~n",
 			     [collection(get_collection(Uri),
 					 collection_uri(Args, Domain, Node),
-					 calendar:now_to_universal_time(erlang:now()),
+					 calendar:universal_time(),
 					 <<"">>, [])]),
 		      {200,
 		       [{<<"Content-Type">>, <<"application/atom+xml">>}],
 		       collection(get_collection(Uri),
 				  collection_uri(Args, Domain, Node),
-				  calendar:now_to_universal_time(erlang:now()),
+				  calendar:universal_time(),
 				  <<"">>, [])};
 		  _ ->
 		      #pubsub_item{modification = {LastDate, _JID}} =
@@ -430,7 +430,7 @@ success(200) -> {200, [], <<"">>};
 success(Code) -> {Code, [], <<"">>}.
 
 uniqid(false) ->
-    {T1, T2, T3} = now(),
+    {T1, T2, T3} = p1_time_compat:timestamp(),
     list_to_binary(io_lib:fwrite("~.16B~.16B~.16B",
                                  [T1, T2, T3])).
 

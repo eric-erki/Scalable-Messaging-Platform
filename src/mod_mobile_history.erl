@@ -106,7 +106,7 @@ log_out( #xmlel{name = <<"message">>, attrs = Attrs} = OrigPacket,
 					jid:to_string(jid:remove_resource(From)),
 					OrigPacket),
 	  Collection = get_collection(From, To, Packet),
-	  Timestamp = get_datetime_string_for_db(now()),
+	  Timestamp = get_datetime_string_for_db(p1_time_compat:timestamp()),
 	  ID = xml:get_attr_s(<<"id">>, Attrs),
 	  JID =
 	      ejabberd_odbc:escape(jid:to_string(jid:remove_resource(From))),
@@ -125,7 +125,7 @@ log_out( #xmlel{name = <<"message">>, attrs = Attrs} = OrigPacket,
                 ok
         end;
       false ->
-	  Timestamp = get_datetime_string_for_db(now()),
+	  Timestamp = get_datetime_string_for_db(p1_time_compat:timestamp()),
 	  case parse_read_notification(OrigPacket) of
 	    {read, ID} ->
 		JID =
@@ -224,7 +224,7 @@ log_message_to_user(From, To,
 					jid:to_string(jid:remove_resource(From)),
 					OrigPacket),
 	  Collection = get_collection(From, To, Packet),
-	  Timestamp = get_datetime_string_for_db(now()),
+	  Timestamp = get_datetime_string_for_db(p1_time_compat:timestamp()),
 	  ID = xml:get_attr_s(<<"id">>, Attrs),
 	  JIDTo =
 	      ejabberd_odbc:escape(jid:to_string(jid:remove_resource(To))),
@@ -251,7 +251,7 @@ log_message_to_user(From, To,
 		JIDTo =
 		    ejabberd_odbc:escape(jid:to_string(jid:remove_resource(To))),
 		Timestamp =
-		    ejabberd_odbc:escape(get_datetime_string_for_db(now())),
+		    ejabberd_odbc:escape(get_datetime_string_for_db(p1_time_compat:timestamp())),
 		Query = [<<"CALL ">>,
 			 set_deliver_status(To#jid.lserver), <<"('">>, JIDTo,
 			 <<"','">>, ejabberd_odbc:escape(MsgID), <<"','">>,

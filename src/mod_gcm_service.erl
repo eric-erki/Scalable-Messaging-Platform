@@ -536,10 +536,7 @@ iq_disco(Lang) ->
 
 disable_push(JID, DeviceID, State) ->
     From = jid:make(<<"">>, State#state.host, <<"">>),
-    {Mega, Sec, Micro} = now(),
-    TimeStamp = (Mega * 1000000 * 1000000 + Sec * 1000000 +
-		   Micro)
-		  div 1000,
+    TimeStamp = p1_time_compat:system_time(milli_seconds),
     BJID = jid:remove_resource(JID),
     ?INFO_MSG("(~p) disabling push for device ~s with JID ~s~n",
 	      [State#state.host, DeviceID, jid:to_string(BJID)]),

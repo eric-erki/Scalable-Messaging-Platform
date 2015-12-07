@@ -419,7 +419,7 @@ balancing_route([Pid], From, To, Packet) ->
 balancing_route(Pids, From, To, Packet) ->
     LDstDomain = To#jid.lserver,
     Value = case get_domain_balancing(LDstDomain) of
-                random -> now();
+                random -> p1_time_compat:monotonic_time();
                 source -> jid:tolower(From);
                 destination -> jid:tolower(To);
                 bare_source -> {From#jid.luser, From#jid.lserver};

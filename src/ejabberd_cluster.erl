@@ -346,7 +346,7 @@ ping_node(Node, State) ->
                     send(?MODULE, {nodeup, Node, []}),
                     dict:erase(Node, State);
                 false ->
-                    dict:store(Node, now(), State)
+                    dict:store(Node, p1_time_compat:timestamp(), State)
             end;
         false ->
             State
@@ -358,7 +358,7 @@ need_to_ping(Node, State) ->
             case mnesia:dirty_read(cluster_info, Node) of
                 [#cluster_info{last = LastSeen}] ->
                     Diff1 = timer:now_diff(LastPing, LastSeen),
-                    Diff2 = timer:now_diff(now(), LastPing),
+                    Diff2 = timer:now_diff(p1_time_compat:timestamp(), LastPing),
                     Diff2 >= Diff1;
                 [] ->
                     false
@@ -372,7 +372,7 @@ need_to_ping(Node, State) ->
 add_node(Node, SeenEachOther, Subscribers) ->
     case ets:insert_new(?CLUSTER_NODES, {Node}) of
         true ->
-            mnesia:dirty_write(#cluster_info{node = Node, last = now()}),
+            mnesia:dirty_write(#cluster_info{node = Node, last = p1_time_compat:timestamp()}),
             add_node_to_ring(Node),
             if Node /= node(), SeenEachOther == false ->
                     ?INFO_MSG("Node ~p has joined", [Node]),
@@ -403,7 +403,7 @@ del_node(Node, Reason, Subscribers) ->
         [] ->
             false;
         _ ->
-	    mnesia:dirty_write(#cluster_info{node = Node, last = now()}),
+	    mnesia:dirty_write(#cluster_info{node = Node, last = p1_time_compat:timestamp()}),
             ets:delete(?CLUSTER_NODES, Node),
             del_node_from_ring(Node),
             if Node /= node() ->

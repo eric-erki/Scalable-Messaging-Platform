@@ -44,9 +44,9 @@ mech_new(Host, _GetPassword, _CheckPassword, _CheckPasswordDigest,
 	 _IsUserExists, _CertFile) ->
     {ok, #state{server = Host}}.
 
-mech_step(#state{server = Server}, _ClientIn) ->
+mech_step(#state{server = Server}, ClientIn) ->
     User = randoms:get_string(),
     case ejabberd_auth:is_user_exists(User, Server) of
-        true  -> {error, <<"not-authorized">>};
+        true  -> mech_step(Server, ClientIn);
         false -> {ok, [{username, User}, {auth_module, ejabberd_auth_anonymous}]}
     end.

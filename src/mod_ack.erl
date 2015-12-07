@@ -381,7 +381,7 @@ insert(Pid, Key, Val, Queue) ->
 	      {ok, Treap1} -> Treap1;
 	      error -> nil
 	    end,
-    (?DICT):store(Pid, treap:insert(Key, now(), Val, Treap),
+    (?DICT):store(Pid, treap:insert(Key, p1_time_compat:timestamp(), Val, Treap),
 		  Queue).
 
 delete(Pid, Key, Queue) ->

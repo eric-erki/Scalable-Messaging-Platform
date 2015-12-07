@@ -391,7 +391,7 @@ update_node_database(Host, ServerHost) ->
 					lists:foldl(fun
 						({item, IID, Publisher, Payload}, Acc) ->
 						    C = {unknown, Publisher},
-						    M = {now(), Publisher},
+						    M = {p1_time_compat:timestamp(), Publisher},
 						    mnesia:write(#pubsub_item{
 							    itemid = {IID, NodeIdx},
 							    creation = C,

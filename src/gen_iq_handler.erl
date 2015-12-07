@@ -108,7 +108,7 @@ handle(Host, Module, Function, Opts, From, To, IQ) ->
 	    spawn(?MODULE, process_iq,
 		[Host, Module, Function, From, To, IQ]);
 	[_|_] = Pids ->
-	    Pid = lists:nth(erlang:phash(now(), length(Pids)), Pids),
+	    Pid = lists:nth(erlang:phash(p1_time_compat:monotonic_time(), length(Pids)), Pids),
 	    Pid ! {process_iq, From, To, IQ};
 	_ ->
 	    ?ERROR_MSG("unexpected iqdisc options = ~p", [Opts]),
@@ -195,4 +195,3 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-

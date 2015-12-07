@@ -299,7 +299,7 @@ join(List, Sep) ->
 
 timestamp() ->
     {{Year, Month, Day}, {Hour, Minute, Second}} =
-        calendar:now_to_local_time(now()),
+        calendar:local_time(),
     lists:flatten(
       io_lib:format("~4..0w-~2..0w-~2..0w ~2..0w:~2..0w:~2..0w",
 		    [Year, Month, Day, Hour, Minute, Second])).

@@ -361,7 +361,7 @@ wait_for_session(#body{attrs = Attrs} = Req, From,
     Type = get_attr(type, Attrs),
     Requests = Hold + 1,
     {PollTime, Polling} = if Wait == 0, Hold == 0 ->
-				 {now(), [{polling, ?DEFAULT_POLLING}]};
+				 {p1_time_compat:timestamp(), [{polling, ?DEFAULT_POLLING}]};
 			     true -> {undefined, []}
 			  end,
     MaxPause = gen_mod:get_module_opt(State#state.host,
@@ -510,7 +510,7 @@ active1(#body{attrs = Attrs} = Req, From, State) ->
 	   Pause = get_attr(pause, Attrs, undefined),
 	   NewPoll = case State#state.prev_poll of
 		       undefined -> undefined;
-		       _ -> now()
+		       _ -> p1_time_compat:timestamp()
 		     end,
 	   State5 = State4#state{prev_poll = NewPoll,
 				 prev_key = NewKey},
@@ -781,7 +781,7 @@ is_valid_key(PrevKey, Key) ->
 
 is_overactivity(undefined) -> false;
 is_overactivity(PrevPoll) ->
-    PollPeriod = timer:now_diff(now(), PrevPoll) div
+    PollPeriod = timer:now_diff(p1_time_compat:timestamp(), PrevPoll) div
 		   1000000,
     if PollPeriod < (?DEFAULT_POLLING) -> true;
        true -> false

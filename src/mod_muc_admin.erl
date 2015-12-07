@@ -33,7 +33,7 @@
 %% Copied from mod_muc/mod_muc.erl
 -record(muc_online_room,
         {name_host = {<<"">>, <<"">>} :: {binary(), binary()} | {'_', '$1'} | '$1' | '_',
-         timestamp = now() :: erlang:timestamp() | '_',
+         timestamp = p1_time_compat:timestamp() :: erlang:timestamp() | '_',
          pid = self() :: pid() | '$1' | '$2' | '_'}).
 
 %%----------------------------
@@ -613,7 +613,7 @@ decide_room({_Room_name, _Host, Room_pid}, Last_allowed) ->
     Num_users = length(?DICT:to_list(Room_users)),
 
     History = (S#state.history)#lqueue.queue,
-    Ts_now = calendar:now_to_universal_time(now()),
+    Ts_now = calendar:universal_time(),
     Ts_uptime = uptime_seconds(),
     {Has_hist, Last} = case queue:is_empty(History) of
 			   true ->
