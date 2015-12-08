@@ -2336,16 +2336,16 @@ presence_broadcast_allowed(JID, StateData) ->
     Role = get_role(JID, StateData),
     lists:member(Role, (StateData#state.config)#config.presence_broadcast).
 
-send_update_presence(JID, StateData) ->
-    send_update_presence(JID, <<"">>, StateData).
+send_update_presence(JID, StateData, OldStateData) ->
+    send_update_presence(JID, <<"">>, StateData, OldStateData).
 
-send_update_presence(JID, Reason, StateData) ->
+send_update_presence(JID, Reason, StateData, OldStateData) ->
     case is_room_overcrowded(StateData) of
 	true -> ok;
-	false -> send_update_presence1(JID, Reason, StateData)
+	false -> send_update_presence1(JID, Reason, StateData, OldStateData)
     end.
 
-send_update_presence1(JID, Reason, StateData) ->
+send_update_presence1(JID, Reason, StateData, OldStateData) ->
     LJID = jid:tolower(JID),
     LJIDs = case LJID of
 	      {U, S, <<"">>} ->
@@ -2363,7 +2363,7 @@ send_update_presence1(JID, Reason, StateData) ->
 		  end
 	    end,
     lists:foreach(fun (J) ->
-			  send_new_presence(J, Reason, StateData, StateData)
+			  send_new_presence(J, Reason, StateData, OldStateData)
 		  end,
 		  LJIDs).
 
@@ -2371,27 +2371,47 @@ send_new_presence(NJID, StateData, OldStateData) ->
     send_new_presence(NJID, <<"">>, StateData, OldStateData).
 
 send_new_presence(NJID, Reason, StateData, OldStateData) ->
-    case is_room_overcrowded(StateData) orelse
-        not (presence_broadcast_allowed(NJID, StateData) orelse
-             presence_broadcast_allowed(NJID, OldStateData)) of
+    case is_room_overcrowded(StateData) of
 	true -> ok;
-	false -> send_new_presence1(NJID, Reason, StateData)
+	false -> send_new_presence1(NJID, Reason, StateData, OldStateData)
     end.
 
-send_new_presence1(NJID, Reason, StateData) ->
-    #user{nick = Nick} =
-	(?DICT):fetch(jid:tolower(NJID),
-		      StateData#state.users),
+send_new_presence1(NJID, Reason, StateData, OldStateData) ->
+    LNJID = jid:tolower(NJID),
+    #user{nick = Nick} = (?DICT):fetch(LNJID, StateData#state.users),
     LJID = find_jid_by_nick(Nick, StateData),
     {ok,
-     #user{jid = RealJID, role = Role,
-	   last_presence = Presence}} =
+     #user{jid = RealJID, role = Role0,
+	   last_presence = Presence0} = UserInfo} =
 	(?DICT):find(jid:tolower(LJID),
 		     StateData#state.users),
+    {Role1, Presence1} =
+        case presence_broadcast_allowed(NJID, StateData) of
+            true -> {Role0, Presence0};
+            false ->
+                {none,
+                 #xmlel{name = <<"presence">>,
+                        attrs = [{<<"type">>, <<"unavailable">>}],
+                        children = []}
+                }
+        end,
     Affiliation = get_affiliation(LJID, StateData),
     SAffiliation = affiliation_to_list(Affiliation),
-    SRole = role_to_list(Role),
-    lists:foreach(fun ({_LJID, Info}) ->
+    UserList =
+        case not (presence_broadcast_allowed(NJID, StateData) orelse
+             presence_broadcast_allowed(NJID, OldStateData)) of
+            true ->
+                [{LNJID, UserInfo}];
+            false ->
+                (?DICT):to_list(StateData#state.users)
+        end,
+    lists:foreach(fun ({LUJID, Info}) ->
+                          {Role, Presence} =
+                              if
+                                  LNJID == LUJID -> {Role0, Presence0};
+                                  true -> {Role1, Presence1}
+                              end,
+                          SRole = role_to_list(Role),
 			  ItemAttrs = case Info#user.role == moderator orelse
 					     (StateData#state.config)#config.anonymous
 					       == false
@@ -2462,7 +2482,7 @@ send_new_presence1(NJID, Reason, StateData) ->
 								 Nick),
 				       Info#user.jid, Packet)
 		  end,
-		  (?DICT):to_list(StateData#state.users)).
+		  UserList).
 
 send_existing_presences(ToJID, StateData) ->
     case is_room_overcrowded(StateData) of
@@ -2480,8 +2500,12 @@ send_existing_presences1(ToJID, StateData) ->
 				last_presence = Presence} =
 			      (?DICT):fetch(jid:tolower(LJID),
 					    StateData#state.users),
-			  case RealToJID of
-			    FromJID -> ok;
+                          PresenceBroadcast =
+                              lists:member(
+                                FromRole, (StateData#state.config)#config.presence_broadcast),
+			  case {RealToJID, PresenceBroadcast} of
+			    {FromJID, _} -> ok;
+			    {_, false} -> ok;
 			    _ ->
 				FromAffiliation = get_affiliation(LJID,
 								  StateData),
@@ -2939,7 +2963,7 @@ process_item_change(E, SD, _UJID) ->
                     set_role(JID, none, SD1);
                 _ ->
                     SD1 = set_affiliation(JID, none, SD),
-                    send_update_presence(JID, SD1),
+                    send_update_presence(JID, SD1, SD),
                     SD1
             end;
         {JID, affiliation, outcast, Reason} ->
@@ -2958,12 +2982,12 @@ process_item_change(E, SD, _UJID) ->
             when (A == admin) or (A == owner) ->
             SD1 = set_affiliation(JID, A, SD, Reason),
             SD2 = set_role(JID, moderator, SD1),
-            send_update_presence(JID, Reason, SD2),
+            send_update_presence(JID, Reason, SD2, SD),
             SD2;
         {JID, affiliation, member, Reason} ->
             SD1 = set_affiliation(JID, member, SD, Reason),
             SD2 = set_role(JID, participant, SD1),
-            send_update_presence(JID, Reason, SD2),
+            send_update_presence(JID, Reason, SD2, SD),
             SD2;
         {JID, role, Role, Reason} ->
             SD1 = set_role(JID, Role, SD),
@@ -2972,7 +2996,7 @@ process_item_change(E, SD, _UJID) ->
             SD1;
         {JID, affiliation, A, _Reason} ->
             SD1 = set_affiliation(JID, A, SD),
-            send_update_presence(JID, SD1),
+            send_update_presence(JID, SD1, SD),
             SD1
     end
     of
