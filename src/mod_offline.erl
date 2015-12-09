@@ -276,7 +276,7 @@ store_offline_msg(Host, {User, _}, Msgs, Len, MaxOfflineMsgs, rest) ->
 			Path = offline_rest_path(LUser, LServer),
 			%% Retry 2 times, with a backoff of 500millisec
 			case rest:with_retry(post, [LServer, Path, [],
-				    {[{<<"peer">>, jlib:jid_to_string(From)},
+				    {[{<<"peer">>, jid:to_string(From)},
 				      {<<"packet">>, xml:element_to_binary(El)},
 				      {<<"timestamp">>, jlib:now_to_utc_string(Now,3)} ]}], 2, 500) of
 			    {ok, Code, _} when Code == 200 orelse Code == 201 ->
@@ -548,10 +548,10 @@ pop_offline_messages(Ls, LUser, LServer, rest) ->
     Path = offline_rest_path(LUser, LServer, <<"pop">>),
     case rest:with_retry(post, [LServer, Path, [], []], 2, 500) of
         {ok, 200, Resp} ->
-                To = jlib:make_jid(LUser, LServer, <<>>),
+                To = jid:make(LUser, LServer, <<>>),
                 Ls ++ lists:flatmap(
                         fun ({Item}) ->
-                                From = jlib:string_to_jid(proplists:get_value(<<"peer">>, Item, <<>>)),
+                                From = jid:from_string(proplists:get_value(<<"peer">>, Item, <<>>)),
                                 Timestamp = proplists:get_value(<<"timestamp">>, Item, <<>>),
                                 Packet = proplists:get_value(<<"packet">>, Item, <<>>),
                                 case xml_stream:parse_element(Packet) of
