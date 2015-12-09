@@ -79,7 +79,6 @@ features() ->
 	<<"instant-nodes">>,
 	<<"manage-subscriptions">>,
 	<<"modify-affiliations">>,
-	<<"multi-subscribe">>,
 	<<"outcast-affiliation">>,
 	<<"publish">>,
 	<<"publish-only-affiliation">>,

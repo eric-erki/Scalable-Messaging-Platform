@@ -29,6 +29,7 @@
 %% API
 -export([init/3, subscribe_node/3, unsubscribe_node/3,
     get_subscription/3, set_subscription/4,
+    make_subid/0,
     get_options_xform/2, parse_options_xform/1]).
 
 -export([enc_key/1, dec_key/1, enc_val/2, dec_val/2]).
