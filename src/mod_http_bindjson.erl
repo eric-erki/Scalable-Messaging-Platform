@@ -110,30 +110,10 @@ get_human_html_xmlel() ->
 					   "client that supports it.">>}]}]}]}.
 
 start(_Host, _Opts) ->
-    setup_database(),
-    HTTPBindSupervisor = {ejabberd_http_bind_sup,
-			  {ejabberd_tmp_sup, start_link,
-			   [ejabberd_http_bind_sup, ejabberd_http_bind]},
-			  permanent, infinity, supervisor, [ejabberd_tmp_sup]},
-    case supervisor:start_child(ejabberd_sup,
-				HTTPBindSupervisor)
-	of
-      {ok, _Pid} -> ok;
-      {ok, _Pid, _Info} -> ok;
-      {error, {already_started, _PidOther}} ->
-	  % mod_http_bind is already started so it will not be started again
-	  ok;
-      {error, Error} -> {'EXIT', {start_child_error, Error}}
-    end.
+    setup_database().
 
 stop(_Host) ->
-    case supervisor:terminate_child(ejabberd_sup,
-				    ejabberd_http_bind_sup)
-	of
-      ok -> ok;
-      {error, Error} ->
-	  {'EXIT', {terminate_child_error, Error}}
-    end.
+    ok.
 
 setup_database() ->
     migrate_database(),

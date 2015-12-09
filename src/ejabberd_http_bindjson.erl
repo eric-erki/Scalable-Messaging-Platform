@@ -134,10 +134,9 @@
 
 start(XMPPDomain, Sid, Key, IP) ->
     ?DEBUG("Starting session", []),
-    case catch
-	   supervisor:start_child(ejabberd_http_bind_sup,
-				  [Sid, Key, IP])
-	of
+    case catch gen_fsm:start(?MODULE,
+			    [Sid, Key, IP],
+			    ?FSMOPTS)
       {ok, Pid} -> {ok, Pid};
       {error, _} = Err ->
 	  case check_bind_module(XMPPDomain) of
