@@ -136,7 +136,7 @@ start(XMPPDomain, Sid, Key, IP) ->
     ?DEBUG("Starting session", []),
     case catch gen_fsm:start(?MODULE,
 			    [Sid, Key, IP],
-			    ?FSMOPTS)
+			    ?FSMOPTS) of
       {ok, Pid} -> {ok, Pid};
       {error, _} = Err ->
 	  case check_bind_module(XMPPDomain) of
