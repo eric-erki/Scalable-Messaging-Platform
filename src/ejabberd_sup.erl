@@ -111,14 +111,6 @@ init([]) ->
 	 infinity,
 	 supervisor,
 	 [ejabberd_listener]},
-    ReceiverSupervisor =
-	{ejabberd_receiver_sup,
-	 {ejabberd_tmp_sup, start_link,
-	  [ejabberd_receiver_sup, ejabberd_receiver]},
-	 permanent,
-	 infinity,
-	 supervisor,
-	 [ejabberd_tmp_sup]},
     S2SInSupervisor =
 	{ejabberd_s2s_in_sup,
 	 {ejabberd_tmp_sup, start_link,
@@ -185,7 +177,6 @@ init([]) ->
 	   S2S,
 	   Local,
 	   Captcha,
-	   ReceiverSupervisor,
 	   S2SInSupervisor,
 	   S2SOutSupervisor,
 	   ServiceSupervisor,
