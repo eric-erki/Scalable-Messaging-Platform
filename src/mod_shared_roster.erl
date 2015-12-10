@@ -872,14 +872,14 @@ get_user_displayed_groups(LUser, LServer, GroupsOpts,
 	      H == LServer];
       _ -> []
     end;
-get_user_displayed_groups(LUser, LServer, GroupOpts, p1db) ->
+get_user_displayed_groups(LUser, LServer, GroupsOpts, p1db) ->
     USHPrefix = ush_prefix({LUser, LServer}, LServer),
     case p1db:get_by_prefix(sr_user, USHPrefix) of
         {ok, L} ->
             lists:map(
               fun({Key, _, _}) ->
                       Group = get_suffix(USHPrefix, Key),
-                      {Group, proplists:get_value(Group, GroupOpts, [])}
+                      {Group, proplists:get_value(Group, GroupsOpts, [])}
               end, L);
         {error, _} ->
             []
