@@ -26,15 +26,16 @@
 -module(ejabberd_commands_doc).
 -author('pawel@process-one.net').
 
--export([generate_output/2]).
+-export([generate_html_output/2]).
+-export([generate_md_output/3]).
 
 -include("ejabberd_commands.hrl").
 -include("ejabberd.hrl").
 
--define(RAW(V), xml:crypt(iolist_to_binary(V))).
--define(TAG(N), <<"<", ??N, "/>">>).
--define(TAG(N, V), <<"<", ??N, ">">>, V, <<"</", ??N, ">">>).
--define(TAG(N, C, V), <<"<", ??N, " class='", C, "'>">>, V, <<"</", ??N, ">">>).
+-define(RAW(V), if HTMLOutput -> xml:crypt(iolist_to_binary(V)); true -> iolist_to_binary(V) end).
+-define(TAG(N), if HTMLOutput -> [<<"<", ??N, "/>">>]; true -> md_tag(N, <<"">>) end).
+-define(TAG(N, V), if HTMLOutput -> [<<"<", ??N, ">">>, V, <<"</", ??N, ">">>]; true -> md_tag(N, V) end).
+-define(TAG(N, C, V), if HTMLOutput -> [<<"<", ??N, " class='", C, "'>">>, V, <<"</", ??N, ">">>]; true -> md_tag(N, V) end).
 -define(TAG_R(N, V), ?TAG(N, ?RAW(V))).
 -define(TAG_R(N, C, V), ?TAG(N, C, ?RAW(V))).
 -define(SPAN(N, V), ?TAG_R(span, ??N, V)).
@@ -67,6 +68,26 @@ list_join_with([El|Tail], M) ->
                                       [E, M | Acc]
                               end, [El], Tail)).
 
+md_tag(dt, V) ->
+    [<<"\n">>, V, <<"\n">>];
+md_tag(dd, V) ->
+    [<<"\n: ">>, V, <<"\n">>];
+md_tag(li, V) ->
+    [<<"- ">>, V, <<"\n">>];
+md_tag(pre, V) ->
+    [<<"\n">>, V, <<"\n">>];
+md_tag(p, V) ->
+    [<<"\n\n">>, V, <<"\n">>];
+md_tag(h1, V) ->
+    [<<"\n## ">>, V, <<"\n">>];
+md_tag(h2, V) ->
+    [<<"\n### ">>, V, <<"\n">>];
+md_tag(strong, V) ->
+    [<<"*">>, V, <<"*">>];
+md_tag(_, V) ->
+    V.
+
+
 %% rescode_to_int(ok) ->
 %%     0;
 %% rescode_to_int(true) ->
@@ -74,28 +95,30 @@ list_join_with([El|Tail], M) ->
 %% rescode_to_int(_) ->
 %%     1.
 
-perl_gen({Name, integer}, Int, _Indent) ->
+perl_gen({Name, integer}, Int, _Indent, HTMLOutput) ->
     [?ARG(Name), ?OP_L(" => "), ?NUM(Int)];
-perl_gen({Name, string}, Str, _Indent) ->
+perl_gen({Name, string}, Str, _Indent, HTMLOutput) ->
     [?ARG(Name), ?OP_L(" => "), ?STR(Str)];
-perl_gen({Name, binary}, Str, _Indent) ->
+perl_gen({Name, binary}, Str, _Indent, HTMLOutput) ->
     [?ARG(Name), ?OP_L(" => "), ?STR(Str)];
-perl_gen({Name, atom}, Atom, _Indent) ->
+perl_gen({Name, atom}, Atom, _Indent, HTMLOutput) ->
     [?ARG(Name), ?OP_L(" => "), ?STR_A(Atom)];
-perl_gen({Name, {tuple, Fields}}, Tuple, Indent) ->
-    Res = lists:map(fun({A,B})->perl_gen(A, B, Indent) end, lists:zip(Fields, tuple_to_list(Tuple))),
+perl_gen({Name, {tuple, Fields}}, Tuple, Indent, HTMLOutput) ->
+    Res = lists:map(fun({A,B})->perl_gen(A, B, Indent, HTMLOutput) end, lists:zip(Fields, tuple_to_list(Tuple))),
     [?ARG(Name), ?OP_L(" => {"), list_join_with(Res, [?OP_L(", ")]), ?OP_L("}")];
-perl_gen({Name, {list, ElDesc}}, List, Indent) ->
-    Res = lists:map(fun(E) -> [?OP_L("{"), perl_gen(ElDesc, E, Indent), ?OP_L("}")] end, List),
+perl_gen({Name, {list, ElDesc}}, List, Indent, HTMLOutput) ->
+    Res = lists:map(fun(E) -> [?OP_L("{"), perl_gen(ElDesc, E, Indent, HTMLOutput), ?OP_L("}")] end, List),
     [?ARG(Name), ?OP_L(" => ["), list_join_with(Res, [?OP_L(", ")]), ?OP_L("]")].
 
-perl_call(Name, ArgsDesc, Values) ->
-    [?ID_L("XMLRPC::Lite"), ?OP_L("->"), ?ID_L("proxy"), ?OP_L("("), ?ID_L("$url"), ?OP_L(")->"),
-     ?ID_L("call"), ?OP_L("("), ?STR_A(Name), ?OP_L(", {"), ?BR, <<"  ">>,
-     list_join_with(lists:map(fun({A,B})->perl_gen(A, B, <<"  ">>) end, lists:zip(ArgsDesc, Values)), [?OP_L(","), ?BR, <<"  ">>]),
-     ?BR, ?OP_L("})->"), ?ID_L("results"), ?OP_L("()")].
+perl_call(Name, ArgsDesc, Values, HTMLOutput) ->
+    {Indent, Preamble} = if HTMLOutput -> {<<"">>, []}; true -> {<<"    ">>, <<"    #!perl\n">>} end,
+    [Preamble,
+     Indent, ?ID_L("XMLRPC::Lite"), ?OP_L("->"), ?ID_L("proxy"), ?OP_L("("), ?ID_L("$url"), ?OP_L(")->"),
+     ?ID_L("call"), ?OP_L("("), ?STR_A(Name), ?OP_L(", {"), ?BR, Indent, <<"  ">>,
+     list_join_with(lists:map(fun({A,B})->perl_gen(A, B, <<Indent/binary, "  ">>, HTMLOutput) end, lists:zip(ArgsDesc, Values)), [?OP_L(","), ?BR, Indent, <<"  ">>]),
+     ?BR, Indent, ?OP_L("})->"), ?ID_L("results"), ?OP_L("()")].
 
-java_gen_map(Vals, Indent) ->
+java_gen_map(Vals, Indent, HTMLOutput) ->
     {Split, NL} = case Indent of
                       none -> {<<" ">>, <<" ">>};
                       _ -> {[?BR, <<"  ", Indent/binary>>], [?BR, Indent]}
@@ -103,36 +126,39 @@ java_gen_map(Vals, Indent) ->
     [?KW_L("new "), ?ID_L("HashMap"), ?OP_L("<"), ?ID_L("String"), ?OP_L(", "), ?ID_L("Object"),
      ?OP_L(">() {{"), Split, list_join_with(Vals, Split), NL, ?OP_L("}}")].
 
-java_gen({Name, integer}, Int, _Indent) ->
+java_gen({Name, integer}, Int, _Indent, HTMLOutput) ->
     [?ID_L("put"), ?OP_L("("), ?STR_A(Name), ?OP_L(", "), ?KW_L("new "), ?ID_L("Integer"), ?OP_L("("), ?NUM(Int), ?OP_L("));")];
-java_gen({Name, string}, Str, _Indent) ->
+java_gen({Name, string}, Str, _Indent, HTMLOutput) ->
     [?ID_L("put"), ?OP_L("("), ?STR_A(Name), ?OP_L(", "), ?STR(Str), ?OP_L(");")];
-java_gen({Name, binary}, Str, _Indent) ->
+java_gen({Name, binary}, Str, _Indent, HTMLOutput) ->
     [?ID_L("put"), ?OP_L("("), ?STR_A(Name), ?OP_L(", "), ?STR(Str), ?OP_L(");")];
-java_gen({Name, atom}, Atom, _Indent) ->
+java_gen({Name, atom}, Atom, _Indent, HTMLOutput) ->
     [?ID_L("put"), ?OP_L("("), ?STR_A(Name), ?OP_L(", "), ?STR_A(Atom), ?OP_L(");")];
-java_gen({Name, {tuple, Fields}}, Tuple, Indent) ->
+java_gen({Name, {tuple, Fields}}, Tuple, Indent, HTMLOutput) ->
     NewIndent = <<"  ", Indent/binary>>,
-    Res = lists:map(fun({A, B}) -> [java_gen(A, B, NewIndent)] end, lists:zip(Fields, tuple_to_list(Tuple))),
-    [?ID_L("put"), ?OP_L("("), ?STR_A(Name), ?OP_L(", "), java_gen_map(Res, Indent), ?OP_L(")")];
-java_gen({Name, {list, ElDesc}}, List, Indent) ->
+    Res = lists:map(fun({A, B}) -> [java_gen(A, B, NewIndent, HTMLOutput)] end, lists:zip(Fields, tuple_to_list(Tuple))),
+    [?ID_L("put"), ?OP_L("("), ?STR_A(Name), ?OP_L(", "), java_gen_map(Res, Indent, HTMLOutput), ?OP_L(")")];
+java_gen({Name, {list, ElDesc}}, List, Indent, HTMLOutput) ->
     {NI, NI2, I} = case List of
                     [_] -> {" ", " ", Indent};
                     _ -> {[?BR, <<"    ", Indent/binary>>],
                           [?BR, <<"  ", Indent/binary>>],
                           <<"      ", Indent/binary>>}
                 end,
-    Res = lists:map(fun(E) -> java_gen_map([java_gen(ElDesc, E, I)], none) end, List),
+    Res = lists:map(fun(E) -> java_gen_map([java_gen(ElDesc, E, I, HTMLOutput)], none, HTMLOutput) end, List),
     [?ID_L("put"), ?OP_L("("), ?STR_A(Name), ?OP_L(", "), ?KW_L("new "), ?ID_L("Object"), ?OP_L("[] {"), NI,
      list_join_with(Res, [?OP_L(","), NI]), NI2, ?OP_L("});")].
 
-java_call(Name, ArgsDesc, Values) ->
-    [?ID_L("XmlRpcClientConfigImpl config"), ?OP_L(" = "), ?KW_L("new "), ?ID_L("XmlRpcClientConfigImpl"), ?OP_L("();"), ?BR,
-     ?ID_L("config"), ?OP_L("."), ?ID_L("setServerURL"), ?OP_L("("), ?ID_L("url"), ?OP_L(");"), ?BR, ?BR,
-     ?ID_L("XmlRpcClient client"), ?OP_L(" = "), ?KW_L("new "), ?ID_L("XmlRpcClient"), ?OP_L("();"), ?BR,
-     ?ID_L("client"), ?OP_L("."), ?ID_L("setConfig"), ?OP_L("("), ?ID_L("config"), ?OP_L(");"), ?BR, ?BR,
-     ?ID_L("client"), ?OP_L("."), ?ID_L("execute"), ?OP_L("("), ?STR_A(Name), ?OP_L(", "),
-     java_gen_map(lists:map(fun({A,B})->java_gen(A, B, <<"">>) end, lists:zip(ArgsDesc, Values)), <<"">>), ?OP_L(");"), ?BR].
+java_call(Name, ArgsDesc, Values, HTMLOutput) ->
+    {Indent, Preamble} = if HTMLOutput -> {<<"">>, []}; true -> {<<"    ">>, <<"    #!java\n">>} end,
+    [Preamble,
+     Indent, ?ID_L("XmlRpcClientConfigImpl config"), ?OP_L(" = "), ?KW_L("new "), ?ID_L("XmlRpcClientConfigImpl"), ?OP_L("();"), ?BR,
+     Indent, ?ID_L("config"), ?OP_L("."), ?ID_L("setServerURL"), ?OP_L("("), ?ID_L("url"), ?OP_L(");"), ?BR, Indent, ?BR,
+     Indent, ?ID_L("XmlRpcClient client"), ?OP_L(" = "), ?KW_L("new "), ?ID_L("XmlRpcClient"), ?OP_L("();"), ?BR,
+     Indent, ?ID_L("client"), ?OP_L("."), ?ID_L("setConfig"), ?OP_L("("), ?ID_L("config"), ?OP_L(");"), ?BR, Indent, ?BR,
+     Indent, ?ID_L("client"), ?OP_L("."), ?ID_L("execute"), ?OP_L("("), ?STR_A(Name), ?OP_L(", "),
+     java_gen_map(lists:map(fun({A,B})->java_gen(A, B, Indent, HTMLOutput) end, lists:zip(ArgsDesc, Values)), Indent, HTMLOutput),
+     ?OP_L(");"), ?BR].
 
 -define(XML_S(N, V), ?OP_L("<"), ?FIELD_L(??N), ?OP_L(">"), V).
 -define(XML_E(N), ?OP_L("</"), ?FIELD_L(??N), ?OP_L(">")).
@@ -141,79 +167,81 @@ java_call(Name, ArgsDesc, Values) ->
 -define(XML_L(N, Indent, V), ?BR, Indent, ?XML_S(N, V), ?XML_E(N)).
 -define(XML_L(N, Indent, D, V), ?XML_L(N, [Indent, lists:duplicate(D, <<"  ">>)], V)).
 
-xml_gen({Name, integer}, Int, Indent) ->
+xml_gen({Name, integer}, Int, Indent, HTMLOutput) ->
     [?XML(member, Indent,
          [?XML_L(name, Indent, 1, ?ID_A(Name)),
           ?XML(value, Indent, 1,
                [?XML_L(integer, Indent, 2, ?ID(jlib:integer_to_binary(Int)))])])];
-xml_gen({Name, string}, Str, Indent) ->
+xml_gen({Name, string}, Str, Indent, HTMLOutput) ->
     [?XML(member, Indent,
          [?XML_L(name, Indent, 1, ?ID_A(Name)),
           ?XML(value, Indent, 1,
                [?XML_L(string, Indent, 2, ?ID(Str))])])];
-xml_gen({Name, binary}, Str, Indent) ->
+xml_gen({Name, binary}, Str, Indent, HTMLOutput) ->
     [?XML(member, Indent,
          [?XML_L(name, Indent, 1, ?ID_A(Name)),
           ?XML(value, Indent, 1,
                [?XML_L(string, Indent, 2, ?ID(Str))])])];
-xml_gen({Name, atom}, Atom, Indent) ->
+xml_gen({Name, atom}, Atom, Indent, HTMLOutput) ->
     [?XML(member, Indent,
          [?XML_L(name, Indent, 1, ?ID_A(Name)),
           ?XML(value, Indent, 1,
                [?XML_L(string, Indent, 2, ?ID(atom_to_list(Atom)))])])];
-xml_gen({Name, {tuple, Fields}}, Tuple, Indent) ->
+xml_gen({Name, {tuple, Fields}}, Tuple, Indent, HTMLOutput) ->
     NewIndent = <<"    ", Indent/binary>>,
-    Res = lists:map(fun({A, B}) -> xml_gen(A, B, NewIndent) end, lists:zip(Fields, tuple_to_list(Tuple))),
+    Res = lists:map(fun({A, B}) -> xml_gen(A, B, NewIndent, HTMLOutput) end, lists:zip(Fields, tuple_to_list(Tuple))),
     [?XML(member, Indent,
          [?XML_L(name, Indent, 1, ?ID_A(Name)),
           ?XML(value, Indent, 1, [?XML(struct, NewIndent, Res)])])];
-xml_gen({Name, {list, ElDesc}}, List, Indent) ->
+xml_gen({Name, {list, ElDesc}}, List, Indent, HTMLOutput) ->
     Ind1 = <<"        ", Indent/binary>>,
     Ind2 = <<"    ", Ind1/binary>>,
-    Res = lists:map(fun(E) -> [?XML(value, Ind1, [?XML(struct, Ind1, 1, xml_gen(ElDesc, E, Ind2))])] end, List),
+    Res = lists:map(fun(E) -> [?XML(value, Ind1, [?XML(struct, Ind1, 1, xml_gen(ElDesc, E, Ind2, HTMLOutput))])] end, List),
     [?XML(member, Indent,
          [?XML_L(name, Indent, 1, ?ID_A(Name)),
           ?XML(value, Indent, 1, [?XML(array, Indent, 2, [?XML(data, Indent, 3, Res)])])])].
 
-xml_call(Name, ArgsDesc, Values) ->
-    Ind = <<"">>,
-    Res = lists:map(fun({A, B}) -> xml_gen(A, B, <<"          ">>) end, lists:zip(ArgsDesc, Values)),
-    [?XML(methodCall, Ind,
-          [?XML_L(methodName, Ind, 1, ?ID_A(Name)),
-           ?XML(params, Ind, 1,
-                [?XML(param, Ind, 2,
-                      [?XML(value, Ind, 3,
-                            [?XML(struct, Ind, 4, Res)])])])])].
+xml_call(Name, ArgsDesc, Values, HTMLOutput) ->
+    {Indent, Preamble} = if HTMLOutput -> {<<"">>, []}; true -> {<<"    ">>, <<"    #!xml">>} end,
+    Res = lists:map(fun({A, B}) -> xml_gen(A, B, <<Indent/binary, "          ">>, HTMLOutput) end, lists:zip(ArgsDesc, Values)),
+    [Preamble,
+     ?XML(methodCall, Indent,
+          [?XML_L(methodName, Indent, 1, ?ID_A(Name)),
+           ?XML(params, Indent, 1,
+                [?XML(param, Indent, 2,
+                      [?XML(value, Indent, 3,
+                            [?XML(struct, Indent, 4, Res)])])])])].
 
 %    [?ARG_S(Name), ?OP_L(": "), ?STR(Str)];
-json_gen({_Name, integer}, Int, _Indent) ->
+json_gen({_Name, integer}, Int, _Indent, HTMLOutput) ->
     [?NUM(Int)];
-json_gen({_Name, string}, Str, _Indent) ->
+json_gen({_Name, string}, Str, _Indent, HTMLOutput) ->
     [?STR(Str)];
-json_gen({_Name, binary}, Str, _Indent) ->
+json_gen({_Name, binary}, Str, _Indent, HTMLOutput) ->
     [?STR(Str)];
-json_gen({_Name, atom}, Atom, _Indent) ->
+json_gen({_Name, atom}, Atom, _Indent, HTMLOutput) ->
     [?STR_A(Atom)];
-json_gen({_Name, rescode}, Val, _Indent) ->
+json_gen({_Name, rescode}, Val, _Indent, HTMLOutput) ->
     [?ID_A(Val == ok orelse Val == true)];
-json_gen({_Name, restuple}, {Val, Str}, _Indent) ->
+json_gen({_Name, restuple}, {Val, Str}, _Indent, HTMLOutput) ->
     [?OP_L("{"), ?STR_L("res"), ?OP_L(": "), ?ID_A(Val == ok orelse Val == true), ?OP_L(", "),
      ?STR_L("text"), ?OP_L(": "), ?STR(Str), ?OP_L("}")];
-json_gen({_Name, {list, {_, {tuple, [{_, atom}, ValFmt]}}}}, List, Indent) ->
+json_gen({_Name, {list, {_, {tuple, [{_, atom}, ValFmt]}}}}, List, Indent, HTMLOutput) ->
     Indent2 = <<"  ", Indent/binary>>,
-    Res = lists:map(fun({N, V})->[?STR_A(N), ?OP_L(": "), json_gen(ValFmt, V, Indent2)] end, List),
+    Res = lists:map(fun({N, V})->[?STR_A(N), ?OP_L(": "), json_gen(ValFmt, V, Indent2, HTMLOutput)] end, List),
     [?OP_L("{"), ?BR, Indent2, list_join_with(Res, [?OP_L(","), ?BR, Indent2]), ?BR, Indent, ?OP_L("}")];
-json_gen({_Name, {tuple, Fields}}, Tuple, Indent) ->
+json_gen({_Name, {tuple, Fields}}, Tuple, Indent, HTMLOutput) ->
     Indent2 = <<"  ", Indent/binary>>,
-    Res = lists:map(fun({{N, _} = A, B})->[?STR_A(N), ?OP_L(": "), json_gen(A, B, Indent2)] end,
+    Res = lists:map(fun({{N, _} = A, B})->[?STR_A(N), ?OP_L(": "), json_gen(A, B, Indent2, HTMLOutput)] end,
                     lists:zip(Fields, tuple_to_list(Tuple))),
     [?OP_L("{"), ?BR, Indent2, list_join_with(Res, [?OP_L(","), ?BR, Indent2]), ?BR, Indent, ?OP_L("}")];
-json_gen({_Name, {list, ElDesc}}, List, Indent) ->
+json_gen({_Name, {list, ElDesc}}, List, Indent, HTMLOutput) ->
     Indent2 = <<"  ", Indent/binary>>,
-    Res = lists:map(fun(E) -> json_gen(ElDesc, E, Indent2) end, List),
+    Res = lists:map(fun(E) -> json_gen(ElDesc, E, Indent2, HTMLOutput) end, List),
     [?OP_L("["), ?BR, Indent2, list_join_with(Res, [?OP_L(","), ?BR, Indent2]), ?BR, Indent, ?OP_L("]")].
 
-json_call(Name, ArgsDesc, Values, ResultDesc, Result) ->
+json_call(Name, ArgsDesc, Values, ResultDesc, Result, HTMLOutput) ->
+    {Indent, Preamble} = if HTMLOutput -> {<<"">>, []}; true -> {<<"    ">>, <<"    #!json\n">>} end,
     {Code, ResultStr} = case {ResultDesc, Result} of
                             {{_, rescode}, V} when V == true; V == ok ->
                                 {200, [?STR_L("")]};
@@ -224,22 +252,24 @@ json_call(Name, ArgsDesc, Values, ResultDesc, Result) ->
                             {{_, restuple}, {_, Text2}} ->
                                 {500, [?STR(Text2)]};
                             {{_, {list, _}}, _} ->
-                                {200, json_gen(ResultDesc, Result, <<"">>)};
+                                {200, json_gen(ResultDesc, Result, Indent, HTMLOutput)};
                             {{_, {tuple, _}}, _} ->
-                                {200, json_gen(ResultDesc, Result, <<"">>)};
+                                {200, json_gen(ResultDesc, Result, Indent, HTMLOutput)};
                             {{Name0, _}, _} ->
-                                {200, [?OP_L("{"), ?STR_A(Name0), ?OP_L(": "), json_gen(ResultDesc, Result, <<"">>), ?OP_L("}")]}
+                                {200, [Indent, ?OP_L("{"), ?STR_A(Name0), ?OP_L(": "),
+                                       json_gen(ResultDesc, Result, Indent, HTMLOutput), Indent, ?OP_L("}")]}
                         end,
     CodeStr = case Code of
                   200 -> <<" 200 OK">>;
                   500 -> <<" 500 Internal Server Error">>
               end,
-    [?ID_L("POST /api/"), ?ID_A(Name), ?BR,
-     ?OP_L("{"), ?BR, <<"  ">>,
-     list_join_with(lists:map(fun({{N,_}=A,B})->[?STR_A(N), ?OP_L(": "), json_gen(A, B, <<"  ">>)] end,
-                              lists:zip(ArgsDesc, Values)), [?OP_L(","), ?BR, <<"  ">>]),
-     ?BR, ?OP_L("}"), ?BR, ?BR,
-     ?ID_L("HTTP/1.1"), ?ID(CodeStr), ?BR,
+    [Preamble,
+     Indent, ?ID_L("POST /api/"), ?ID_A(Name), ?BR,
+     Indent, ?OP_L("{"), ?BR, Indent, <<"  ">>,
+     list_join_with(lists:map(fun({{N,_}=A,B})->[?STR_A(N), ?OP_L(": "), json_gen(A, B, <<Indent/binary, "  ">>, HTMLOutput)] end,
+                              lists:zip(ArgsDesc, Values)), [?OP_L(","), ?BR, Indent, <<"  ">>]),
+     ?BR, Indent, ?OP_L("}"), ?BR, Indent, ?BR, Indent,
+     ?ID_L("HTTP/1.1"), ?ID(CodeStr), ?BR, Indent,
      ResultStr
     ].
 
@@ -266,36 +296,43 @@ generate_example_input({_Name, {list, Desc}}, Data) ->
     {R2, D2} = generate_example_input(Desc, D1),
     {[R1, R2], D2}.
 
-gen_calls(#ejabberd_commands{args_example=none, args=ArgsDesc} = C) ->
+gen_calls(#ejabberd_commands{args_example=none, args=ArgsDesc} = C, HTMLOutput, Langs) ->
     {R, _} = lists:foldl(fun(Arg, {Res, Data}) ->
                                  {Res3, Data3} = generate_example_input(Arg, Data),
                                  {[Res3 | Res], Data3}
                          end, {[], {$a-1, 0}}, ArgsDesc),
-    gen_calls(C#ejabberd_commands{args_example=lists:reverse(R)});
-gen_calls(#ejabberd_commands{result_example=none, result=ResultDesc} = C) ->
+    gen_calls(C#ejabberd_commands{args_example=lists:reverse(R)}, HTMLOutput, Langs);
+gen_calls(#ejabberd_commands{result_example=none, result=ResultDesc} = C, HTMLOutput, Langs) ->
     {R, _} = generate_example_input(ResultDesc, {$a-1, 0}),
-    gen_calls(C#ejabberd_commands{result_example=R});
+    gen_calls(C#ejabberd_commands{result_example=R}, HTMLOutput, Langs);
 gen_calls(#ejabberd_commands{args_example=Values, args=ArgsDesc,
                              result_example=Result, result=ResultDesc,
-                             name=Name}) ->
-    Perl = perl_call(Name, ArgsDesc, Values),
-    Java = java_call(Name, ArgsDesc, Values),
-    XML = xml_call(Name, ArgsDesc, Values),
-    JSON = json_call(Name, ArgsDesc, Values, ResultDesc, Result),
-    [?TAG(ul, "code-samples-names",
-          [?TAG(li, <<"Java">>),
-           ?TAG(li, <<"Perl">>),
-           ?TAG(li, <<"XML">>),
-           ?TAG(li, <<"JSON">>)]),
-     ?TAG(ul, "code-samples",
-          [?TAG(li, ?TAG(pre, Java)),
-           ?TAG(li, ?TAG(pre, Perl)),
-           ?TAG(li, ?TAG(pre, XML)),
-           ?TAG(li, ?TAG(pre, JSON))])].
+                             name=Name}, HTMLOutput, Langs) ->
+    Perl = perl_call(Name, ArgsDesc, Values, HTMLOutput),
+    Java = java_call(Name, ArgsDesc, Values, HTMLOutput),
+    XML = xml_call(Name, ArgsDesc, Values, HTMLOutput),
+    JSON = json_call(Name, ArgsDesc, Values, ResultDesc, Result, HTMLOutput),
+    if HTMLOutput ->
+            [?TAG(ul, "code-samples-names",
+                  [case lists:member(<<"java">>, Langs) of true -> ?TAG(li, <<"Java">>); _ -> [] end,
+                   case lists:member(<<"perl">>, Langs) of true -> ?TAG(li, <<"Perl">>); _ -> [] end,
+                   case lists:member(<<"xmlrpc">>, Langs) of true -> ?TAG(li, <<"XML">>); _ -> [] end,
+                   case lists:member(<<"json">>, Langs) of true -> ?TAG(li, <<"JSON">>); _ -> [] end]),
+             ?TAG(ul, "code-samples",
+                  [case lists:member(<<"java">>, Langs) of true -> ?TAG(li, ?TAG(pre, Java)); _ -> [] end,
+                   case lists:member(<<"perl">>, Langs) of true -> ?TAG(li, ?TAG(pre, Perl)); _ -> [] end,
+                   case lists:member(<<"xmlrpc">>, Langs) of true -> ?TAG(li, ?TAG(pre, XML)); _ -> [] end,
+                   case lists:member(<<"json">>, Langs) of true -> ?TAG(li, ?TAG(pre, JSON)); _ -> [] end])];
+       true ->
+            [case lists:member(<<"java">>, Langs) of true -> [<<"Java example\n\n">>, ?TAG(pre, Java)]; _ -> [] end,
+             case lists:member(<<"perl">>, Langs) of true -> [<<"Perl example\n\n">>, ?TAG(pre, Perl)]; _ -> [] end,
+             case lists:member(<<"xmlrpc">>, Langs) of true -> [<<"XmlRPC example\n\n">>, ?TAG(pre, XML)]; _ -> [] end,
+             case lists:member(<<"json">>, Langs) of true -> [<<"JSON example\n\n">>, ?TAG(pre, JSON)]; _ -> [] end]
+    end.
 
 gen_doc(#ejabberd_commands{name=Name, tags=_Tags, desc=Desc, longdesc=LongDesc,
                            args=Args, args_desc=ArgsDesc,
-                           result=Result, result_desc=ResultDesc}=Cmd) ->
+                           result=Result, result_desc=ResultDesc}=Cmd, HTMLOutput, Langs) ->
     LDesc = case LongDesc of
                 "" -> Desc;
                 _ -> LongDesc
@@ -328,9 +365,9 @@ gen_doc(#ejabberd_commands{name=Name, tags=_Tags, desc=Desc, longdesc=LongDesc,
      ?TAG(h2, <<"Result:">>),
      ResultText,
      ?TAG(h2, <<"Examples:">>),
-     gen_calls(Cmd)].
+     gen_calls(Cmd, HTMLOutput, Langs)].
 
-generate_output(File, RegExp) ->
+generate_html_output(File, RegExp) ->
     Cmds = lists:map(fun({N, _, _}) ->
                              ejabberd_commands:get_command_definition(N)
                      end, ejabberd_commands:list_commands()),
@@ -342,9 +379,28 @@ generate_output(File, RegExp) ->
     Cmds3 = lists:sort(fun(#ejabberd_commands{name=N1}, #ejabberd_commands{name=N2}) ->
                                N1 =< N2
                        end, Cmds2),
-    Out = lists:map(fun(C) -> gen_doc(C) end, Cmds3),
+    Out = lists:map(fun(C) -> gen_doc(C, true, [<<"java">>, <<"perl">>, <<"xmlrpc">>, <<"json">>]) end, Cmds3),
     {ok, Fh} = file:open(File, [write]),
     io:format(Fh, "~s", [[html_pre(), Out, html_post()]]),
+    file:close(Fh),
+    ok.
+
+generate_md_output(File, RegExp, Languages) ->
+    Cmds = lists:map(fun({N, _, _}) ->
+                             ejabberd_commands:get_command_definition(N)
+                     end, ejabberd_commands:list_commands()),
+    {ok, RE} = re:compile(RegExp),
+    Cmds2 = lists:filter(fun(#ejabberd_commands{name=Name, module=Module}) ->
+                                 re:run(atom_to_list(Name), RE, [{capture, none}]) == match orelse
+                                     re:run(atom_to_list(Module), RE, [{capture, none}]) == match
+                         end, Cmds),
+    Cmds3 = lists:sort(fun(#ejabberd_commands{name=N1}, #ejabberd_commands{name=N2}) ->
+                               N1 =< N2
+                       end, Cmds2),
+    Lang = binary:split(Languages, <<",">>, [global]),
+    Out = lists:map(fun(C) -> gen_doc(C, false, Lang) end, Cmds3),
+    {ok, Fh} = file:open(File, [write]),
+    io:format(Fh, "~s", [[Out]]),
     file:close(Fh),
     ok.
 
