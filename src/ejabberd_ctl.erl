@@ -65,40 +65,43 @@
 %%-----------------------------
 
 start() ->
-    case init:get_plain_arguments() of
-	[SNode | Args] ->
-	    SNode1 = case string:tokens(SNode, "@") of
-			 [_Node, _Server] ->
-			     SNode;
-			 _ ->
-			     case net_kernel:longnames() of
-				 true ->
-				     lists:flatten([SNode, "@", inet_db:gethostname(),
-                                                    ".", inet_db:res_option(domain)]);
-				 false ->
-                                     lists:flatten([SNode, "@", inet_db:gethostname()]);
-				 _ ->
+    [SNode, Timeout, Args] = case init:get_plain_arguments() of
+                                  [SNode01, "--no-timeout" | Args01] ->
+                                      [SNode01, infinity, Args01];
+                                  [SNode02 | Args02] ->
+                                      [SNode02, 60000, Args02];
+                                  _ ->
+                                      print_usage(?DEFAULT_VERSION),
+                                      halt(?STATUS_USAGE)
+                              end,
+    SNode1 = case string:tokens(SNode, "@") of
+                 [_Node, _Server] ->
+                     SNode;
+                 _ ->
+                     case net_kernel:longnames() of
+                         true ->
+                             lists:flatten([SNode, "@", inet_db:gethostname(),
+                                            ".", inet_db:res_option(domain)]);
+                         false ->
+                             lists:flatten([SNode, "@", inet_db:gethostname()]);
+                         _ ->
 				     SNode
-			     end
-		     end,
-	    Node = list_to_atom(SNode1),
-	    Status = case rpc:call(Node, ?MODULE, process, [Args], 60000) of
-			 {badrpc, Reason} ->
-			     print("Failed RPC connection to the node ~p: ~p~n",
-				    [Node, Reason]),
-			     %% TODO: show minimal start help
-			     ?STATUS_BADRPC;
+                     end
+             end,
+    Node = list_to_atom(SNode1),
+    Status = case rpc:call(Node, ?MODULE, process, [Args], Timeout) of
+                 {badrpc, Reason} ->
+                     print("Failed RPC connection to the node ~p: ~p~n",
+                           [Node, Reason]),
+                     %% TODO: show minimal start help
+                     ?STATUS_BADRPC;
 			 {invalid_version, V} ->
-			     print("Invalid API version number: ~p~n", [V]),
-			     ?STATUS_ERROR;
-			 S ->
-			     S
-		     end,
-	    halt(Status);
-	_ ->
-	    print_usage(?DEFAULT_VERSION),
-	    halt(?STATUS_USAGE)
-    end.
+                     print("Invalid API version number: ~p~n", [V]),
+                     ?STATUS_ERROR;
+                 S ->
+                     S
+             end,
+    halt(Status).
 
 init() ->
     ets:new(ejabberd_ctl_cmds, [named_table, set, public]),
@@ -209,7 +212,7 @@ process(["help" | Mode], Version) ->
     end;
 
 process(["--version", Arg | Args], _) ->
-    Version = 
+    Version =
 	try
 	    list_to_integer(Arg)
 	catch _:_ ->
@@ -314,7 +317,7 @@ call_command([CmdString | Args], Auth, AccessCommands, Version) ->
 	{ArgsFormat, ResultFormat} ->
 	    case (catch format_args(Args, ArgsFormat)) of
 		ArgsFormatted when is_list(ArgsFormatted) ->
-		    Result = ejabberd_commands:execute_command(AccessCommands, 
+		    Result = ejabberd_commands:execute_command(AccessCommands,
 							       Auth, Command,
 							       ArgsFormatted,
 							       Version),
