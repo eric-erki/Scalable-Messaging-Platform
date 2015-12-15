@@ -38,7 +38,7 @@
 -export([user_send_packet/4, user_receive_packet/5,
 	 process_iq_v0_2/3, process_iq_v0_3/3, remove_user/2,
 	 remove_user/3, mod_opt_type/1, muc_process_iq/4,
-	 muc_filter_message/5, opt_type/1,
+	 disco_sm_features/5, muc_filter_message/5, opt_type/1,
 	 enc_key/1, dec_key/1, enc_val/2, dec_val/2, enc_prefs/2, dec_prefs/2]).
 
 -include_lib("stdlib/include/ms_transform.hrl").
@@ -91,6 +91,8 @@ start(Host, Opts) ->
 		       muc_filter_message, 50),
     ejabberd_hooks:add(muc_process_iq, Host, ?MODULE,
 		       muc_process_iq, 50),
+    ejabberd_hooks:add(disco_sm_features, Host, ?MODULE,
+		       disco_sm_features, 50),
     ejabberd_hooks:add(remove_user, Host, ?MODULE,
 		       remove_user, 50),
     ejabberd_hooks:add(anonymous_purge_hook, Host, ?MODULE,
@@ -159,6 +161,8 @@ stop(Host) ->
     gen_iq_handler:remove_iq_handler(ejabberd_sm, Host, ?NS_MAM_0),
     gen_iq_handler:remove_iq_handler(ejabberd_local, Host, ?NS_MAM_1),
     gen_iq_handler:remove_iq_handler(ejabberd_sm, Host, ?NS_MAM_1),
+    ejabberd_hooks:delete(disco_sm_features, Host, ?MODULE,
+			  disco_sm_features, 50),
     ejabberd_hooks:delete(remove_user, Host, ?MODULE,
 			  remove_user, 50),
     ejabberd_hooks:delete(anonymous_purge_hook, Host,
@@ -329,6 +333,15 @@ get_xdata_fields(SubEl) ->
 	{false, false} ->
 	    []
     end.
+
+disco_sm_features(empty, From, To, Node, Lang) ->
+    disco_sm_features({result, []}, From, To, Node, Lang);
+disco_sm_features({result, OtherFeatures},
+		  #jid{luser = U, lserver = S},
+		  #jid{luser = U, lserver = S}, <<>>, _Lang) ->
+    {result, [?NS_MAM_TMP, ?NS_MAM_0, ?NS_MAM_1 | OtherFeatures]};
+disco_sm_features(Acc, _From, _To, _Node, _Lang) ->
+    Acc.
 
 %%%===================================================================
 %%% Internal functions
