@@ -189,11 +189,11 @@ CfgXrefs = lists:flatmap(
 
 ElixirConfig = case lists:keysearch(elixir, 1, Cfg) of
                    {value, {elixir, true}} ->
-                       [{plugins, [rebar_elixir_compiler, rebar_exunit] },
+                       [{plugins, [deps_erl_opts, rebar_elixir_compiler, rebar_exunit] },
                         {lib_dirs, ["deps/elixir/lib"]},
 			{src_dirs, ["include"]}];
                    _ ->
-                       []
+                       [{plugins, [deps_erl_opts]}]
                end,
 
 {ok, Cwd} = file:get_cwd(),
@@ -216,6 +216,7 @@ CompileOpts = [nowarn_deprecated_function],
 
 Config = [{erl_opts, CompileOpts ++ Macros ++ HiPE ++ DebugInfo ++
                [{src_dirs, [asn1, src | SrcDirs]}]},
+          {deps_erl_opts, HiPE},
           {sub_dirs, ["rel"]},
           {keep_build_info, true},
           {ct_extra_params, "-ct_hooks cth_surefire "
