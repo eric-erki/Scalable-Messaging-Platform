@@ -110,9 +110,31 @@ Conf4 = case lists:keytake(erl_opts, 1, Conf3) of
                 Conf3
         end,
 
-%io:format("ejabberd configuration:~n  ~p~n", [Conf4]),
+Conf5 = case lists:keytake(floating_deps, 1, Conf4) of
+            {value, {_, FloatingDeps}, Rest4} ->
+                case lists:keytake(deps, 1, Rest4) of
+                    {value, {_, Deps}, Rest41} ->
+                        ND = lists:map(fun({DepName, Ver, {git, Repo, _Commit}}=Dep) ->
+                                               case lists:member(DepName, FloatingDeps) of
+                                                   true ->
+                                                       {DepName, ".*", {git, Repo}};
+                                                   _ ->
+                                                       Dep
+                                               end;
+                                          (Dep2) ->
+                                               Dep2
+                                       end, Deps),
+                        [{deps, ND} | Rest41];
+                    _ ->
+                        Rest4
+                end;
+            _ ->
+                Conf4
+        end,
 
-Conf4.
+%io:format("ejabberd configuration:~n  ~p~n", [Conf5]),
+
+Conf5.
 
 %% Local Variables:
 %% mode: erlang
