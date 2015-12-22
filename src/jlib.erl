@@ -805,7 +805,7 @@ decode_base64(S) ->
 	  decode_base64_bin(S, <<>>)
     end.
 
-take_without_spaces(Bin, Count) -> 
+take_without_spaces(Bin, Count) ->
     take_without_spaces(Bin, Count, <<>>).
 
 take_without_spaces(Bin, 0, Acc) ->
@@ -883,16 +883,16 @@ binary_to_atom(Bin) ->
     erlang:binary_to_atom(Bin, utf8).
 
 binary_to_integer(Bin) ->
-    list_to_integer(binary_to_list(Bin)).
+    erlang:binary_to_integer(Bin).
 
 binary_to_integer(Bin, Base) ->
-    list_to_integer(binary_to_list(Bin), Base).
+    erlang:binary_to_integer(Bin, Base).
 
 integer_to_binary(I) ->
-    list_to_binary(integer_to_list(I)).
+    erlang:integer_to_binary(I).
 
 integer_to_binary(I, Base) ->
-    list_to_binary(erlang:integer_to_list(I, Base)).
+    erlang:integer_to_binary(I, Base).
 
 tuple_to_binary(T) ->
     iolist_to_binary(tuple_to_list(T)).
