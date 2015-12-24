@@ -154,7 +154,7 @@ commands() ->
 			    "or \"none\".",
                         policy = user,
 			module = ?MODULE, function = get_roster,
-			args = [{user, binary}, {server, binary}],
+			args = [],
 			result =
 			    {contacts,
 			     {list,
