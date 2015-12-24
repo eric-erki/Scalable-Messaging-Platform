@@ -33,20 +33,6 @@
 -export([get_user_history/4, parse_read_notification/1,
 	 mod_opt_type/1]).
 
--define(NS_P1_HISTORY, <<"p1:archive">>).
-
--ifndef(NS_P1_PUSHED).
-
--define(NS_P1_PUSHED, <<"p1:pushed">>).
-
--endif.
-
--ifndef(NS_RECEIPTS).
-
--define(NS_RECEIPTS, <<"urn:xmpp:receipts">>).
-
--endif.
-
 -include("ejabberd.hrl").
 -include("logger.hrl").
 -include("jlib.hrl").

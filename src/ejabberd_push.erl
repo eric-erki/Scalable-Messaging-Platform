@@ -34,13 +34,6 @@
 -include("jlib.hrl").
 -include("mod_privacy.hrl").
 
--define(NS_P1_PUSH, <<"p1:push">>).
--define(NS_P1_PUSH_CUSTOMIZE, <<"p1:push:customize">>).
--define(NS_P1_PUSH_APPLEPUSH, <<"p1:push:applepush">>).
--define(NS_P1_PUSHED, <<"p1:pushed">>).
--define(NS_P1_ATTACHMENT, <<"http://process-one.net/attachement">>).
--define(NS_P1_PUSH_CUSTOM, <<"p1:push:custom">>).
-
 build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom, BadgeCount, First, FirstPerUser, SilentPushesEnabled, Module) ->
     Body1 = xml:get_path_s(Packet, [{elem, <<"body">>}, cdata]),
     Body =

@@ -72,13 +72,6 @@
 -include("jlib.hrl").
 -include("mod_privacy.hrl").
 
--define(NS_P1_PUSH, <<"p1:push">>).
--define(NS_P1_PUSH_CUSTOMIZE, <<"p1:push:customize">>).
--define(NS_P1_PUSH_APPLEPUSH, <<"p1:push:applepush">>).
--define(NS_P1_PUSHED, <<"p1:pushed">>).
--define(NS_P1_ATTACHMENT, <<"http://process-one.net/attachement">>).
--define(NS_P1_PUSH_CUSTOM, <<"p1:push:custom">>).
-
 -record(applepush_cache, {us, device_id, options}).
 
 

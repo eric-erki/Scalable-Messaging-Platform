@@ -63,8 +63,6 @@
 -define(MAX_QUEUE_SIZE, 1000).
 -define(MAX_PAYLOAD_SIZE, 4096).
 -define(EXPIRY_DATE, 24 * 60 * 60).
--define(NS_P1_PUSH, <<"p1:push">>).
--define(NS_P1_PUSH_GCM, <<"p1:push:gcm">>).
 -define(HTTP_TIMEOUT, 10 * 1000).
 -define(HTTP_CONNECT_TIMEOUT, 10 * 1000).
 -define(GCM_PRIORITY_HIGH, <<"high">>).

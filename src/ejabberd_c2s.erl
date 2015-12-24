@@ -115,8 +115,6 @@
 
 -define(INVALID_FROM, ?SERR_INVALID_FROM).
 
--define(NS_P1_REBIND, <<"p1:rebind">>).
-
 %% XEP-0198:
 
 -define(IS_STREAM_MGMT_TAG(Name),
@@ -150,16 +148,6 @@
 
 -define(MGMT_UNSUPPORTED_VERSION(Xmlns),
 	?MGMT_FAILED(<<"unsupported-version">>, Xmlns)).
-
--define(NS_P1_PUSH, <<"p1:push">>).
-
--define(NS_P1_PUSH_CUSTOM, <<"p1:push:custom">>).
-
--define(NS_P1_ACK, <<"p1:ack">>).
-
--define(NS_P1_PUSHED, <<"p1:pushed">>).
-
--define(NS_P1_ATTACHMENT, <<"http://process-one.net/attachement">>).
 
 -define(C2S_P1_ACK_TIMEOUT, 10000).
 

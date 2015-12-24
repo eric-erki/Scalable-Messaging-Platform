@@ -68,9 +68,6 @@
 -define(CACHE_SIZE, 4096).
 -define(MAX_PAYLOAD_SIZE, 2048).
 
--define(NS_P1_PUSH, <<"p1:push">>).
--define(NS_P1_PUSH_APPLEPUSH, <<"p1:push:applepush">>).
-
 -define(APNS_PRIORITY_HIGH, 10).
 -define(APNS_PRIORITY_NORMAL, 5).
 

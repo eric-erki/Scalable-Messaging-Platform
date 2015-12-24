@@ -51,24 +51,6 @@
 
 -define(DICT, dict).
 
--ifndef(NS_RECEIPTS).
-
--define(NS_RECEIPTS, <<"urn:xmpp:receipts">>).
-
--endif.
-
--ifndef(NS_PING).
-
--define(NS_PING, <<"urn:xmpp:ping">>).
-
--endif.
-
--ifndef(NS_P1_PUSHED).
-
--define(NS_P1_PUSHED, <<"p1:pushed">>).
-
--endif.
-
 -record(state, {host = <<"">>          :: binary(),
                 timers = (?DICT):new() :: ?TDICT,
                 timeout = ?ACK_TIMEOUT :: non_neg_integer()}).
