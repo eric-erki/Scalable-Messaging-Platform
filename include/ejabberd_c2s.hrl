@@ -107,3 +107,7 @@
 -type c2s_state() :: #state{}.
 
 -type mgmt_state() :: disabled | inactive | active | pending | resumed.
+
+-define(C2S_P1_ACK_TIMEOUT, 10000).
+-define(MAX_OOR_TIMEOUT, 1440).
+-define(MAX_OOR_MESSAGES, 1000).
