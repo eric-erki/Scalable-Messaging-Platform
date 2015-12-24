@@ -44,7 +44,8 @@
 	 moderate_room_history/2,
 	 persist_recent_messages/1,
 	 expand_opts/1, encode_opts/2, decode_opts/2,
-	 config_fields/0, get_role/2]).
+	 is_occupant_or_admin/2,
+	 config_fields/0, get_role/2, get_affiliation/2]).
 
 %% gen_fsm callbacks
 -export([init/1,
