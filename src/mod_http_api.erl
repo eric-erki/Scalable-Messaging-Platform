@@ -233,7 +233,6 @@ handle(Call, Auth, Args, Version) when is_atom(Call), is_list(Args) ->
     case ejabberd_commands:get_command_format(Call, Auth, Version) of
         {ArgsSpec, _} when is_list(ArgsSpec) ->
 	    try
-                Args2 = [{jlib:binary_to_atom(Key), Value} || {Key, Value} <- Args],
                 ArgsM = lists:map(fun({Key, _Type}) ->
                                           KeyB = jlib:atom_to_binary(Key),
                                           case proplists:get_value(KeyB, Args) of
