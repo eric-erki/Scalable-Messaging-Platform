@@ -404,7 +404,7 @@ init([StateName, StateData, _FSMLimitOpts]) ->
 			   undefined -> undefined;
 			   El -> get_priority_from_presence(El)
 		       end,
-	    USR = {jlib:nodeprep(StateData#state.user),
+	    USR = {jid:nodeprep(StateData#state.user),
 		   jid:nameprep(StateData#state.server),
 		   jid:resourceprep(StateData#state.resource)},
 	    NewStateData = StateData#state{
