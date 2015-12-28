@@ -30,7 +30,8 @@
 -behaviour(gen_mod).
 
 %% API
--export([start_link/2, start/2, stop/1]).
+-export([start_link/2, start/2, stop/1,
+         force_reconnect/1]).
 
 -export([init/1, handle_call/3, handle_cast/2,
 	 handle_info/2, terminate/2, code_change/3,
@@ -128,6 +129,25 @@ stop(Host) ->
       end, MyHosts).
 
 
+force_reconnect(Host) ->
+    MyHosts = case gen_mod:get_module_opt(
+                     Host, ?MODULE, hosts,
+                     fun(Hs) when is_list(Hs) ->
+                             [iolist_to_binary(H) || {H, _} <- Hs]
+                     end, []) of
+                  [] ->
+                      [gen_mod:get_module_opt_host(
+                         Host, ?MODULE, <<"applepush.@HOST@">>)];
+                  Hs ->
+                      Hs
+              end,
+    lists:foreach(
+      fun(MyHost) ->
+	      Proc = gen_mod:get_module_proc(MyHost, ?PROCNAME),
+              gen_server:call(Proc, force_reconnect)
+      end, MyHosts).
+
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -188,6 +208,13 @@ init([MyHost, Opts]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
+handle_call(force_reconnect, _From, State) ->
+    case State#state.socket of
+        undefined -> ok;
+        _ -> ssl:close(State#state.socket)
+    end,
+    self() ! connect,
+    {reply, ok, State#state{socket = undefined}};
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State}.
 
