@@ -26,7 +26,7 @@
 -module(ejabberd_commands_doc).
 -author('pawel@process-one.net').
 
--export([generate_html_output/2]).
+-export([generate_html_output/3]).
 -export([generate_md_output/3]).
 
 -include("ejabberd_commands.hrl").
@@ -367,7 +367,7 @@ gen_doc(#ejabberd_commands{name=Name, tags=_Tags, desc=Desc, longdesc=LongDesc,
      ?TAG(h2, <<"Examples:">>),
      gen_calls(Cmd, HTMLOutput, Langs)].
 
-generate_html_output(File, RegExp) ->
+generate_html_output(File, RegExp, Languages) ->
     Cmds = lists:map(fun({N, _, _}) ->
                              ejabberd_commands:get_command_definition(N)
                      end, ejabberd_commands:list_commands()),
@@ -379,7 +379,8 @@ generate_html_output(File, RegExp) ->
     Cmds3 = lists:sort(fun(#ejabberd_commands{name=N1}, #ejabberd_commands{name=N2}) ->
                                N1 =< N2
                        end, Cmds2),
-    Out = lists:map(fun(C) -> gen_doc(C, true, [<<"java">>, <<"perl">>, <<"xmlrpc">>, <<"json">>]) end, Cmds3),
+    Langs = binary:split(Languages, <<",">>, [global]),
+    Out = lists:map(fun(C) -> gen_doc(C, true, Langs) end, Cmds3),
     {ok, Fh} = file:open(File, [write]),
     io:format(Fh, "~s", [[html_pre(), Out, html_post()]]),
     file:close(Fh),
@@ -397,8 +398,8 @@ generate_md_output(File, RegExp, Languages) ->
     Cmds3 = lists:sort(fun(#ejabberd_commands{name=N1}, #ejabberd_commands{name=N2}) ->
                                N1 =< N2
                        end, Cmds2),
-    Lang = binary:split(Languages, <<",">>, [global]),
-    Out = lists:map(fun(C) -> gen_doc(C, false, Lang) end, Cmds3),
+    Langs = binary:split(Languages, <<",">>, [global]),
+    Out = lists:map(fun(C) -> gen_doc(C, false, Langs) end, Cmds3),
     {ok, Fh} = file:open(File, [write]),
     io:format(Fh, "~s", [[Out]]),
     file:close(Fh),

@@ -248,20 +248,21 @@ init() ->
 			 {type, bag}]),
     mnesia:add_table_copy(ejabberd_commands, node(), ram_copies),
     register_commands([
-        #ejabberd_commands{name = gen_xmlrpc_docs, tags = [documentation],
+        #ejabberd_commands{name = gen_html_doc_for_commands, tags = [documentation],
                            desc = "Generates html documentation for ejabberd_commands",
                            module = ejabberd_commands_doc, function = generate_html_output,
-                           args = [{file, binary}, {regexp, binary}],
+                           args = [{file, binary}, {regexp, binary}, {examples, binary}],
                            result = {res, rescode},
                            args_desc = ["Path to file where generated "
                                         "documentation should be stored",
-                                        "Commands which name or module "
-                                        "is matched by it will be included "
-                                        "in output"],
+                                        "Regexp matching names of commands or modules "
+                                        "that will be included inside generated document",
+                                        "Comma separated list of languages (choosen from java, perl, xmlrpc, json)"
+                                        "that will have example invocation include in markdown document"],
                            result_desc = "0 if command failed, 1 when succedded",
-                           args_example = ["/home/me/docs/api.html", "mod_admin"],
+                           args_example = ["/home/me/docs/api.html", "mod_admin", "java,json"],
                            result_example = ok},
-        #ejabberd_commands{name = gen_markdown_for_commands, tags = [documentation],
+        #ejabberd_commands{name = gen_markdown_doc_for_commands, tags = [documentation],
                            desc = "Generates markdown documentation for ejabberd_commands",
                            module = ejabberd_commands_doc, function = generate_md_output,
                            args = [{file, binary}, {regexp, binary}, {examples, binary}],
