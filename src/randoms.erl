@@ -29,34 +29,12 @@
 
 -export([get_string/0]).
 
--export([start/0, init/0]).
+-export([start/0]).
 
 start() ->
-    lists:foreach(
-      fun(I) ->
-	      register(get_proc(I), spawn(randoms, init, []))
-      end, lists:seq(1, pool_size())).
-
-init() ->
-    random:seed(p1_time_compat:timestamp()), loop().
-
-loop() ->
-    receive
-      {From, get_random, N} ->
-	  From ! {random, random:uniform(N)}, loop();
-      _ -> loop()
-    end.
+    ok.
 
 get_string() ->
-    {_, _, USec} = p1_time_compat:timestamp(),
-    Proc = get_proc((USec rem pool_size()) + 1),
-    Proc ! {self(), get_random, 65536 * 65536},
-    receive
-      {random, R} -> jlib:integer_to_binary(R)
-    end.
+    R = crypto:rand_uniform(0, 16#10000000000000000),
+    jlib:integer_to_binary(R).
 
-pool_size() ->
-    10.
-
-get_proc(I) ->
-    list_to_atom("random_generator_" ++ integer_to_list(I)).
