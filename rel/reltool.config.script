@@ -38,7 +38,7 @@ DepConfiguredApp0 = lists:flatmap(
                          ({sqlite, true}) -> [sqlite3];
                          ({pam, true}) -> [p1_pam];
                          ({zlib, true}) -> [p1_zlib];
-                         ({http, true}) -> [ibrowse, lhttpc];
+                         ({http, true}) -> [lhttpc];
                          ({riak, true}) -> [riakc, riak_pb, protobuffs, hamcrest, meck];
                          ({elixir, true}) -> [elixir, rebar_elixir_plugin];
                          ({iconv, true}) -> [p1_iconv];
