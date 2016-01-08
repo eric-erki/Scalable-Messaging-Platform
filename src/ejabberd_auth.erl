@@ -489,6 +489,15 @@ import(_LServer, {odbc, _}, odbc, <<"users">>, _) ->
                    pos_integer(), gen_mod:db_type()) -> any().
 
 create_users(UserPattern, PassPattern, Server, Total, DBType) ->
+    Fd = case DBType of
+	     odbc ->
+		 Filename = filename:join("/tmp", "users.sql"),
+		 {ok, Fd0} = file:open(Filename, [write, raw]),
+		 io:format("writing sql queries at " ++ Filename ++ "~n"),
+		 Fd0;
+	     _ ->
+		 undefined
+	 end,
     lists:foreach(
       fun(I) ->
               LUser = jid:nodeprep(
@@ -510,9 +519,13 @@ create_users(UserPattern, PassPattern, Server, Total, DBType) ->
 			ejabberd_auth_riak:passwd_schema(),
                         [{'2i', [{<<"host">>, LServer}]}]);
                   odbc ->
-                      erlang:error(odbc_not_supported)
+		      SQL = ["INSERT INTO users(username, password) VALUES('",
+			     LUser, "', '", Pass, "');", io_lib:nl()],
+		      ok = file:write(Fd, SQL)
               end
-      end, lists:seq(1, Total)).
+      end, lists:seq(1, Total)),
+    catch file:close(Fd),
+    ok.
 
 opt_type(auth_method) ->
     fun (V) when is_list(V) ->

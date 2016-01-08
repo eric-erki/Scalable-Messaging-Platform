@@ -2112,6 +2112,15 @@ make_roster_range(I, Total) ->
 -spec create_rosters(binary(), binary(), pos_integer(), gen_mod:db_type()) -> any().
 
 create_rosters(UserPattern, Server, Total, DBType) ->
+    Fd = case DBType of
+	     odbc ->
+		 Filename = filename:join("/tmp", "rosterusers.sql"),
+		 {ok, Fd0} = file:open(Filename, [write, raw]),
+		 io:format("writing sql queries at " ++ Filename ++ "~n"),
+		 Fd0;
+	     _ ->
+		 undefined
+	 end,
     lists:foreach(
       fun(I) ->
               LUser = jid:nodeprep(
@@ -2141,10 +2150,19 @@ create_rosters(UserPattern, Server, Total, DBType) ->
                             mnesia ->
                                 mnesia:dirty_write(RItem);
                             odbc ->
-                                erlang:error(odbc_not_supported)
+				Vals = record_to_string(RItem),
+				SQL = ["INSERT INTO rosterusers(",
+				       "username, jid, nick, subscription, ",
+				       "ask, askmessage, server, subscribe, ",
+				       "type) VALUES ('",
+				       str:join(Vals, <<"', '">>), "');",
+				       io_lib:nl()],
+				ok = file:write(Fd, SQL)
                         end
                 end, Range)
-      end, lists:seq(1, Total)).
+      end, lists:seq(1, Total)),
+    catch file:close(Fd),
+    ok.
 
 mod_opt_type(access) ->
     fun (A) when is_atom(A) -> A end;
