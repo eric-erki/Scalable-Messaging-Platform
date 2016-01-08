@@ -283,8 +283,8 @@ normal_state({route, From, <<"">>,
 		case is_user_online(From, StateData) of
 		  true ->
 		      ErrorText = <<"It is not allowed to send error messages to the"
-				    " room. This participant (~s) sent an error "
-				    "message (~s) and gets kicked from the room">>,
+				    " room. The participant (~s) has sent an error "
+				    "message (~s) and got kicked from the room">>,
 		      NewState = expulse_participant(Packet, From, StateData,
 						     translate:translate(Lang,
 									 ErrorText)),
@@ -572,8 +572,8 @@ normal_state({route, From, ToNick,
       {expulse_sender, Reason} ->
 	  ?DEBUG(Reason, []),
 	  ErrorText = <<"It is not allowed to send error messages to the"
-		    " room. This participant (~s) sent an error "
-		    "message (~s) and gets kicked from the room">>,
+		    " room. The participant (~s) has sent an error "
+		    "message (~s) and got kicked from the room">>,
 	  NewState = expulse_participant(Packet, From, StateData,
 					 translate:translate(Lang, ErrorText)),
 	  {next_state, normal_state, NewState};
@@ -1242,8 +1242,8 @@ process_presence(From, Nick,
 				    remove_online_user(From, NewState, Reason);
 				<<"error">> ->
 				    ErrorText = <<"It is not allowed to send error messages to the"
-					" room. This participant (~s) sent an error "
-					"message (~s) and gets kicked from the room">>,
+					" room. The participant (~s) has sent an error "
+					"message (~s) and got kicked from the room">>,
 				    expulse_participant(Packet, From, StateData,
 							translate:translate(Lang,
 									    ErrorText));
