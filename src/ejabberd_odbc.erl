@@ -133,14 +133,14 @@ start_link(Host, Shard, Num, StartInterval) ->
 -spec sql_query(binary(), sql_query()) -> sql_query_result().
 
 sql_query(Host, Query) ->
-    sql_call(Host, {sql_query, Query}).
+    check_error(sql_call(Host, {sql_query, Query}), Query).
 
 -spec sql_query(binary(), term(), sql_query()) -> sql_query_result().
 
 sql_query(Host, undefined, Query) ->
-    sql_call(Host, {sql_query, Query});
+    check_error(sql_call(Host, {sql_query, Query}), Query);
 sql_query(Host, Key, Query) ->
-    sql_call(Host, Key, {sql_query, Query}).
+    check_error(sql_call(Host, Key, {sql_query, Query}), Query).
 
 -spec sql_query_on_all_connections(binary(), sql_query()) ->
     [sql_query_result()].
@@ -927,6 +927,12 @@ fsm_limit_opts() ->
       N when is_integer(N) -> [{max_queue, N}];
       _ -> []
     end.
+
+check_error({error, Why} = Err, Query) ->
+    ?ERROR_MSG("SQL query '~s' failed: ~p", [Query, Why]),
+    Err;
+check_error(Result, _Query) ->
+    Result.
 
 opt_type(max_fsm_queue) ->
     fun (N) when is_integer(N), N > 0 -> N end;
