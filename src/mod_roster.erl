@@ -2118,6 +2118,11 @@ create_rosters(UserPattern, Server, Total, DBType) ->
 		 {ok, Fd0} = file:open(Filename, [write, raw]),
 		 io:format("writing sql queries at " ++ Filename ++ "~n"),
 		 Fd0;
+	     csv ->
+		 Filename = filename:join("/tmp", "rosterusers.csv"),
+		 {ok, Fd0} = file:open(Filename, [write, raw]),
+		 io:format("writing tab separate file at " ++ Filename ++ "~n"),
+		 Fd0;
 	     _ ->
 		 undefined
 	 end,
@@ -2157,7 +2162,11 @@ create_rosters(UserPattern, Server, Total, DBType) ->
 				       "type) VALUES ('",
 				       str:join(Vals, <<"', '">>), "');",
 				       io_lib:nl()],
-				ok = file:write(Fd, SQL)
+				ok = file:write(Fd, SQL);
+                            csv ->
+				Vals = record_to_string(RItem),
+				Row = [str:join(Vals, <<"\t">>), "\n"],
+				ok = file:write(Fd, Row)
                         end
                 end, Range)
       end, lists:seq(1, Total)),
