@@ -1169,6 +1169,14 @@ request_handlers:
   \titem{zlib: true|false} \ind{options!zlib}\ind{protocols!XEP-0138: Stream Compression}\ind{Zlib}This
     option specifies that Zlib stream compression (as defined in \xepref{0138})
     is available on connections to the port.
+  \titem{accept\_interval: Interval | \{linear, [I1, T1, T2, I2]\}}
+  \ind{options!accept\_interval} This option specifies a minimal interval
+  between accepting connections.  It can be a single integer specifying the
+  interval in milliseconds, or a set of 4 numbers.  The number \term{I1}
+  sets the initial interval in milliseconds after \ejabberd{} startup, which
+  will last for \term{T1} seconds, and then during \term{T2} seconds it will
+  change linearly to \term{I2} milliseconds.  It's useful for handling clients
+  reconnections after \ejabberd{} restarts.
 \end{description}
 
 There are some additional global options that can be specified in the ejabberd configuration file (outside \term{listen}):
