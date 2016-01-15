@@ -41,12 +41,10 @@
 -include("logger.hrl").
 
 -include("jlib.hrl").
-
+-include("ejabberd_sm.hrl").
 -include("adhoc.hrl").
 
 -define(T(Lang, Text), translate:translate(Lang, Text)).
-
--record(session, {usr, us, sid, priority, info}).
 
 start(Host, _Opts) ->
     ejabberd_hooks:add(disco_local_items, Host, ?MODULE,

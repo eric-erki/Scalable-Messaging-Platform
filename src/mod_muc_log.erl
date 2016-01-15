@@ -49,12 +49,8 @@
 -include("logger.hrl").
 
 -include("jlib.hrl").
-
+-include("mod_muc.hrl").
 -include("mod_muc_room.hrl").
-
--record(muc_online_room, {name_host = {<<>>, <<>>} :: {binary(), binary()},
-                          timestamp = p1_time_compat:timestamp() :: erlang:timestamp(),
-                          pid = self() :: pid()}).
 
 -define(T(Text), translate:translate(Lang, Text)).
 -define(PROCNAME, ejabberd_mod_muc_log).

@@ -60,6 +60,7 @@
 -include("logger.hrl").
 -include("jlib.hrl").
 -include("mod_muc_room.hrl").
+-include("mod_muc.hrl").
 -include("ejabberd_commands.hrl").
 
 %%----------------------------
@@ -288,12 +289,6 @@ build_kick_stanza(Nick, RoomString) ->
     {xmlel, <<"iq">>, Attrs, [El]}.
 
 %% Copied from mod_muc_admin
-
-%% Copied from mod_muc/mod_muc.erl
--record(muc_online_room,
-        {name_host = {<<"">>, <<"">>} :: {binary(), binary()} | {'_', '$1'} | '$1' | '_',
-         timestamp = p1_time_compat:timestamp() :: erlang:timestamp() | '_',
-         pid = self() :: pid() | '$1' | '$2' | '_'}).
 
 get_room_occupants(Room, Host) ->
     case get_room_pid(Room, Host) of

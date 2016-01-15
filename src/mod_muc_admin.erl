@@ -26,15 +26,10 @@
 -include("logger.hrl").
 -include("jlib.hrl").
 -include("mod_muc_room.hrl").
+-include("mod_muc.hrl").
 -include("ejabberd_http.hrl").
 -include("ejabberd_web_admin.hrl").
 -include("ejabberd_commands.hrl").
-
-%% Copied from mod_muc/mod_muc.erl
--record(muc_online_room,
-        {name_host = {<<"">>, <<"">>} :: {binary(), binary()} | {'_', '$1'} | '$1' | '_',
-         timestamp = p1_time_compat:timestamp() :: erlang:timestamp() | '_',
-         pid = self() :: pid() | '$1' | '$2' | '_'}).
 
 %%----------------------------
 %% gen_mod

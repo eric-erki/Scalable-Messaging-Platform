@@ -68,16 +68,10 @@
 -include("ejabberd_commands.hrl").
 -include("mod_roster.hrl").
 -include("jlib.hrl").
+-include("ejabberd_sm.hrl").
+-include("mod_muc.hrl").
 
 -define(MASSLOOP, massloop).
-
--record(session, {usr, us, sid, priority, info}).  % keep in sync with ejabberd_sm.erl
-
--record(muc_online_room,
-	{name_host = {<<"">>, <<"">>} :: {binary(), binary()} | {'_', '$1'} | '$1' | '_',
-	 timestamp = p1_time_compat:timestamp() :: erlang:timestamp() | '_',
-	 pid = self() :: pid() | '$1' | '$2' | '_'}).
-
 
 start(_Host, _Opts) ->
     ejabberd_commands:register_commands(commands()).

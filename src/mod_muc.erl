@@ -68,19 +68,7 @@
 -include("logger.hrl").
 -include_lib("stdlib/include/ms_transform.hrl").
 -include("jlib.hrl").
-
--record(muc_room, {name_host = {<<"">>, <<"">>} :: {binary(), binary()} |
-                                                   {'_', binary()},
-                   opts = [] :: list() | '_'}).
-
--record(muc_online_room,
-        {name_host = {<<"">>, <<"">>} :: {binary(), binary()} | {'_', '$1'} | '$1' | '_',
-         timestamp = p1_time_compat:timestamp() :: erlang:timestamp() | '_',
-         pid = self() :: pid() | '$1' | '$2' | '_'}).
-
--record(muc_registered,
-        {us_host = {{<<"">>, <<"">>}, <<"">>} :: {{binary(), binary()}, binary()} | '$1',
-         nick = <<"">> :: binary()}).
+-include("mod_muc.hrl").
 
 -record(state,
 	{host = <<"">> :: binary(),
