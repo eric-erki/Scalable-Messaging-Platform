@@ -1053,7 +1053,7 @@ open_session(StateData) ->
             DebugFlag = ejabberd_hooks:run_fold(c2s_debug_start_hook,
                                                 UpdatedStateData#state.server, false,
                                                 [self(), UpdatedStateData]),
-            {ok, open_session(UpdatedStateData#state{debug = DebugFlag})};
+            {ok, open_session1(UpdatedStateData#state{debug = DebugFlag})};
         _ ->
             ejabberd_hooks:run(forbidden_session_hook,
                                StateData#state.server, [JID]),
