@@ -1426,16 +1426,6 @@ msg_to_el(#archive_msg{timestamp = TS, packet = Pkt1, nick = Nick, peer = Peer},
 				<<"xmlns">>, <<"jabber:client">>, Pkt2)]},
     jlib:add_delay_info(Pkt3, LServer, TS).
 
-maybe_update_from_to(Pkt, JidRequestor, Peer, chat, _Nick) ->
-    case fxml:get_attr_s(<<"type">>, Pkt#xmlel.attrs) of
-	<<"groupchat">> when Peer /= undefined ->
-	    Pkt2 = fxml:replace_tag_attr(<<"to">>,
-					jid:to_string(JidRequestor),
-					Pkt),
-	    fxml:replace_tag_attr(<<"from">>, jid:to_string(Peer),
-				 Pkt2);
-	_ -> Pkt
-    end;
 maybe_update_from_to(#xmlel{children = Els} = Pkt, JidRequestor,
 		     Peer, {groupchat, Role, _MUCState}, Nick) ->
     Items = case Role of
@@ -1451,7 +1441,9 @@ maybe_update_from_to(#xmlel{children = Els} = Pkt, JidRequestor,
 	    end,
     Pkt1 = Pkt#xmlel{children = Items ++ Els},
     Pkt2 = jlib:replace_from(jid:replace_resource(JidRequestor, Nick), Pkt1),
-    jlib:remove_attr(<<"to">>, Pkt2).
+    jlib:remove_attr(<<"to">>, Pkt2);
+maybe_update_from_to(Pkt, _JidRequestor, _Peer, chat, _Nick) ->
+    Pkt.
 
 is_bare_copy(#jid{luser = U, lserver = S, lresource = R}, To) ->
     PrioRes = ejabberd_sm:get_user_present_resources(U, S),
