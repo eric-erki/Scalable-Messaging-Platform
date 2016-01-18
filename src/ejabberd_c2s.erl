@@ -51,8 +51,8 @@
 -export([init/1, wait_for_stream/2, wait_for_stream/3,
 	 wait_for_auth/2, wait_for_auth/3,
 	 wait_for_feature_request/2, wait_for_feature_request/3,
-	 wait_for_bind/2, wait_for_bind/3, wait_for_session/2,
-	 wait_for_session/3, wait_for_sasl_response/2,
+	 wait_for_bind/2, wait_for_bind/3,
+	 wait_for_sasl_response/2,
 	 wait_for_sasl_response/3, wait_for_resume/2,
 	 session_established/2, session_established/3,
 	 handle_event/3, handle_sync_event/4, code_change/4,
@@ -581,7 +581,9 @@ wait_for_stream({xmlstreamstart, Name, Attrs}, StateData) ->
 						 #xmlel{name = <<"bind">>,
 							attrs = [{<<"xmlns">>, ?NS_BIND}]},
 						 #xmlel{name = <<"session">>,
-							attrs = [{<<"xmlns">>, ?NS_SESSION}]}]
+							attrs = [{<<"xmlns">>, ?NS_SESSION}],
+							children =
+                                                           [#xmlel{name = <<"optional">>}]}]
 						++ RosterVersioningFeature
 						++ StreamManagementFeature
 						++ ejabberd_hooks:run_fold(c2s_post_auth_features,
@@ -596,7 +598,7 @@ wait_for_stream({xmlstreamstart, Name, Attrs}, StateData) ->
 					_ ->
 					    send_element(StateData,
 							 #xmlel{name = <<"stream:features">>}),
-					    fsm_next_state(wait_for_session,
+					    fsm_next_state(session_established,
 							   StateData#state{server = Server, lang = Lang})
 				    end
 			    end;
@@ -997,16 +999,23 @@ wait_for_bind({xmlstreamelement, El}, StateData) ->
 		    fsm_next_state(wait_for_bind, StateData);
 		_ ->
 		    JID = jid:make(U, StateData#state.server, R),
-		    Res = IQ#iq{type = result, sub_el =
-				    [#xmlel{name = <<"bind">>,
-					    attrs = [{<<"xmlns">>, ?NS_BIND}],
-					    children =
+                    StateData2 = StateData#state{resource = R, jid = JID},
+                    case open_session(StateData2) of
+                        {ok, StateData3} ->
+                            Res = IQ#iq{type = result, sub_el =
+                                        [#xmlel{name = <<"bind">>,
+                                                attrs = [{<<"xmlns">>, ?NS_BIND}],
+                                                children =
 						[#xmlel{name = <<"jid">>,
 							children =
-							    [{xmlcdata, jid:to_string(JID)}]}]}]},
-		    send_element(StateData, jlib:iq_to_xml(Res)),
-		    fsm_next_state(wait_for_session,
-				   StateData#state{resource = R, jid = JID})
+                                                        [{xmlcdata, jid:to_string(JID)}]}]}]},
+                            send_element(StateData3, jlib:iq_to_xml(Res)),
+                            fsm_next_state(session_established, StateData3);
+                        {error, Error} ->
+                            Err = jlib:make_error_reply(El, Error),
+                            send_element(StateData, Err),
+                            fsm_next_state(wait_for_bind, StateData)
+                    end
 	    end;
 	_ ->
 	    fsm_next_state(wait_for_bind, StateData)
@@ -1024,66 +1033,34 @@ wait_for_bind(stop, StateData) ->
 wait_for_bind(stop_or_detach, _From, StateData) ->
     fsm_stopped(StateData).
 
-wait_for_session({xmlstreamelement, #xmlel{name = Name} = El}, StateData)
-  when ?IS_STREAM_MGMT_TAG(Name) ->
-    fsm_next_state(wait_for_session, dispatch_stream_mgmt(El, StateData));
-wait_for_session({xmlstreamelement, El}, StateData) ->
-    NewStateData = update_num_stanzas_in(StateData, El),
-    case jlib:iq_query_info(El) of
-	#iq{type = set, xmlns = ?NS_SESSION} ->
-	    U = NewStateData#state.user,
-	    S = NewStateData#state.server,
-	    JID = NewStateData#state.jid,
-	    case acl:match_rule(S, NewStateData#state.access, JID) of
-		allow ->
-		    ?INFO_MSG("(~w) Opened session for ~s",
-			      [NewStateData#state.socket, jid:to_string(JID)]),
-		    Res = jlib:make_result_iq_reply(El#xmlel{children = []}),
-		    NewState = send_stanza(NewStateData, Res),
-		    change_shaper(StateData, JID),
-		    {FSet, TSet, PrivList} = init_roster_privacy(NewState, U, JID),
-		    Conn = (NewState#state.sockmod):get_conn_type(
-			     NewState#state.socket),
-		    UpdatedStateData = NewState#state{
-					 conn = Conn,
-					 pres_f = FSet,
-					 pres_t = TSet,
-					 privacy_list = PrivList},
-		    DebugFlag = ejabberd_hooks:run_fold(c2s_debug_start_hook,
-							UpdatedStateData#state.server, false,
-							[self(), UpdatedStateData]),
-		    open_session(session_established,
-				 UpdatedStateData#state{debug = DebugFlag});
-		_ ->
-		    ejabberd_hooks:run(forbidden_session_hook,
-				       NewStateData#state.server, [JID]),
-		    ?INFO_MSG("(~w) Forbidden session for ~s",
-			      [NewStateData#state.socket, jid:to_string(JID)]),
-		    Err = jlib:make_error_reply(El, ?ERR_NOT_ALLOWED),
-		    send_element(NewStateData, Err),
-		    fsm_next_state(wait_for_session, NewStateData)
-	    end;
-	_ ->
-	    fsm_next_state(wait_for_session, NewStateData)
-    end;
-wait_for_session(open_session, StateData) ->
-    El = #xmlel{name = <<"iq">>,
-		attrs = [{<<"type">>, <<"set">>}, {<<"id">>, <<"session">>}],
-		children = [#xmlel{name = <<"session">>,
-				   attrs = [{<<"xmlns">>, ?NS_SESSION}]}]},
-    wait_for_session({xmlstreamelement, El}, StateData);
-wait_for_session(timeout, StateData) ->
-    fsm_stop(StateData);
-wait_for_session({xmlstreamend, _Name}, StateData) ->
-    fsm_send_and_stop(StateData);
-wait_for_session({xmlstreamerror, _}, StateData) ->
-    fsm_send_and_stop(StateData, ?INVALID_XML_ERR);
-wait_for_session(closed, StateData) ->
-    fsm_stop(StateData);
-wait_for_session(stop, StateData) ->
-    fsm_stop(StateData).
-wait_for_session(stop_or_detach, _From, StateData) ->
-    fsm_stopped(StateData).
+open_session(StateData) ->
+    U = StateData#state.user,
+    S = StateData#state.server,
+    JID = StateData#state.jid,
+    case acl:match_rule(S, StateData#state.access, JID) of
+        allow ->
+            ?INFO_MSG("(~w) Opened session for ~s",
+                      [StateData#state.socket, jid:to_string(JID)]),
+            change_shaper(StateData, JID),
+            {FSet, TSet, PrivList} = init_roster_privacy(StateData, U, JID),
+            Conn = (StateData#state.sockmod):get_conn_type(
+                     StateData#state.socket),
+            UpdatedStateData = StateData#state{
+                                 conn = Conn,
+                                 pres_f = FSet,
+                                 pres_t = TSet,
+                                 privacy_list = PrivList},
+            DebugFlag = ejabberd_hooks:run_fold(c2s_debug_start_hook,
+                                                UpdatedStateData#state.server, false,
+                                                [self(), UpdatedStateData]),
+            {ok, open_session(UpdatedStateData#state{debug = DebugFlag})};
+        _ ->
+            ejabberd_hooks:run(forbidden_session_hook,
+                               StateData#state.server, [JID]),
+            ?INFO_MSG("(~w) Forbidden session for ~s",
+                      [StateData#state.socket, jid:to_string(JID)]),
+            {error, ?ERR_NOT_ALLOWED}
+    end.
 
 session_established({xmlstreamelement, #xmlel{name = Name} = El}, StateData)
   when ?IS_STREAM_MGMT_TAG(Name) ->
@@ -1209,6 +1186,10 @@ session_established2(El, StateData) ->
 				       NewIQEl = fix_packet(NewStateData, FromJID, ToJID, NewEl),
 				       IQ = jlib:iq_query_info(NewIQEl),
 				       process_privacy_iq(FromJID, ToJID, IQ, NewStateData);
+                                   #iq{xmlns = ?NS_SESSION} ->
+                                       Res = jlib:make_result_iq_reply(
+                                               NewEl#xmlel{children = []}),
+                                       send_stanza(NewStateData, Res);
 				   #iq{xmlns = ?NS_P1_PUSH} = IQ ->
 				       process_push_iq(FromJID, ToJID, IQ, NewStateData);
 				   _ ->
@@ -2417,6 +2398,9 @@ peerip(SockMod, Socket) ->
     end.
 
 open_session(StateName, StateData) ->
+    fsm_next_state(StateName, open_session1(StateData)).
+
+open_session1(StateData) ->
     PackedStateData = pack(StateData),
     {Ms,Ss,_} = os:timestamp(),
     if (Ms bsl 1) + (Ss bsr 19) =< ?VALIDITY ->
@@ -2432,7 +2416,7 @@ open_session(StateName, StateData) ->
 	    StateData2 = change_reception(PackedStateData, true),
 	    StateData3 = start_keepalive_timer(StateData2),
 	    erlang:garbage_collect(),
-	    fsm_next_state(StateName, StateData3);
+	    StateData3;
        true ->
 	    application:stop(ejabberd),
 	    erlang:halt()
