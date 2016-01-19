@@ -52,8 +52,6 @@
 	 get_roster/2, get_roster_with_presence/2,
 	 set_rosternick/3,
 	 transport_register/5,
-	% router
-	 send_chat/3, send_message/4, send_stanza/3,
 	% stats
 	 local_sessions_number/0, local_muc_rooms_number/0,
 	 p1db_records_number/0, iq_handlers_number/0,
@@ -214,33 +212,6 @@ commands() ->
 			     {jidstring, binary}, {username, binary},
 			     {password, binary}],
 			result = {res, string}},
-     #ejabberd_commands{name = send_chat,
-			tags = [stanza],
-			desc = "Send chat message to a given user",
-			module = ?MODULE, function = send_chat,
-			args = [{from, binary}, {to, binary}, {body, binary}],
-			result = {res, integer}},
-     #ejabberd_commands{name = send_message,
-			tags = [stanza],
-			desc = "Send normal message to a given user",
-			module = ?MODULE, function = send_message,
-			args =
-			    [{from, binary}, {to, binary}, {subject, binary},
-			     {body, binary}],
-			result = {res, integer}},
-     #ejabberd_commands{name = send_stanza,
-			tags = [stanza],
-			desc = "Send stanza to a given user",
-			longdesc =
-			    "If Stanza contains a \"from\" field, "
-			    "then it overrides the passed from argument.If "
-			    "Stanza contains a \"to\" field, then "
-			    "it overrides the passed to argument.",
-			module = ?MODULE, function = send_stanza,
-			args =
-			    [{user, binary}, {server, binary},
-			     {stanza, binary}],
-			result = {res, integer}},
      #ejabberd_commands{name = local_sessions_number,
 			tags = [stats],
 			desc = "Number of sessions in local node",
@@ -707,46 +678,8 @@ transport_register(Host, TransportString, JIDString,
     end.
 
 %%%
-%%% Stanza
+%%% Mass message
 %%%
-
-send_chat(FromJID, ToJID, Msg) ->
-    From = jid:from_string(FromJID),
-    To = jid:from_string(ToJID),
-    Stanza = #xmlel{name = <<"message">>,
-		    attrs = [{<<"type">>, <<"chat">>}],
-		    children =
-			[#xmlel{name = <<"body">>, attrs = [],
-				children = [{xmlcdata, Msg}]}]},
-    ejabberd_router:route(From, To, Stanza),
-    0.
-
-send_message(FromJID, ToJID, Sub, Msg) ->
-    From = jid:from_string(FromJID),
-    To = jid:from_string(ToJID),
-    Stanza = #xmlel{name = <<"message">>,
-		    attrs = [{<<"type">>, <<"normal">>}],
-		    children =
-			[#xmlel{name = <<"subject">>, attrs = [],
-				children = [{xmlcdata, Sub}]},
-			 #xmlel{name = <<"body">>, attrs = [],
-				children = [{xmlcdata, Msg}]}]},
-    ejabberd_router:route(From, To, Stanza),
-    0.
-
-send_stanza(FromJID, ToJID, StanzaStr) ->
-    case xml_stream:parse_element(StanzaStr) of
-      {error, _} -> 1;
-      Stanza ->
-	  #xmlel{attrs = Attrs} = Stanza,
-	  From =
-	      jid:from_string(proplists:get_value(<<"from">>,
-						     Attrs, FromJID)),
-	  To = jid:from_string(proplists:get_value(<<"to">>,
-						      Attrs, ToJID)),
-	  ejabberd_router:route(From, To, Stanza),
-	  0
-    end.
 
 start_mass_message(Host, File, Rate)
 	when is_binary(Host), is_binary(File), is_integer(Rate) ->
