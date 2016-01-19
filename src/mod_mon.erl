@@ -114,13 +114,6 @@ dump(Host) when is_binary(Host) ->
 %%====================================================================
 
 init([Host, Opts]) ->
-    % List configured backend for master only init (push_metrics)
-    Hosts = lists:foldr(fun({_VHost, undefined}, Acc) -> Acc;
-                           ({VHost, _ModOpts}, Acc) -> [VHost|Acc]
-                        end,
-                        [],
-                        [{H, proplists:get_value(?MODULE, gen_mod:loaded_modules_with_opts(H))}
-                         || H <- ejabberd_config:get_myhosts()]),
     % List enabled monitors, defaults all
     Monitors = gen_mod:get_opt(monitors, Opts,
                                fun(L) when is_list(L) -> L end, [])
@@ -150,18 +143,15 @@ init([Host, Opts]) ->
     ejabberd_commands:register_commands(commands()),
 
     % Start timers for cache and backends sync
-    {ok, T1} = timer:apply_interval(?HOUR, ?MODULE, sync_log, [Host]),
-    {ok, T2} = case Hosts of
-        [Host|_] -> timer:apply_interval(?MINUTE, ?MODULE, push_metrics, [Hosts, Backends]);
-        _ -> {ok, undefined}
-    end,
+    {ok, TSync} = timer:apply_interval(?HOUR, ?MODULE, sync_log, [Host]),
+    erlang:send_after(?MINUTE, self(), init_push_master),
 
     {ok, #state{host = Host,
                 active_count = ActiveCount,
                 backends = Backends,
                 monitors = Monitors,
                 log = Log,
-                timers = [T1,T2]}}.
+                timers = [TSync]}}.
 
 handle_call({get, log}, _From, State) ->
     {reply, State#state.log, State};
@@ -226,6 +216,18 @@ handle_cast({active, Item}, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
+handle_info(init_push_master, State) ->
+    Host = State#state.host,
+    Hosts = [H || H <- ejabberd_config:get_myhosts(), gen_mod:is_loaded(H, ?MODULE)],
+    case Hosts of
+        [Host|_] ->
+            Backends = State#state.backends,
+            Timers = State#state.timers,
+            {ok, TPush} = timer:apply_interval(?MINUTE, ?MODULE, push_metrics, [Hosts, Backends]),
+            {noreply, State#state{timers = [TPush|Timers]}};
+        _ ->
+            {noreply, State}
+    end;
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -888,6 +890,7 @@ health_check(Host, all) ->
 jabs_count(Host) ->
     case catch mod_jabs:value(Host) of
         {'EXIT', _} -> 0;
+        undefined -> 0;
         {Count, _} -> Count
     end.
 
