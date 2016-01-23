@@ -139,7 +139,7 @@ AC_ARG_ENABLE(all,
 [AC_HELP_STRING([--enable-all], [same as --enable-odbc --enable-mysql --enable-pgsql --enable-sqlite --enable-pam --enable-zlib --enable-riak --enable-redis --enable-elixir --enable-iconv --enable-debug --enable-http --enable-lager --enable-tools --enable-p1db (useful for Dialyzer checks, default: no)])],
 [case "${enableval}" in
   yes) odbc=true mysql=true pgsql=true sqlite=true pam=true zlib=true riak=true redis=true elixir=true iconv=true debug=true http=true lager=true tools=true p1db=true ;;
-  no) odbc=false mysql=false pgsql=false sqlite=false pam=false zlib=false riak=false redis=false elixir=false iconv=false debug=false http=false lager=false tools=false p1db=false ;;
+  no) odbc=false mysql=false pgsql=false sqlite=false pam=false zlib=false riak=false redis=false elixir=false iconv=false debug=false http=false tools=false p1db=false ;;
   *) AC_MSG_ERROR(bad value ${enableval} for --enable-all) ;;
 esac],[])
 

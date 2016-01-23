@@ -605,7 +605,7 @@ do_route(Host, ServerHost, Access, HistorySize,
 		From, To, Packet, DefRoomOpts, Hops);
 	_ ->
 	    #xmlel{attrs = Attrs} = Packet,
-	    Lang = xml:get_attr_s(<<"xml:lang">>, Attrs),
+	    Lang = fxml:get_attr_s(<<"xml:lang">>, Attrs),
 	    ErrText = <<"Access denied by service policy">>,
 	    Err = jlib:make_error_reply(Packet,
 		    ?ERRT_FORBIDDEN(Lang, ErrText)),
@@ -711,18 +711,18 @@ do_route1(Host, ServerHost, Access, HistorySize,
 			_ -> ok
 		      end;
 		  <<"message">> ->
-		      case xml:get_attr_s(<<"type">>, Attrs) of
+		      case fxml:get_attr_s(<<"type">>, Attrs) of
 			<<"error">> -> ok;
 			_ ->
 			    case acl:match_rule(ServerHost, AccessAdmin, From)
 				of
 			      allow ->
-				  Msg = xml:get_path_s(Packet,
+				  Msg = fxml:get_path_s(Packet,
 						       [{elem, <<"body">>},
 							cdata]),
 				  broadcast_service_message(Host, Msg);
 			      _ ->
-				  Lang = xml:get_attr_s(<<"xml:lang">>, Attrs),
+				  Lang = fxml:get_attr_s(<<"xml:lang">>, Attrs),
 				  ErrText =
 				      <<"Only service administrators are allowed "
 					"to send service messages">>,
@@ -735,7 +735,7 @@ do_route1(Host, ServerHost, Access, HistorySize,
 		  <<"presence">> -> ok
 		end;
 	    _ ->
-		case xml:get_attr_s(<<"type">>, Attrs) of
+		case fxml:get_attr_s(<<"type">>, Attrs) of
 		  <<"error">> -> ok;
 		  <<"result">> -> ok;
 		  _ ->
@@ -747,7 +747,7 @@ do_route1(Host, ServerHost, Access, HistorySize,
       _ ->
 	    case mnesia:dirty_read(muc_online_room, {Room, Host}) of
 		[] ->
-		    Type = xml:get_attr_s(<<"type">>, Attrs),
+		    Type = fxml:get_attr_s(<<"type">>, Attrs),
 		    case {Name, Type} of
 			{<<"presence">>, <<"">>} ->
 			    case check_user_can_create_room(ServerHost,
@@ -766,14 +766,14 @@ do_route1(Host, ServerHost, Access, HistorySize,
 					    ejabberd_router:route(To, From, Err)
 				    end;
 				false ->
-				    Lang = xml:get_attr_s(<<"xml:lang">>, Attrs),
+				    Lang = fxml:get_attr_s(<<"xml:lang">>, Attrs),
 				    ErrText = <<"Room creation is denied by service policy">>,
 				    Err = jlib:make_error_reply(
 					    Packet, ?ERRT_FORBIDDEN(Lang, ErrText)),
 				    ejabberd_router:route(To, From, Err)
 			    end;
 			_ ->
-			    Lang = xml:get_attr_s(<<"xml:lang">>, Attrs),
+			    Lang = fxml:get_attr_s(<<"xml:lang">>, Attrs),
 			    ErrText = <<"Conference room does not exist">>,
 			    Err = jlib:make_error_reply(Packet,
 				    ?ERRT_ITEM_NOT_FOUND(Lang, ErrText)),
@@ -1360,12 +1360,12 @@ iq_set_register_info(ServerHost, Host, From, Nick,
 process_iq_register_set(ServerHost, Host, From, SubEl,
 			Lang) ->
     #xmlel{children = Els} = SubEl,
-    case xml:get_subtag(SubEl, <<"remove">>) of
+    case fxml:get_subtag(SubEl, <<"remove">>) of
       false ->
-	  case xml:remove_cdata(Els) of
+	  case fxml:remove_cdata(Els) of
 	    [#xmlel{name = <<"x">>} = XEl] ->
-		case {xml:get_tag_attr_s(<<"xmlns">>, XEl),
-		      xml:get_tag_attr_s(<<"type">>, XEl)}
+		case {fxml:get_tag_attr_s(<<"xmlns">>, XEl),
+		      fxml:get_tag_attr_s(<<"type">>, XEl)}
 		    of
 		  {?NS_XDATA, <<"cancel">>} -> {result, []};
 		  {?NS_XDATA, <<"submit">>} ->

@@ -116,7 +116,7 @@ stop(Host) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([Host, Opts]) ->
-    ejabberd:start_app(p1_iconv),
+    ejabberd:start_app(iconv),
     MyHost = gen_mod:get_opt_host(Host, Opts,
 				  <<"irc.@HOST@">>),
     init_db(gen_mod:db_type(Host, Opts), Host),
@@ -230,7 +230,7 @@ do_route(Host, ServerHost, Access, From, To, Packet) ->
       allow -> do_route1(Host, ServerHost, From, To, Packet);
       _ ->
 	  #xmlel{attrs = Attrs} = Packet,
-	  Lang = xml:get_attr_s(<<"xml:lang">>, Attrs),
+	  Lang = fxml:get_attr_s(<<"xml:lang">>, Attrs),
 	  ErrText = <<"Access denied by service policy">>,
 	  Err = jlib:make_error_reply(Packet,
 				      ?ERRT_FORBIDDEN(Lang, ErrText)),
@@ -248,7 +248,7 @@ do_route1(Host, ServerHost, From, To, Packet) ->
 		  #iq{type = get, xmlns = (?NS_DISCO_INFO) = XMLNS,
 		      sub_el = SubEl, lang = Lang} =
 		      IQ ->
-		      Node = xml:get_tag_attr_s(<<"node">>, SubEl),
+		      Node = fxml:get_tag_attr_s(<<"node">>, SubEl),
 		      Info = ejabberd_hooks:run_fold(disco_info, ServerHost,
 						     [],
 						     [ServerHost, ?MODULE,
@@ -276,7 +276,7 @@ do_route1(Host, ServerHost, From, To, Packet) ->
 		  #iq{type = get, xmlns = (?NS_DISCO_ITEMS) = XMLNS,
 		      sub_el = SubEl, lang = Lang} =
 		      IQ ->
-		      Node = xml:get_tag_attr_s(<<"node">>, SubEl),
+		      Node = fxml:get_tag_attr_s(<<"node">>, SubEl),
 		      case Node of
 			<<>> ->
 			    ResIQ = IQ#iq{type = result,
@@ -526,7 +526,7 @@ find_xdata_el1([]) -> false;
 find_xdata_el1([#xmlel{name = Name, attrs = Attrs,
 		       children = SubEls}
 		| Els]) ->
-    case xml:get_attr_s(<<"xmlns">>, Attrs) of
+    case fxml:get_attr_s(<<"xmlns">>, Attrs) of
       ?NS_XDATA ->
 	  #xmlel{name = Name, attrs = Attrs, children = SubEls};
       _ -> find_xdata_el1(Els)
@@ -545,7 +545,7 @@ process_irc_register(ServerHost, Host, From, _To,
 		IQ#iq{type = error,
 		      sub_el = [SubEl, ?ERR_NOT_ACCEPTABLE]};
 	    #xmlel{attrs = Attrs} ->
-		case xml:get_attr_s(<<"type">>, Attrs) of
+		case fxml:get_attr_s(<<"type">>, Attrs) of
 		  <<"cancel">> ->
 		      IQ#iq{type = result,
 			    sub_el =
@@ -559,7 +559,7 @@ process_irc_register(ServerHost, Host, From, _To,
 			    IQ#iq{type = error,
 				  sub_el = [SubEl, ?ERR_BAD_REQUEST]};
 			_ ->
-			    Node = str:tokens(xml:get_tag_attr_s(<<"node">>,
+			    Node = str:tokens(fxml:get_tag_attr_s(<<"node">>,
 								 SubEl),
 					      <<"/">>),
 			    case set_form(ServerHost, Host, From, Node, Lang,
@@ -581,7 +581,7 @@ process_irc_register(ServerHost, Host, From, _To,
 		end
 	  end;
       get ->
-	  Node = str:tokens(xml:get_tag_attr_s(<<"node">>, SubEl),
+	  Node = str:tokens(fxml:get_tag_attr_s(<<"node">>, SubEl),
 			    <<"/">>),
 	  case get_form(ServerHost, Host, From, Node, Lang) of
 	    {result, Res} ->

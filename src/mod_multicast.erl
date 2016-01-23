@@ -419,17 +419,17 @@ check_access(LServerS, Access, From) ->
 %%%-------------------------
 
 strip_addresses_element(Packet) ->
-    case xml:get_subtag(Packet, <<"addresses">>) of
+    case fxml:get_subtag(Packet, <<"addresses">>) of
       #xmlel{name = <<"addresses">>, attrs = AAttrs,
 	     children = Addresses} ->
-	  case xml:get_attr_s(<<"xmlns">>, AAttrs) of
+	  case fxml:get_attr_s(<<"xmlns">>, AAttrs) of
 	    ?NS_ADDRESS ->
 		#xmlel{name = Name, attrs = Attrs, children = Els} =
 		    Packet,
 		Els_stripped = lists:keydelete(<<"addresses">>, 2, Els),
 		Packet_stripped = #xmlel{name = Name, attrs = Attrs,
 					 children = Els_stripped},
-		{ok, Packet_stripped, AAttrs, xml:remove_cdata(Addresses)};
+		{ok, Packet_stripped, AAttrs, fxml:remove_cdata(Addresses)};
 	    _ -> throw(ewxmlns)
 	  end;
       _ -> throw(eadsele)
@@ -443,10 +443,10 @@ split_addresses_todeliver(Addresses) ->
     lists:partition(fun (XML) ->
 			    case XML of
 			      #xmlel{name = <<"address">>, attrs = Attrs} ->
-				  case xml:get_attr_s(<<"delivered">>, Attrs) of
+				  case fxml:get_attr_s(<<"delivered">>, Attrs) of
 				    <<"true">> -> false;
 				    _ ->
-					Type = xml:get_attr_s(<<"type">>,
+					Type = fxml:get_attr_s(<<"type">>,
 							      Attrs),
 					case Type of
 					  <<"to">> -> true;
@@ -482,10 +482,10 @@ check_limit_dests(SLimits, FromJID, Packet,
 
 convert_dest_record(XMLs) ->
     lists:map(fun (XML) ->
-		      case xml:get_tag_attr_s(<<"jid">>, XML) of
+		      case fxml:get_tag_attr_s(<<"jid">>, XML) of
 			<<"">> -> #dest{jid_string = none, full_xml = XML};
 			JIDS ->
-			    Type = xml:get_tag_attr_s(<<"type">>, XML),
+			    Type = fxml:get_tag_attr_s(<<"type">>, XML),
 			    JIDJ = stj(JIDS),
 			    #dest{jid_string = JIDS, jid_jid = JIDJ,
 				  type = Type, full_xml = XML}
@@ -508,7 +508,7 @@ split_dests_jid(Dests) ->
 		    Dests).
 
 report_not_jid(From, Packet, Dests) ->
-    Dests2 = [xml:element_to_binary(Dest#dest.full_xml)
+    Dests2 = [fxml:element_to_binary(Dest#dest.full_xml)
 	      || Dest <- Dests],
     [route_error(From, From, Packet, jid_malformed,
 		 <<"This service can not process the address: ",
@@ -775,7 +775,7 @@ process_discoinfo_result2(From, FromS, LServiceS, Els,
 	    fun(XML) ->
 		    case XML of
 			#xmlel{name = <<"feature">>, attrs = Attrs} ->
-			    (?NS_ADDRESS) == xml:get_attr_s(<<"var">>, Attrs);
+			    (?NS_ADDRESS) == fxml:get_attr_s(<<"var">>, Attrs);
 			_ -> false
 		    end
 	    end,
@@ -808,10 +808,10 @@ get_limits_els(Els) ->
 			  #xmlel{name = <<"x">>, attrs = Attrs,
 				 children = SubEls} ->
 			      case ((?NS_XDATA) ==
-				      xml:get_attr_s(<<"xmlns">>, Attrs))
+				      fxml:get_attr_s(<<"xmlns">>, Attrs))
 				     and
 				     (<<"result">> ==
-					xml:get_attr_s(<<"type">>, Attrs))
+					fxml:get_attr_s(<<"type">>, Attrs))
 				  of
 				true -> get_limits_fields(SubEls) ++ R;
 				false -> R
@@ -827,11 +827,11 @@ get_limits_fields(Fields) ->
 					     #xmlel{name = <<"field">>,
 						    attrs = Attrs} ->
 						 (<<"FORM_TYPE">> ==
-						    xml:get_attr_s(<<"var">>,
+						    fxml:get_attr_s(<<"var">>,
 								   Attrs))
 						   and
 						   (<<"hidden">> ==
-						      xml:get_attr_s(<<"type">>,
+						      fxml:get_attr_s(<<"type">>,
 								     Attrs));
 					     _ -> false
 					   end
@@ -849,8 +849,8 @@ get_limits_values(Values) ->
 				 children = SubEls} ->
 			      [#xmlel{name = <<"value">>, children = SubElsV}] =
 				  SubEls,
-			      Number = xml:get_cdata(SubElsV),
-			      Name = xml:get_attr_s(<<"var">>, Attrs),
+			      Number = fxml:get_cdata(SubElsV),
+			      Name = fxml:get_attr_s(<<"var">>, Attrs),
 			      [{jlib:binary_to_atom(Name),
 				jlib:binary_to_integer(Number)}
 			       | R];
@@ -875,7 +875,7 @@ process_discoitems_result(From, LServiceS, ID, Els) ->
                                   case XML of
                                       #xmlel{name = <<"item">>,
                                              attrs = Attrs} ->
-                                          SJID = xml:get_attr_s(
+                                          SJID = fxml:get_attr_s(
                                                    <<"jid">>, Attrs),
                                           case jid:from_string(SJID) of
                                               #jid{luser = <<"">>,
@@ -1176,7 +1176,7 @@ to_binary(A) -> list_to_binary(hd(io_lib:format("~p", [A]))).
 
 route_error(From, To, Packet, ErrType, ErrText) ->
     #xmlel{attrs = Attrs} = Packet,
-    Lang = xml:get_attr_s(<<"xml:lang">>, Attrs),
+    Lang = fxml:get_attr_s(<<"xml:lang">>, Attrs),
     Reply = make_reply(ErrType, Lang, ErrText),
     Err = jlib:make_error_reply(Packet, Reply),
     ejabberd_router:route(From, To, Err).

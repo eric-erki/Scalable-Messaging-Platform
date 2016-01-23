@@ -2757,14 +2757,14 @@ pretty_print_xml(#xmlel{name = Name, attrs = Attrs,
        [{Attr, Val} | RestAttrs] ->
 	   AttrPrefix = [Prefix,
 			 str:copies(<<" ">>, byte_size(Name) + 2)],
-	   [$\s, Attr, $=, $', xml:crypt(Val) | [$',
+	   [$\s, Attr, $=, $', fxml:crypt(Val) | [$',
                                                  lists:map(fun ({Attr1,
                                                                  Val1}) ->
                                                                    [$\n,
                                                                     AttrPrefix,
                                                                     Attr1, $=,
                                                                     $',
-                                                                    xml:crypt(Val1),
+                                                                    fxml:crypt(Val1),
                                                                     $']
                                                            end,
                                                            RestAttrs)]]
@@ -2776,7 +2776,7 @@ pretty_print_xml(#xmlel{name = Name, attrs = Attrs,
 				  end,
 				  Els),
 	    if OnlyCData ->
-		   [$>, xml:get_cdata(Els), $<, $/, Name, $>, $\n];
+		   [$>, fxml:get_cdata(Els), $<, $/, Name, $>, $\n];
 	       true ->
 		   [$>, $\n,
 		    lists:map(fun (E) ->

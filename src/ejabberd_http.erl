@@ -578,10 +578,10 @@ make_xhtml_output(State, Status, Headers, XHTML) ->
     DataRaw = case lists:member(html, Headers) of
 	true ->
 	    iolist_to_binary([?HTML_DOCTYPE,
-		    xml:element_to_binary(XHTML)]);
+		    fxml:element_to_binary(XHTML)]);
 	_ ->
 	    iolist_to_binary([?XHTML_DOCTYPE,
-		    xml:element_to_binary(XHTML)])
+		    fxml:element_to_binary(XHTML)])
     end,
     Data = if State#state.compression == gzip ->
 		   zlib:gzip(DataRaw);

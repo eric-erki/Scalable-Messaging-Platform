@@ -238,7 +238,7 @@ get_vcard(LUser, LServer, mnesia) ->
 get_vcard(LUser, LServer, odbc) ->
     case catch odbc_queries:get_vcard(LServer, LUser) of
       {selected, [{SVCARD}]} ->
-	  case xml_stream:parse_element(SVCARD) of
+	  case fxml_stream:parse_element(SVCARD) of
 	    {error, _Reason} -> error;
 	    VCARD -> [VCARD]
 	  end;
@@ -269,29 +269,29 @@ get_vcard(LUser, LServer, riak) ->
     end.
 
 set_vcard(User, LServer, VCARD) ->
-    FN = xml:get_path_s(VCARD, [{elem, <<"FN">>}, cdata]),
-    Family = xml:get_path_s(VCARD,
+    FN = fxml:get_path_s(VCARD, [{elem, <<"FN">>}, cdata]),
+    Family = fxml:get_path_s(VCARD,
 			    [{elem, <<"N">>}, {elem, <<"FAMILY">>}, cdata]),
-    Given = xml:get_path_s(VCARD,
+    Given = fxml:get_path_s(VCARD,
 			   [{elem, <<"N">>}, {elem, <<"GIVEN">>}, cdata]),
-    Middle = xml:get_path_s(VCARD,
+    Middle = fxml:get_path_s(VCARD,
 			    [{elem, <<"N">>}, {elem, <<"MIDDLE">>}, cdata]),
-    Nickname = xml:get_path_s(VCARD,
+    Nickname = fxml:get_path_s(VCARD,
 			      [{elem, <<"NICKNAME">>}, cdata]),
-    BDay = xml:get_path_s(VCARD,
+    BDay = fxml:get_path_s(VCARD,
 			  [{elem, <<"BDAY">>}, cdata]),
-    CTRY = xml:get_path_s(VCARD,
+    CTRY = fxml:get_path_s(VCARD,
 			  [{elem, <<"ADR">>}, {elem, <<"CTRY">>}, cdata]),
-    Locality = xml:get_path_s(VCARD,
+    Locality = fxml:get_path_s(VCARD,
 			      [{elem, <<"ADR">>}, {elem, <<"LOCALITY">>},
 			       cdata]),
-    EMail1 = xml:get_path_s(VCARD,
+    EMail1 = fxml:get_path_s(VCARD,
 			    [{elem, <<"EMAIL">>}, {elem, <<"USERID">>}, cdata]),
-    EMail2 = xml:get_path_s(VCARD,
+    EMail2 = fxml:get_path_s(VCARD,
 			    [{elem, <<"EMAIL">>}, cdata]),
-    OrgName = xml:get_path_s(VCARD,
+    OrgName = fxml:get_path_s(VCARD,
 			     [{elem, <<"ORG">>}, {elem, <<"ORGNAME">>}, cdata]),
-    OrgUnit = xml:get_path_s(VCARD,
+    OrgUnit = fxml:get_path_s(VCARD,
 			     [{elem, <<"ORG">>}, {elem, <<"ORGUNIT">>}, cdata]),
     EMail = case EMail1 of
 	      <<"">> -> EMail2;
@@ -375,7 +375,7 @@ set_vcard(User, LServer, VCARD) ->
                                             {<<"orgunit">>, OrgUnit},
                                             {<<"lorgunit">>, LOrgUnit}]}]);
 	     odbc ->
-		 SVCARD = xml:element_to_binary(VCARD),
+		 SVCARD = fxml:element_to_binary(VCARD),
 		 odbc_queries:set_vcard(LServer, LUser, BDay, CTRY,
 					EMail, FN, Family, Given, LBDay,
 					LCTRY, LEMail, LFN, LFamily,
@@ -601,7 +601,7 @@ find_xdata_el1([]) -> false;
 find_xdata_el1([#xmlel{name = Name, attrs = Attrs,
 		       children = SubEls}
 		| Els]) ->
-    case xml:get_attr_s(<<"xmlns">>, Attrs) of
+    case fxml:get_attr_s(<<"xmlns">>, Attrs) of
       ?NS_XDATA ->
 	  #xmlel{name = Name, attrs = Attrs, children = SubEls};
       _ -> find_xdata_el1(Els)
@@ -880,27 +880,27 @@ set_vcard_t(R, _) ->
     US = R#vcard.us,
     User = US,
     VCARD = R#vcard.vcard,
-    FN = xml:get_path_s(VCARD, [{elem, <<"FN">>}, cdata]),
-    Family = xml:get_path_s(VCARD,
+    FN = fxml:get_path_s(VCARD, [{elem, <<"FN">>}, cdata]),
+    Family = fxml:get_path_s(VCARD,
 			    [{elem, <<"N">>}, {elem, <<"FAMILY">>}, cdata]),
-    Given = xml:get_path_s(VCARD,
+    Given = fxml:get_path_s(VCARD,
 			   [{elem, <<"N">>}, {elem, <<"GIVEN">>}, cdata]),
-    Middle = xml:get_path_s(VCARD,
+    Middle = fxml:get_path_s(VCARD,
 			    [{elem, <<"N">>}, {elem, <<"MIDDLE">>}, cdata]),
-    Nickname = xml:get_path_s(VCARD,
+    Nickname = fxml:get_path_s(VCARD,
 			      [{elem, <<"NICKNAME">>}, cdata]),
-    BDay = xml:get_path_s(VCARD,
+    BDay = fxml:get_path_s(VCARD,
 			  [{elem, <<"BDAY">>}, cdata]),
-    CTRY = xml:get_path_s(VCARD,
+    CTRY = fxml:get_path_s(VCARD,
 			  [{elem, <<"ADR">>}, {elem, <<"CTRY">>}, cdata]),
-    Locality = xml:get_path_s(VCARD,
+    Locality = fxml:get_path_s(VCARD,
 			      [{elem, <<"ADR">>}, {elem, <<"LOCALITY">>},
 			       cdata]),
-    EMail = xml:get_path_s(VCARD,
+    EMail = fxml:get_path_s(VCARD,
 			   [{elem, <<"EMAIL">>}, cdata]),
-    OrgName = xml:get_path_s(VCARD,
+    OrgName = fxml:get_path_s(VCARD,
 			     [{elem, <<"ORG">>}, {elem, <<"ORGNAME">>}, cdata]),
-    OrgUnit = xml:get_path_s(VCARD,
+    OrgUnit = fxml:get_path_s(VCARD,
 			     [{elem, <<"ORG">>}, {elem, <<"ORGUNIT">>}, cdata]),
     {LUser, _LServer} = US,
     LFN = string2lower(FN),
@@ -975,7 +975,7 @@ update_vcard_table() ->
             fun(#vcard{us = {U, S}, vcard = El} = R) ->
                     R#vcard{us = {iolist_to_binary(U),
                                   iolist_to_binary(S)},
-                            vcard = xml:to_xmlel(El)}
+                            vcard = fxml:to_xmlel(El)}
             end);
       _ ->
 	  ?INFO_MSG("Recreating vcard table", []),
@@ -1028,7 +1028,7 @@ export(_Server) ->
             when LServer == Host ->
               Username = ejabberd_odbc:escape(LUser),
               SVCARD =
-                  ejabberd_odbc:escape(xml:element_to_binary(VCARD)),
+                  ejabberd_odbc:escape(fxml:element_to_binary(VCARD)),
               [[<<"delete from vcard where username='">>, Username, <<"';">>],
                [<<"insert into vcard(username, vcard) values ('">>,
                 Username, <<"', '">>, SVCARD, <<"');">>]];
@@ -1105,7 +1105,7 @@ import_start(LServer, DBType) ->
     init_db(DBType, LServer).
 
 import(LServer, {odbc, _}, mnesia, <<"vcard">>, [LUser, XML, _TimeStamp]) ->
-    #xmlel{} = El = xml_stream:parse_element(XML),
+    #xmlel{} = El = fxml_stream:parse_element(XML),
     VCard = #vcard{us = {LUser, LServer}, vcard = El},
     mnesia:dirty_write(VCard);
 import(LServer, {odbc, _}, mnesia, <<"vcard_search">>,
@@ -1131,31 +1131,31 @@ import(LServer, {odbc, _}, p1db, <<"vcard">>, [LUser, XML, _TimeStamp]) ->
     USKey = us2key(LUser, LServer),
     p1db:async_insert(vcard, USKey, XML);
 import(LServer, {odbc, _}, riak, <<"vcard">>, [LUser, XML, _TimeStamp]) ->
-    El = xml_stream:parse_element(XML),
+    El = fxml_stream:parse_element(XML),
     VCard = #vcard{us = {LUser, LServer}, vcard = El},
-    FN = xml:get_path_s(El, [{elem, <<"FN">>}, cdata]),
-    Family = xml:get_path_s(El,
+    FN = fxml:get_path_s(El, [{elem, <<"FN">>}, cdata]),
+    Family = fxml:get_path_s(El,
 			    [{elem, <<"N">>}, {elem, <<"FAMILY">>}, cdata]),
-    Given = xml:get_path_s(El,
+    Given = fxml:get_path_s(El,
 			   [{elem, <<"N">>}, {elem, <<"GIVEN">>}, cdata]),
-    Middle = xml:get_path_s(El,
+    Middle = fxml:get_path_s(El,
 			    [{elem, <<"N">>}, {elem, <<"MIDDLE">>}, cdata]),
-    Nickname = xml:get_path_s(El,
+    Nickname = fxml:get_path_s(El,
 			      [{elem, <<"NICKNAME">>}, cdata]),
-    BDay = xml:get_path_s(El,
+    BDay = fxml:get_path_s(El,
 			  [{elem, <<"BDAY">>}, cdata]),
-    CTRY = xml:get_path_s(El,
+    CTRY = fxml:get_path_s(El,
 			  [{elem, <<"ADR">>}, {elem, <<"CTRY">>}, cdata]),
-    Locality = xml:get_path_s(El,
+    Locality = fxml:get_path_s(El,
 			      [{elem, <<"ADR">>}, {elem, <<"LOCALITY">>},
 			       cdata]),
-    EMail1 = xml:get_path_s(El,
+    EMail1 = fxml:get_path_s(El,
 			    [{elem, <<"EMAIL">>}, {elem, <<"USERID">>}, cdata]),
-    EMail2 = xml:get_path_s(El,
+    EMail2 = fxml:get_path_s(El,
 			    [{elem, <<"EMAIL">>}, cdata]),
-    OrgName = xml:get_path_s(El,
+    OrgName = fxml:get_path_s(El,
 			     [{elem, <<"ORG">>}, {elem, <<"ORGNAME">>}, cdata]),
-    OrgUnit = xml:get_path_s(El,
+    OrgUnit = fxml:get_path_s(El,
 			     [{elem, <<"ORG">>}, {elem, <<"ORGUNIT">>}, cdata]),
     EMail = case EMail1 of
 	      <<"">> -> EMail2;

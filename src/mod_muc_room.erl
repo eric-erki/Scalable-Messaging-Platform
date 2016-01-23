@@ -197,12 +197,12 @@ normal_state({route, From, <<"">>,
 		     children = Els} =
 		  Packet},
 	     StateData) ->
-    Lang = xml:get_attr_s(<<"xml:lang">>, Attrs),
+    Lang = fxml:get_attr_s(<<"xml:lang">>, Attrs),
     case is_user_online(From, StateData) orelse
 	   is_user_allowed_message_nonparticipant(From, StateData)
 	of
       true ->
-	  case xml:get_attr_s(<<"type">>, Attrs) of
+	  case fxml:get_attr_s(<<"type">>, Attrs) of
 	    <<"groupchat">> ->
 		Activity = get_user_activity(From, StateData),
 		Now = p1_time_compat:system_time(micro_seconds),
@@ -450,7 +450,7 @@ normal_state({route, From, <<"">>,
 		{next_state, normal_state, StateData}
 	  end;
       _ ->
-	  case xml:get_attr_s(<<"type">>, Attrs) of
+	  case fxml:get_attr_s(<<"type">>, Attrs) of
 	    <<"error">> -> ok;
 	    _ ->
 		handle_roommessage_from_nonparticipant(Packet, Lang,
@@ -488,7 +488,7 @@ normal_state({route, From, <<"">>,
 			       ?NS_MUC_OWNER ->
 				   process_iq_owner(From, Type, Lang, SubEl, StateData);
 			       ?NS_DISCO_INFO ->
-				   case xml:get_attr(<<"node">>, Attrs) of
+				   case fxml:get_attr(<<"node">>, Attrs) of
 					  false -> process_iq_disco_info(From, Type, Lang, StateData);
 					  {value, _} -> {error, ?ERR_SERVICE_UNAVAILABLE}
 					end;
@@ -565,8 +565,8 @@ normal_state({route, From, Nick,
 normal_state({route, From, ToNick,
 	      #xmlel{name = <<"message">>, attrs = Attrs} = Packet},
 	     StateData) ->
-    Type = xml:get_attr_s(<<"type">>, Attrs),
-    Lang = xml:get_attr_s(<<"xml:lang">>, Attrs),
+    Type = fxml:get_attr_s(<<"type">>, Attrs),
+    Lang = fxml:get_attr_s(<<"xml:lang">>, Attrs),
     case decide_fate_message(Type, Packet, From, StateData)
 	of
       {expulse_sender, Reason} ->
@@ -624,7 +624,7 @@ normal_state({route, From, ToNick,
 								 FromNick),
 				   X = #xmlel{name = <<"x">>,
 					      attrs = [{<<"xmlns">>, ?NS_MUC_USER}]},
-				   PrivMsg = xml:append_subtags(Packet, [X]),
+				   PrivMsg = fxml:append_subtags(Packet, [X]),
 				   [ejabberd_router:route(FromNickJID, ToJID, PrivMsg)
 				    || ToJID <- ToJIDs];
 			       true ->
@@ -663,7 +663,7 @@ normal_state({route, From, ToNick,
 normal_state({route, From, ToNick,
 	      #xmlel{name = <<"iq">>, attrs = Attrs} = Packet},
 	     StateData) ->
-    Lang = xml:get_attr_s(<<"xml:lang">>, Attrs),
+    Lang = fxml:get_attr_s(<<"xml:lang">>, Attrs),
     case jlib:iq_query_info(Packet) of
 	reply ->
 	    ok;
@@ -1068,7 +1068,7 @@ route(Pid, From, ToNick, Packet) ->
 process_groupchat_message(From,
 			  #xmlel{name = <<"message">>, attrs = Attrs} = Packet,
 			  StateData) ->
-    Lang = xml:get_attr_s(<<"xml:lang">>, Attrs),
+    Lang = fxml:get_attr_s(<<"xml:lang">>, Attrs),
     case is_user_online(From, StateData) orelse
 	   is_user_allowed_message_nonparticipant(From, StateData)
 	of
@@ -1121,7 +1121,7 @@ process_groupchat_message(From,
 			 drop ->
 			     {next_state, normal_state, StateData};
 			 NewPacket1 ->
-			     NewPacket = xml:remove_subtags(NewPacket1, <<"nick">>, {<<"xmlns">>, ?NS_NICK}),
+			     NewPacket = fxml:remove_subtags(NewPacket1, <<"nick">>, {<<"xmlns">>, ?NS_NICK}),
 			     send_multiple(jid:replace_resource(StateData#state.jid,
 								     FromNick),
 					   StateData#state.server_host,
@@ -1201,7 +1201,7 @@ get_participant_data(From, StateData) ->
 process_presence(From, Nick,
 		 #xmlel{name = <<"presence">>, attrs = Attrs0} = Packet0,
 		 StateData) ->
-    Type0 = xml:get_attr_s(<<"type">>, Attrs0),
+    Type0 = fxml:get_attr_s(<<"type">>, Attrs0),
     IsOnline = is_user_online(From, StateData),
     if Type0 == <<"">>;
        IsOnline and ((Type0 == <<"unavailable">>) or (Type0 == <<"error">>)) ->
@@ -1214,8 +1214,8 @@ process_presence(From, Nick,
 	     drop ->
 		 {next_state, normal_state, StateData};
 	     #xmlel{attrs = Attrs} = Packet ->
-		 Type = xml:get_attr_s(<<"type">>, Attrs),
-		 Lang = xml:get_attr_s(<<"xml:lang">>, Attrs),
+		 Type = fxml:get_attr_s(<<"type">>, Attrs),
+		 Lang = fxml:get_attr_s(<<"xml:lang">>, Attrs),
 		 StateData1 = case Type of
 				<<"unavailable">> ->
 				    NewPacket = case
@@ -1232,12 +1232,12 @@ process_presence(From, Nick,
 				      {ok, [_, _ | _]} -> ok;
 				      _ -> send_new_presence(From, NewState, StateData)
 				    end,
-				    Reason = case xml:get_subtag(NewPacket,
+				    Reason = case fxml:get_subtag(NewPacket,
 								 <<"status">>)
 						 of
 					       false -> <<"">>;
 					       Status_el ->
-						   xml:get_tag_cdata(Status_el)
+						   fxml:get_tag_cdata(Status_el)
 					     end,
 				    remove_online_user(From, NewState, Reason);
 				<<"error">> ->
@@ -1272,7 +1272,7 @@ process_presence(From, Nick,
 								    From, Err),
 						       StateData;
 						   {true, _, _} ->
-						       Lang = xml:get_attr_s(<<"xml:lang">>,
+						       Lang = fxml:get_attr_s(<<"xml:lang">>,
 									     Attrs),
 						       ErrText =
 							   <<"That nickname is already in use by another "
@@ -1434,7 +1434,7 @@ get_error_condition(Packet) ->
     end.
 
 get_error_condition2(Packet) ->
-    #xmlel{children = EEls} = xml:get_subtag(Packet,
+    #xmlel{children = EEls} = fxml:get_subtag(Packet,
 					     <<"error">>),
     [Condition] = [Name
 		   || #xmlel{name = Name,
@@ -1906,7 +1906,7 @@ filter_presence(#xmlel{name = <<"presence">>,
 				case El of
 				  {xmlcdata, _} -> false;
 				  #xmlel{attrs = Attrs1} ->
-                                        XMLNS = xml:get_attr_s(<<"xmlns">>,
+                                        XMLNS = fxml:get_attr_s(<<"xmlns">>,
                                                                Attrs1),
                                         NS_MUC = ?NS_MUC,
                                         Size = byte_size(NS_MUC),
@@ -1994,11 +1994,11 @@ higher_presence(Pres1, Pres2) ->
     Pri1 > Pri2.
 
 get_priority_from_presence(PresencePacket) ->
-    case xml:get_subtag(PresencePacket, <<"priority">>) of
+    case fxml:get_subtag(PresencePacket, <<"priority">>) of
       false -> 0;
       SubEl ->
 	  case catch
-		 jlib:binary_to_integer(xml:get_tag_cdata(SubEl))
+		 jlib:binary_to_integer(fxml:get_tag_cdata(SubEl))
 	      of
 	    P when is_integer(P) -> P;
 	    _ -> 0
@@ -2032,7 +2032,7 @@ nick_collision(User, Nick, StateData) ->
 add_new_user(From, Nick,
 	     #xmlel{attrs = Attrs, children = Els} = Packet,
 	     StateData) ->
-    Lang = xml:get_attr_s(<<"xml:lang">>, Attrs),
+    Lang = fxml:get_attr_s(<<"xml:lang">>, Attrs),
     MaxUsers = get_max_users(StateData),
     MaxAdminUsers = MaxUsers +
 		      get_max_users_admin_threshold(StateData),
@@ -2130,7 +2130,7 @@ add_new_user(From, Nick,
 			     From, Err),
 		StateData;
 	    captcha_required ->
-		SID = xml:get_attr_s(<<"id">>, Attrs),
+		SID = fxml:get_attr_s(<<"id">>, Attrs),
 		RoomJID = StateData#state.jid,
 		To = jid:replace_resource(RoomJID, Nick),
 		Limiter = {From#jid.luser, From#jid.lserver},
@@ -2230,11 +2230,11 @@ check_captcha(Affiliation, From, StateData) ->
 
 extract_password([]) -> false;
 extract_password([#xmlel{attrs = Attrs} = El | Els]) ->
-    case xml:get_attr_s(<<"xmlns">>, Attrs) of
+    case fxml:get_attr_s(<<"xmlns">>, Attrs) of
       ?NS_MUC ->
-	  case xml:get_subtag(El, <<"password">>) of
+	  case fxml:get_subtag(El, <<"password">>) of
 	    false -> false;
-	    SubEl -> xml:get_tag_cdata(SubEl)
+	    SubEl -> fxml:get_tag_cdata(SubEl)
 	  end;
       _ -> extract_password(Els)
     end;
@@ -2308,9 +2308,9 @@ calc_shift(MaxSize, Size, Shift, [S | TSizes]) ->
 extract_history([], _Type) -> false;
 extract_history([#xmlel{attrs = Attrs} = El | Els],
 		Type) ->
-    case xml:get_attr_s(<<"xmlns">>, Attrs) of
+    case fxml:get_attr_s(<<"xmlns">>, Attrs) of
       ?NS_MUC ->
-	  AttrVal = xml:get_path_s(El,
+	  AttrVal = fxml:get_path_s(El,
 				   [{elem, <<"history">>}, {attr, Type}]),
 	  case Type of
 	    <<"since">> ->
@@ -2483,7 +2483,7 @@ send_new_presence1(NJID, Reason, StateData, OldStateData) ->
                            | Status3];
                       false -> Status3
                   end,
-			  Packet = xml:append_subtags(Presence,
+			  Packet = fxml:append_subtags(Presence,
 						      [#xmlel{name = <<"x">>,
 							      attrs =
 								  [{<<"xmlns">>,
@@ -2546,7 +2546,7 @@ send_existing_presences1(ToJID, StateData) ->
 						   {<<"role">>,
 						    role_to_list(FromRole)}]
 					    end,
-				Packet = xml:append_subtags(Presence,
+				Packet = fxml:append_subtags(Presence,
 							    [#xmlel{name =
 									<<"x">>,
 								    attrs =
@@ -2677,7 +2677,7 @@ send_nick_changing(JID, OldNick, StateData,
 									 <<"303">>}],
 								   children =
 								       []}|Status110]}]},
-			  Packet2 = xml:append_subtags(Presence,
+			  Packet2 = fxml:append_subtags(Presence,
 						       [#xmlel{name = <<"x">>,
 							       attrs =
 								   [{<<"xmlns">>,
@@ -2734,7 +2734,7 @@ lqueue_filter(F, #lqueue{queue = Q1} = LQ) ->
     LQ#lqueue{queue = Q2, len = queue:len(Q2)}.
 
 add_message_to_history(FromNick, FromJID, Packet, StateData) ->
-    HaveSubject = case xml:get_subtag(Packet, <<"subject">>)
+    HaveSubject = case fxml:get_subtag(Packet, <<"subject">>)
 		      of
 		    false -> false;
 		    _ -> true
@@ -2751,7 +2751,7 @@ add_message_to_history(FromNick, FromJID, Packet, StateData) ->
 		       Addresses = #xmlel{name = <<"addresses">>,
 					  attrs = [{<<"xmlns">>, ?NS_ADDRESS}],
 					  children = [Address]},
-		       xml:append_subtags(Packet, [Addresses])
+		       fxml:append_subtags(Packet, [Addresses])
 		 end,
     TSPacket = jlib:add_delay_info(AddrPacket, StateData#state.jid, TimeStamp),
     SPacket =
@@ -2790,9 +2790,9 @@ send_subject(JID, #state{subject_author = Nick} = StateData) ->
 			  Packet).
 
 check_subject(Packet) ->
-    case xml:get_subtag(Packet, <<"subject">>) of
+    case fxml:get_subtag(Packet, <<"subject">>) of
       false -> false;
-      SubjEl -> xml:get_tag_cdata(SubjEl)
+      SubjEl -> fxml:get_tag_cdata(SubjEl)
     end.
 
 can_change_subject(Role, StateData) ->
@@ -2809,14 +2809,14 @@ process_iq_admin(From, set, Lang, SubEl, StateData) ->
     #xmlel{children = Items} = SubEl,
     process_admin_items_set(From, Items, Lang, StateData);
 process_iq_admin(From, get, Lang, SubEl, StateData) ->
-    case xml:get_subtag(SubEl, <<"item">>) of
+    case fxml:get_subtag(SubEl, <<"item">>) of
       false -> {error, ?ERR_BAD_REQUEST};
       Item ->
 	  FAffiliation = get_affiliation(From, StateData),
 	  FRole = get_role(From, StateData),
-	  case xml:get_tag_attr(<<"role">>, Item) of
+	  case fxml:get_tag_attr(<<"role">>, Item) of
 	    false ->
-		case xml:get_tag_attr(<<"affiliation">>, Item) of
+		case fxml:get_tag_attr(<<"affiliation">>, Item) of
 		  false -> {error, ?ERR_BAD_REQUEST};
 		  {value, StrAffiliation} ->
 		      case catch list_to_affiliation(StrAffiliation) of
@@ -3038,7 +3038,7 @@ find_changed_items(UJID, UAffiliation, URole,
 		   [#xmlel{name = <<"item">>, attrs = Attrs} = Item
 		    | Items],
 		   Lang, StateData, Res) ->
-    TJID = case xml:get_attr(<<"jid">>, Attrs) of
+    TJID = case fxml:get_attr(<<"jid">>, Attrs) of
 	     {value, S} ->
 		 case jid:from_string(S) of
 		   error ->
@@ -3051,7 +3051,7 @@ find_changed_items(UJID, UAffiliation, URole,
 		   J -> {value, [J]}
 		 end;
 	     _ ->
-		 case xml:get_attr(<<"nick">>, Attrs) of
+		 case fxml:get_attr(<<"nick">>, Attrs) of
 		   {value, N} ->
 		       case find_jids_by_nick(N, StateData) of
 			 false ->
@@ -3071,9 +3071,9 @@ find_changed_items(UJID, UAffiliation, URole,
       {value, [JID | _] = JIDs} ->
 	  TAffiliation = get_affiliation(JID, StateData),
 	  TRole = get_role(JID, StateData),
-	  case xml:get_attr(<<"role">>, Attrs) of
+	  case fxml:get_attr(<<"role">>, Attrs) of
 	    false ->
-		case xml:get_attr(<<"affiliation">>, Attrs) of
+		case fxml:get_attr(<<"affiliation">>, Attrs) of
 		  false -> {error, ?ERR_BAD_REQUEST};
 		  {value, StrAffiliation} ->
 		      case catch list_to_affiliation(StrAffiliation) of
@@ -3114,7 +3114,7 @@ find_changed_items(UJID, UAffiliation, URole,
 						     Items, Lang, StateData,
 						     Res);
 			      true ->
-				  Reason = xml:get_path_s(Item,
+				  Reason = fxml:get_path_s(Item,
 							  [{elem, <<"reason">>},
 							   cdata]),
 				  MoreRes = [{jid:remove_resource(Jidx),
@@ -3161,7 +3161,7 @@ find_changed_items(UJID, UAffiliation, URole,
 			    find_changed_items(UJID, UAffiliation, URole, Items,
 					       Lang, StateData, Res);
 			true ->
-			    Reason = xml:get_path_s(Item,
+			    Reason = fxml:get_path_s(Item,
 						    [{elem, <<"reason">>},
 						     cdata]),
 			    MoreRes = [{Jidx, role, SRole, Reason}
@@ -3403,10 +3403,10 @@ process_iq_owner(From, set, Lang, SubEl, StateData) ->
     case FAffiliation of
       owner ->
 	  #xmlel{children = Els} = SubEl,
-	  case xml:remove_cdata(Els) of
+	  case fxml:remove_cdata(Els) of
 	    [#xmlel{name = <<"x">>} = XEl] ->
-		case {xml:get_tag_attr_s(<<"xmlns">>, XEl),
-		      xml:get_tag_attr_s(<<"type">>, XEl)}
+		case {fxml:get_tag_attr_s(<<"xmlns">>, XEl),
+		      fxml:get_tag_attr_s(<<"type">>, XEl)}
 		    of
 		  {?NS_XDATA, <<"cancel">>} -> {result, [], StateData};
 		  {?NS_XDATA, <<"submit">>} ->
@@ -3440,10 +3440,10 @@ process_iq_owner(From, get, Lang, SubEl, StateData) ->
     case FAffiliation of
       owner ->
 	  #xmlel{children = Els} = SubEl,
-	  case xml:remove_cdata(Els) of
+	  case fxml:remove_cdata(Els) of
 	    [] -> get_config(Lang, StateData, From);
 	    [Item] ->
-		case xml:get_tag_attr(<<"affiliation">>, Item) of
+		case fxml:get_tag_attr(<<"affiliation">>, Item) of
 		  false -> {error, ?ERR_BAD_REQUEST};
 		  {value, StrAffiliation} ->
 		      case catch list_to_affiliation(StrAffiliation) of
@@ -4607,7 +4607,7 @@ process_iq_captcha(_From, set, _Lang, SubEl,
 
 process_iq_vcard(_From, get, _Lang, _SubEl, StateData) ->
     #state{config = #config{vcard = VCardRaw}} = StateData,
-    case xml_stream:parse_element(VCardRaw) of
+    case fxml_stream:parse_element(VCardRaw) of
 	#xmlel{children = VCardEls} ->
 	    {result, VCardEls, StateData};
 	{error, _} ->
@@ -4616,7 +4616,7 @@ process_iq_vcard(_From, get, _Lang, _SubEl, StateData) ->
 process_iq_vcard(From, set, Lang, SubEl, StateData) ->
     case get_affiliation(From, StateData) of
 	owner ->
-	    VCardRaw = xml:element_to_binary(SubEl),
+	    VCardRaw = fxml:element_to_binary(SubEl),
 	    Config = StateData#state.config,
 	    NewConfig = Config#config{vcard = VCardRaw},
 	    change_config(NewConfig, StateData);
@@ -4675,7 +4675,7 @@ is_voice_request(Els) ->
     lists:foldl(fun (#xmlel{name = <<"x">>, attrs = Attrs} =
 			 El,
 		     false) ->
-			case xml:get_attr_s(<<"xmlns">>, Attrs) of
+			case fxml:get_attr_s(<<"xmlns">>, Attrs) of
 			  ?NS_XDATA ->
 			      case jlib:parse_xdata_submit(El) of
 				[_ | _] = Fields ->
@@ -4758,7 +4758,7 @@ is_voice_approvement(Els) ->
     lists:foldl(fun (#xmlel{name = <<"x">>, attrs = Attrs} =
 			 El,
 		     false) ->
-			case xml:get_attr_s(<<"xmlns">>, Attrs) of
+			case fxml:get_attr_s(<<"xmlns">>, Attrs) of
 			  ?NS_XDATA ->
 			      case jlib:parse_xdata_submit(El) of
 				[_ | _] = Fs ->
@@ -4812,9 +4812,9 @@ is_invitation(Els) ->
     lists:foldl(fun (#xmlel{name = <<"x">>, attrs = Attrs} =
 			 El,
 		     false) ->
-			case xml:get_attr_s(<<"xmlns">>, Attrs) of
+			case fxml:get_attr_s(<<"xmlns">>, Attrs) of
 			  ?NS_MUC_USER ->
-			      case xml:get_subtag(El, <<"invite">>) of
+			      case fxml:get_subtag(El, <<"invite">>) of
 				false -> false;
 				_ -> true
 			      end;
@@ -4830,20 +4830,20 @@ check_invitation(From, Els, Lang, StateData) ->
 	(StateData#state.config)#config.allow_user_invites
 	  orelse
 	  FAffiliation == admin orelse FAffiliation == owner,
-    InviteEl = case xml:remove_cdata(Els) of
+    InviteEl = case fxml:remove_cdata(Els) of
 		 [#xmlel{name = <<"x">>, children = Els1} = XEl] ->
-		     case xml:get_tag_attr_s(<<"xmlns">>, XEl) of
+		     case fxml:get_tag_attr_s(<<"xmlns">>, XEl) of
 		       ?NS_MUC_USER -> ok;
 		       _ -> throw({error, ?ERR_BAD_REQUEST})
 		     end,
-		     case xml:remove_cdata(Els1) of
+		     case fxml:remove_cdata(Els1) of
 		       [#xmlel{name = <<"invite">>} = InviteEl1] -> InviteEl1;
 		       _ -> throw({error, ?ERR_BAD_REQUEST})
 		     end;
 		 _ -> throw({error, ?ERR_BAD_REQUEST})
 	       end,
     JID = case
-	    jid:from_string(xml:get_tag_attr_s(<<"to">>,
+	    jid:from_string(fxml:get_tag_attr_s(<<"to">>,
 						  InviteEl))
 	      of
 	    error -> throw({error, ?ERR_JID_MALFORMED});
@@ -4852,9 +4852,9 @@ check_invitation(From, Els, Lang, StateData) ->
     case CanInvite of
       false -> throw({error, ?ERR_NOT_ALLOWED});
       true ->
-	  Reason = xml:get_path_s(InviteEl,
+	  Reason = fxml:get_path_s(InviteEl,
 				  [{elem, <<"reason">>}, cdata]),
-	  ContinueEl = case xml:get_path_s(InviteEl,
+	  ContinueEl = case fxml:get_path_s(InviteEl,
 					   [{elem, <<"continue">>}])
 			   of
 			 <<>> -> [];
@@ -4944,10 +4944,10 @@ handle_roommessage_from_nonparticipant(Packet, Lang,
 %% because it crashes when the packet is not a decline message.
 check_decline_invitation(Packet) ->
     #xmlel{name = <<"message">>} = Packet,
-    XEl = xml:get_subtag(Packet, <<"x">>),
-    (?NS_MUC_USER) = xml:get_tag_attr_s(<<"xmlns">>, XEl),
-    DEl = xml:get_subtag(XEl, <<"decline">>),
-    ToString = xml:get_tag_attr_s(<<"to">>, DEl),
+    XEl = fxml:get_subtag(Packet, <<"x">>),
+    (?NS_MUC_USER) = fxml:get_tag_attr_s(<<"xmlns">>, XEl),
+    DEl = fxml:get_subtag(XEl, <<"decline">>),
+    ToString = fxml:get_tag_attr_s(<<"to">>, DEl),
     ToJID = jid:from_string(ToString),
     {true, {Packet, XEl, DEl, ToJID}}.
 
@@ -5036,7 +5036,7 @@ tab_count_user(JID) ->
     end.
 
 element_size(El) ->
-    byte_size(xml:element_to_binary(El)).
+    byte_size(fxml:element_to_binary(El)).
 
 fsm_limit_opts() ->
     case ejabberd_config:get_option(

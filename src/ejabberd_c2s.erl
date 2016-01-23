@@ -427,8 +427,8 @@ get_subscribed(FsmRef) ->
 
 wait_for_stream({xmlstreamstart, Name, Attrs}, StateData) ->
     DefaultLang = ?MYLANG,
-    case {xml:get_attr_s(<<"xmlns:stream">>, Attrs),
-	  xml:get_attr_s(<<"xmlns:flash">>, Attrs),
+    case {fxml:get_attr_s(<<"xmlns:stream">>, Attrs),
+	  fxml:get_attr_s(<<"xmlns:flash">>, Attrs),
 	  StateData#state.flash_hack,
 	  StateData#state.flash_connection}
     of
@@ -439,10 +439,10 @@ wait_for_stream({xmlstreamstart, Name, Attrs}, StateData) ->
 	{?NS_STREAM, _, _, _} ->
 	    Server =
 		case StateData#state.server of
-		    <<"">> -> jid:nameprep(xml:get_attr_s(<<"to">>, Attrs));
+		    <<"">> -> jid:nameprep(fxml:get_attr_s(<<"to">>, Attrs));
 		    S -> S
 		end,
-	    Lang = case xml:get_attr_s(<<"xml:lang">>, Attrs) of
+	    Lang = case fxml:get_attr_s(<<"xml:lang">>, Attrs) of
 		       Lang1 when byte_size(Lang1) =< 35 ->
 			   %% As stated in BCP47, 4.4.1:
 			   %% Protocols or specifications that
@@ -459,7 +459,7 @@ wait_for_stream({xmlstreamstart, Name, Attrs}, StateData) ->
 	    case lists:member(Server, ?MYHOSTS) of
 		true when IsBlacklistedIP == false ->
 		    change_shaper(StateData, jid:make(<<"">>, Server, <<"">>)),
-		    case xml:get_attr_s(<<"version">>, Attrs) of
+		    case fxml:get_attr_s(<<"version">>, Attrs) of
 			<<"1.0">> ->
 			    send_header(StateData, Server, <<"1.0">>, DefaultLang),
 			    case StateData#state.authenticated of
@@ -751,10 +751,10 @@ wait_for_auth({xmlstreamelement, El}, StateData) ->
 	    end;
 	_ ->
 	    #xmlel{name = Name, attrs = Attrs} = El,
-	    case {xml:get_attr_s(<<"xmlns">>, Attrs), Name} of
+	    case {fxml:get_attr_s(<<"xmlns">>, Attrs), Name} of
 		{?NS_P1_REBIND, <<"rebind">>} ->
-		    SJID = xml:get_path_s(El, [{elem, <<"jid">>}, cdata]),
-		    SID = xml:get_path_s(El, [{elem, <<"sid">>}, cdata]),
+		    SJID = fxml:get_path_s(El, [{elem, <<"jid">>}, cdata]),
+		    SID = fxml:get_path_s(El, [{elem, <<"sid">>}, cdata]),
 		    case jid:from_string(SJID) of
 			error ->
 			    send_failure(StateData, ?NS_P1_REBIND, <<"Invalid JID">>),
@@ -795,11 +795,11 @@ wait_for_feature_request({xmlstreamelement, El}, StateData) ->
     TLSEnabled = StateData#state.tls_enabled,
     TLSRequired = StateData#state.tls_required,
     SockMod = (StateData#state.sockmod):get_sockmod(StateData#state.socket),
-    case {xml:get_attr_s(<<"xmlns">>, Attrs), Name} of
+    case {fxml:get_attr_s(<<"xmlns">>, Attrs), Name} of
 	{?NS_SASL, <<"auth">>}
 	  when TLSEnabled or not TLSRequired ->
-	    Mech = xml:get_attr_s(<<"mechanism">>, Attrs),
-	    ClientIn = jlib:decode_base64(xml:get_cdata(Els)),
+	    Mech = fxml:get_attr_s(<<"mechanism">>, Attrs),
+	    ClientIn = jlib:decode_base64(fxml:get_cdata(Els)),
 	    ClientCertFile = get_cert_file(StateData, Mech),
 	    case cyrsasl:server_start(StateData#state.sasl_state,
 				      Mech, ClientIn, ClientCertFile)
@@ -846,7 +846,7 @@ wait_for_feature_request({xmlstreamelement, El}, StateData) ->
 		      end,
 	    Socket = StateData#state.socket,
 	    case (StateData#state.sockmod):starttls(Socket, TLSOpts,
-						    xml:element_to_binary(
+						    fxml:element_to_binary(
 						      #xmlel{name = <<"proceed">>,
 							     attrs = [{<<"xmlns">>, ?NS_TLS}]}))
 	    of
@@ -861,17 +861,18 @@ wait_for_feature_request({xmlstreamelement, El}, StateData) ->
 		    fsm_stop(StateData)
 	    end;
 	{?NS_COMPRESS, <<"compress">>}
-	  when Zlib == true, (SockMod == gen_tcp) or (SockMod == p1_tls) ->
-	    case xml:get_subtag(El, <<"method">>) of
+	  when Zlib == true,
+	       (SockMod == gen_tcp) or (SockMod == p1_tls) ->
+	  case fxml:get_subtag(El, <<"method">>) of
 		false ->
 		    send_failure(StateData, ?NS_COMPRESS, <<"setup-failed">>, <<"">>),
 		    fsm_next_state(wait_for_feature_request, StateData);
 		Method ->
-		    case xml:get_tag_cdata(Method) of
+		case fxml:get_tag_cdata(Method) of
 			<<"zlib">> ->
 			    case (StateData#state.sockmod):compress(
 				   StateData#state.socket,
-				   xml:element_to_binary(
+				   fxml:element_to_binary(
 				     #xmlel{name = <<"compressed">>,
 					    attrs = [{<<"xmlns">>, ?NS_COMPRESS}]}))
 			    of
@@ -890,8 +891,8 @@ wait_for_feature_request({xmlstreamelement, El}, StateData) ->
 		    end
 	    end;
 	{?NS_P1_REBIND, <<"rebind">>} ->
-	    SJID = xml:get_path_s(El, [{elem, <<"jid">>}, cdata]),
-	    SID = xml:get_path_s(El, [{elem, <<"sid">>}, cdata]),
+	    SJID = fxml:get_path_s(El, [{elem, <<"jid">>}, cdata]),
+	    SID = fxml:get_path_s(El, [{elem, <<"sid">>}, cdata]),
 	    case jid:from_string(SJID) of
 		error ->
 		    send_failure(StateData, ?NS_P1_REBIND, <<"Invalid JID">>),
@@ -927,9 +928,9 @@ wait_for_sasl_response({xmlstreamelement, #xmlel{name = Name} = El}, StateData)
     fsm_next_state(wait_for_sasl_response, dispatch_stream_mgmt(El, StateData));
 wait_for_sasl_response({xmlstreamelement, El}, StateData) ->
     #xmlel{name = Name, attrs = Attrs, children = Els} = El,
-    case {xml:get_attr_s(<<"xmlns">>, Attrs), Name} of
+    case {fxml:get_attr_s(<<"xmlns">>, Attrs), Name} of
 	{?NS_SASL, <<"response">>} ->
-	    ClientIn = jlib:decode_base64(xml:get_cdata(Els)),
+	    ClientIn = jlib:decode_base64(fxml:get_cdata(Els)),
 	    case cyrsasl:server_step(StateData#state.sasl_state, ClientIn) of
 		{ok, Props} ->
 		    fsm_next_sasl_state(StateData, Props, <<"">>);
@@ -988,7 +989,7 @@ wait_for_bind({xmlstreamelement, El}, StateData) ->
     case jlib:iq_query_info(El) of
 	#iq{type = set, xmlns = ?NS_BIND, sub_el = SubEl} = IQ ->
 	    U = StateData#state.user,
-	    R1 = xml:get_path_s(SubEl, [{elem, <<"resource">>}, cdata]),
+	    R1 = fxml:get_path_s(SubEl, [{elem, <<"resource">>}, cdata]),
 	    R = case jid:resourceprep(R1) of
 		    error -> error;
 		    <<"">> -> randoms:get_string();
@@ -1139,24 +1140,24 @@ session_established2(El, StateData) ->
     User = NewStateData#state.user,
     Server = NewStateData#state.server,
     FromJID = NewStateData#state.jid,
-    To = xml:get_attr_s(<<"to">>, Attrs),
+    To = fxml:get_attr_s(<<"to">>, Attrs),
     ToJID = case To of
 		<<"">> -> jid:make(User, Server, <<"">>);
 		_ -> jid:from_string(To)
 	    end,
     NewEl1 = jlib:remove_attr(<<"xmlns">>, El),
-    NewEl = case xml:get_attr_s(<<"xml:lang">>, Attrs) of
+    NewEl = case fxml:get_attr_s(<<"xml:lang">>, Attrs) of
 		<<"">> ->
 		    case NewStateData#state.lang of
 			<<"">> -> NewEl1;
-			Lang -> xml:replace_tag_attr(<<"xml:lang">>, Lang, NewEl1)
+			Lang -> fxml:replace_tag_attr(<<"xml:lang">>, Lang, NewEl1)
 		    end;
 		_ ->
 		    NewEl1
 	    end,
     NewState = case ToJID of
 		   error ->
-		       case xml:get_attr_s(<<"type">>, Attrs) of
+		       case fxml:get_attr_s(<<"type">>, Attrs) of
 			   <<"error">> ->
 			       NewStateData;
 			   <<"result">> ->
@@ -1203,10 +1204,10 @@ session_established2(El, StateData) ->
 			       NewEl0 = fix_packet(NewStateData, FromJID, ToJID, NewEl),
 			       check_privacy_route(FromJID, NewStateData, FromJID, ToJID, NewEl0);
 			   <<"standby">> ->
-			       StandBy = xml:get_tag_cdata(NewEl) == <<"true">>,
+			       StandBy = fxml:get_tag_cdata(NewEl) == <<"true">>,
 			       change_standby(NewStateData, StandBy);
 			   <<"a">> ->
-			       SCounter = xml:get_tag_attr_s(<<"h">>, NewEl),
+			       SCounter = fxml:get_tag_attr_s(<<"h">>, NewEl),
 			       receive_ack(NewStateData, SCounter);
 			   _ ->
 			       NewStateData
@@ -1359,7 +1360,7 @@ handle_info({route, _From, _To, {broadcast, Data}}, StateName, StateData) ->
 	    end;
 	{stop_by_device_id, DeviceID} ->
 	    case catch jlib:binary_to_integer(
-			 xml:get_path_s(StateData#state.oor_notification,
+			 fxml:get_path_s(StateData#state.oor_notification,
 					[{elem, <<"id">>}, cdata]), 16)
 	    of
 		DeviceID ->
@@ -1381,7 +1382,7 @@ handle_info({route, From, To,
 								     StateData#state.server,
 								     StateData,
 								     [{From, To, Packet}]),
-					 case xml:get_attr_s(<<"type">>, Attrs) of
+					 case fxml:get_attr_s(<<"type">>, Attrs) of
 					     <<"probe">> ->
 						 NewStateData = add_to_pres_a(State, From),
 						 process_presence_probe(From, To, NewStateData),
@@ -1484,7 +1485,7 @@ handle_info({route, From, To,
 							 {true, Attrs, StateData}
 						 end;
 					     deny ->
-						 case xml:get_attr_s(<<"type">>, Attrs) of
+						 case fxml:get_attr_s(<<"type">>, Attrs) of
 						     <<"error">> -> ok;
                                                    <<"groupchat">> -> ok;
                                                    <<"headline">> -> ok;
@@ -1827,7 +1828,7 @@ send_element(StateData, El) ->
 		       StateData#state.server,
 		       [StateData#state.jid, StateData#state.server,
 			StateData#state.pres_last, El]),
-    send_text(StateData, xml:element_to_binary(El)).
+    send_text(StateData, fxml:element_to_binary(El)).
 
 send_stanza(StateData, Stanza) when StateData#state.csi_state == inactive ->
     csi_filter_stanza(StateData, Stanza);
@@ -1878,7 +1879,7 @@ send_header(StateData, Server, Version, Lang) ->
 		 end,
     LangStr = case Lang of
 		  <<"">> -> <<"">>;
-		  _ -> [<<" xml:lang='">>, Lang, <<"'">>]
+		  _ -> [<<" fxml:lang='">>, Lang, <<"'">>]
 	      end,
     Header = io_lib:format(?STREAM_HEADER,
 			   [StateData#state.streamid, Server, VersionStr, LangStr]),
@@ -1927,7 +1928,7 @@ is_stanza(#xmlel{name = Name, attrs = Attrs})
   when Name == <<"message">>;
        Name == <<"presence">>;
        Name == <<"iq">> ->
-    case xml:get_attr(<<"xmlns">>, Attrs) of
+    case fxml:get_attr(<<"xmlns">>, Attrs) of
 	{value, NS} when NS /= <<"jabber:client">>,
 			 NS /= <<"jabber:server">> ->
 	    false;
@@ -1938,7 +1939,7 @@ is_stanza(_El) ->
     false.
 
 get_auth_tags([#xmlel{name = Name, children = Els} | L], U, P, D, R) ->
-    CData = xml:get_cdata(Els),
+    CData = fxml:get_cdata(Els),
     case Name of
 	<<"username">> -> get_auth_tags(L, CData, P, D, R);
 	<<"password">> -> get_auth_tags(L, U, CData, D, R);
@@ -2014,11 +2015,11 @@ process_presence_probe(From, To, StateData) ->
 %% User updates his presence (non-directed presence packet)
 presence_update(From, Packet, StateData) ->
     #xmlel{attrs = Attrs} = Packet,
-    case xml:get_attr_s(<<"type">>, Attrs) of
+    case fxml:get_attr_s(<<"type">>, Attrs) of
 	<<"unavailable">> ->
-	    Status = case xml:get_subtag(Packet, <<"status">>) of
+	  Status = case fxml:get_subtag(Packet, <<"status">>) of
 			 false -> <<"">>;
-			 StatusTag -> xml:get_tag_cdata(StatusTag)
+		     StatusTag -> fxml:get_tag_cdata(StatusTag)
 		     end,
 	    Info = [{ip, StateData#state.ip}, {conn, StateData#state.conn},
 		    {auth_module, StateData#state.auth_module}],
@@ -2081,7 +2082,7 @@ presence_track(From, To, Packet, StateData) ->
     LTo = jid:tolower(To),
     User = StateData#state.user,
     Server = StateData#state.server,
-    case xml:get_attr_s(<<"type">>, Attrs) of
+    case fxml:get_attr_s(<<"type">>, Attrs) of
 	<<"unavailable">> ->
 	    A = remove_element(LTo, StateData#state.pres_a),
 	    check_privacy_route(From, StateData#state{pres_a = A}, From, To, Packet);
@@ -2274,11 +2275,11 @@ update_priority(Priority, Packet, StateData) ->
 			     Priority, Packet, Info).
 
 get_priority_from_presence(PresencePacket) ->
-    case xml:get_subtag(PresencePacket, <<"priority">>) of
+    case fxml:get_subtag(PresencePacket, <<"priority">>) of
 	false ->
 	    0;
 	SubEl ->
-	    case catch jlib:binary_to_integer(xml:get_tag_cdata(SubEl)) of
+	    case catch jlib:binary_to_integer(fxml:get_tag_cdata(SubEl)) of
 		P when is_integer(P) -> P;
 		_ -> 0
 	    end
@@ -2350,7 +2351,7 @@ resend_subscription_requests(#state{user = User, server = Server} = StateData) -
 get_showtag(undefined) ->
     <<"unavailable">>;
 get_showtag(Presence) ->
-    case xml:get_path_s(Presence, [{elem, <<"show">>}, cdata]) of
+    case fxml:get_path_s(Presence, [{elem, <<"show">>}, cdata]) of
 	<<"">> -> <<"available">>;
 	ShowTag -> ShowTag
     end.
@@ -2358,14 +2359,14 @@ get_showtag(Presence) ->
 get_statustag(undefined) ->
     <<"">>;
 get_statustag(Presence) ->
-    xml:get_path_s(Presence, [{elem, <<"status">>}, cdata]).
+    fxml:get_path_s(Presence, [{elem, <<"status">>}, cdata]).
 
 process_unauthenticated_stanza(StateData, El) ->
-    NewEl = case xml:get_tag_attr_s(<<"xml:lang">>, El) of
+    NewEl = case fxml:get_tag_attr_s(<<"xml:lang">>, El) of
 		<<"">> ->
 		    case StateData#state.lang of
 			<<"">> -> El;
-			Lang -> xml:replace_tag_attr(<<"xml:lang">>, Lang, El)
+		    Lang -> fxml:replace_tag_attr(<<"xml:lang">>, Lang, El)
 		    end;
 		_ ->
 		    El
@@ -2480,7 +2481,7 @@ is_ip_blacklisted({IP, _Port}, Lang) ->
 %% Check from attributes
 %% returns invalid-from|NewElement
 check_from(El, FromJID) ->
-    case xml:get_tag_attr(<<"from">>, El) of
+    case fxml:get_tag_attr(<<"from">>, El) of
 	false ->
 	    El;
 	{value, SJID} ->
@@ -2602,7 +2603,7 @@ change_standby(#state{standby = true} = StateData, false) ->
 		    pres_queue = gb_trees:empty(), standby = false}.
 
 send_oor_message(StateData, From, To, #xmlel{name = <<"message">>} = Packet) ->
-    Type = xml:get_tag_attr_s(<<"type">>, Packet),
+    Type = fxml:get_tag_attr_s(<<"type">>, Packet),
     if (Type == <<"normal">>) or (Type == <<"">>) or (Type == <<"chat">>) or
        StateData#state.oor_send_groupchat and
        (Type == <<"groupchat">>) ->
@@ -2666,7 +2667,7 @@ cancel_timer(Timer) ->
 enqueue(StateData, From, To, Packet) ->
     IsPresence = case Packet of
 		     #xmlel{name = <<"presence">>} ->
-			 case xml:get_tag_attr_s(<<"type">>, Packet) of
+			 case fxml:get_tag_attr_s(<<"type">>, Packet) of
 			     <<"subscribe">> -> false;
 			     <<"subscribed">> -> false;
 			     <<"unsubscribe">> -> false;
@@ -2695,11 +2696,11 @@ enqueue(StateData, From, To, Packet) ->
 		    StateData#state{pres_queue = NewQueue}
 	    end;
        true ->
-	    CleanPacket = xml:remove_subtags(Packet, <<"x">>,
+	    CleanPacket = fxml:remove_subtags(Packet, <<"x">>,
 					     {<<"xmlns">>, ?NS_P1_PUSHED}),
 	    Packet2 = case CleanPacket of
 			  #xmlel{name = <<"message">>} ->
-			      xml:append_subtags(maybe_add_delay(CleanPacket, utc, To, <<"">>),
+			      fxml:append_subtags(maybe_add_delay(CleanPacket, utc, To, <<"">>),
 						 [#xmlel{name = <<"x">>,
 							 attrs = [{<<"xmlns">>, ?NS_P1_PUSHED}]}]);
 			  _ ->
@@ -2714,7 +2715,7 @@ ack(StateData, From, To, Packet) ->
     if StateData#state.ack_enabled ->
 	    NeedsAck = case Packet of
 			   #xmlel{name = <<"presence">>} ->
-			       case xml:get_tag_attr_s(<<"type">>, Packet) of
+			       case fxml:get_tag_attr_s(<<"type">>, Packet) of
 				   <<"subscribe">> -> true;
 				   <<"subscribed">> -> true;
 				   <<"unsubscribe">> -> true;
@@ -2835,14 +2836,14 @@ rebind(StateData, JID, StreamID) ->
 notif_to_disable(El, StateData) ->
     SessionNotif = StateData#state.oor_notification,
     SessionAppId = StateData#state.oor_appid,
-    SpecifiedNotif = xml:get_path_s(El, [{elem, <<"notification">>}]),
-    SpecifiedAppID = xml:get_path_s(El, [{elem, <<"appid">>}, cdata]),
+    SpecifiedNotif = fxml:get_path_s(El, [{elem, <<"notification">>}]),
+    SpecifiedAppID = fxml:get_path_s(El, [{elem, <<"appid">>}, cdata]),
     case {SpecifiedNotif, SessionNotif} of
 	{#xmlel{}, #xmlel{}} ->
-	    SpecifiedNormalized = {xml:get_path_s(SpecifiedNotif, [{elem, <<"type">>}, cdata]),
-				   xml:get_path_s(SpecifiedNotif, [{elem, <<"id">>}, cdata])},
-	    SessionNormalized = {xml:get_path_s(SessionNotif, [{elem, <<"type">>}, cdata]),
-				 xml:get_path_s(SessionNotif, [{elem, <<"id">>}, cdata])},
+	    SpecifiedNormalized = {fxml:get_path_s(SpecifiedNotif, [{elem, <<"type">>}, cdata]),
+				   fxml:get_path_s(SpecifiedNotif, [{elem, <<"id">>}, cdata])},
+	    SessionNormalized = {fxml:get_path_s(SessionNotif, [{elem, <<"type">>}, cdata]),
+				 fxml:get_path_s(SessionNotif, [{elem, <<"id">>}, cdata])},
 	    if
 		(SpecifiedNormalized == SessionNormalized) and (SessionAppId == SpecifiedAppID) ->
 		    {ok, SessionAppId, SessionNotif}; %% match
@@ -2862,15 +2863,15 @@ notif_to_disable(El, StateData) ->
 process_push_iq(From, To, #iq{type = _Type, sub_el = El} = IQ, StateData) ->
     {Res, NewStateData} = case El of
 			      #xmlel{name = <<"push">>} ->
-				  SKeepAlive = xml:get_path_s(El,
+				  SKeepAlive = fxml:get_path_s(El,
 							      [{elem, <<"keepalive">>}, {attr, <<"max">>}]),
-				  SOORTimeout = xml:get_path_s(El,
+				  SOORTimeout = fxml:get_path_s(El,
 							       [{elem, <<"session">>}, {attr, <<"duration">>}]),
-				  Status = xml:get_path_s(El,
+				  Status = fxml:get_path_s(El,
 							  [{elem, <<"status">>}, cdata]),
-				  Show = xml:get_path_s(El,
+				  Show = fxml:get_path_s(El,
 							[{elem, <<"status">>}, {attr, <<"type">>}]),
-				  SSendBody = xml:get_path_s(El,
+				  SSendBody = fxml:get_path_s(El,
 							     [{elem, <<"body">>}, {attr, <<"send">>}]),
 				  SendBody =
 				      case SSendBody of
@@ -2890,7 +2891,7 @@ process_push_iq(From, To, #iq{type = _Type, sub_el = El} = IQ, StateData) ->
 						end,
 						none)
 				      end,
-				  SSendGroupchat = xml:get_path_s(El,
+				  SSendGroupchat = fxml:get_path_s(El,
 								  [{elem, <<"body">>}, {attr, <<"groupchat">>}]),
 				  SendGroupchat =
 				      case SSendGroupchat of
@@ -2907,7 +2908,7 @@ process_push_iq(From, To, #iq{type = _Type, sub_el = El} = IQ, StateData) ->
 						none)
 				      end,
 				  SendFrom = send_from(StateData, El),
-				  {Offline, Keep} = case xml:get_path_s(El,
+				  {Offline, Keep} = case fxml:get_path_s(El,
 									[{elem, <<"offline">>}, cdata])
 						    of
 							<<"true">> -> {true, false};
@@ -2925,7 +2926,7 @@ process_push_iq(From, To, #iq{type = _Type, sub_el = El} = IQ, StateData) ->
 								  false),
 							    {Off, false}
 						    end,
-				  Notification1 = xml:get_path_s(El,
+				  Notification1 = fxml:get_path_s(El,
 								 [{elem, <<"notification">>}]),
 				  Notification = case Notification1 of
 						     #xmlel{} ->
@@ -2936,9 +2937,9 @@ process_push_iq(From, To, #iq{type = _Type, sub_el = El} = IQ, StateData) ->
 								    [#xmlel{name = <<"type">>,
 									    children = [{xmlcdata, <<"none">>}]}]}
 						 end,
-				  Sandbox = xml:get_tag_attr_s(<<"apns-sandbox">>, El),
-				  AppID0 = xml:get_path_s(El, [{elem, <<"appid">>}, cdata]),
-				  Type = xml:get_path_s(Notification, [{elem, <<"type">>}, cdata]),
+				  Sandbox = fxml:get_tag_attr_s(<<"apns-sandbox">>, El),
+				  AppID0 = fxml:get_path_s(El, [{elem, <<"appid">>}, cdata]),
+				  Type = fxml:get_path_s(Notification, [{elem, <<"type">>}, cdata]),
 				  AppID = case {Type, Sandbox} of
 					      {<<"applepush">>, <<"true">>} ->
 						  <<AppID0/binary, "_dev">>;
@@ -3003,7 +3004,7 @@ process_push_iq(From, To, #iq{type = _Type, sub_el = El} = IQ, StateData) ->
 					  {{error, ?ERRT_NOT_ACCEPTABLE(Lang, Txt)}, StateData}
 				  end;
 			      #xmlel{name = <<"badge">>} ->
-				  SBadge = xml:get_path_s(El, [{attr, <<"unread">>}]),
+				  SBadge = fxml:get_path_s(El, [{attr, <<"unread">>}]),
 				  Badge = case catch jlib:binary_to_integer(SBadge) of
 					      B when is_integer(B) -> B;
 					      _ -> 0
@@ -3015,7 +3016,7 @@ process_push_iq(From, To, #iq{type = _Type, sub_el = El} = IQ, StateData) ->
 					  %% we have no idea of the token.
 					  {{error, ?ERR_BAD_REQUEST}, StateData};
 				      true ->
-					  DeviceID = xml:get_path_s(
+					  DeviceID = fxml:get_path_s(
 						       StateData#state.oor_notification,
 						       [{elem, <<"id">>}, cdata]),
 					  ok = mod_applepush:set_local_badge(
@@ -3044,14 +3045,14 @@ maybe_add_delay(El, TZ, From, Desc, {_, _, _} = TimeStamp) ->
 maybe_add_delay(#xmlel{children = Els} = El, TZ, From, Desc, TimeStamp) ->
     HasTS = lists:any(
 	      fun (#xmlel{name = <<"delay">>, attrs = Attrs}) ->
-		      xml:get_attr_s(<<"xmlns">>, Attrs) == (?NS_DELAY);
+		      fxml:get_attr_s(<<"xmlns">>, Attrs) == (?NS_DELAY);
 		  (_) ->
 		      false
 	      end,
 	      Els),
     if not HasTS ->
 	    {T_string, Tz_string} = jlib:timestamp_to_iso(TimeStamp, TZ),
-	    xml:append_subtags(El,
+	    fxml:append_subtags(El,
 			       [#xmlel{name = <<"delay">>,
 				       attrs = [
 						{<<"xmlns">>, ?NS_DELAY},
@@ -3063,11 +3064,11 @@ maybe_add_delay(#xmlel{children = Els} = El, TZ, From, Desc, TimeStamp) ->
     end.
 
 send_from(StateData, El) ->
-    case xml:get_path_s(El, [{elem, <<"body">>}, {attr, <<"jid">>}]) of
+    case fxml:get_path_s(El, [{elem, <<"body">>}, {attr, <<"jid">>}]) of
 	<<"false">> -> none;
 	<<"true">> -> jid;
 	_ ->
-	    case xml:get_path_s(
+	    case fxml:get_path_s(
 		   El, [{elem, <<"body">>}, {attr, <<"from">>}])
 	    of
 		<<"jid">> -> jid;
@@ -3439,7 +3440,7 @@ negotiate_stream_mgmt(_El, #state{resource = <<"">>} = StateData) ->
     send_element(StateData, ?MGMT_UNEXPECTED_REQUEST(?NS_STREAM_MGMT_3)),
     StateData;
 negotiate_stream_mgmt(#xmlel{name = Name, attrs = Attrs}, StateData) ->
-    case xml:get_attr_s(<<"xmlns">>, Attrs) of
+    case fxml:get_attr_s(<<"xmlns">>, Attrs) of
 	Xmlns when ?IS_SUPPORTED_MGMT_XMLNS(Xmlns) ->
 	    case stream_mgmt_enabled(StateData) of
 		true ->
@@ -3467,7 +3468,7 @@ negotiate_stream_mgmt(#xmlel{name = Name, attrs = Attrs}, StateData) ->
     end.
 
 perform_stream_mgmt(#xmlel{name = Name, attrs = Attrs}, StateData) ->
-    case xml:get_attr_s(<<"xmlns">>, Attrs) of
+    case fxml:get_attr_s(<<"xmlns">>, Attrs) of
 	Xmlns when Xmlns == StateData#state.mgmt_xmlns ->
 	    case Name of
 		<<"r">> ->
@@ -3492,10 +3493,10 @@ perform_stream_mgmt(#xmlel{name = Name, attrs = Attrs}, StateData) ->
 
 handle_enable(#state{mgmt_timeout = DefaultTimeout,
 		     mgmt_max_timeout = MaxTimeout} = StateData, Attrs) ->
-    Timeout = case xml:get_attr_s(<<"resume">>, Attrs) of
+    Timeout = case fxml:get_attr_s(<<"resume">>, Attrs) of
 		  ResumeAttr when ResumeAttr == <<"true">>;
 				  ResumeAttr == <<"1">> ->
-		      MaxAttr = xml:get_attr_s(<<"max">>, Attrs),
+		    MaxAttr = fxml:get_attr_s(<<"max">>, Attrs),
 		      case catch jlib:binary_to_integer(MaxAttr) of
 			  Max when is_integer(Max), Max > 0, Max =< MaxTimeout ->
 			      Max;
@@ -3533,7 +3534,7 @@ handle_r(StateData) ->
     StateData.
 
 handle_a(StateData, Attrs) ->
-    case catch jlib:binary_to_integer(xml:get_attr_s(<<"h">>, Attrs)) of
+    case catch jlib:binary_to_integer(fxml:get_attr_s(<<"h">>, Attrs)) of
 	H when is_integer(H), H >= 0 ->
 	    check_h_attribute(StateData, H);
 	_ ->
@@ -3543,12 +3544,12 @@ handle_a(StateData, Attrs) ->
     end.
 
 handle_resume(StateData, Attrs) ->
-    R = case xml:get_attr_s(<<"xmlns">>, Attrs) of
+    R = case fxml:get_attr_s(<<"xmlns">>, Attrs) of
 	    Xmlns when ?IS_SUPPORTED_MGMT_XMLNS(Xmlns) ->
 		case stream_mgmt_enabled(StateData) of
 		    true ->
-			case {xml:get_attr(<<"previd">>, Attrs),
-			      catch jlib:binary_to_integer(xml:get_attr_s(<<"h">>, Attrs))}
+		    case {fxml:get_attr(<<"previd">>, Attrs),
+			  catch jlib:binary_to_integer(fxml:get_attr_s(<<"h">>, Attrs))}
 			of
 			    {{value, PrevID}, H} when is_integer(H), H >= 0 ->
 				case inherit_session_state(StateData, PrevID) of
@@ -3668,9 +3669,9 @@ handle_unacked_stanzas(StateData, F)
 		      [N, jid:to_string(StateData#state.jid)]),
 	    lists:foreach(
 	      fun({_, Time, #xmlel{attrs = Attrs} = El}) ->
-		      From_s = xml:get_attr_s(<<"from">>, Attrs),
+		    From_s = fxml:get_attr_s(<<"from">>, Attrs),
 		      From = jid:from_string(From_s),
-		      To_s = xml:get_attr_s(<<"to">>, Attrs),
+		    To_s = fxml:get_attr_s(<<"to">>, Attrs),
 		      To = jid:from_string(To_s),
 		      F(From, To, El, Time)
 	      end, queue:to_list(Queue))
@@ -3726,7 +3727,7 @@ handle_unacked_stanzas(StateData)
 		case is_encapsulated_forward(El) of
 		    true ->
 			?DEBUG("Dropping forwarded message stanza from ~s",
-			       [xml:get_attr_s(<<"from">>, El#xmlel.attrs)]);
+			     [fxml:get_attr_s(<<"from">>, El#xmlel.attrs)]);
 		    false ->
 			ReRoute(From, To, El, Time)
 		end
@@ -3736,9 +3737,9 @@ handle_unacked_stanzas(_StateData) ->
     ok.
 
 is_encapsulated_forward(#xmlel{name = <<"message">>} = El) ->
-    SubTag = case {xml:get_subtag(El, <<"sent">>),
-		   xml:get_subtag(El, <<"received">>),
-		   xml:get_subtag(El, <<"result">>)}
+    SubTag = case {fxml:get_subtag(El, <<"sent">>),
+		   fxml:get_subtag(El, <<"received">>),
+		   fxml:get_subtag(El, <<"result">>)}
 	     of
 		 {false, false, false} -> false;
 		 {Tag, false, false} -> Tag;
@@ -3748,7 +3749,7 @@ is_encapsulated_forward(#xmlel{name = <<"message">>} = El) ->
     if SubTag == false ->
 	    false;
        true ->
-	    case xml:get_subtag(SubTag, <<"forwarded">>) of
+	    case fxml:get_subtag(SubTag, <<"forwarded">>) of
 		false -> false;
 		_ -> true
 	    end
@@ -3839,7 +3840,7 @@ csi_filter_stanza(#state{csi_state = CsiState, jid = JID} = StateData, Stanza) -
 	drop ->
 	    StateData;
 	send ->
-	    From = xml:get_tag_attr_s(<<"from">>, Stanza),
+	  From = fxml:get_tag_attr_s(<<"from">>, Stanza),
 	    StateData1 = csi_queue_send(StateData, From),
 	    StateData2 = send_stanza(StateData1#state{csi_state = active}, Stanza),
 	    StateData2#state{csi_state = CsiState}
@@ -3850,7 +3851,7 @@ csi_queue_add(#state{csi_queue = Queue} = StateData, Stanza) ->
 	true ->
 	    csi_queue_add(csi_queue_flush(StateData), Stanza);
 	false ->
-	    From = xml:get_tag_attr_s(<<"from">>, Stanza),
+	  From = fxml:get_tag_attr_s(<<"from">>, Stanza),
 	    NewQueue = lists:keystore(From, 1, Queue, {From, p1_time_compat:timestamp(), Stanza}),
 	    StateData#state{csi_queue = NewQueue}
     end.

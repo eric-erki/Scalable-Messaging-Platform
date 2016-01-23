@@ -510,7 +510,7 @@ compile(_Module, _Spec, DestDir) ->
     EjabBin = filename:dirname(code:which(ejabberd)),
     EjabInc = filename:join(filename:dirname(EjabBin), "include"),
     XmlHrl = filename:join(EjabInc, "xml.hrl"),
-    Logger = [{d, 'LAGER'} || code:is_loaded(lager)=/=false],
+    Logger = [{d, 'P1LOGGER'} || code:is_loaded(lager)==false],
     ExtLib = [{d, 'NO_EXT_LIB'} || filelib:is_file(XmlHrl)],
     Options = [{outdir, Ebin}, {i, "include"}, {i, EjabInc},
                verbose, report_errors, report_warnings]
@@ -589,10 +589,10 @@ rebar_dep({App, _, {git, Url, Ref}}) ->
 %% -- YAML spec parser
 
 consult(File) ->
-    case p1_yaml:decode_from_file(File, [plain_as_atom]) of
+    case fast_yaml:decode_from_file(File, [plain_as_atom]) of
         {ok, []} -> {ok, []};
         {ok, [Doc|_]} -> {ok, [format(Spec) || Spec <- Doc]};
-        {error, Err} -> {error, p1_yaml:format_error(Err)}
+        {error, Err} -> {error, fast_yaml:format_error(Err)}
     end.
 
 format({Key, Val}) when is_binary(Val) ->

@@ -123,12 +123,12 @@ read_caps(Els) -> read_caps(Els, nothing).
 read_caps([#xmlel{name = <<"c">>, attrs = Attrs}
 	   | Tail],
 	  Result) ->
-    case xml:get_attr_s(<<"xmlns">>, Attrs) of
+    case fxml:get_attr_s(<<"xmlns">>, Attrs) of
       ?NS_CAPS ->
-	  Node = xml:get_attr_s(<<"node">>, Attrs),
-	  Version = xml:get_attr_s(<<"ver">>, Attrs),
-	  Hash = xml:get_attr_s(<<"hash">>, Attrs),
-	  Exts = str:tokens(xml:get_attr_s(<<"ext">>, Attrs),
+	  Node = fxml:get_attr_s(<<"node">>, Attrs),
+	  Version = fxml:get_attr_s(<<"ver">>, Attrs),
+	  Hash = fxml:get_attr_s(<<"hash">>, Attrs),
+	  Exts = str:tokens(fxml:get_attr_s(<<"ext">>, Attrs),
 			    <<" ">>),
 	  read_caps(Tail,
 		    #caps{node = Node, hash = Hash, version = Version,
@@ -138,7 +138,7 @@ read_caps([#xmlel{name = <<"c">>, attrs = Attrs}
 read_caps([#xmlel{name = <<"x">>, attrs = Attrs}
 	   | Tail],
 	  Result) ->
-    case xml:get_attr_s(<<"xmlns">>, Attrs) of
+    case fxml:get_attr_s(<<"xmlns">>, Attrs) of
       ?NS_MUC_USER -> nothing;
       _ -> read_caps(Tail, Result)
     end;
@@ -152,7 +152,7 @@ user_send_packet(#xmlel{name = <<"presence">>, attrs = Attrs,
 		 #jid{luser = User, lserver = Server} = From,
 		 #jid{luser = User, lserver = Server,
 		      lresource = <<"">>}) ->
-    Type = xml:get_attr_s(<<"type">>, Attrs),
+    Type = fxml:get_attr_s(<<"type">>, Attrs),
     if Type == <<"">>; Type == <<"available">> ->
 	   case read_caps(Els) of
 	     nothing -> ok;
@@ -170,7 +170,7 @@ user_receive_packet(#xmlel{name = <<"presence">>, attrs = Attrs,
 		    _C2SState,
 		    #jid{lserver = Server},
 		    From, _To) ->
-    Type = xml:get_attr_s(<<"type">>, Attrs),
+    Type = fxml:get_attr_s(<<"type">>, Attrs),
     IsRemote = not lists:member(From#jid.lserver, ?MYHOSTS),
     if IsRemote and
 	 ((Type == <<"">>) or (Type == <<"available">>)) ->
@@ -230,7 +230,7 @@ disco_info(Acc, Host, Module, Node, Lang) ->
 
 c2s_presence_in(C2SState,
 		{From, To, {_, _, Attrs, Els}}) ->
-    Type = xml:get_attr_s(<<"type">>, Attrs),
+    Type = fxml:get_attr_s(<<"type">>, Attrs),
     Subscription = ejabberd_c2s:get_subscription(From,
 						 C2SState),
     Insert = ((Type == <<"">>) or (Type == <<"available">>))
@@ -450,7 +450,7 @@ feature_response(#iq{type = result,
 	  Features = lists:flatmap(fun (#xmlel{name =
 						   <<"feature">>,
 					       attrs = FAttrs}) ->
-					   [xml:get_attr_s(<<"var">>, FAttrs)];
+					   [fxml:get_attr_s(<<"var">>, FAttrs)];
 				       (_) -> []
 				   end,
 				   Els),
@@ -622,7 +622,7 @@ concat_features(Els) ->
     lists:usort(lists:flatmap(fun (#xmlel{name =
 					      <<"feature">>,
 					  attrs = Attrs}) ->
-				      [[xml:get_attr_s(<<"var">>, Attrs), $<]];
+				      [[fxml:get_attr_s(<<"var">>, Attrs), $<]];
 				  (_) -> []
 			      end,
 			      Els)).
@@ -631,11 +631,11 @@ concat_identities(Els) ->
     lists:sort(lists:flatmap(fun (#xmlel{name =
 					     <<"identity">>,
 					 attrs = Attrs}) ->
-				     [[xml:get_attr_s(<<"category">>, Attrs),
-				       $/, xml:get_attr_s(<<"type">>, Attrs),
+				     [[fxml:get_attr_s(<<"category">>, Attrs),
+				       $/, fxml:get_attr_s(<<"type">>, Attrs),
 				       $/,
-				       xml:get_attr_s(<<"xml:lang">>, Attrs),
-				       $/, xml:get_attr_s(<<"name">>, Attrs),
+				       fxml:get_attr_s(<<"xml:lang">>, Attrs),
+				       $/, fxml:get_attr_s(<<"name">>, Attrs),
 				       $<]];
 				 (_) -> []
 			     end,
@@ -644,8 +644,8 @@ concat_identities(Els) ->
 concat_info(Els) ->
     lists:sort(lists:flatmap(fun (#xmlel{name = <<"x">>,
 					 attrs = Attrs, children = Fields}) ->
-				     case {xml:get_attr_s(<<"xmlns">>, Attrs),
-					   xml:get_attr_s(<<"type">>, Attrs)}
+				     case {fxml:get_attr_s(<<"xmlns">>, Attrs),
+					   fxml:get_attr_s(<<"type">>, Attrs)}
 					 of
 				       {?NS_XDATA, <<"result">>} ->
 					   [concat_xdata_fields(Fields)];
@@ -661,10 +661,10 @@ concat_xdata_fields(Fields) ->
 					  attrs = Attrs, children = Els} =
 				       El,
 				   [FormType, VarFields] = Acc) ->
-				      case xml:get_attr_s(<<"var">>, Attrs) of
+				      case fxml:get_attr_s(<<"var">>, Attrs) of
 					<<"">> -> Acc;
 					<<"FORM_TYPE">> ->
-					    [xml:get_subtag_cdata(El,
+					    [fxml:get_subtag_cdata(El,
 								  <<"value">>),
 					     VarFields];
 					Var ->
@@ -677,7 +677,7 @@ concat_xdata_fields(Fields) ->
 										  children
 										      =
 										      VEls}) ->
-									      [[xml:get_cdata(VEls),
+									      [[fxml:get_cdata(VEls),
 										$<]];
 									  (_) ->
 									      []

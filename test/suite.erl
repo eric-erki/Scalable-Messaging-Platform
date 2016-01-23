@@ -99,9 +99,9 @@ init_stream(Config) ->
     ok = send_text(Config, io_lib:format(?STREAM_HEADER,
                                           [?config(server, Config)])),
     {xmlstreamstart, <<"stream:stream">>, Attrs} = recv(),
-    <<"jabber:client">> = xml:get_attr_s(<<"xmlns">>, Attrs),
-    <<"1.0">> = xml:get_attr_s(<<"version">>, Attrs),
-    StreamID = xml:get_attr_s(<<"id">>, Attrs),
+    <<"jabber:client">> = fxml:get_attr_s(<<"xmlns">>, Attrs),
+    <<"1.0">> = fxml:get_attr_s(<<"version">>, Attrs),
+    StreamID = fxml:get_attr_s(<<"id">>, Attrs),
     NewConfig = set_opt(stream_id, StreamID, Config),
     #stream_features{sub_els = Fs} = recv(),
     Mechs = lists:flatmap(
@@ -196,9 +196,9 @@ wait_auth_SASL_result(Config, ShouldFail) ->
                       io_lib:format(?STREAM_HEADER,
                                     [?config(server, Config)])),
             {xmlstreamstart, <<"stream:stream">>, Attrs} = recv(),
-            <<"jabber:client">> = xml:get_attr_s(<<"xmlns">>, Attrs),
-            <<"1.0">> = xml:get_attr_s(<<"version">>, Attrs),
-	    StreamID = xml:get_attr_s(<<"id">>, Attrs),
+            <<"jabber:client">> = fxml:get_attr_s(<<"xmlns">>, Attrs),
+            <<"1.0">> = fxml:get_attr_s(<<"version">>, Attrs),
+	    StreamID = fxml:get_attr_s(<<"id">>, Attrs),
 	    NewConfig = set_opt(stream_id, StreamID, Config),
             #stream_features{sub_els = Fs} = recv(),
 	    lists:foldl(
@@ -273,7 +273,7 @@ send(State, Pkt) ->
                       end,
     El = xmpp_codec:encode(NewPkt),
     ct:pal("sent: ~p <-~n~s", [El, xmpp_codec:pp(NewPkt)]),
-    ok = send_text(State, xml:element_to_binary(El)),
+    ok = send_text(State, fxml:element_to_binary(El)),
     NewID.
 
 send_recv(State, El) ->
@@ -299,7 +299,7 @@ sasl_new(<<"DIGEST-MD5">>, User, Server, Password) ->
 	     case cyrsasl_digest:parse(ServerIn) of
 	       bad -> {error, <<"Invalid SASL challenge">>};
 	       KeyVals ->
-		   Nonce = xml:get_attr_s(<<"nonce">>, KeyVals),
+		   Nonce = fxml:get_attr_s(<<"nonce">>, KeyVals),
 		   CNonce = id(),
                    Realm = proplists:get_value(<<"realm">>, KeyVals, Server),
 		   DigestURI = <<"xmpp/", Realm/binary>>,

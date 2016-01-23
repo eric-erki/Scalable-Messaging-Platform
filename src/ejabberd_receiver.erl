@@ -56,7 +56,7 @@
          shaper_state = none :: shaper:shaper(),
          c2s_pid :: pid(),
 	 max_stanza_size = infinity :: non_neg_integer() | infinity,
-         xml_stream_state :: xml_stream:xml_stream_state(),
+         xml_stream_state :: fxml_stream:xml_stream_state(),
          tref :: reference(),
          timeout = infinity:: timeout()}).
 
@@ -204,7 +204,7 @@ handle_call({change_controller, C2SPid}, _From,
 	    State) ->
     erlang:monitor(process, C2SPid),
     NewXMLStreamState =
-	xml_stream:change_callback_pid(State#state.xml_stream_state,
+	fxml_stream:change_callback_pid(State#state.xml_stream_state,
 				       C2SPid),
     NewState = State#state{c2s_pid = C2SPid,
 			   xml_stream_state = NewXMLStreamState},
@@ -365,17 +365,17 @@ element_wrapper(Element) -> Element.
 
 close_stream(undefined) -> ok;
 close_stream(XMLStreamState) ->
-    xml_stream:close(XMLStreamState).
+    fxml_stream:close(XMLStreamState).
 
 new_stream(undefined, _) ->
     undefined;
 new_stream(C2SPid, MaxStanzaSize) ->
-    xml_stream:new(C2SPid, MaxStanzaSize).
+    fxml_stream:new(C2SPid, MaxStanzaSize).
 
 parse_stream(undefined, <<>>) ->
     undefined;
 parse_stream(XMLStreamState, Data) ->
-    xml_stream:parse(XMLStreamState, Data).
+    fxml_stream:parse(XMLStreamState, Data).
 
 reset_parser(#state{xml_stream_state = undefined} = State) ->
     State;
@@ -383,14 +383,14 @@ reset_parser(#state{c2s_pid = C2SPid,
                     max_stanza_size = MaxStanzaSize,
                     xml_stream_state = XMLStreamState}
              = State) ->
-    NewStreamState = try xml_stream:reset(XMLStreamState)
+    NewStreamState = try fxml_stream:reset(XMLStreamState)
                      catch error:_ ->
                              close_stream(XMLStreamState),
                              case C2SPid of
                                  undefined ->
                                      undefined;
                                  _ ->
-                                     xml_stream:new(C2SPid, MaxStanzaSize)
+                                     fxml_stream:new(C2SPid, MaxStanzaSize)
                              end
                      end,
     State#state{xml_stream_state = NewStreamState}.

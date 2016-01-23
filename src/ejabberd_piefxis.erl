@@ -64,7 +64,7 @@
 -define(NS_PIEFXIS, <<"http://www.xmpp.org/extensions/xep-0227.html#ns">>).
 -define(NS_XI, <<"http://www.w3.org/2001/XInclude">>).
 
--record(state, {xml_stream_state :: xml_stream:xml_stream_state(),
+-record(state, {xml_stream_state :: fxml_stream:xml_stream_state(),
                 user = <<"">>    :: binary(),
                 server = <<"">>  :: binary(),
                 fd               :: file:io_device(),
@@ -85,7 +85,7 @@ import_file(FileName, State) ->
     case file:open(FileName, [read, binary]) of
 	{ok, Fd} ->
             Dir = filename:dirname(FileName),
-            XMLStreamState = xml_stream:new(self(), infinity),
+            XMLStreamState = fxml_stream:new(self(), infinity),
             Res = process(State#state{xml_stream_state = XMLStreamState,
                                       fd = Fd,
                                       dir = Dir}),
@@ -247,7 +247,7 @@ export_user(User, Server, Fd) ->
         get_privacy(User, Server) ++
         get_roster(User, Server) ++
         get_private(User, Server),
-    print(Fd, xml:element_to_binary(
+    print(Fd, fxml:element_to_binary(
                 #xmlel{name = <<"user">>,
                        attrs = [{<<"name">>, User},
                                 {<<"password">>, Pass}],
@@ -360,17 +360,17 @@ get_private(User, Server) ->
 process(#state{xml_stream_state = XMLStreamState, fd = Fd} = State) ->
     case file:read(Fd, ?CHUNK_SIZE) of
         {ok, Data} ->
-            NewXMLStreamState = xml_stream:parse(XMLStreamState, Data),
+            NewXMLStreamState = fxml_stream:parse(XMLStreamState, Data),
             case process_els(State#state{xml_stream_state =
                                              NewXMLStreamState}) of
                 {ok, NewState} ->
                     process(NewState);
                 Err ->
-                    xml_stream:close(NewXMLStreamState),
+                    fxml_stream:close(NewXMLStreamState),
                     Err
             end;
         eof ->
-            xml_stream:close(XMLStreamState),
+            fxml_stream:close(XMLStreamState),
             ok
     end.
 
@@ -388,7 +388,7 @@ process_els(State) ->
     end.
 
 process_el({xmlstreamstart, <<"server-data">>, Attrs}, State) ->
-    case xml:get_attr_s(<<"xmlns">>, Attrs) of
+    case fxml:get_attr_s(<<"xmlns">>, Attrs) of
         ?NS_PIEFXIS ->
             {ok, State};
         ?NS_PIE ->
@@ -403,7 +403,7 @@ process_el({xmlstreamcdata, _}, State) ->
 process_el({xmlstreamelement, #xmlel{name = <<"xi:include">>,
                                      attrs = Attrs}},
            #state{dir = Dir, user = <<"">>} = State) ->
-    FileName = xml:get_attr_s(<<"href">>, Attrs),
+    FileName = fxml:get_attr_s(<<"href">>, Attrs),
     case import_file(filename:join([Dir, FileName]), State) of
         ok ->
             {ok, State};
@@ -416,7 +416,7 @@ process_el({xmlstreamstart, <<"host">>, Attrs}, State) ->
 process_el({xmlstreamelement, #xmlel{name = <<"host">>,
                                      attrs = Attrs,
                                      children = Els}}, State) ->
-    JIDS = xml:get_attr_s(<<"jid">>, Attrs),
+    JIDS = fxml:get_attr_s(<<"jid">>, Attrs),
     case jid:from_string(JIDS) of
         #jid{lserver = S} ->
             case lists:member(S, ?MYHOSTS) of
@@ -459,8 +459,8 @@ process_users([], State) ->
 
 process_user(#xmlel{name = <<"user">>, attrs = Attrs, children = Els},
              #state{server = LServer} = State) ->
-    Name = xml:get_attr_s(<<"name">>, Attrs),
-    Pass = xml:get_attr_s(<<"password">>, Attrs),
+    Name = fxml:get_attr_s(<<"name">>, Attrs),
+    Pass = fxml:get_attr_s(<<"password">>, Attrs),
     case jid:nodeprep(Name) of
         error ->
             stop("Invalid 'user': ~s", [Name]);
@@ -487,7 +487,7 @@ process_user_els([], State) ->
 
 process_user_el(#xmlel{name = Name, attrs = Attrs, children = Els} = El,
                 State) ->
-    case {Name, xml:get_attr_s(<<"xmlns">>, Attrs)} of
+    case {Name, fxml:get_attr_s(<<"xmlns">>, Attrs)} of
         {<<"query">>, ?NS_ROSTER} ->
             process_roster(El, State);
         {<<"query">>, ?NS_PRIVACY} ->
@@ -575,7 +575,7 @@ process_vcard(El, State = #state{user = U, server = S}) ->
 
 %% @spec (Dir::string(), Host::string()) -> ok
 process_offline_msg(El, State = #state{user = U, server = S}) ->
-    FromS = xml:get_attr_s(<<"from">>, El#xmlel.attrs),
+    FromS = fxml:get_attr_s(<<"from">>, El#xmlel.attrs),
     case jid:from_string(FromS) of
         #jid{} = From ->
             To = jid:make(U, S, <<>>),
@@ -592,7 +592,7 @@ process_offline_msg(El, State = #state{user = U, server = S}) ->
 
 %% @spec (Dir::string(), Fn::string(), Host::string()) -> ok
 process_presence(El, #state{user = U, server = S} = State) ->
-    FromS = xml:get_attr_s(<<"from">>, El#xmlel.attrs),
+    FromS = fxml:get_attr_s(<<"from">>, El#xmlel.attrs),
     case jid:from_string(FromS) of
         #jid{} = From ->
             To = jid:make(U, S, <<>>),
