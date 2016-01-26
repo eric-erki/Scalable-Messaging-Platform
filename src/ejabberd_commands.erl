@@ -229,7 +229,8 @@
 	 execute_command/3,
 	 execute_command/4,
 	 execute_command/5,
-         opt_type/1
+         opt_type/1,
+         get_commands_spec/0
 	]).
 
 -include("ejabberd_commands.hrl").
@@ -247,7 +248,10 @@ init() ->
 			 {attributes, record_info(fields, ejabberd_commands)},
 			 {type, bag}]),
     mnesia:add_table_copy(ejabberd_commands, node(), ram_copies),
-    register_commands([
+    register_commands(get_commands_spec()).
+
+get_commands_spec() ->
+    [
         #ejabberd_commands{name = gen_html_doc_for_commands, tags = [documentation],
                            desc = "Generates html documentation for ejabberd_commands",
                            module = ejabberd_commands_doc, function = generate_html_output,
@@ -275,8 +279,7 @@ init() ->
                                         "that will have example invocation include in markdown document"],
                            result_desc = "0 if command failed, 1 when succedded",
                            args_example = ["/home/me/docs/api.html", "mod_admin", "java,json"],
-                           result_example = ok}
-]).
+                           result_example = ok}].
 
 -spec register_commands([ejabberd_commands()]) -> ok.
 

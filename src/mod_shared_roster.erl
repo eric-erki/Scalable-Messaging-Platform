@@ -42,7 +42,8 @@
          get_group_users/2, import_start/2, get_group_explicit_users/2,
 	 is_user_in_group/3, add_user_to_group/3,
          remove_user_from_group/3,
-	 enc_key/1, dec_key/1, enc_val/2, dec_val/2]).
+	 enc_key/1, dec_key/1, enc_val/2, dec_val/2,
+	 get_commands_spec/0]).
 
 -export([command_group_create/5, command_group_delete/2,
 	 command_add_user/3, command_remove_user/3,
@@ -96,7 +97,7 @@ start(Host, Opts) ->
 		       remove_user, 50),
     ejabberd_hooks:add(remove_user, Host, ?MODULE,
 		       remove_user, 50),
-    ejabberd_commands:register_commands(commands()).
+    ejabberd_commands:register_commands(get_commands_spec()).
 
 init_db(mnesia, _Host) ->
     mnesia:create_table(sr_group,
@@ -164,7 +165,7 @@ stop(Host) ->
 			  50),
     %%ejabberd_hooks:delete(remove_user, Host,
     %%    		  ?MODULE, remove_user, 50),
-    ejabberd_commands:unregister_commands(commands()).
+    ejabberd_commands:unregister_commands(get_commands_spec()).
 
 get_user_roster(Items, US) ->
     {U, S} = US,
@@ -1774,7 +1775,7 @@ import(LServer, {odbc, _}, p1db, <<"sr_user">>,
 import(_, {odbc, _}, odbc, _Tab, _) ->
     ok.
 
-commands() ->
+get_commands_spec() ->
     [
      #ejabberd_commands{name = shared_group_create,
                         tags = [erlang],

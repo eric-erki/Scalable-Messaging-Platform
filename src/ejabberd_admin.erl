@@ -58,7 +58,8 @@
 	 mnesia_change_nodename/4,
 	 restore/1, % Still used by some modules
 	 moderate_room_history/2,
-	 persist_recent_messages/0
+	 persist_recent_messages/0,
+	 get_commands_spec/0
 	]).
 
 -include("ejabberd.hrl").
@@ -66,16 +67,16 @@
 -include("ejabberd_commands.hrl").
 
 start() ->
-    ejabberd_commands:register_commands(commands()).
+    ejabberd_commands:register_commands(get_commands_spec()).
 
 stop() ->
-    ejabberd_commands:unregister_commands(commands()).
+    ejabberd_commands:unregister_commands(get_commands_spec()).
 
 %%%
 %%% ejabberd commands
 %%%
 
-commands() ->
+get_commands_spec() ->
     [
      %% The commands status, stop and restart are implemented also in ejabberd_ctl
      %% They are defined here so that other interfaces can use them too

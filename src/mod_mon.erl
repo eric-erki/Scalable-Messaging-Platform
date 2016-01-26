@@ -65,7 +65,7 @@
 	 backend_api_error/3, backend_api_badauth/3,
 	 pubsub_create_node/5, pubsub_delete_node/4,
 	 pubsub_publish_item/6, mod_opt_type/1, opt_type/1]).
-         %pubsub_broadcast_stanza/4 ]).
+         %pubsub_broadcast_stanza/4, get_commands_spec/0 ]).
 
 % dictionary command overrided for better control
 -compile({no_auto_import, [get/1]}).
@@ -140,7 +140,7 @@ init([Host, Opts]) ->
     [ejabberd_hooks:add(Hook, Component, ?MODULE, Hook, 20)
      || Component <- [Host], % Todo, Components for muc and pubsub
         Hook <- ?SUPPORTED_HOOKS],
-    ejabberd_commands:register_commands(commands()),
+    ejabberd_commands:register_commands(get_commands_spec()),
 
     % Start timers for cache and backends sync
     {ok, TSync} = timer:apply_interval(?HOUR, ?MODULE, sync_log, [Host]),
@@ -237,7 +237,7 @@ terminate(_Reason, State) ->
     [ejabberd_hooks:delete(Hook, Host, ?MODULE, Hook, 20)
      || Hook <- ?SUPPORTED_HOOKS],
     sync_log(Host),
-    ejabberd_commands:unregister_commands(commands()).
+    ejabberd_commands:unregister_commands(get_commands_spec()).
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
@@ -246,7 +246,7 @@ code_change(_OldVsn, State, _Extra) ->
 %% ejabberd commands
 %%====================================================================
 
-commands() ->
+get_commands_spec() ->
     [#ejabberd_commands{name = active_counters,
                         tags = [stats],
                         desc = "Returns active users counter in time period (daily_active_users, weekly_active_users, monthly_active_users)",

@@ -46,7 +46,8 @@
 	 enc_key/1, dec_key/1, dec_key_ts/1,
          enc_hist/2, dec_hist/2,
          enc_aff/2, dec_aff/2,
-         rh_prefix/2, key2us/2, rhus2key/4, import_start/2]).
+         rh_prefix/2, key2us/2, rhus2key/4, import_start/2,
+         get_commands_spec/0]).
 
 -export([init/1, handle_call/3, handle_cast/2,
 	 handle_info/2, terminate/2, code_change/3,
@@ -94,7 +95,7 @@ start(Host, Opts) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     ChildSpec = {Proc, {?MODULE, start_link, [Host, Opts]},
 		 temporary, 1000, worker, [?MODULE]},
-    ejabberd_commands:register_commands(commands()),
+    ejabberd_commands:register_commands(get_commands_spec()),
     supervisor:start_child(ejabberd_sup, ChildSpec).
 
 stop(Host) ->
@@ -102,11 +103,11 @@ stop(Host) ->
     stop_supervisor(Host),
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     ?GEN_SERVER:call(Proc, stop),
-    ejabberd_commands:unregister_commands(commands()),
+    ejabberd_commands:unregister_commands(get_commands_spec()),
     supervisor:delete_child(ejabberd_sup, Proc),
     {wait, Rooms}.
 
-commands() ->
+get_commands_spec() ->
     [#ejabberd_commands{name = register_support_channel,
                         tags = [support],
                         desc = "Register new support channel on server",

@@ -54,7 +54,8 @@
 	 muc_delete_room/2, muc_add_member/3,
 	 muc_remove_member/3, muc_kick_user/3,
 	 muc_send_system_message/4, muc_purge_archive/2,
-	 get_senderjid/1, kick_user/1, mod_opt_type/1]).
+	 get_senderjid/1, kick_user/1, mod_opt_type/1,
+	 get_commands_spec/0]).
 
 %-include("ejabberd.hrl").
 -include("logger.hrl").
@@ -68,16 +69,16 @@
 %%----------------------------
 
 start(_Host, _Opts) ->
-    ejabberd_commands:register_commands(commands()).
+    ejabberd_commands:register_commands(get_commands_spec()).
 
 stop(_Host) ->
-    ejabberd_commands:unregister_commands(commands()).
+    ejabberd_commands:unregister_commands(get_commands_spec()).
 
 %%%
 %%% Register commands
 %%%
 
-commands() ->
+get_commands_spec() ->
     [
      #ejabberd_commands{name = muc_create_room, tags = [muc_room],
 		       desc = "Create MUC room jid-room if room doesn’t exist"

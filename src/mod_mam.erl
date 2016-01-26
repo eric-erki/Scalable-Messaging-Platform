@@ -39,7 +39,8 @@
 	 process_iq_v0_2/3, process_iq_v0_3/3, remove_user/2,
 	 remove_user/3, mod_opt_type/1, muc_process_iq/4,
 	 disco_sm_features/5, muc_filter_message/5, delete_old_messages/2, opt_type/1,
-	 enc_key/1, dec_key/1, enc_val/2, dec_val/2, enc_prefs/2, dec_prefs/2]).
+	 enc_key/1, dec_key/1, enc_val/2, dec_val/2, enc_prefs/2, dec_prefs/2,
+	 get_commands_spec/0]).
 
 -include_lib("stdlib/include/ms_transform.hrl").
 -include("jlib.hrl").
@@ -108,7 +109,7 @@ start(Host, Opts) ->
 		       remove_user, 50),
     ejabberd_hooks:add(anonymous_purge_hook, Host, ?MODULE,
 		       remove_user, 50),
-    ejabberd_commands:register_commands(commands()),
+    ejabberd_commands:register_commands(get_commands_spec()),
     ok.
 
 init_db(mnesia, _Host) ->
@@ -179,7 +180,7 @@ stop(Host) ->
 			  remove_user, 50),
     ejabberd_hooks:delete(anonymous_purge_hook, Host,
 			  ?MODULE, remove_user, 50),
-    ejabberd_commands:unregister_commands(commands()),
+    ejabberd_commands:unregister_commands(get_commands_spec()),
     ok.
 
 remove_user(User, Server) ->
@@ -1643,7 +1644,7 @@ update(LServer, Key, Table, Fields, Vals, Where) ->
 join([], _Sep) -> [];
 join([H | T], Sep) -> [H, [[Sep, X] || X <- T]].
 
-commands() ->
+get_commands_spec() ->
     [#ejabberd_commands{name = delete_old_mam_messages, tags = [purge],
 			desc = "Delete MAM messages older than DAYS",
 			longdesc = "Valid message TYPEs: "

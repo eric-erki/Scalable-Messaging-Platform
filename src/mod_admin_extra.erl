@@ -79,7 +79,8 @@
 	 privacy_set/3,
 
 	 % Stats
-	 stats/1, stats/2
+	 stats/1, stats/2,
+	 get_commands_spec/0
 	]).
 
 
@@ -94,17 +95,17 @@
 %%%
 
 start(_Host, _Opts) ->
-    ejabberd_commands:register_commands(commands()).
+    ejabberd_commands:register_commands(get_commands_spec()).
 
 stop(_Host) ->
-    ejabberd_commands:unregister_commands(commands()).
+    ejabberd_commands:unregister_commands(get_commands_spec()).
 
 
 %%%
 %%% Register commands
 %%%
 
-commands() ->
+get_commands_spec() ->
     Vcard1FieldsString = "Some vcard field names in get/set_vcard are:\n"
 	" FN		- Full Name\n"
 	" NICKNAME	- Nickname\n"

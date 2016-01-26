@@ -68,7 +68,8 @@
 	 get_user_ip/3,
 	 get_max_user_sessions/2,
 	 get_all_pids/0,
-	 get_proc_num/0
+	 get_proc_num/0,
+	 get_commands_spec/0
 	]).
 
 -export([init/1, handle_call/3, handle_cast/2,
@@ -374,7 +375,7 @@ init([]) ->
     Mod:init(),
     ets:new(sm_iqtable, [named_table, bag]),
     lists:foreach(fun register_hooks/1, ?MYHOSTS),
-    ejabberd_commands:register_commands(commands()),
+    ejabberd_commands:register_commands(get_commands_spec()),
     ejabberd_cluster:subscribe(),
     start_handlers(),
     cache_tab:new(crls, [{max_size, 10000},
@@ -463,7 +464,7 @@ handle_info(_Info, State) ->
     {noreply, State}.
 
 terminate(_Reason, _State) ->
-    ejabberd_commands:unregister_commands(commands()),
+    ejabberd_commands:unregister_commands(get_commands_spec()),
     stop_handlers(),
     ok.
 
@@ -882,7 +883,7 @@ get_sm_backend() ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% ejabberd commands
 
-commands() ->
+get_commands_spec() ->
     [#ejabberd_commands{name = connected_users,
 			tags = [session],
 			desc = "List all established sessions",

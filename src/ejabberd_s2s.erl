@@ -44,7 +44,8 @@
 	 external_host_overloaded/1, is_temporarly_blocked/1,
 	 check_peer_certificate/3,
 	 needed_connections_number/2,
-	 get_connections_number_per_node/1]).
+	 get_connections_number_per_node/1,
+	 get_commands_spec/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
@@ -253,7 +254,7 @@ init([]) ->
 			 {local_content, true},
 			 {attributes, record_info(fields, s2s)}]),
     mnesia:add_table_copy(s2s, node(), ram_copies),
-    ejabberd_commands:register_commands(commands()),
+    ejabberd_commands:register_commands(get_commands_spec()),
     mnesia:create_table(temporarily_blocked,
 			[{ram_copies, [node()]},
 			 {attributes, record_info(fields, temporarily_blocked)}]),
@@ -276,7 +277,7 @@ handle_info({route, From, To, Packet}, State) ->
 handle_info(_Info, State) -> {noreply, State}.
 
 terminate(_Reason, _State) ->
-    ejabberd_commands:unregister_commands(commands()),
+    ejabberd_commands:unregister_commands(get_commands_spec()),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -451,7 +452,7 @@ send_element(Pid, El) ->
 %%%----------------------------------------------------------------------
 %%% ejabberd commands
 
-commands() ->
+get_commands_spec() ->
     [#ejabberd_commands{name = incoming_s2s_number,
 			tags = [stats, s2s],
 			desc =

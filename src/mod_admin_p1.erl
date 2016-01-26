@@ -59,7 +59,8 @@
 	% mass notification
 	 start_mass_message/3, stop_mass_message/1, mass_message/5,
 	% mam
-	 purge_mam/2]).
+	 purge_mam/2,
+	 get_commands_spec/0]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -72,16 +73,16 @@
 -define(MASSLOOP, massloop).
 
 start(_Host, _Opts) ->
-    ejabberd_commands:register_commands(commands()).
+    ejabberd_commands:register_commands(get_commands_spec()).
 
 stop(_Host) ->
-    ejabberd_commands:unregister_commands(commands()).
+    ejabberd_commands:unregister_commands(get_commands_spec()).
 
 %%%
 %%% Register commands
 %%%
 
-commands() ->
+get_commands_spec() ->
     [#ejabberd_commands{name = create_account,
 			tags = [accounts],
 			desc = "Create an ejabberd user account",
