@@ -136,9 +136,9 @@ AC_ARG_ENABLE(mssql,
 esac],[db_type=generic])
 
 AC_ARG_ENABLE(all,
-[AC_HELP_STRING([--enable-all], [same as --enable-odbc --enable-mysql --enable-pgsql --enable-sqlite --enable-pam --enable-zlib --enable-riak --enable-redis --enable-elixir --enable-iconv --enable-debug --enable-http --enable-lager --enable-tools --enable-p1db (useful for Dialyzer checks, default: no)])],
+[AC_HELP_STRING([--enable-all], [same as --enable-odbc --enable-mysql --enable-pgsql --enable-sqlite --enable-pam --enable-zlib --enable-riak --enable-redis --enable-elixir --enable-iconv --enable-debug --enable-http --enable-tools --enable-p1db (useful for Dialyzer checks, default: no)])],
 [case "${enableval}" in
-  yes) odbc=true mysql=true pgsql=true sqlite=true pam=true zlib=true riak=true redis=true elixir=true iconv=true debug=true http=true lager=true tools=true p1db=true ;;
+  yes) odbc=true mysql=true pgsql=true sqlite=true pam=true zlib=true riak=true redis=true elixir=true iconv=true debug=true http=true tools=true p1db=true ;;
   no) odbc=false mysql=false pgsql=false sqlite=false pam=false zlib=false riak=false redis=false elixir=false iconv=false debug=false http=false tools=false p1db=false ;;
   *) AC_MSG_ERROR(bad value ${enableval} for --enable-all) ;;
 esac],[])
@@ -263,14 +263,6 @@ AC_ARG_ENABLE(http,
   *) AC_MSG_ERROR(bad value ${enableval} for --enable-http) ;;
 esac],[if test "x$http" = "x"; then http=false; fi])
 
-AC_ARG_ENABLE(lager,
-[AC_HELP_STRING([--enable-lager], [enable lager support (default: yes)])],
-[case "${enableval}" in
-  yes) lager=true ;;
-  no)  lager=false ;;
-  *) AC_MSG_ERROR(bad value ${enableval} for --enable-lager) ;;
-esac],[if test "x$lager" = "x"; then lager=true; fi])
-
 AC_ARG_ENABLE(airbrake,
 [AC_HELP_STRING([--enable-airbrake], [enable Airbrake notification (default: no)])],
 [case "${enableval}" in
@@ -278,6 +270,7 @@ AC_ARG_ENABLE(airbrake,
   no)  airbrake=false ;;
   *) AC_MSG_ERROR(bad value ${enableval} for --enable-airbrake) ;;
 esac],[if test "x$airbrake" = "x"; then airbrake=false; fi])
+
 AC_ARG_ENABLE(latest_deps,
 [AC_HELP_STRING([--enable-latest-deps], [makes rebar use latest commits for dependences instead of tagged versions (default: no)])],
 [case "${enableval}" in
@@ -332,7 +325,6 @@ AC_SUBST(iconv)
 AC_SUBST(debug)
 AC_SUBST(pubsub_ng)
 AC_SUBST(http)
-AC_SUBST(lager)
 AC_SUBST(tools)
 AC_SUBST(airbrake)
 AC_SUBST(latest_deps)

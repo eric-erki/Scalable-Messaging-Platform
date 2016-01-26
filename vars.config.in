@@ -30,7 +30,6 @@
 {redis, @redis@}.
 {http, @http@}.
 {elixir, @elixir@}.
-{lager, @lager@}.
 {iconv, @iconv@}.
 {airbrake, @airbrake@}.
 {p1db, @p1db@}.
