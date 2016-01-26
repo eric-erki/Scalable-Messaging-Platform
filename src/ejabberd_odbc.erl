@@ -694,7 +694,7 @@ mysql_connect(Server, Port, DB, Username, Password) ->
 	of
 	{ok, Ref} ->
 	    p1_mysql_conn:fetch(
-		Ref, [<<"set names 'utf8' collate 'utf8_bin';">>], self()),
+		Ref, [<<"set names 'utf8mb4' collate 'utf8mb4_bin';">>], self()),
 	    p1_mysql_conn:fetch(
 		Ref, [<<"SET SESSION query_cache_type=1;">>], self()),
 	    {ok, Ref};
