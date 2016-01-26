@@ -81,7 +81,7 @@ stop(_Host) ->
 get_commands_spec() ->
     [
      #ejabberd_commands{name = muc_create_room, tags = [muc_room],
-		       desc = "Create MUC room jid-room if room doesn’t exist"
+		       desc = "Create MUC room jid-room if room doesn't exist"
 				" add jid-user to member list, "
 				" if previous step fails, destroy the room, "
 				" returns 0 in res field if rooms exists, else returns 1",
@@ -97,7 +97,7 @@ get_commands_spec() ->
 
      #ejabberd_commands{name = muc_add_member, tags = [muc_room],
 		       desc = "Add jid-user to member list of MUC room jid-room "
-			    "if he’s not already part of it. Returns 0 in res field if "
+			    "if he's not already part of it. Returns 0 in res field if "
 			    "jid-user is in the member list, else returns 1.",
 		       module = ?MODULE, function = muc_add_member,
 		       args = [{jid_room, binary}, {host, binary}, {jid_user, binary}],
@@ -105,7 +105,7 @@ get_commands_spec() ->
 
      #ejabberd_commands{name = muc_remove_member, tags = [muc_room],
 		       desc = "Remove jid-user from member list of MUC room jid-room "
-			    "if he’s already part of it. "
+			    "if he's already part of it. "
 			    "Remove jid-user from the occupant list if he's in the room.",
 		       module = ?MODULE, function = muc_remove_member,
 		       args = [{jid_room, binary}, {host, binary}, {jid_user, binary}],
@@ -113,7 +113,7 @@ get_commands_spec() ->
 
      #ejabberd_commands{name = muc_kick_user, tags = [muc_room],
 		       desc = "Remove jid-user from the occupant list of MUC room "
-			    "jid-room if he’s already part of it."
+			    "jid-room if he's already part of it."
 			    "Returns 0 in res field if jid-user is not in the "
 			    "occupant list, returns 1 in case of failure.",
 		       module = ?MODULE, function = muc_kick_user,
