@@ -149,8 +149,32 @@ check_permissions(#request{auth = HTTPAuth, headers = Headers}, Command)
 	    ?DEBUG("Unauthorized: ~p", [_E]),
             unauthorized_response()
     end;
-check_permissions(_, _Command) ->
-    unauthorized_response().
+check_permissions(#request{ip={IP, _Port}}, Command) ->
+    case catch binary_to_existing_atom(Command, utf8) of
+        Call when is_atom(Call) ->
+            Access = gen_mod:get_module_opt(global, ?MODULE, admin_ip_access,
+                                            mod_opt_type(admin_ip_access),
+                                            none),
+            Res = acl:match_rule(global, Access, IP),
+            case Res of
+                all ->
+                    {allowed, Call, admin};
+                [all] ->
+                    {allowed, Call, admin};
+                allow ->
+                    {allowed, Call, admin};
+                Commands when is_list(Commands) ->
+                    case lists:member(Call, Commands) of
+                        true -> {allowed, Call, admin};
+                        _ -> unauthorized_response()
+                    end;
+                _ ->
+                    unauthorized_response()
+            end;
+        _E ->
+            ?DEBUG("Unauthorized: ~p", [_E]),
+            unauthorized_response()
+    end.
 
 %% ------------------
 %% command processing
@@ -280,7 +304,11 @@ handle(Call, Auth, Args, Version) when is_atom(Call), is_list(Args) ->
 handle2(Call, Auth, Args, Version) when is_atom(Call), is_list(Args) ->
     {ArgsF, _ResultF} = ejabberd_commands:get_command_format(Call, Auth, Version),
     ArgsFormatted = format_args(Args, ArgsF),
-    case ejabberd_commands:execute_command(undefined, Auth,
+    Access = case Auth of
+                 admin -> [];
+                 _ -> undefined
+             end,
+    case ejabberd_commands:execute_command(Access, Auth,
 					   Call, ArgsFormatted, Version) of
 	{error, Error} ->
 	    throw(Error);
@@ -445,4 +473,6 @@ log(Call, Args, {Addr, Port}) ->
 
 mod_opt_type(access) ->
     fun(Access) when is_atom(Access) -> Access end;
-mod_opt_type(_) -> [access].
+mod_opt_type(admin_ip_access) ->
+    fun(Access) when is_atom(Access) -> Access end;
+mod_opt_type(_) -> [access, admin_ip_acl].
