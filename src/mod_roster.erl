@@ -57,7 +57,7 @@
 	 dec_roster_key/1, dec_roster_version_key/1,
 	 invalidate_roster_cache/2]).
 
--export([create_rosters/4, mod_opt_type/1, opt_type/1]).
+-export([create_rosters/4, mod_opt_type/1, opt_type/1, set_roster/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -531,6 +531,13 @@ invalidate_roster_cache(LUser, LServer) ->
         false ->
             ok
     end.
+
+set_roster(#roster{us = {LUser, LServer}, jid = LJID} = Item) ->
+    transaction(
+      LServer,
+      fun() ->
+	      roster_subscribe_t(LUser, LServer, LJID, Item)
+      end).
 
 item_to_xml(Item) ->
     Attrs1 = [{<<"jid">>,

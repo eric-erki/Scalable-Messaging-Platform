@@ -40,7 +40,7 @@
 	 enc_key/1, dec_key/1, process_local_iq/3,
 	 process_sm_iq/3, reindex_vcards/0, remove_user/2,
 	 export/1, import_info/0, import/5, import_start/2,
-	 mod_opt_type/1, opt_type/1]).
+	 mod_opt_type/1, opt_type/1, set_vcard/3]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").

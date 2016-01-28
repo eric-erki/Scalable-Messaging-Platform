@@ -48,6 +48,7 @@
 	 stop/1,
 	 store_packet/3,
 	 get_offline_els/2,
+	 store_offline_msg/5,
 	 pop_offline_messages/3,
 	 get_sm_features/5,
 	 get_sm_identity/5,
@@ -198,6 +199,9 @@ terminate(_Reason, State) ->
 
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
+store_offline_msg(Host, US, Msgs, Len, MaxOfflineMsgs) ->
+    DBType = gen_mod:db_type(Host, ?MODULE),
+    store_offline_msg(Host, US, Msgs, Len, MaxOfflineMsgs, DBType).
 
 init_db(mnesia, _Host) ->
     mnesia:create_table(offline_msg,

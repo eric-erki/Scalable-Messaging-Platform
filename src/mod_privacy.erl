@@ -39,7 +39,8 @@
 	 raw_to_item/1, is_list_needdb/1, updated_list/3,
          item_to_xml/1, get_user_lists/2, import/5, import_start/2,
 	 enc_key/1, dec_key/1, enc_val/2, dec_val/2,
-         p1db_to_items/1, items_to_p1db/1, import_stop/2]).
+         p1db_to_items/1, items_to_p1db/1, import_stop/2,
+	 set_privacy_list/1]).
 
 -export([sql_add_privacy_list/2,
 	 sql_get_default_privacy_list/2,
@@ -609,6 +610,35 @@ remove_privacy_list(LUser, LServer, Name, odbc) ->
 			 true -> sql_remove_privacy_list(LUser, Name), ok
 		      end
 		end
+	end,
+    odbc_queries:sql_transaction(LServer, F).
+
+set_privacy_list(#privacy{us = {_, LServer}} = Privacy) ->
+    DBType = gen_mod:db_type(LServer, ?MODULE),
+    set_privacy_list(Privacy, DBType).
+
+set_privacy_list(Privacy, mnesia) ->
+    mnesia:dirty_write(Privacy);
+set_privacy_list(Privacy, riak) ->
+    ejabberd_riak:put(Privacy, privacy_schema());
+set_privacy_list(#privacy{us = {LUser, LServer},
+			  default = Default,
+			  lists = Lists}, odbc) ->
+    F = fun() ->
+		lists:foreach(
+		  fun({Name, List}) ->
+			  sql_add_privacy_list(LUser, Name),
+			  {selected, [<<"id">>], [[I]]} =
+			      sql_get_privacy_list_id_t(LUser, Name),
+			  RItems = lists:map(fun item_to_raw/1, List),
+			  sql_set_privacy_list(I, RItems),
+			  if is_binary(Default) ->
+				  sql_set_default_privacy_list(LUser, Default),
+				  ok;
+			     true ->
+				  ok
+			  end
+		  end, Lists)
 	end,
     odbc_queries:sql_transaction(LServer, F).
 
