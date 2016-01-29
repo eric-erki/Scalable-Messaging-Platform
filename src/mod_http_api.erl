@@ -488,8 +488,6 @@ log(Call, Args, {Addr, Port}) ->
     AddrS = jlib:ip_to_list({Addr, Port}),
     ?INFO_MSG("Admin call ~s ~p from ~s:~p", [Call, Args, AddrS, Port]).
 
-mod_opt_type(access) ->
-    fun(Access) when is_atom(Access) -> Access end;
 mod_opt_type(admin_ip_access) ->
     fun(Access) when is_atom(Access) -> Access end;
-mod_opt_type(_) -> [access, admin_ip_acl].
+mod_opt_type(_) -> [admin_ip_acl].
