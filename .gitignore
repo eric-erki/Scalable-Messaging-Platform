@@ -51,8 +51,10 @@
 /c_src/*.o
 /dialyzer/
 /test/*.beam
+/test/*.ctc
 /logs/
 /priv/sql
 /rel/ejabberd
 /_build
 /mnesiadb
+/.rebar
