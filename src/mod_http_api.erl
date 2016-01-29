@@ -48,6 +48,23 @@
 %%
 %% Then to perform an action, send a POST request to the following URL:
 %% http://localhost:5280/api/<call_name>
+%%
+%% It's also possible to enable unrestricted access to some commands from group
+%% of IP addresses by using option `admin_ip_access` by having fragment like
+%% this in configuration file:
+%%   modules:
+%%     mod_http_api:
+%%       admin_ip_access: admin_ip_access_rule
+%%   access:
+%%     admin_ip_access_rule:
+%%       admin_ip_acl:
+%%         - command1
+%%         - command2
+%%         %% use `all` to give access to all commands
+%%   acl:
+%%     admin_ip_acl:
+%%       ip:
+%%         - "127.0.0.1/8"
 
 -module(mod_http_api).
 
