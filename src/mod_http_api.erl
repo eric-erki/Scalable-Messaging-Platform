@@ -490,4 +490,4 @@ log(Call, Args, {Addr, Port}) ->
 
 mod_opt_type(admin_ip_access) ->
     fun(Access) when is_atom(Access) -> Access end;
-mod_opt_type(_) -> [admin_ip_acl].
+mod_opt_type(_) -> [admin_ip_access].
