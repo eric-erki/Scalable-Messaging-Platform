@@ -1150,11 +1150,11 @@ setup_apns(Host, ProductionCertData, SandboxCertData) ->
             % if mod_applepush not started, write certs, generate config, start applepush
             ProductionCert = write_cert(ProductionCertData),
             SandboxCert = write_cert(SandboxCertData),
-            Config = apns_cfg(Host, ProductionCert, SandboxCert),
+            Config = applepush_cfg(Host, ProductionCert, SandboxCert),
             BaseDir = filename:dirname(os:getenv("EJABBERD_CONFIG_PATH")),
             ConfigFile = filename:append(BaseDir, <<"applepush.yml">>),
             file:write_file(ConfigFile, p1_yaml:encode([Config])),
-            start_applepush(Config),
+            start_appended_modules(Config),
             0;
         {Prod, [{_ProdId, Prod, ProdFile}, {_DevId, _Dev, DevFile}]} ->
             % if applepush is started the standard way, just overwrite certs
@@ -1182,6 +1182,51 @@ apns_spec(Host) ->
             {DefaultService, O3}
     end.
 
+applepush_cfg(Host, ProductionCert, SandboxCert) ->
+    [Service|_] = binary:split(Host, <<".">>),
+    ProductionAppId = appid_from_cert(ProductionCert),
+    SandboxAppId = appid_from_cert(SandboxCert),
+    {append_host_config, [
+        {Host, [{modules, [
+            {mod_applepush, [
+                {db_type, odbc},
+                {iqdisc, 50},
+                {default_service, <<"production.", Service/binary>>},
+                {push_services,
+                    [{ProductionAppId, <<"production.", Service/binary>>}
+                        || ProductionAppId =/= undefined] ++
+                    [{SandboxAppId, <<"sandbox.", Service/binary>>}
+                        || SandboxAppId =/= undefined]
+                }
+            ]},
+            {mod_applepush_service, [
+                {hosts,
+                    [{<<"production.", Service/binary>>, [
+                        {certfile, ProductionCert},
+                        {gateway, <<"gateway.push.apple.com">>},
+                        {port, 2195}]}
+                        || ProductionAppId =/= undefined] ++
+                    [{<<"sandbox.", Service/binary>>, [
+                        {certfile, SandboxCert},
+                        {gateway, <<"gateway.sandbox.push.apple.com">>},
+                        {port, 2195}]}
+                        || SandboxAppId =/= undefined]
+                }
+            ]}
+         ]}]}
+     ]}.
+
+appid_from_cert({error, _}) ->
+    undefined;
+appid_from_cert(Cert) ->
+    AppId = string:strip(
+        os:cmd("openssl x509 -in " ++ binary_to_list(Cert)
+            ++ " -noout -subject | sed 's!.*UID=\\([^/]*\\)/.*!\\1!'"),
+        right, $\n),
+    list_to_binary(AppId).
+
+write_cert(<<>>) ->
+    {error, undefined};
 write_cert(CertData) ->
     BaseDir = filename:dirname(os:getenv("EJABBERD_CONFIG_PATH")),
     TmpFile = filename:append(BaseDir, <<"new.pem">>),
@@ -1197,56 +1242,15 @@ write_cert(CertData) ->
             Error
     end.
 
-apns_cfg(Host, ProductionCert, SandboxCert) ->
-    [Service|_] = binary:split(Host, <<".">>),
-    {append_host_config, [
-        {Host, [{modules, [
-            applepush_cfg(Service, ProductionCert, SandboxCert),
-            applepush_service_cfg(Service, ProductionCert, SandboxCert)
-         ]}]}
-     ]}.
-
-applepush_cfg(Service, ProductionCert, SandboxCert) ->
-    ProductionAppId = appid_from_cert(ProductionCert),
-    SandboxAppId = appid_from_cert(SandboxCert),
-    {mod_applepush, [
-        {db_type, odbc},
-        {iqdisc, 50},
-        {default_service, <<"production.", Service/binary>>},
-        {push_services, [
-            {ProductionAppId, <<"production.", Service/binary>>},
-            {SandboxAppId, <<"sandbox.", Service/binary>>}
-         ]}
-     ]}.
-
-applepush_service_cfg(Service, ProductionCert, SandboxCert) ->
-    {mod_applepush_service, [
-        {hosts, [
-            {<<"production.", Service/binary>>, [
-                {certfile, ProductionCert},
-                {gateway, <<"gateway.push.apple.com">>},
-                {port, 2195}]},
-            {<<"sandbox.", Service/binary>>, [
-                {certfile, SandboxCert},
-                {gateway, <<"gateway.sandbox.push.apple.com">>},
-                {port, 2195}]}
-         ]}
-     ]}.
-
-appid_from_cert(Cert) ->
-    AppId = string:strip(
-        os:cmd("openssl x509 -in " ++ binary_to_list(Cert)
-            ++ " -noout -subject | sed 's!.*UID=\\([^/]*\\)/.*!\\1!'"),
-        right, $\n),
-    list_to_binary(AppId).
-
-start_applepush({append_host_config, [{Host, [{modules, Modules}]}]}) ->
-    [gen_mod:start_module(Host, Module, Opts)
-     || {Module, Opts} <- Modules].
-
 %% -----------------------------
 %% Internal function pattern
 %% -----------------------------
+
+start_appended_modules({append_host_config, Appends}) ->
+    [start_appended_modules(Host, proplists:get_value(modules, Append, []))
+     || {Host, Append} <- Appends].
+start_appended_modules(Host, Modules) ->
+    [gen_mod:start_module(Host, Mod, Opts) || {Mod, Opts} <- Modules].
 
 user_action(User, Server, Fun, OK) ->
     case ejabberd_auth:is_user_exists(User, Server) of
