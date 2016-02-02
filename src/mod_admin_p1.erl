@@ -62,7 +62,7 @@
 	 purge_mam/2,
 	 get_commands_spec/0,
 	% certificates
-	 setup_apns/3]).
+	 setup_apns/3, setup_gcm/3]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -300,6 +300,12 @@ get_commands_spec() ->
 			desc = "Setup the Apple Push Notification Service",
 			module = ?MODULE, function = setup_apns,
 			args = [{host, binary}, {production, binary}, {sandbox, binary}],
+			result = {res, integer}},
+     #ejabberd_commands{name = setup_gcm,
+			tags = [config],
+			desc = "Setup the Google Cloud Messaging service",
+			module = ?MODULE, function = setup_gcm,
+			args = [{host, binary}, {apikey, binary}, {appid, binary}],
 			result = {res, integer}}
     ].
 
@@ -1141,11 +1147,11 @@ purge_mam(_Host, _Days, _Backend) ->
     -2.
 
 %% -----------------------------
-%% Push certificates
+%% Apple Push Service
 %% -----------------------------
 
 setup_apns(Host, ProductionCertData, SandboxCertData) ->
-    case apns_spec(Host) of
+    case push_spec(Host, mod_applepush, mod_applepush_service, certfile) of
         undefined ->
             % if mod_applepush not started, write certs, generate config, start applepush
             ProductionCert = write_cert(ProductionCertData),
@@ -1165,21 +1171,6 @@ setup_apns(Host, ProductionCertData, SandboxCertData) ->
             % if applepush starded a custom way, abort
             ?ERROR_MSG("Can not cope with custom applepush configuration: ~p", [Other]),
             1
-    end.
-
-apns_spec(Host) ->
-    case proplists:get_value(Host, module_options(mod_applepush)) of
-        undefined ->
-            undefined;
-        O1 ->
-            [{hosts, O2}] = proplists:get_value(Host, module_options(mod_applepush_service)),
-            O3 = [{AppId, Service, proplists:get_value(certfile, proplists:get_value(Service, O2), <<>>)}
-                     || {AppId, Service} <- proplists:get_value(push_services, O1)],
-            DefaultService = case proplists:get_value(default_service, O1) of
-                undefined -> [{_, First, _}|_] = O3, First;
-                Defined -> Defined
-            end,
-            {DefaultService, O3}
     end.
 
 applepush_cfg(Host, ProductionCert, SandboxCert) ->
@@ -1243,6 +1234,49 @@ write_cert(CertData) ->
     end.
 
 %% -----------------------------
+%% Google Push Service
+%% -----------------------------
+
+setup_gcm(Host, ApiKey, AppId) ->
+    case push_spec(Host, mod_gcm, mod_gcm_service, apikey) of
+        undefined ->
+            % if mod_gcm not started, generate config, start gcm
+            Config = gcm_cfg(Host, ApiKey, AppId),
+            BaseDir = filename:dirname(os:getenv("EJABBERD_CONFIG_PATH")),
+            ConfigFile = filename:append(BaseDir, <<"gcm.yml">>),
+            file:write_file(ConfigFile, p1_yaml:encode([Config])),
+            start_appended_modules(Config),
+            0;
+        {Service, [{AppId, Service, ApiKey}]} ->
+            % if gcm is started the standard way, nothing to do
+            0;
+        Other ->
+            % if gcm starded a custom way, abort
+            ?ERROR_MSG("Can not cope with custom gcm configuration: ~p", [Other]),
+            1
+    end.
+
+gcm_cfg(Host, ApiKey, AppId) ->
+    [Service|_] = binary:split(Host, <<".">>),
+    {append_host_config, [
+        {Host, [{modules, [
+            {mod_gcm, [
+                {db_type, odbc},
+                {iqdisc, 50},
+                {default_service, Service},
+                {push_services, [{AppId, Service}]}
+            ]},
+            {mod_gcm_service, [
+                {hosts, [
+                    {Service, [
+                        {gateway, <<"https://android.googleapis.com/gcm/send">>},
+                        {apikey, ApiKey}]}
+                ]}
+            ]}
+         ]}]}
+     ]}.
+
+%% -----------------------------
 %% Internal function pattern
 %% -----------------------------
 
@@ -1251,6 +1285,21 @@ start_appended_modules({append_host_config, Appends}) ->
      || {Host, Append} <- Appends].
 start_appended_modules(Host, Modules) ->
     [gen_mod:start_module(Host, Mod, Opts) || {Mod, Opts} <- Modules].
+
+push_spec(Host, Mod, SrvMod, Key) ->
+    case proplists:get_value(Host, module_options(Mod)) of
+        undefined ->
+            undefined;
+        O1 ->
+            [{hosts, O2}] = proplists:get_value(Host, module_options(SrvMod)),
+            O3 = [{AppId, Service, proplists:get_value(Key, proplists:get_value(Service, O2), <<>>)}
+                     || {AppId, Service} <- proplists:get_value(push_services, O1)],
+            DefaultService = case proplists:get_value(default_service, O1) of
+                undefined -> [{_, First, _}|_] = O3, First;
+                Defined -> Defined
+            end,
+            {DefaultService, O3}
+    end.
 
 user_action(User, Server, Fun, OK) ->
     case ejabberd_auth:is_user_exists(User, Server) of
