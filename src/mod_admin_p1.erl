@@ -1152,25 +1152,25 @@ purge_mam(_Host, _Days, _Backend) ->
 
 setup_apns(Host, ProductionCertData, SandboxCertData) ->
     case push_spec(Host, mod_applepush, mod_applepush_service, certfile) of
-        undefined ->
-            % if mod_applepush not started, write certs, generate config, start applepush
-            ProductionCert = write_cert(ProductionCertData),
-            SandboxCert = write_cert(SandboxCertData),
-            Config = applepush_cfg(Host, ProductionCert, SandboxCert),
-            BaseDir = filename:dirname(os:getenv("EJABBERD_CONFIG_PATH")),
-            ConfigFile = filename:append(BaseDir, <<"applepush.yml">>),
-            file:write_file(ConfigFile, p1_yaml:encode([Config])),
-            start_appended_modules(Config),
-            0;
-        {Prod, [{_ProdId, Prod, ProdFile}, {_DevId, _Dev, DevFile}]} ->
-            % if applepush is started the standard way, just overwrite certs
-            file:write_file(ProdFile, ProductionCertData),
-            file:write_file(DevFile, SandboxCertData),
-            0;
-        Other ->
-            % if applepush starded a custom way, abort
-            ?ERROR_MSG("Can not cope with custom applepush configuration: ~p", [Other]),
-            1
+	undefined ->
+	    % if mod_applepush not started, write certs, generate config, start applepush
+	    ProductionCert = write_cert(ProductionCertData),
+	    SandboxCert = write_cert(SandboxCertData),
+	    Config = applepush_cfg(Host, ProductionCert, SandboxCert),
+	    BaseDir = filename:dirname(os:getenv("EJABBERD_CONFIG_PATH")),
+	    ConfigFile = filename:append(BaseDir, <<"applepush.yml">>),
+	    file:write_file(ConfigFile, p1_yaml:encode([Config])),
+	    start_appended_modules(Config),
+	    0;
+	{Prod, [{_ProdId, Prod, ProdFile}, {_DevId, _Dev, DevFile}]} ->
+	    % if applepush is started the standard way, just overwrite certs
+	    file:write_file(ProdFile, ProductionCertData),
+	    file:write_file(DevFile, SandboxCertData),
+	    0;
+	Other ->
+	    % if applepush starded a custom way, abort
+	    ?ERROR_MSG("Can not cope with custom applepush configuration: ~p", [Other]),
+	    1
     end.
 
 applepush_cfg(Host, ProductionCert, SandboxCert) ->
@@ -1178,42 +1178,42 @@ applepush_cfg(Host, ProductionCert, SandboxCert) ->
     ProductionAppId = appid_from_cert(ProductionCert),
     SandboxAppId = appid_from_cert(SandboxCert),
     {append_host_config, [
-        {Host, [{modules, [
-            {mod_applepush, [
-                {db_type, odbc},
-                {iqdisc, 50},
-                {default_service, <<"production.", Service/binary>>},
-                {push_services,
-                    [{ProductionAppId, <<"production.", Service/binary>>}
-                        || ProductionAppId =/= undefined] ++
-                    [{SandboxAppId, <<"sandbox.", Service/binary>>}
-                        || SandboxAppId =/= undefined]
-                }
-            ]},
-            {mod_applepush_service, [
-                {hosts,
-                    [{<<"production.", Service/binary>>, [
-                        {certfile, ProductionCert},
-                        {gateway, <<"gateway.push.apple.com">>},
-                        {port, 2195}]}
-                        || ProductionAppId =/= undefined] ++
-                    [{<<"sandbox.", Service/binary>>, [
-                        {certfile, SandboxCert},
-                        {gateway, <<"gateway.sandbox.push.apple.com">>},
-                        {port, 2195}]}
-                        || SandboxAppId =/= undefined]
-                }
-            ]}
-         ]}]}
-     ]}.
+	    {Host, [{modules, [
+		{mod_applepush, [
+			{db_type, odbc},
+			{iqdisc, 50},
+			{default_service, <<"production.", Service/binary>>},
+			{push_services,
+			    [{ProductionAppId, <<"production.", Service/binary>>}
+				|| ProductionAppId =/= undefined] ++
+			    [{SandboxAppId, <<"sandbox.", Service/binary>>}
+				|| SandboxAppId =/= undefined]
+			    }
+			]},
+		{mod_applepush_service, [
+			{hosts,
+			    [{<<"production.", Service/binary>>, [
+					{certfile, ProductionCert},
+					{gateway, <<"gateway.push.apple.com">>},
+					{port, 2195}]}
+				|| ProductionAppId =/= undefined] ++
+			    [{<<"sandbox.", Service/binary>>, [
+					{certfile, SandboxCert},
+					{gateway, <<"gateway.sandbox.push.apple.com">>},
+					{port, 2195}]}
+				|| SandboxAppId =/= undefined]
+			    }
+			]}
+		]}]}
+	    ]}.
 
 appid_from_cert({error, _}) ->
     undefined;
 appid_from_cert(Cert) ->
     AppId = string:strip(
-        os:cmd("openssl x509 -in " ++ binary_to_list(Cert)
-            ++ " -noout -subject | sed 's!.*UID=\\([^/]*\\)/.*!\\1!'"),
-        right, $\n),
+	    os:cmd("openssl x509 -in " ++ binary_to_list(Cert)
+		++ " -noout -subject | sed 's!.*UID=\\([^/]*\\)/.*!\\1!'"),
+	    right, $\n),
     list_to_binary(AppId).
 
 write_cert(<<>>) ->
@@ -1222,15 +1222,15 @@ write_cert(CertData) ->
     BaseDir = filename:dirname(os:getenv("EJABBERD_CONFIG_PATH")),
     TmpFile = filename:append(BaseDir, <<"new.pem">>),
     case file:write_file(TmpFile, CertData) of
-        ok ->
-            AppId = appid_from_cert(TmpFile),
-            CertFile = filename:append(BaseDir, <<AppId/binary, ".pem">>),
-            case file:rename(TmpFile, CertFile) of
-                ok -> CertFile;
-                Error -> Error
-            end;
-        Error ->
-            Error
+	ok ->
+	    AppId = appid_from_cert(TmpFile),
+	    CertFile = filename:append(BaseDir, <<AppId/binary, ".pem">>),
+	    case file:rename(TmpFile, CertFile) of
+		ok -> CertFile;
+		Error -> Error
+	    end;
+	Error ->
+	    Error
     end.
 
 %% -----------------------------
@@ -1239,42 +1239,42 @@ write_cert(CertData) ->
 
 setup_gcm(Host, ApiKey, AppId) ->
     case push_spec(Host, mod_gcm, mod_gcm_service, apikey) of
-        undefined ->
-            % if mod_gcm not started, generate config, start gcm
-            Config = gcm_cfg(Host, ApiKey, AppId),
-            BaseDir = filename:dirname(os:getenv("EJABBERD_CONFIG_PATH")),
-            ConfigFile = filename:append(BaseDir, <<"gcm.yml">>),
-            file:write_file(ConfigFile, p1_yaml:encode([Config])),
-            start_appended_modules(Config),
-            0;
-        {Service, [{AppId, Service, ApiKey}]} ->
-            % if gcm is started the standard way, nothing to do
-            0;
-        Other ->
-            % if gcm starded a custom way, abort
-            ?ERROR_MSG("Can not cope with custom gcm configuration: ~p", [Other]),
-            1
+	undefined ->
+	    % if mod_gcm not started, generate config, start gcm
+	    Config = gcm_cfg(Host, ApiKey, AppId),
+	    BaseDir = filename:dirname(os:getenv("EJABBERD_CONFIG_PATH")),
+	    ConfigFile = filename:append(BaseDir, <<"gcm.yml">>),
+	    file:write_file(ConfigFile, p1_yaml:encode([Config])),
+	    start_appended_modules(Config),
+	    0;
+	{Service, [{AppId, Service, ApiKey}]} ->
+	    % if gcm is started the standard way, nothing to do
+	    0;
+	Other ->
+	    % if gcm starded a custom way, abort
+	    ?ERROR_MSG("Can not cope with custom gcm configuration: ~p", [Other]),
+	    1
     end.
 
 gcm_cfg(Host, ApiKey, AppId) ->
     [Service|_] = binary:split(Host, <<".">>),
     {append_host_config, [
-        {Host, [{modules, [
-            {mod_gcm, [
-                {db_type, odbc},
-                {iqdisc, 50},
-                {default_service, Service},
-                {push_services, [{AppId, Service}]}
-            ]},
-            {mod_gcm_service, [
-                {hosts, [
-                    {Service, [
-                        {gateway, <<"https://android.googleapis.com/gcm/send">>},
-                        {apikey, ApiKey}]}
-                ]}
-            ]}
-         ]}]}
-     ]}.
+	    {Host, [{modules, [
+		{mod_gcm, [
+			{db_type, odbc},
+			{iqdisc, 50},
+			{default_service, Service},
+			{push_services, [{AppId, Service}]}
+			]},
+		{mod_gcm_service, [
+			{hosts, [
+				{Service, [
+					{gateway, <<"https://android.googleapis.com/gcm/send">>},
+					{apikey, ApiKey}]}
+				]}
+			]}
+		]}]}
+	    ]}.
 
 %% -----------------------------
 %% Internal function pattern
@@ -1288,17 +1288,17 @@ start_appended_modules(Host, Modules) ->
 
 push_spec(Host, Mod, SrvMod, Key) ->
     case proplists:get_value(Host, module_options(Mod)) of
-        undefined ->
-            undefined;
-        O1 ->
-            [{hosts, O2}] = proplists:get_value(Host, module_options(SrvMod)),
-            O3 = [{AppId, Service, proplists:get_value(Key, proplists:get_value(Service, O2), <<>>)}
-                     || {AppId, Service} <- proplists:get_value(push_services, O1)],
-            DefaultService = case proplists:get_value(default_service, O1) of
-                undefined -> [{_, First, _}|_] = O3, First;
-                Defined -> Defined
-            end,
-            {DefaultService, O3}
+	undefined ->
+	    undefined;
+	O1 ->
+	    [{hosts, O2}] = proplists:get_value(Host, module_options(SrvMod)),
+	    O3 = [{AppId, Service, proplists:get_value(Key, proplists:get_value(Service, O2), <<>>)}
+		    || {AppId, Service} <- proplists:get_value(push_services, O1)],
+	    DefaultService = case proplists:get_value(default_service, O1) of
+		undefined -> [{_, First, _}|_] = O3, First;
+		Defined -> Defined
+	    end,
+	    {DefaultService, O3}
     end.
 
 user_action(User, Server, Fun, OK) ->
