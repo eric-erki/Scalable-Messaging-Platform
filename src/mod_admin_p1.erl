@@ -60,7 +60,9 @@
 	 start_mass_message/3, stop_mass_message/1, mass_message/5,
 	% mam
 	 purge_mam/2,
-	 get_commands_spec/0]).
+	 get_commands_spec/0,
+	% certificates
+	 setup_apns/3]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -292,7 +294,13 @@ get_commands_spec() ->
 			     "or a negative error code.",
 			     module = ?MODULE, function = purge_mam,
 			     args = [{server, binary}, {days, integer}],
-			     result = {res, integer}}
+			     result = {res, integer}},
+     #ejabberd_commands{name = setup_apns,
+			tags = [config],
+			desc = "Setup the Apple Push Notification Service",
+			module = ?MODULE, function = setup_apns,
+			args = [{host, binary}, {production, binary}, {sandbox, binary}],
+			result = {res, integer}}
     ].
 
 
@@ -1132,6 +1140,109 @@ purge_mam(_Host, _Days, _Backend) ->
 	       [_Backend]),
     -2.
 
+%% -----------------------------
+%% Push certificates
+%% -----------------------------
+
+setup_apns(Host, ProductionCertData, SandboxCertData) ->
+    case apns_spec(Host) of
+        undefined ->
+            % if mod_applepush not started, write certs, generate config, start applepush
+            ProductionCert = write_cert(ProductionCertData),
+            SandboxCert = write_cert(SandboxCertData),
+            Config = apns_cfg(Host, ProductionCert, SandboxCert),
+            BaseDir = filename:dirname(os:getenv("EJABBERD_CONFIG_PATH")),
+            ConfigFile = filename:append(BaseDir, <<"applepush.yml">>),
+            file:write_file(ConfigFile, p1_yaml:encode([Config])),
+            start_applepush(Config),
+            0;
+        {Prod, [{_ProdId, Prod, ProdFile}, {_DevId, _Dev, DevFile}]} ->
+            % if applepush is started the standard way, just overwrite certs
+            file:write_file(ProdFile, ProductionCertData),
+            file:write_file(DevFile, SandboxCertData),
+            0;
+        Other ->
+            % if applepush starded a custom way, abort
+            ?ERROR_MSG("Can not cope with custom applepush configuration: ~p", [Other]),
+            1
+    end.
+
+apns_spec(Host) ->
+    case proplists:get_value(Host, module_options(mod_applepush)) of
+        undefined ->
+            undefined;
+        O1 ->
+            [{hosts, O2}] = proplists:get_value(Host, module_options(mod_applepush_service)),
+            O3 = [{AppId, Service, proplists:get_value(certfile, proplists:get_value(Service, O2), <<>>)}
+                     || {AppId, Service} <- proplists:get_value(push_services, O1)],
+            DefaultService = case proplists:get_value(default_service, O1) of
+                undefined -> [{_, First, _}|_] = O3, First;
+                Defined -> Defined
+            end,
+            {DefaultService, O3}
+    end.
+
+write_cert(CertData) ->
+    BaseDir = filename:dirname(os:getenv("EJABBERD_CONFIG_PATH")),
+    TmpFile = filename:append(BaseDir, <<"new.pem">>),
+    case file:write_file(TmpFile, CertData) of
+        ok ->
+            AppId = appid_from_cert(TmpFile),
+            CertFile = filename:append(BaseDir, <<AppId/binary, ".pem">>),
+            case file:rename(TmpFile, CertFile) of
+                ok -> CertFile;
+                Error -> Error
+            end;
+        Error ->
+            Error
+    end.
+
+apns_cfg(Host, ProductionCert, SandboxCert) ->
+    [Service|_] = binary:split(Host, <<".">>),
+    {append_host_config, [
+        {Host, [{modules, [
+            applepush_cfg(Service, ProductionCert, SandboxCert),
+            applepush_service_cfg(Service, ProductionCert, SandboxCert)
+         ]}]}
+     ]}.
+
+applepush_cfg(Service, ProductionCert, SandboxCert) ->
+    ProductionAppId = appid_from_cert(ProductionCert),
+    SandboxAppId = appid_from_cert(SandboxCert),
+    {mod_applepush, [
+        {db_type, odbc},
+        {iqdisc, 50},
+        {default_service, <<"production.", Service/binary>>},
+        {push_services, [
+            {ProductionAppId, <<"production.", Service/binary>>},
+            {SandboxAppId, <<"sandbox.", Service/binary>>}
+         ]}
+     ]}.
+
+applepush_service_cfg(Service, ProductionCert, SandboxCert) ->
+    {mod_applepush_service, [
+        {hosts, [
+            {<<"production.", Service/binary>>, [
+                {certfile, ProductionCert},
+                {gateway, <<"gateway.push.apple.com">>},
+                {port, 2195}]},
+            {<<"sandbox.", Service/binary>>, [
+                {certfile, SandboxCert},
+                {gateway, <<"gateway.sandbox.push.apple.com">>},
+                {port, 2195}]}
+         ]}
+     ]}.
+
+appid_from_cert(Cert) ->
+    AppId = string:strip(
+        os:cmd("openssl x509 -in " ++ binary_to_list(Cert)
+            ++ " -noout -subject | sed 's!.*UID=\\([^/]*\\)/.*!\\1!'"),
+        right, $\n),
+    list_to_binary(AppId).
+
+start_applepush({append_host_config, [{Host, [{modules, Modules}]}]}) ->
+    [gen_mod:start_module(Host, Module, Opts)
+     || {Module, Opts} <- Modules].
 
 %% -----------------------------
 %% Internal function pattern
