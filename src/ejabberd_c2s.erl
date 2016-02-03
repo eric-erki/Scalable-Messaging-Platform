@@ -3340,13 +3340,17 @@ is_revoked(Cert, CRL) ->
     TBSCert = Cert#'OTPCertificate'.tbsCertificate,
     TBSCertList = CRL#'CertificateList'.tbsCertList,
     SerialNumber = TBSCert#'OTPTBSCertificate'.serialNumber,
-    RevokedCerts = TBSCertList#'TBSCertList'.revokedCertificates,
-    lists:any(
-      fun (#'TBSCertList_revokedCertificates_SEQOF'{userCertificate = N}) ->
-	      SerialNumber == N;
-	  (_) ->
-	      false
-      end, RevokedCerts).
+    case TBSCertList#'TBSCertList'.revokedCertificates of
+	RevokedCerts when is_list(RevokedCerts) ->
+	    lists:any(
+	      fun (#'TBSCertList_revokedCertificates_SEQOF'{userCertificate = N}) ->
+		      SerialNumber == N;
+		  (_) ->
+		      false
+	      end, RevokedCerts);
+	_ ->
+	    false
+    end.
 
 is_known_issuer(_Cert, []) ->
     true;
