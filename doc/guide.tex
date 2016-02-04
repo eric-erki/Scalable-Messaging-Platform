@@ -1217,6 +1217,12 @@ There are some additional global options that can be specified in the ejabberd c
   \titem{s2s\_tls\_compression: true|false}
   Whether to enable or disable TLS compression for s2s connections.
   The default value is \term{true}.
+  \titem{c2s\_hibernate: TimeoutMs|hibernate}
+  Inactivity timeout in milliseconds before the c2s processes will be hibernated.
+  The default value is \term{90000}.
+  \titem{receiver\_hibernate: TimeoutMs|hibernate}
+  Inactivity timeout in milliseconds before the receiver processes will be hibernated.
+  The default value is \term{90000}.
   \titem{max\_fsm\_queue: Size}
     This option specifies the maximum number of elements in the queue of the FSM
     (Finite State Machine).

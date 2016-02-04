@@ -60,7 +60,7 @@
          tref :: reference(),
          timeout = infinity:: timeout()}).
 
--define(HIBERNATE_TIMEOUT, 90000).
+-define(HIBERNATE_TIMEOUT, ejabberd_config:get_option(receiver_hibernate, fun(X) when is_integer(X); X == hibernate-> X end, 90000)).
 
 -spec start_link(inet:socket(), atom(), shaper:shaper(),
                  non_neg_integer() | infinity) -> ignore |
