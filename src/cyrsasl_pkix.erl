@@ -67,12 +67,13 @@ mech_step(State, ClientIn) ->
         #'OTPCertificate'{} = Cert ->
             JIDs = get_jids(Cert),
             case find_jid_to_authenticate(JIDs, JID) of
-                #jid{user = U} ->
-                    case (State#state.is_user_exists)(U) of
-                        true ->
+                #jid{user = U, server = S} ->
+		    case ejabberd_auth:try_register(
+			   U, S, base64:encode(crypto:rand_bytes(20))) of
+			{atomic, Res} when Res == exists; Res == ok ->
                             {ok, [{username, U},
                                   {auth_module, undefined}]};
-                        _ ->
+			_ ->
                             {error, <<"not-authorized">>, U}
                     end;
                 Err ->
