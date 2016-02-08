@@ -125,7 +125,8 @@ start_link(StateName, StateData) ->
     (?GEN_FSM):start_link(?MODULE, [StateName, StateData],
 			  ?FSMOPTS).
 
-migrate(FsmRef, Node, After) when node(FsmRef) == node() ->
+migrate(FsmRef, Node, After) when (node(FsmRef) == node())
+			     and (Node =/= node()) ->
     erlang:send_after(After, FsmRef, {migrate, Node});
 migrate(_FsmRef, _Node, _After) ->
     ok.
@@ -930,9 +931,9 @@ handle_info({captcha_failed, From}, normal_state,
     {next_state, normal_state, NewState};
 handle_info({migrate, Node}, StateName, StateData) ->
     if Node /= node() ->
-	   {migrate, StateData,
-	    {Node, ?MODULE, start, [StateName, StateData]}, 0};
-       true -> {next_state, StateName, StateData}
+	    {stop, {migrated, Node}, StateData};
+       true ->
+	    {next_state, StateName, StateData}
     end;
 handle_info(system_shutdown, _StateName, StateData) ->
     {stop, normal, StateData#state{shutdown_reason = system_shutdown}};
@@ -943,14 +944,14 @@ handle_info({route, From, ToNick, Packet}, normal_state, StateData) ->
 handle_info(_Info, StateName, StateData) ->
     {next_state, StateName, StateData}.
 
-terminate({migrated, Clone}, _StateName, StateData) ->
-    ?INFO_MSG("Migrating room ~s@~s to ~p on node ~p",
-	      [StateData#state.room, StateData#state.host, Clone,
-	       node(Clone)]),
+terminate({migrated, Node}, StateName, StateData) ->
+    ?INFO_MSG("Migrating room ~s@~s on node ~p",
+	      [StateData#state.room, StateData#state.host, Node]),
     mod_muc:unregister_room(StateData#state.server_host,
 			    StateData#state.host,
                             StateData#state.room,
 			    self()),
+    ejabberd_cluster:call(Node, ?MODULE, start, [StateName, StateData]),
     ok;
 terminate(_Reason, _StateName, StateData) ->
     Reason = StateData#state.shutdown_reason,
