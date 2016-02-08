@@ -30,7 +30,7 @@
 	 %% Server
 	 status/0, reopen_log/0, rotate_log/0,
 	 set_loglevel/1,
-         stop_migrate/1, migrate/1,
+	 stop_migrate/0, migrate/0,
 	 stop_kindly/2, send_service_message_all_mucs/2,
 	 registered_vhosts/0,
 	 reload_config/0,
@@ -110,15 +110,14 @@ get_commands_spec() ->
 			args = [{delay, integer}, {announcement, string}],
 			result = {res, rescode}},
      #ejabberd_commands{name = migrate, tags = [server],
-                        desc = "Try to migrate C2S/BOSH/MUC sessions to other nodes",
-                        module = ?MODULE, function = migrate,
-			args = [{delay, integer}],
+			desc = "Try to migrate MUC rooms to other nodes",
+			module = ?MODULE, function = migrate,
+			args = [],
 			result = {res, rescode}},
      #ejabberd_commands{name = stop_migrate, tags = [server],
-                        desc = "Try to migrate C2S/BOSH/MUC sessions to other"
-                        "nodes and then stop",
-                        module = ?MODULE, function = stop_migrate,
-			args = [{delay, integer}],
+			desc = "Try to migrate MUC rooms to other nodes and then stop",
+			module = ?MODULE, function = stop_migrate,
+			args = [],
 			result = {res, rescode}},
      #ejabberd_commands{name = get_loglevel, tags = [logs, server],
 			desc = "Get the current loglevel",
@@ -411,63 +410,30 @@ send_service_message_all_mucs(Subject, AnnouncementText) ->
 %%%
 %%% Migrate w/o stopping
 %%%
-migrate(DelaySeconds) ->
-    WaitingDesc = io_lib:format("Starting migration, this will take ~p seconds",
-                                [DelaySeconds]),
-    Steps = [
-	     {"Stopping ejabberd port listeners",
-	      ejabberd_listener, stop_listeners, []},
-             {WaitingDesc, ejabberd_cluster, shutdown_migrate,
-              [DelaySeconds * 1000]}
-            ],
-    NumberLast = length(Steps),
-    TimestampStart = calendar:datetime_to_gregorian_seconds({date(), time()}),
-    lists:foldl(
-      fun({Desc, Mod, Func, Args}, NumberThis) ->
-	      SecondsDiff =
-		  calendar:datetime_to_gregorian_seconds({date(), time()})
-		  - TimestampStart,
-	      io:format("[~p/~p ~ps] ~s... ",
-			[NumberThis, NumberLast, SecondsDiff, Desc]),
-	      Result = apply(Mod, Func, Args),
-	      io:format("~p~n", [Result]),
-	      NumberThis+1
-      end,
-      1,
-      Steps),
-    ok.
+migrate() ->
+    case ejabberd_cluster:get_nodes()--[node()] of
+	[] ->
+	    ?ERROR_MSG("Can not start migration from node ~p: no cluster", [node()]),
+	    {error, no_cluster};
+	Cluster ->
+	    Rs = [{Room,Pid} ||
+		    {_,{Room,_},_,Pid} <- ets:tab2list(muc_online_room),
+		    node(Pid) == node()],
+	    lists:foldl(fun({_Room, Pid}, [DestNode|Tail]) ->
+			mod_muc_room:migrate(Pid, DestNode, 0),
+			Tail++[DestNode]
+		end, Cluster, Rs),
+	    ok
+    end.
 
 %%%
 %%% Migrate and stop
 %%%
-stop_migrate(DelaySeconds) ->
-    WaitingDesc = io_lib:format("Starting migration, this will take ~p seconds",
-                                [DelaySeconds]),
-    Steps = [
-	     {"Stopping ejabberd port listeners",
-	      ejabberd_listener, stop_listeners, []},
-             {WaitingDesc, ejabberd_cluster, shutdown_migrate,
-              [DelaySeconds * 1000]},
-	     {"Stopping ejabberd", application, stop, [ejabberd]},
-	     {"Stopping Mnesia", mnesia, stop, []},
-	     {"Stopping Erlang node", init, stop, []}
-    ],
-    NumberLast = length(Steps),
-    TimestampStart = calendar:datetime_to_gregorian_seconds({date(), time()}),
-    lists:foldl(
-      fun({Desc, Mod, Func, Args}, NumberThis) ->
-	      SecondsDiff =
-		  calendar:datetime_to_gregorian_seconds({date(), time()})
-		  - TimestampStart,
-	      io:format("[~p/~p ~ps] ~s... ",
-			[NumberThis, NumberLast, SecondsDiff, Desc]),
-	      Result = apply(Mod, Func, Args),
-	      io:format("~p~n", [Result]),
-	      NumberThis+1
-      end,
-      1,
-      Steps),
-    ok.
+stop_migrate() ->
+    migrate(),
+    application:stop(ejabberd),
+    mnesia:stop(),
+    init:stop().
 
 %%%
 %%% ejabberd_update
