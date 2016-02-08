@@ -1339,7 +1339,7 @@ list_shared_roster_groups(Host, Query, Lang) ->
 				      [?INPUTT(<<"submit">>, <<"addnew">>,
 					       <<"Add New">>)])])]))])),
     (?H1GL((?T(<<"Shared Roster Groups">>)),
-	   <<"modsharedroster">>, <<"mod_shared_roster">>))
+	   <<"mod_shared_roster">>, <<"mod_shared_roster">>))
       ++
       case Res of
 	ok -> [?XREST(<<"Submitted">>)];
@@ -1433,7 +1433,7 @@ shared_roster_group(Host, Group, Query, Lang) ->
 					     <<"20">>,
 					     list_to_binary(FDisplayedGroups))])])])])),
     (?H1GL((?T(<<"Shared Roster Groups">>)),
-	   <<"modsharedroster">>, <<"mod_shared_roster">>))
+	   <<"mod_shared_roster">>, <<"mod_shared_roster">>))
       ++
       [?XC(<<"h2">>, <<(?T(<<"Group ">>))/binary, Group/binary>>)] ++
 	case Res of
