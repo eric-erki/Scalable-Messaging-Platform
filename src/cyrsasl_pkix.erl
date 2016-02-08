@@ -72,7 +72,7 @@ mech_step(State, ClientIn) ->
 			   U, S, base64:encode(crypto:rand_bytes(20))) of
 			{atomic, Res} when Res == exists; Res == ok ->
                             {ok, [{username, U},
-                                  {auth_module, undefined}]};
+                                  {auth_module, ejabberd_auth_pkix}]};
 			_ ->
                             {error, <<"not-authorized">>, U}
                     end;
