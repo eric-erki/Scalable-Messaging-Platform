@@ -99,6 +99,7 @@
 	 oor_unread_users = (?SETS):new() :: ?SETS:ej_set(),
          oor_unread_client = 0 :: integer(),
 	 oor_offline = false :: boolean(),
+	 ask_offline = true :: boolean(),
          ack_enabled = false :: boolean(),
 	 ack_counter = 0 :: integer(),
          ack_queue = queue:new() :: ?TQUEUE,
