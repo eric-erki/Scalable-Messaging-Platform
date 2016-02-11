@@ -269,7 +269,89 @@ get_api_version([]) ->
 %% command handlers
 %% ----------------
 
+get_json_prop(Name, JSON) ->
+    case lists:keyfind(Name, 1, JSON) of
+	{Name, Val} -> Val;
+	false -> throw(<<"Can't find field ", Name/binary, " in struct">>)
+    end.
+get_json_prop(Name, JSON, Default) ->
+    case lists:keyfind(Name, 1, JSON) of
+	{Name, Val} -> Val;
+	false -> Default
+    end.
+
+process_bulk_add([{C1}, {C2}]) ->
+    Jid1 = get_json_prop(<<"jid">>, C1),
+    Nick1 = get_json_prop(<<"nick">>, C1, <<"">>),
+    Group1 = get_json_prop(<<"group">>, C1, <<"">>),
+    {U1, S1, _} = jid:tolower(jid:from_string(Jid1)),
+    Jid2 = get_json_prop(<<"jid">>, C2),
+    Nick2 = get_json_prop(<<"nick">>, C2, <<"">>),
+    Group2 = get_json_prop(<<"group">>, C2, <<"">>),
+    {U2, S2, _} = jid:tolower(jid:from_string(Jid2)),
+
+    case {ejabberd_auth:is_user_exists(U1, S1),
+	  ejabberd_auth:is_user_exists(U2, S2)}
+    of
+	{true, true} ->
+	    case mod_admin_extra:add_rosteritem(U2, S2, U1, S1, Nick1, Group1, <<"both">>) of
+		ok -> case mod_admin_extra:add_rosteritem(U1, S1, U2, S2, Nick2, Group2, <<"both">>) of
+			  ok -> false;
+			  _ -> {true, {[{Jid1, <<"Modifing roster failed">>}]}}
+		      end;
+		_ -> {true, {[{Jid2, <<"Modifing roster failed">>}]}}
+	    end;
+	{false, _} -> {true, {[{Jid1, <<"User doesn't exist">>}]}};
+	{_, false} -> {true, {[{Jid2, <<"User doesn't exist">>}]}}
+    end.
+
+process_bulk_remove([JidR1, JidR2]) ->
+    {UR1, SR1, _} = jid:tolower(jid:from_string(JidR1)),
+    {UR2, SR2, _} = jid:tolower(jid:from_string(JidR2)),
+    case mod_admin_extra:delete_rosteritem(UR1, SR1, UR2, SR2) of
+	ok ->
+	    case mod_admin_extra:delete_rosteritem(UR2, SR2, UR1, SR1) of
+		ok -> false;
+		_ -> {true, {[{JidR2, <<"Can't delete roster item">>}]}}
+	    end;
+	_ -> {true, {[{JidR1, <<"Can't delete roster item">>}]}}
+    end.
+
+do_bulk_roster_update(Args) ->
+    Err1 = case lists:keyfind(<<"add">>, 1, Args) of
+               {<<"add">>, List} ->
+                   lists:filtermap(fun process_bulk_add/1, List);
+               _ -> []
+           end,
+    Err2 = case lists:keyfind(<<"remove">>, 1, Args) of
+               {<<"remove">>, ListR} ->
+                   lists:filtermap(fun process_bulk_remove/1, ListR);
+               _ ->
+                   []
+           end,
+    Err = Err1 ++ Err2,
+    case Err of
+	[] ->
+	    {200, {[{<<"result">>, <<"success">>}]}};
+	_ ->
+	    {500, {[{<<"result">>, <<"failure">>},{<<"errors">>, Err}]}}
+    end.
+
+handle('bulk-roster-update', Auth, Args, Version) ->
+    Allowed = case Auth of
+		  admin -> true;
+		  _ -> ejabberd_commands:command_execution_allowed('bulk-roster-update',
+								   Auth, Version)
+	      end,
+    case Allowed of
+	true ->
+	    do_bulk_roster_update(Args);
+	_ ->
+		    {401, <<"not_allowed">>}
+    end;
+
 % generic ejabberd command handler
+
 handle(Call, Auth, Args, Version) when is_atom(Call), is_list(Args) ->
     case ejabberd_commands:get_command_format(Call, Auth, Version) of
         {ArgsSpec, _} when is_list(ArgsSpec) ->

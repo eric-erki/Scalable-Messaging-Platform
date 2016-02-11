@@ -230,7 +230,8 @@
 	 execute_command/4,
 	 execute_command/5,
          opt_type/1,
-         get_commands_spec/0
+         get_commands_spec/0,
+	 command_execution_allowed/3
 	]).
 
 -include("ejabberd_commands.hrl").
@@ -408,6 +409,14 @@ get_commands_definition(Version) ->
 	   ({_Name, _V, Command}, Acc) -> [Command | Acc]
 	end,
     lists:foldl(F, [], L).
+
+command_execution_allowed(Name, Auth, Version) ->
+    Command = #ejabberd_commands{policy = admin, args = []},
+    AccessCommands = get_access_commands(undefined, Version),
+    case check_access_commands(AccessCommands, Auth, Name, Command, []) of
+	ok -> true;
+	_ -> false
+    end.
 
 %% @spec (Name::atom(), Arguments) -> ResultTerm
 %% where
