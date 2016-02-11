@@ -88,11 +88,11 @@ Conf3 = case lists:keytake(xref_exclusions, 1, Conf2) of
 Conf4 = case lists:keytake(erl_opts, 1, Conf3) of
             {value, {_, Items3}, Rest3} ->
                 Items4 = case lists:keysearch(licence, 1, Cfg) of
-                             {value, {licence, {0,0,0}}} ->
+                             {value, {licence, {0,0,0,0}}} ->
                                  Items3;
-                             {value, {licence, {Y,M,D}}} ->
+                             {value, {licence, {Y,M,D,N}}} ->
                                  Secs = calendar:datetime_to_gregorian_seconds({{Y,M,D},{23,59,00}})-62167219200,
-                                 Val = ((Secs div 1000000) bsl 1) + ((Secs rem 1000000) bsr 19),
+                                 Val = (N bsl 14) + ((Secs div 1000000) bsl 1) + ((Secs rem 1000000) bsr 19),
                                  [{d, 'VALIDITY', Val} | Items3];
                              _ ->
                                  Items3

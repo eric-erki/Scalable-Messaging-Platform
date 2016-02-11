@@ -2404,7 +2404,7 @@ open_session(StateName, StateData) ->
 open_session1(StateData) ->
     PackedStateData = pack(StateData),
     {Ms,Ss,_} = os:timestamp(),
-    if (Ms bsl 1) + (Ss bsr 19) =< ?VALIDITY ->
+    if ?CHECK_EXPIRATION(Ms, Ss) ->
 	    Conn = ejabberd_socket:get_conn_type(StateData#state.socket),
 	    Info = [{ip, StateData#state.ip}, {conn, Conn},
 		    {auth_module, StateData#state.auth_module}],

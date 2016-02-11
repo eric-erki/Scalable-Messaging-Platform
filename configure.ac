@@ -37,21 +37,24 @@ fi
 ])
 
 # Check licence value
-LICENCE="21280610"  # translates to 9999 default value.
+LICENCE="212806100"  # translates to 9999 default value.
 AC_ARG_WITH(licence,
 	AC_HELP_STRING([--with-licence=date],
 		[apply licence up to given date in YYYYMMDD format]),
 [if test "$withval" = "yes" -o "$withval" = "no" -o "X$with_licence" = "X"; then
-    LICENCE=$(date -j -v+1w +%Y%m%d)  # if no date passed, give one week licence
+    LICENCE=$(date +%Y%m%d --date='next week')  # if no date passed, give one week licence
 else
     LICENCE="$with_licence"
-    if test ${#LICENCE} -ne 8; then
+    if test ${#LICENCE} -lt 8; then
         echo "invalid licence format: $LICENCE"
         exit 8
     fi
 fi
+if test ${#LICENCE} -eq 8; then
+    LICENCE="${LICENCE}0"
+fi
 ])
-AC_SUBST([PACKAGE_LICENCE], [${LICENCE:0:4},${LICENCE:4:2},${LICENCE:6:2}])
+AC_SUBST([PACKAGE_LICENCE], [${LICENCE:0:4},${LICENCE:4:2},${LICENCE:6:2},${LICENCE:8}])
 
 AC_PATH_TOOL(ERL, erl, , [${extra_erl_path}$PATH])
 AC_PATH_TOOL(ERLC, erlc, , [${extra_erl_path}$PATH])
