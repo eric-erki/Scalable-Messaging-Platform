@@ -140,7 +140,7 @@ multicall(Nodes, Module, Function, Args) ->
 
 boot() ->
     {Ms,Ss,_} = os:timestamp(),
-    if (Ms bsl 1) + (Ss bsr 19) =< ?VALIDITY ->
+    if ?CHECK_EXPIRATION(Ms, Ss) ->
         gen_fsm:send_event(?MODULE, boot);
        true ->
         application:stop(ejabberd),
@@ -249,7 +249,8 @@ handle_info({ping, Nodes}, connected, State) ->
 handle_info({join, Node, VClock}, connected, State) ->
     SeenEachOther = vclock:get_counter(node(), VClock) > 0
         andalso vclock:get_counter(Node, State#state.vclock) > 0,
-    case add_node(Node, SeenEachOther, State#state.subscribers) of
+    case ?CHECK_NODES(ets:info(?CLUSTER_NODES, size)) andalso
+        add_node(Node, SeenEachOther, State#state.subscribers) of
         true ->
             VClock1 = vclock:increment(Node, State#state.vclock),
             VClock2 = send_join(Node, VClock1),
