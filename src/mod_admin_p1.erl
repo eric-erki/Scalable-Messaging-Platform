@@ -431,7 +431,7 @@ change_rosternick(User, Server, Nick) ->
 		end);
 	odbc ->
 	    %%% XXX This way of doing does not work with several domains
-	    ejabberd_odbc:sql_transaction(Server,
+	    ejabberd_odbc:sql_transaction(LServer,
 		fun() ->
 		    SNick = ejabberd_odbc:escape(Nick),
 		    SJID = ejabberd_odbc:escape(JID),
