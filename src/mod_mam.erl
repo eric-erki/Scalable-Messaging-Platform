@@ -45,6 +45,7 @@
 -include_lib("stdlib/include/ms_transform.hrl").
 -include("jlib.hrl").
 -include("logger.hrl").
+-include("mod_muc.hrl").
 -include("mod_muc_room.hrl").
 -include("ejabberd_commands.hrl").
 
@@ -298,9 +299,27 @@ process_iq_v0_2(#jid{lserver = LServer} = From,
 	       #jid{lserver = LServer} = To,
 	       #iq{type = get, sub_el = #xmlel{name = <<"query">>} = SubEl} = IQ) ->
     Fs = parse_query_v0_2(SubEl),
-    process_iq(LServer, From, To, IQ, SubEl, Fs, chat);
+    case lists:keytake(withroom, 1, Fs) of
+	false ->
+	    process_iq(LServer, From, To, IQ, SubEl, Fs, chat);
+	{value, {_, RoomJID}, Fs2} ->
+	    To2 = jid:from_string(RoomJID),
+	    MUCState = get_room_state(get_room_pid(To2#jid.luser, To2#jid.lserver)),
+	    muc_process_iq(IQ, MUCState, From, To2, Fs2)
+    end;
 process_iq_v0_2(From, To, IQ) ->
     process_iq(From, To, IQ).
+
+get_room_pid(Name, Service) ->
+    case mnesia:dirty_read(muc_online_room, {Name, Service}) of
+        [] ->
+            room_not_found;
+        [Room] ->
+            Room#muc_online_room.pid
+    end.
+get_room_state(Room_pid) ->
+    {ok, R} = gen_fsm:sync_send_all_state_event(Room_pid, get_state),
+    R.
 
 % Query archive v0.3
 process_iq_v0_3(#jid{lserver = LServer} = From,
@@ -587,6 +606,8 @@ parse_query_v0_2(Query) ->
 	      [{<<"withtext">>, [xml:get_tag_cdata(El)]}];
 	  (#xmlel{name = <<"set">>}) ->
 	      [{<<"set">>, Query}];
+	  (#xmlel{name = <<"withroom">>} = El) ->
+	      [{withroom, xml:get_tag_cdata(El)}];
 	  (_) ->
 	     []
       end, Query#xmlel.children).
