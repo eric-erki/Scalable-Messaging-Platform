@@ -5010,18 +5010,20 @@ tab_add_online_user(JID, StateData) ->
     US = {LUser, LServer},
     Room = StateData#state.room,
     Host = StateData#state.host,
-    catch ets:insert(muc_online_users,
+    catch ejabberd_cluster:multicall(ets, insert,
+		    [muc_online_users,
 		     #muc_online_users{us = US, resource = LResource,
-				       room = Room, host = Host}).
+				       room = Room, host = Host}]).
 
 tab_remove_online_user(JID, StateData) ->
     {LUser, LServer, LResource} = jid:tolower(JID),
     US = {LUser, LServer},
     Room = StateData#state.room,
     Host = StateData#state.host,
-    catch ets:delete_object(muc_online_users,
-			    #muc_online_users{us = US, resource = LResource,
-					      room = Room, host = Host}).
+    catch ejabberd_cluster:multicall(ets, delete_object,
+			    [muc_online_users,
+			     #muc_online_users{us = US, resource = LResource,
+					       room = Room, host = Host}]).
 
 tab_count_user(JID) ->
     {LUser, LServer, _} = jid:tolower(JID),

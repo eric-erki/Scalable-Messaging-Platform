@@ -429,18 +429,11 @@ create_room(Name1, Host1, ServerHost) ->
 			  PersistHistory,
 			  RoomShaper,
 			  DefRoomOpts),
-	    {atomic, ok} = register_room(Host, Name, Pid),
+	    mod_muc:register_room(ServerHost, Host, Name, Pid),
 	    ok;
 	_ ->
 	    error
     end.
-
-register_room(Host, Name, Pid) ->
-    F = fun() ->
-		mnesia:write(#muc_online_room{name_host = {Name, Host},
-					      pid = Pid})
-	end,
-    mnesia:transaction(F).
 
 %% Create the room only in the database.
 %% It is required to restart the MUC service for the room to appear.
