@@ -368,21 +368,18 @@ delete_old_messages(TypeBin, Days) when TypeBin == <<"chat">>;
     Diff = Days * 24 * 60 * 60 * 1000000,
     TimeStamp = usec_to_now(p1_time_compat:system_time(micro_seconds) - Diff),
     Type = jlib:binary_to_atom(TypeBin),
-    {Results, _} =
-	lists:foldl(fun(Host, {Results, MnesiaDone}) ->
-			    case {gen_mod:db_type(Host, ?MODULE), MnesiaDone} of
-				{mnesia, true} ->
-				    {Results, true};
-				{mnesia, false} ->
-				    Res = delete_old_messages(TimeStamp, Type,
-							      global, mnesia),
-				    {[Res|Results], true};
-				{DBType, _} ->
-				    Res = delete_old_messages(TimeStamp, Type,
-							      Host, DBType),
-				    {[Res|Results], MnesiaDone}
-			    end
-		    end, {[], false}, ?MYHOSTS),
+    DBTypes = lists:usort(
+		lists:map(
+		  fun(Host) ->
+			  case gen_mod:db_type(Host, ?MODULE) of
+			      odbc -> {odbc, Host};
+			      Other -> Other
+			  end
+		  end, ?MYHOSTS)),
+    Results = lists:map(
+		fun(DBType) ->
+			delete_old_messages(TimeStamp, Type, DBType)
+		end, DBTypes),
     case lists:filter(fun(Res) -> Res /= ok end, Results) of
 	[] -> ok;
 	[NotOk|_] -> NotOk
@@ -390,7 +387,7 @@ delete_old_messages(TypeBin, Days) when TypeBin == <<"chat">>;
 delete_old_messages(_TypeBin, _Days) ->
     unsupported_type.
 
-delete_old_messages(TimeStamp, Type, global, mnesia) ->
+delete_old_messages(TimeStamp, Type, mnesia) ->
     MS = ets:fun2ms(fun(#archive_msg{timestamp = MsgTS,
 				     type = MsgType} = Msg)
 			    when MsgTS < TimeStamp,
@@ -401,9 +398,39 @@ delete_old_messages(TimeStamp, Type, global, mnesia) ->
     lists:foreach(fun(Rec) ->
 			  ok = mnesia:dirty_delete_object(Rec)
 		  end, OldMsgs);
-delete_old_messages(_TimeStamp, _Type, _Host, _DBType) ->
+delete_old_messages(TimeStamp, Type, p1db) ->
+    delete_old_messages_p1db(TimeStamp, Type, p1db:first(archive_msg));
+delete_old_messages(TimeStamp, Type, {odbc, Host}) ->
+    TypeClause = if Type == all -> <<"">>;
+		    true -> [<<" and kind='">>, jlib:atom_to_binary(Type), <<"'">>]
+		 end,
+    TS = integer_to_binary(now_to_usec(TimeStamp)),
+    ejabberd_odbc:sql_query(
+      Host, [<<"delete from archive where timestamp<">>,
+	     TS, TypeClause, <<";">>]),
+    ok;
+delete_old_messages(_TimeStamp, _Type, _DBType) ->
     %% TODO
     not_implemented.
+
+delete_old_messages_p1db(TimeStamp, Type, {ok, Key, Val, _VClock}) ->
+    Next = p1db:next(archive_msg, Key),
+    case split_key(Key) of
+	{_User, _Server, TS} ->
+	    Opts = binary_to_term(Val),
+	    MsgType = proplists:get_value(type, Opts, chat),
+	    MsgTS = usec_to_now(TS),
+	    if MsgTS < TimeStamp, MsgType == Type orelse Type == all ->
+		    p1db:delete(archive_msg, Key);
+	       true ->
+		    ok
+	    end;
+	_ ->
+	    ok
+    end,
+    delete_old_messages_p1db(TimeStamp, Type, Next);
+delete_old_messages_p1db(_TimeStamp, _Type, {error, _}) ->
+    ok.
 
 %%%===================================================================
 %%% Internal functions
@@ -1667,6 +1694,15 @@ get_suffix(Prefix, Key) ->
     Size = size(Prefix),
     <<_:Size/binary, TS:64>> = Key,
     TS.
+
+split_key(Key) ->
+    [Server, Tail] = binary:split(Key, <<0>>),
+    case binary:split(Tail, <<0>>) of
+	[User, <<TS:64>>] ->
+	    {User, Server, TS};
+	[User|_] ->
+	    {User, Server}
+    end.
 
 prefs_to_p1db(Prefs) ->
     Keys = record_info(fields, archive_prefs),
