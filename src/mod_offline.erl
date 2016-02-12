@@ -25,6 +25,8 @@
 
 -module(mod_offline).
 
+-compile([{parse_transform, ejabberd_sql_pt}]).
+
 -behaviour(ejabberd_config).
 
 -author('alexey@process-one.net').
@@ -86,6 +88,8 @@
 -include("ejabberd_web_admin.hrl").
 
 -include("mod_offline.hrl").
+
+-include("ejabberd_sql_pt.hrl").
 
 -define(PROCNAME, ejabberd_offline).
 
@@ -714,27 +718,24 @@ pop_offline_messages(Ls, LUser, LServer, mnesia) ->
       _ -> Ls
     end;
 pop_offline_messages(Ls, LUser, LServer, odbc) ->
-    EUser = ejabberd_odbc:escape(LUser),
-    case odbc_queries:get_and_del_spool_msg_t(LServer,
-					      EUser)
-	of
-      {atomic, {selected, [<<"username">>, <<"xml">>], Rs}} ->
-	  Ls ++
-	    lists:flatmap(fun ([_, XML]) ->
-				  case xml_stream:parse_element(XML) of
-				    {error, _Reason} ->
-                                          [];
-				    El ->
-                                          case offline_msg_to_route(LServer, El) of
-                                              error ->
-                                                  [];
-                                              RouteMsg ->
-                                                  [RouteMsg]
-                                          end
-				  end
-			  end,
-			  Rs);
-      _ -> Ls
+    case odbc_queries:get_and_del_spool_msg_t(LServer, LUser) of
+        {atomic, {selected, Rs}} ->
+            Ls ++
+                lists:flatmap(fun ({_, XML}) ->
+                                      case xml_stream:parse_element(XML) of
+                                          {error, _Reason} ->
+                                              [];
+                                          El ->
+                                              case offline_msg_to_route(LServer, El) of
+                                                  error ->
+                                                      [];
+                                                  RouteMsg ->
+                                                      [RouteMsg]
+                                              end
+                                      end
+                              end,
+                              Rs);
+        _ -> Ls
     end;
 pop_offline_messages(Ls, LUser, LServer, p1db) ->
     USPrefix = us_prefix(LUser, LServer),
@@ -897,8 +898,7 @@ remove_user(LUser, LServer, mnesia) ->
     F = fun () -> mnesia:delete({offline_msg, US}) end,
     mnesia:transaction(F);
 remove_user(LUser, LServer, odbc) ->
-    Username = ejabberd_odbc:escape(LUser),
-    odbc_queries:del_spool_msg(LServer, Username);
+    odbc_queries:del_spool_msg(LServer, LUser);
 remove_user(LUser, LServer, p1db) ->
     USPrefix = us_prefix(LUser, LServer),
     case p1db:get_by_prefix(offline_msg, USPrefix) of
@@ -990,13 +990,13 @@ get_offline_els(_LUser, _LServer, rest) ->
     throw({not_implemented,rest});
 
 get_offline_els(LUser, LServer, odbc) ->
-    Username = ejabberd_odbc:escape(LUser),
-    case catch ejabberd_odbc:sql_query(LServer,
-				       [<<"select xml from spool  where username='">>,
-					Username, <<"'  order by seq;">>]) of
-        {selected, [<<"xml">>], Rs} ->
+    case catch ejabberd_odbc:sql_query(
+                 LServer,
+                 ?SQL("select @(xml)s from spool where "
+                      "username=%(LUser)s order by seq")) of
+        {selected, Rs} ->
             lists:flatmap(
-              fun([XML]) ->
+              fun({XML}) ->
                       case xml_stream:parse_element(XML) of
                           #xmlel{} = El ->
                               case offline_msg_to_route(LServer, El) of
@@ -1198,20 +1198,20 @@ read_all_msgs(LUser, LServer, riak) ->
             []
     end;
 read_all_msgs(LUser, LServer, odbc) ->
-    Username = ejabberd_odbc:escape(LUser),
-    case catch ejabberd_odbc:sql_query(LServer,
-				       [<<"select xml from spool  where username='">>,
-					Username, <<"'  order by seq;">>])
-	of
-      {selected, [<<"xml">>], Rs} ->
-	  lists:flatmap(fun ([XML]) ->
-				case xml_stream:parse_element(XML) of
-				  {error, _Reason} -> [];
-				  El -> [El]
-				end
-			end,
-			Rs);
-      _ -> []
+    case catch ejabberd_odbc:sql_query(
+                 LServer,
+                 ?SQL("select @(xml)s from spool where "
+                      "username=%(LUser)s order by seq")) of
+        {selected, Rs} ->
+            lists:flatmap(
+              fun({XML}) ->
+                      case xml_stream:parse_element(XML) of
+                          {error, _Reason} -> [];
+                          El -> [El]
+                      end
+              end,
+              Rs);
+        _ -> []
     end.
 
 format_user_queue(Msgs, DBType)
@@ -1413,36 +1413,7 @@ us_to_list({User, Server}) ->
     jid:to_string({User, Server, <<"">>}).
 
 get_queue_length(LUser, LServer) ->
-    get_queue_length(LUser, LServer,
-		     gen_mod:db_type(LServer, ?MODULE)).
-
-get_queue_length(LUser, LServer, mnesia) ->
-    length(mnesia:dirty_read({offline_msg,
-			       {LUser, LServer}}));
-get_queue_length(LUser, LServer, p1db) ->
-    USPrefix = us_prefix(LUser, LServer),
-    case p1db:count_by_prefix(offline_msg, USPrefix) of
-        {ok, N} -> N;
-        _Err -> 0
-    end;
-get_queue_length(LUser, LServer, riak) ->
-    case ejabberd_riak:count_by_index(offline_msg,
-                                      <<"us">>, {LUser, LServer}) of
-        {ok, N} ->
-            N;
-        _ ->
-            0
-    end;
-get_queue_length(LUser, LServer, odbc) ->
-    Username = ejabberd_odbc:escape(LUser),
-    case catch ejabberd_odbc:sql_query(LServer,
-				       [<<"select count(*) from spool  where username='">>,
-					Username, <<"';">>])
-	of
-      {selected, [_], [[SCount]]} ->
-	  jlib:binary_to_integer(SCount);
-      _ -> 0
-    end.
+    count_offline_messages(LUser, LServer).
 
 get_messages_subset(User, Host, MsgsAll, DBType) ->
     Access = gen_mod:get_module_opt(Host, ?MODULE, access_max_user_messages,
@@ -1527,8 +1498,7 @@ delete_all_msgs(LUser, LServer, riak) ->
                                         <<"us">>, {LUser, LServer}),
     {atomic, Res};
 delete_all_msgs(LUser, LServer, odbc) ->
-    Username = ejabberd_odbc:escape(LUser),
-    odbc_queries:del_spool_msg(LServer, Username),
+    odbc_queries:del_spool_msg(LServer, LUser),
     {atomic, ok};
 
 delete_all_msgs(LUser, LServer, rest) ->
@@ -1573,15 +1543,13 @@ count_offline_messages(LUser, LServer, mnesia) ->
       _ -> 0
     end;
 count_offline_messages(LUser, LServer, odbc) ->
-    Username = ejabberd_odbc:escape(LUser),
-    case catch odbc_queries:count_records_where(LServer,
-						<<"spool">>,
-						<<"where username='",
-						  Username/binary, "'">>)
-	of
-      {selected, [_], [[Res]]} ->
-	  jlib:binary_to_integer(Res);
-      _ -> 0
+    case catch ejabberd_odbc:sql_query(
+                 LServer,
+                 ?SQL("select @(count(*))d from spool "
+                      "where username=%(LUser)s")) of
+        {selected, [{Res}]} ->
+            Res;
+        _ -> 0
     end;
 count_offline_messages(LUser, LServer, p1db) ->
     USPrefix = us_prefix(LUser, LServer),
