@@ -274,6 +274,7 @@ init([{SockMod, Socket}, Opts, FSMLimitOpts]) ->
 		     ({ciphers, _}) -> true;
 		     ({cafile, _}) -> true;
 		     ({ocsp, _}) -> true;
+		     ({crl, _}) -> true;
 		     ({dhfile, _}) -> true;
 		     (_) -> false
 		 end,
