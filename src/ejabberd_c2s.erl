@@ -3125,9 +3125,9 @@ verify_cert(StateData, Cert) ->
     case verify_issuer(StateData, Cert) of
 	{true, CAList} ->
 	    {OCSPURIs, CRLURIs} = get_verify_methods(Cert, StateData),
-	    OCSPEnabled = proplists:get_bool(ocsp, StateData#state.tls_options),
-	    CRLEnabled = proplists:get_bool(crl, StateData#state.tls_options),
-	    if OCSPEnabled andalso not CRLEnabled ->
+	    OCSP = proplists:get_value(ocsp, StateData#state.tls_options, true),
+	    CRL = proplists:get_value(crl, StateData#state.tls_options, true),
+	    if (OCSP == true) and (CRL == false) ->
 		    case verify_via_ocsp(OCSPURIs, Cert, CAList) of
 			true when StateData#state.ocsp_poll_interval /= undefined ->
 			    erlang:start_timer(
@@ -3139,9 +3139,9 @@ verify_cert(StateData, Cert) ->
 			{false, _} = Err ->
 			    Err
 		    end;
-	       CRLEnabled andalso not OCSPEnabled ->
+	       (CRL == true) and (OCSP == false) ->
 		    verify_via_crl(CRLURIs, Cert, CAList);
-	       true ->
+	       (CRL == true) and (OCSP == true) ->
 		    case verify_via_ocsp(OCSPURIs, Cert, CAList) of
 			{false, _} ->
 			    verify_via_crl(CRLURIs, Cert, CAList);
@@ -3152,7 +3152,9 @@ verify_cert(StateData, Cert) ->
 			    true;
 			true ->
 			    true
-		    end
+		    end;
+	       true ->
+		    false
 	    end;
 	{false, _} = Err ->
 	    Err
