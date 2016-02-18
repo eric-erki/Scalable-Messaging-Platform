@@ -214,18 +214,12 @@ get_last(LUser, LServer, riak) ->
             Err
     end;
 get_last(LUser, LServer, odbc) ->
-    Username = ejabberd_odbc:escape(LUser),
-    case catch odbc_queries:get_last(LServer, Username) of
-      {selected, [<<"seconds">>, <<"state">>], []} ->
-	  not_found;
-      {selected, [<<"seconds">>, <<"state">>],
-       [[STimeStamp, Status]]} ->
-	  case catch jlib:binary_to_integer(STimeStamp) of
-	    TimeStamp when is_integer(TimeStamp) ->
-		{ok, TimeStamp, Status};
-	    Reason -> {error, {invalid_timestamp, Reason}}
-	  end;
-      Reason -> {error, {invalid_result, Reason}}
+    case catch odbc_queries:get_last(LServer, LUser) of
+        {selected, []} ->
+            not_found;
+        {selected, [{TimeStamp, Status}]} ->
+            {ok, TimeStamp, Status};
+        Reason -> {error, {invalid_result, Reason}}
     end.
 
 get_last_iq(IQ, SubEl, LUser, LServer) ->
@@ -294,12 +288,7 @@ store_last_info(LUser, LServer, TimeStamp, Status,
 			       last_activity_schema())};
 store_last_info(LUser, LServer, TimeStamp, Status,
 		odbc) ->
-    Username = ejabberd_odbc:escape(LUser),
-    Seconds =
-	ejabberd_odbc:escape(iolist_to_binary(integer_to_list(TimeStamp))),
-    State = ejabberd_odbc:escape(Status),
-    odbc_queries:set_last_t(LServer, Username, Seconds,
-			    State).
+    odbc_queries:set_last_t(LServer, LUser, TimeStamp, Status).
 
 %% @spec (LUser::string(), LServer::string()) ->
 %%      {ok, TimeStamp::integer(), Status::string()} | not_found
@@ -320,8 +309,7 @@ remove_user(LUser, LServer, mnesia) ->
     F = fun () -> mnesia:delete({last_activity, US}) end,
     mnesia:transaction(F);
 remove_user(LUser, LServer, odbc) ->
-    Username = ejabberd_odbc:escape(LUser),
-    odbc_queries:del_last(LServer, Username);
+    odbc_queries:del_last(LServer, LUser);
 remove_user(LUser, LServer, p1db) ->
     USKey = us2key(LUser, LServer),
     {atomic, p1db:delete(last_activity, USKey)};
