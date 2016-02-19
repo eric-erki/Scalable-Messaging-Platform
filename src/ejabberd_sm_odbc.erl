@@ -46,7 +46,7 @@ init() ->
 	      end;
 	 (_, Err) ->
 	      Err
-      end, ok, ?MYHOSTS).
+      end, ok, ejabberd_sm:get_vh_by_backend(?MODULE)).
 
 set_session(#session{sid = {Now, Pid}, usr = {U, LServer, R},
 		     priority = Priority, info = Info}) ->
@@ -82,7 +82,7 @@ get_sessions() ->
     lists:flatmap(
       fun(LServer) ->
 	      get_sessions(LServer)
-      end, ?MYHOSTS).
+      end, ejabberd_sm:get_vh_by_backend(?MODULE)).
 
 get_sessions(LServer) ->
     case ejabberd_odbc:sql_query(
@@ -139,7 +139,7 @@ get_node_sessions(Node) ->
                       ?ERROR_MSG("failed to select from 'sm' table: ~p", [Err]),
 		      []
 	      end
-      end, ?MYHOSTS).
+      end, ejabberd_sm:get_vh_by_backend(?MODULE)).
 
 delete_node(Node) ->
     SNode = ejabberd_odbc:escape(jlib:atom_to_binary(Node)),
@@ -147,7 +147,7 @@ delete_node(Node) ->
       fun(Host) ->
 	      ejabberd_odbc:sql_query(
                 Host, [<<"delete from sm where node='">>, SNode, <<"'">>])
-      end, ?MYHOSTS).
+      end, ejabberd_sm:get_vh_by_backend(?MODULE)).
 
 get_sessions_number() ->
     lists:foldl(
@@ -160,7 +160,7 @@ get_sessions_number() ->
                       ?ERROR_MSG("failed to select from 'sm' table: ~p", [Err]),
 		      0
 	      end + Acc
-      end, 0, ?MYHOSTS).
+      end, 0, ejabberd_sm:get_vh_by_backend(?MODULE)).
 
 %%%===================================================================
 %%% Internal functions

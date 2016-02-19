@@ -95,7 +95,7 @@ get_sessions() ->
     lists:flatmap(
       fun(LServer) ->
 	      get_sessions(LServer)
-      end, ?MYHOSTS).
+      end, ejabberd_sm:get_vh_by_backend(?MODULE)).
 
 -spec get_sessions(binary()) -> [#session{}].
 get_sessions(LServer) ->
@@ -154,7 +154,7 @@ get_node_sessions(Node) ->
 		  _Err ->
                       []
 	      end
-      end, ?MYHOSTS).
+      end, ejabberd_sm:get_vh_by_backend(?MODULE)).
 
 delete_node(Node) ->
     lists:foreach(
@@ -197,7 +197,7 @@ delete_node(Node) ->
 		      ?ERROR_MSG("failed to clean redis table for "
 				 "server ~s: ~p", [LServer, Err])
 	      end
-      end, ?MYHOSTS).
+      end, ejabberd_sm:get_vh_by_backend(?MODULE)).
 
 get_sessions_number() ->
     lists:foldl(
@@ -209,7 +209,7 @@ get_sessions_number() ->
 		  _Err ->
                       0
 	      end + Acc
-      end, 0, ?MYHOSTS).
+      end, 0, ejabberd_sm:get_vh_by_backend(?MODULE)).
 
 %%%===================================================================
 %%% Internal functions
