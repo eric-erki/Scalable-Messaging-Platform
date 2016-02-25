@@ -239,6 +239,7 @@ disable_notification(JID, Notification, _AppID) ->
     case Type of
 	<<"gcm">> ->
 	    DeviceID = xml:get_path_s(Notification, [{elem, <<"id">>}, cdata]),
+            ?INFO_MSG("Disabling p1:push for ~s with gcm token ~p",[jid:to_string(JID),DeviceID]),
 	    case DeviceID of
 		ID1 when is_binary(ID1), size(ID1) > 0 ->
 	            delete_cache(JID, ID1),

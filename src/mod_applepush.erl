@@ -291,6 +291,7 @@ disable_notification(JID, Notification, _AppID) ->
     case Type of
 	<<"applepush">> ->
 	    DeviceID = xml:get_path_s(Notification, [{elem, <<"id">>}, cdata]),
+            ?INFO_MSG("Disabling p1:push for ~s with applepush token ~p",[jid:to_string(JID),DeviceID]),
 	    case catch erlang:list_to_integer(binary_to_list(DeviceID), 16) of
 		ID1 when is_integer(ID1) ->
 	            delete_cache(JID, ID1),

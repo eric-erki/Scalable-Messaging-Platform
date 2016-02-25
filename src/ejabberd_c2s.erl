@@ -2957,6 +2957,7 @@ process_push_iq(From, To, #iq{type = _Type, sub_el = El} = IQ, StateData) ->
 						  Keep ->
 						       ok;
 						  true ->
+                                                       ?INFO_MSG("Offline p1:push set to false, disabling any previous registration for ~s",[jid:to_string(StateData#state.jid)]),
 						       ejabberd_hooks:run(
 							 p1_push_disable, StateData#state.server,
 							 [StateData#state.jid, Notification, AppID])
