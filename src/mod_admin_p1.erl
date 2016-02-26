@@ -860,12 +860,10 @@ del_rosteritem(User, Server, JID, Push) ->
 	       odbc ->
 		   case ejabberd_odbc:sql_transaction(Server,
 						      fun () ->
-							      Username =
-								  ejabberd_odbc:escape(User),
 							      SJID =
-								  ejabberd_odbc:escape(jid:to_string(LJID)),
+								  jid:to_string(LJID),
 							      odbc_queries:del_roster(Server,
-										      Username,
+										      User,
 										      SJID)
 						      end)
 		       of

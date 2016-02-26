@@ -844,13 +844,10 @@ roster_subscribe_t(LUser, LServer, LJID, Item) ->
 roster_subscribe_t(_LUser, _LServer, _LJID, Item,
 		   mnesia) ->
     mnesia:write(Item);
-roster_subscribe_t(LUser, LServer, LJID, Item, odbc) ->
-    ItemVals = record_to_string(Item),
-    Username = ejabberd_odbc:escape(LUser),
-    SJID = ejabberd_odbc:escape(jid:to_string(LJID)),
+roster_subscribe_t(LUser, LServer, _LJID, Item, odbc) ->
+    ItemVals = record_to_row(Item),
     invalidate_roster_cache(LUser, LServer),
-    odbc_queries:roster_subscribe(LServer, Username, SJID,
-				  ItemVals);
+    odbc_queries:roster_subscribe(ItemVals);
 roster_subscribe_t(LUser, LServer, LJID, Item, p1db) ->
     USJKey = usj2key(LUser, LServer, LJID),
     Val = item_to_p1db(Item),
@@ -1222,12 +1219,11 @@ update_roster_t(_LUser, _LServer, _LJID, Item,
 		mnesia) ->
     mnesia:write(Item);
 update_roster_t(LUser, LServer, LJID, Item, odbc) ->
-    Username = ejabberd_odbc:escape(LUser),
-    SJID = ejabberd_odbc:escape(jid:to_string(LJID)),
-    ItemVals = record_to_string(Item),
-    ItemGroups = groups_to_string(Item),
+    SJID = jid:to_string(LJID),
+    ItemVals = record_to_row(Item),
+    ItemGroups = Item#roster.groups,
     invalidate_roster_cache(LUser, LServer),
-    odbc_queries:update_roster(LServer, Username, SJID, ItemVals,
+    odbc_queries:update_roster(LServer, LUser, SJID, ItemVals,
                                ItemGroups);
 update_roster_t(LUser, LServer, LJID, Item, p1db) ->
     USJKey = usj2key(LUser, LServer, LJID),
@@ -1245,10 +1241,9 @@ del_roster_t(LUser, LServer, LJID) ->
 del_roster_t(LUser, LServer, LJID, mnesia) ->
     mnesia:delete({roster, {LUser, LServer, LJID}});
 del_roster_t(LUser, LServer, LJID, odbc) ->
-    Username = ejabberd_odbc:escape(LUser),
-    SJID = ejabberd_odbc:escape(jid:to_string(LJID)),
+    SJID = jid:to_string(LJID),
     invalidate_roster_cache(LUser, LServer),
-    odbc_queries:del_roster(LServer, Username, SJID);
+    odbc_queries:del_roster(LServer, LUser, SJID);
 del_roster_t(LUser, LServer, LJID, p1db) ->
     USJKey = usj2key(LUser, LServer, LJID),
     p1db:delete(roster, USJKey);
@@ -1522,6 +1517,27 @@ record_to_string(#roster{us = {User, _Server},
     SAskMessage = ejabberd_odbc:escape(AskMessage),
     [Username, SJID, Nick, SSubscription, SAsk, SAskMessage,
      <<"N">>, <<"">>, <<"item">>].
+
+record_to_row(
+  #roster{us = {LUser, _LServer},
+          jid = JID, name = Name, subscription = Subscription,
+          ask = Ask, askmessage = AskMessage}) ->
+    SJID = jid:to_string(jid:tolower(JID)),
+    SSubscription = case Subscription of
+		      both -> <<"B">>;
+		      to -> <<"T">>;
+		      from -> <<"F">>;
+		      none -> <<"N">>
+		    end,
+    SAsk = case Ask of
+	     subscribe -> <<"S">>;
+	     unsubscribe -> <<"U">>;
+	     both -> <<"B">>;
+	     out -> <<"O">>;
+	     in -> <<"I">>;
+	     none -> <<"N">>
+	   end,
+    {LUser, SJID, Name, SSubscription, SAsk, AskMessage}.
 
 groups_to_string(#roster{us = {User, _Server},
 			 jid = JID, groups = Groups}) ->
