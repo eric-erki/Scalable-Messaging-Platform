@@ -1683,6 +1683,8 @@ handle_info({rebind, _}, StateName, StateData) ->
     fsm_next_state(StateName, StateData);
 handle_info({timeout, _Timer, _}, StateName, StateData) ->
     fsm_next_state(StateName, StateData);
+handle_info(dont_ask_offline, StateName, StateData) ->
+    fsm_next_state(StateName, StateData#state{ask_offline = false});
 handle_info(Info, StateName, StateData) ->
     ?ERROR_MSG("Unexpected info: ~p", [Info]),
     fsm_next_state(StateName, StateData).
@@ -2313,7 +2315,7 @@ process_privacy_iq(From, To,
     ejabberd_router:route(To, From, jlib:iq_to_xml(IQRes)),
     NewStateData.
 
-resend_offline_messages(StateData) ->
+resend_offline_messages(#state{ask_offline = true} = StateData) ->
     case ejabberd_hooks:run_fold(resend_offline_messages_hook,
 				 StateData#state.server, [],
 				 [StateData#state.user, StateData#state.server])
@@ -2331,7 +2333,9 @@ resend_offline_messages(StateData) ->
 		      end
 	      end,
 	      Rs)
-    end.
+    end;
+resend_offline_messages(_StateData) ->
+    ok.
 
 resend_subscription_requests(#state{user = User, server = Server} = StateData) ->
     PendingSubscriptions =
