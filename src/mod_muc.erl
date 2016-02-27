@@ -1776,7 +1776,7 @@ mod_opt_type(_) ->
      max_users_admin_threshold, max_users_presence,
      min_message_interval, min_presence_interval, p1db_group,
      persist_history, room_shaper, user_message_shaper,
-     user_presence_shaper].
+     user_presence_shaper, preload_rooms].
 
 opt_type(p1db_group) ->
     fun (G) when is_atom(G) -> G end;
