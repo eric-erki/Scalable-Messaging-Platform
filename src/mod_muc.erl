@@ -856,24 +856,33 @@ get_rooms(LServer, Host, odbc) ->
 
 load_permanent_rooms(Host, ServerHost, Access,
 		     HistorySize, PersistHistory, RoomShaper) ->
-    lists:foreach(
-      fun(R) ->
-		{Room, Host} = R#muc_room.name_host,
-		case get_room_state_if_broadcasted({Room, Host}) of
-		    {ok, RoomState} ->
-			mod_muc_room:start(normal_state, RoomState);
-		    error ->
-			case mnesia:dirty_read(muc_online_room, {Room, Host}) of
-			    [] ->
-				{ok, _Pid} = mod_muc_room:start(Host,
-					ServerHost, Access, Room,
-					HistorySize, PersistHistory, RoomShaper,
-					R#muc_room.opts);
-			    _ -> ok
-			end
-		end
-	end,
-	get_rooms(ServerHost, Host)).
+    case gen_mod:get_module_opt(ServerHost,
+				?MODULE, preload_rooms,
+				fun(B) when is_boolean(B) -> B end,
+				true) of
+	true ->
+	    lists:foreach(
+	      fun(R) ->
+		      {Room, Host} = R#muc_room.name_host,
+		      case get_room_state_if_broadcasted({Room, Host}) of
+			  {ok, RoomState} ->
+			      mod_muc_room:start(normal_state, RoomState);
+			  error ->
+			      case mnesia:dirty_read(muc_online_room, {Room, Host}) of
+				  [] ->
+				      {ok, _Pid} = mod_muc_room:start(
+						     Host,
+						     ServerHost, Access, Room,
+						     HistorySize, PersistHistory, RoomShaper,
+						     R#muc_room.opts);
+				  _ -> ok
+			      end
+		      end
+	      end,
+	      get_rooms(ServerHost, Host));
+	false ->
+	    ok
+    end.
 
 start_new_room(Host, ServerHost, Access, Room,
 	    HistorySize, PersistHistory, RoomShaper, From,
@@ -1757,6 +1766,8 @@ mod_opt_type(user_message_shaper) ->
     fun (A) when is_atom(A) -> A end;
 mod_opt_type(user_presence_shaper) ->
     fun (A) when is_atom(A) -> A end;
+mod_opt_type(preload_rooms) ->
+    fun (B) when is_boolean(B) -> B end;
 mod_opt_type(_) ->
     [access, access_admin, access_create, access_persistent,
      db_type, default_room_options, hibernate_timeout,
