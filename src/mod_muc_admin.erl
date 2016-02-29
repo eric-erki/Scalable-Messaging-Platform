@@ -453,7 +453,17 @@ destroy_room(Name, Service) ->
 	    gen_fsm:send_all_state_event(Pid, destroy),
 	    ok;
 	[] ->
-	    error
+	    case lists:filter(
+		   fun(Host) ->
+			   Service == gen_mod:get_module_opt_host(
+					Host, mod_muc, <<"conference.@HOST@">>)
+		   end, ?MYHOSTS) of
+		[ServerHost|_] ->
+		    mod_muc:forget_room(ServerHost, Service, Name),
+		    ok;
+		[] ->
+		    error
+	    end
     end.
 
 destroy_room({N, H, SH}) ->
