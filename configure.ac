@@ -111,14 +111,6 @@ AC_ARG_ENABLE(roster_gateway_workaround,
   *) AC_MSG_ERROR(bad value ${enableval} for --enable-roster-gateway-workaround) ;;
 esac],[roster_gateway_workaround=false])
 
-AC_ARG_ENABLE(flash_hack,
-[AC_HELP_STRING([--enable-flash-hack], [support Adobe Flash client XML (default: no)])],
-[case "${enableval}" in
-  yes) flash_hack=true ;;
-  no)  flash_hack=false ;;
-  *) AC_MSG_ERROR(bad value ${enableval} for --enable-flash-hack) ;;
-esac],[flash_hack=false])
-
 AC_ARG_ENABLE(full_xml,
 [AC_HELP_STRING([--enable-full-xml], [use XML features in XMPP stream (ex: CDATA) (default: no, requires XML compliant clients)])],
 [case "${enableval}" in
@@ -308,7 +300,6 @@ fi
 
 AC_SUBST(hipe)
 AC_SUBST(roster_gateway_workaround)
-AC_SUBST(flash_hack)
 AC_SUBST(full_xml)
 AC_SUBST(db_type)
 AC_SUBST(odbc)

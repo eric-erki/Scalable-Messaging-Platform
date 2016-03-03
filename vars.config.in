@@ -8,7 +8,6 @@
 %%%-------------------------------------------------------------------
 %% Macros
 {roster_gateway_workaround, @roster_gateway_workaround@}.
-{flash_hack, @flash_hack@}.
 {full_xml, @full_xml@}.
 {db_type, @db_type@}.
 {debug, @debug@}.
