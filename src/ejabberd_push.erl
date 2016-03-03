@@ -101,8 +101,8 @@ build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom,
                     Msg = if
                               IncludeBody ->
                                   CBody = case AltBody of
-                                              false -> utf8_cut(Body, 100);
-                                              _ -> utf8_cut(AltBody, 100)
+                                              false -> utf8_cut(Body, 512);
+                                              _ -> utf8_cut(AltBody, 512)
                                           end,
                                   case {AltNick, SendFrom} of
                                       {N, _} when N /= <<"">> ->
@@ -238,6 +238,7 @@ prepend_sender(<<"">>, Body) ->
 prepend_sender(From, Body) ->
     <<From/binary, ": ", Body/binary>>.
 
+utf8_cut(S, Size) when size(S) =< Size -> S;
 utf8_cut(S, Bytes) -> utf8_cut(S, <<>>, <<>>, Bytes + 1).
 
 utf8_cut(_S, _Cur, Prev, 0) -> Prev;
