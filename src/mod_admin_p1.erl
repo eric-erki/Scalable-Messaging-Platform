@@ -238,7 +238,7 @@ get_commands_spec() ->
 			tags = [stanza],
 			desc = "Send chat message or stanza to a mass of users",
 			module = ?MODULE, function = start_mass_message,
-			args = [{server, binary}, {file, binary}, {rate, integer}],
+			args = [{server, binary}, {payload, binary}, {rate, integer}],
 			result = {res, integer}},
      #ejabberd_commands{name = stop_mass_message,
 			tags = [stanza],
@@ -696,14 +696,14 @@ transport_register(Host, TransportString, JIDString,
 %%% Mass message
 %%%
 
-start_mass_message(Host, File, Rate)
-	when is_binary(Host), is_binary(File), is_integer(Rate) ->
+start_mass_message(Host, Payload, Rate)
+	when is_binary(Host), is_binary(Payload), is_integer(Rate) ->
     From = jid:make(<<>>, Host, <<>>),
     Proc = gen_mod:get_module_proc(Host, ?MASSLOOP),
     Delay = 60000 div Rate,
     case global:whereis_name(Proc) of
 	undefined ->
-	    case mass_message_parse_file(File) of
+	    case mass_message_parse(Payload) of
 		{error, _} -> 4;
 		{ok, _, []} -> 3;
 		{ok, <<>>, _} -> 2;
@@ -1051,9 +1051,10 @@ clean_session_list([S1, S2 | Rest], Res) ->
        true -> clean_session_list([S2 | Rest], [S1 | Res])
     end.
 
-mass_message_parse_file(File) ->
-    case file:open(File, [read]) of
+mass_message_parse(Payload) ->
+    case file:open(Payload, [read]) of
 	{ok, IoDevice} ->
+	    %% if argument is a file, read message and user list from it
 	    case mass_message_parse_body(IoDevice) of
 		{ok, Header} when is_binary(Header) ->
 		    Packet = case fxml_stream:parse_element(Header) of
@@ -1070,8 +1071,15 @@ mass_message_parse_file(File) ->
 		    file:close(IoDevice),
 		    Error
 	    end;
-	Error ->
-	    Error
+	{error, FError} ->
+	    % if argument is payload, send it to all online users
+	    case fxml_stream:parse_element(Payload) of
+		{error, XError} ->
+		    {error, {FError, XError}};
+		Packet ->
+		    Uids = ejabberd_sm:connected_users(),
+		    {ok, Packet, Uids}
+	    end
     end.
 
 mass_message_parse_body(IoDevice) ->
