@@ -1879,7 +1879,7 @@ send_header(StateData, Server, Version, Lang) ->
 		 end,
     LangStr = case Lang of
 		  <<"">> -> <<"">>;
-		  _ -> [<<" fxml:lang='">>, Lang, <<"'">>]
+		  _ -> [<<" xml:lang='">>, Lang, <<"'">>]
 	      end,
     Header = io_lib:format(?STREAM_HEADER,
 			   [StateData#state.streamid, Server, VersionStr, LangStr]),
