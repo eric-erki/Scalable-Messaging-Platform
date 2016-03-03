@@ -412,22 +412,22 @@ handle_message(From, To, Packet, #state{socket = undefined} = State) ->
     queue_message(From, To, Packet, State);
 handle_message(From, To, Packet, State) ->
     DeviceID =
-	xml:get_path_s(Packet,
+	fxml:get_path_s(Packet,
 		       [{elem, <<"push">>}, {elem, <<"id">>}, cdata]),
     Msg =
-	xml:get_path_s(Packet,
+	fxml:get_path_s(Packet,
 		       [{elem, <<"push">>}, {elem, <<"msg">>}, cdata]),
     Badge =
-	xml:get_path_s(Packet,
+	fxml:get_path_s(Packet,
 		       [{elem, <<"push">>}, {elem, <<"badge">>}, cdata]),
     Sound =
-	xml:get_path_s(Packet,
+	fxml:get_path_s(Packet,
 		       [{elem, <<"push">>}, {elem, <<"sound">>}, cdata]),
     Sender =
-	xml:get_path_s(Packet,
+	fxml:get_path_s(Packet,
 		       [{elem, <<"push">>}, {elem, <<"from">>}, cdata]),
     Receiver =
-	xml:get_path_s(Packet,
+	fxml:get_path_s(Packet,
 		       [{elem, <<"push">>}, {elem, <<"to">>}, cdata]),
     CustomFields  = get_custom_fields(Packet),
     PriorityFlag = check_push_priority(Msg, Badge, Sound),
