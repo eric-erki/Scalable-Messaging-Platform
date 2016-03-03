@@ -73,7 +73,7 @@
 	 srg_get_members/2, srg_user_add/4, srg_user_del/4,
 
 	 % Send message
-	 send_message/5, send_stanza_c2s/4,
+	 send_message/5, send_stanza/3, send_stanza_c2s/4,
 
 	 % Privacy list
 	 privacy_set/3,
@@ -758,6 +758,11 @@ get_commands_spec() ->
 			module = ?MODULE, function = send_stanza_c2s,
 			args = [{user, binary}, {host, binary},
 				{resource, binary}, {stanza, binary}],
+			result = {res, rescode}},
+     #ejabberd_commands{name = send_stanza, tags = [stanza],
+			desc = "Send a stanza; provide From JID and valid To JID",
+			module = ?MODULE, function = send_stanza,
+			args = [{from, binary}, {to, binary}, {stanza, binary}],
 			result = {res, rescode}},
 
      %%%%%%%%%%%%%%%%%% Privacy list
