@@ -142,10 +142,11 @@ convert_data(_Host, "config", _User, [Data]) ->
     RoomJID = jid:from_string(proplists:get_value(<<"jid">>, Data, <<"">>)),
     Config = proplists:get_value(<<"_data">>, Data, []),
     RoomCfg = convert_room_config(Data),
+    Affs = convert_room_affiliations(Data),
     case proplists:get_bool(<<"persistent">>, Config) of
 	true when RoomJID /= error ->
 	    mod_muc:store_room(?MYNAME, RoomJID#jid.lserver,
-			       RoomJID#jid.luser, RoomCfg);
+			       RoomJID#jid.luser, RoomCfg, Affs);
 	_ ->
 	    ok
     end;
@@ -258,8 +259,7 @@ convert_room_config(Data) ->
 		    <<"moderators">> -> true;
 		    _ -> false
 		end,
-    [{affiliations, convert_room_affiliations(Data)},
-     {allow_change_subj, proplists:get_bool(<<"changesubject">>, Config)},
+    [{allow_change_subj, proplists:get_bool(<<"changesubject">>, Config)},
      {description, proplists:get_value(<<"description">>, Config, <<"">>)},
      {members_only,	proplists:get_bool(<<"members_only">>, Config)},
      {moderated, proplists:get_bool(<<"moderated">>, Config)},
