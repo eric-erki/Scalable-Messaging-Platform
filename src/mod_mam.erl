@@ -703,9 +703,9 @@ strip_x_jid_tags(Pkt) ->
     NewEls = lists:filter(
 	      fun(#xmlel{name = <<"x">>} = XEl) ->
 		      not lists:any(fun(ItemEl) ->
-					    xml:get_tag_attr(<<"jid">>, ItemEl)
+					    fxml:get_tag_attr(<<"jid">>, ItemEl)
 					      /= false
-				    end, xml:get_subtags(XEl, <<"item">>));
+				    end, fxml:get_subtags(XEl, <<"item">>));
 		 (_) ->
 		      true
 	      end, Pkt#xmlel.children),
