@@ -3200,9 +3200,7 @@ presence_can_deliver({User, Server, Resource}, true) ->
 	    lists:foldl(fun
 		    (_, true) ->
 			true;
-		    ({session, _, _, _, undefined, _}, _Acc) ->
-			false;
-		    ({session, {_, _, R}, _, _, _Priority, _}, _Acc) ->
+		    ({_, R}, _Acc) ->
 			case Resource of
 			    <<>> -> true;
 			    R -> true;
