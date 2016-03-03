@@ -517,8 +517,7 @@ make_payload(State, Msg, Badge, Sound, Sender, CustomFields) ->
 		    CutMsg =
 			if
 			    MsgLen > Delta ->
-                                {CMsg, _} = split_binary(Msg, MsgLen - Delta),
-				CMsg;
+                                ejabberd_push:utf8_cut(Msg, MsgLen - Delta);
 			    true ->
 				<<"">>
 			end,

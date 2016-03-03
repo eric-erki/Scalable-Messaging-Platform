@@ -27,7 +27,7 @@
 
 -author('alexey@process-one.net').
 
--export([build_push_packet_from_message/12]).
+-export([build_push_packet_from_message/12, utf8_cut/2]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").

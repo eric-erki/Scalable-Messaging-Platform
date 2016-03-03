@@ -437,7 +437,7 @@ make_payload(State, Msg, Badge, Sound, Sender,
 	   MsgLen = size(Msg),
 	   if MsgLen /= 0 ->
 		  CutMsg = if MsgLen > Delta ->
-				  binary:part(Msg, {0, MsgLen - Delta});
+				   ejabberd_push:utf8_cut(Msg, MsgLen - Delta);
 			      true -> <<"">>
 			   end,
 		  make_payload(State, CutMsg, Badge, Sound, Sender,
