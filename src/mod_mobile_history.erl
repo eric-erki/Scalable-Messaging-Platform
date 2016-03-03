@@ -194,7 +194,7 @@ is_pushed(#xmlel{name = <<"message">>,
 		 children = Els}) ->
     [1
      || #xmlel{name = <<"x">>, attrs = Attrs} <- Els,
-	xml:get_attr_s(<<"xmlns">>, Attrs) == (?NS_P1_PUSHED)]
+	fxml:get_attr_s(<<"xmlns">>, Attrs) == (?NS_P1_PUSHED)]
       /= [].
 
 log_message_to_user(From, To,

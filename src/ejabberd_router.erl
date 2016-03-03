@@ -496,7 +496,7 @@ check_consistency() ->
                   dict:append(DomainPids, Nodes, Acc)
           end, dict:new(), Rs),
     Res = [{Domain, Nodes} || {{Domain, _}, Nodes} <- dict:to_list(D)],
-    io:format("~s~n", [p1_yaml:encode(Res)]).
+    io:format("~s~n", [fast_yaml:encode(Res)]).
 
 update_tables() ->
     case catch mnesia:table_info(route, local_content) of

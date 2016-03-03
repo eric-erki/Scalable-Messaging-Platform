@@ -1157,7 +1157,7 @@ setup_apns(Host, ProductionCertData, SandboxCertData) ->
 	    Config = applepush_cfg(Host, ProductionCert, SandboxCert),
 	    BaseDir = filename:dirname(os:getenv("EJABBERD_CONFIG_PATH")),
 	    ConfigFile = filename:append(BaseDir, <<"applepush.yml">>),
-	    file:write_file(ConfigFile, p1_yaml:encode([Config])),
+	    file:write_file(ConfigFile, fast_yaml:encode([Config])),
 	    start_appended_modules(Config),
 	    0;
 	{Prod, [{_ProdId, Prod, ProdFile}, {_DevId, _Dev, DevFile}]} ->
@@ -1242,7 +1242,7 @@ setup_gcm(Host, ApiKey, AppId) ->
 	    Config = gcm_cfg(Host, ApiKey, AppId),
 	    BaseDir = filename:dirname(os:getenv("EJABBERD_CONFIG_PATH")),
 	    ConfigFile = filename:append(BaseDir, <<"gcm.yml">>),
-	    file:write_file(ConfigFile, p1_yaml:encode([Config])),
+	    file:write_file(ConfigFile, fast_yaml:encode([Config])),
 	    start_appended_modules(Config),
 	    0;
 	{Service, [{AppId, Service, ApiKey}]} ->
