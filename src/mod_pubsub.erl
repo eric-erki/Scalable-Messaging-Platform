@@ -513,7 +513,7 @@ disco_local_identity(Acc, _From, _To, _Node, _Lang) ->
     -> [binary(),...]
     ).
 disco_local_features(Acc, _From, To, <<>>, _Lang) ->
-    Host = To#jid.lserver,
+    Host = host(To#jid.lserver),
     Feats = case Acc of
 	{result, I} -> I;
 	_ -> []
@@ -4008,7 +4008,7 @@ host(ServerHost) ->
 serverhost({_U, ServerHost, _R})->
     ServerHost;
 serverhost(Host) ->
-	    [_,ServerHost] = binary:split(Host, <<".">>),
+    [_,ServerHost] = binary:split(Host, <<".">>),
     ServerHost.
 
 tree(Host) ->
