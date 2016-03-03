@@ -386,7 +386,7 @@ do_route(From, To, Packet, State) ->
 			    {noreply, State}
 		    end;
 		#xmlel{name = <<"message">>, children = Els} ->
-		    case fremove_cdata(Els) of
+		    case fxml:remove_cdata(Els) of
 			[#xmlel{name = <<"push">>}] ->
 			    NewState = handle_message(From, To, Packet, State),
 			    {noreply, NewState};
@@ -405,7 +405,7 @@ get_custom_fields(Packet) ->
         false -> [];
         #xmlel{name = <<"custom">>, attrs = [], children = Children} ->
             [ {fxml:get_tag_attr_s(<<"name">>, C), fxml:get_tag_cdata(C)} ||
-                C <- fremove_cdata(Children) ]
+                C <- fxml:remove_cdata(Children) ]
     end.
 
 handle_message(From, To, Packet, #state{socket = undefined} = State) ->
