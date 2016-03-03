@@ -65,8 +65,8 @@ offline_packet(From, To, Packet) ->
     Host = To#jid.lserver,
     case gen_mod:get_module_opt(Host, ?MODULE, offline_message, fun v_fun/1) of
         {URL, AuthToken} ->
-            Type = xml:get_tag_attr_s(<<"type">>, Packet),
-            Body = xml:get_path_s(Packet, [{elem, <<"body">>}, cdata]),
+            Type = fxml:get_tag_attr_s(<<"type">>, Packet),
+            Body = fxml:get_path_s(Packet, [{elem, <<"body">>}, cdata]),
             if (Type == <<"normal">>) or (Type == <<"">>) or
                (Type == <<"chat">>),
                Body /= <<"">> ->

@@ -217,7 +217,7 @@ handle_cast({addlog,
 	io_lib:format("=====~n~s - ~s~nFrom: ~s~nTo: ~s~n~s~n",
 		      [timestamp(), Direction, jid:to_string(FromJID),
 		       jid:to_string(ToJID),
-		       xml:element_to_binary(Packet)]),
+		       fxml:element_to_binary(Packet)]),
     file:write(IOD, LogEntry),
     {noreply, State};
 handle_cast({debug_stop, Pid},

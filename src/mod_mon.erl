@@ -421,7 +421,7 @@ set_presence_hook(_User, Server, _Resource, _Presence) ->
 
 user_send_packet(#xmlel{name=Name, attrs=Attrs} = Packet,
                  _C2SState, #jid{lserver=LServer}, _To) ->
-    Type = xml:get_attr_s(<<"type">>, Attrs),
+    Type = fxml:get_attr_s(<<"type">>, Attrs),
     Hook = hookid(packet(<<"receive">>, Name, Type)), % user send = server receive
     cast(LServer, {inc, Hook}),
     %possible jabs computation. see mod_jabs
@@ -430,7 +430,7 @@ user_send_packet(#xmlel{name=Name, attrs=Attrs} = Packet,
     Packet.
 user_receive_packet(#xmlel{name=Name, attrs=Attrs} = Packet,
                     _C2SState, _JID, _From, #jid{lserver=LServer}) ->
-    Type = xml:get_attr_s(<<"type">>, Attrs),
+    Type = fxml:get_attr_s(<<"type">>, Attrs),
     Hook = hookid(packet(<<"send">>, Name, Type)), % user receive = server send
     cast(LServer, {inc, Hook}),
     Packet.
@@ -440,12 +440,12 @@ c2s_replaced(#jid{lserver=LServer}) ->
 
 s2s_send_packet(#jid{lserver=LServer}, _To,
                 #xmlel{name=Name, attrs=Attrs}) ->
-    Type = xml:get_attr_s(<<"type">>, Attrs),
+    Type = fxml:get_attr_s(<<"type">>, Attrs),
     Hook = hookid(concat(<<"s2s">>, packet(<<"send">>, Name, Type))),
     cast(LServer, {inc, Hook}).
 s2s_receive_packet(_From, #jid{lserver=LServer},
                    #xmlel{name=Name, attrs=Attrs}) ->
-    Type = xml:get_attr_s(<<"type">>, Attrs),
+    Type = fxml:get_attr_s(<<"type">>, Attrs),
     Hook = hookid(concat(<<"s2s">>, packet(<<"receive">>, Name, Type))),
     cast(LServer, {inc, Hook}).
 

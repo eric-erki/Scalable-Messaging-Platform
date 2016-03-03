@@ -1056,7 +1056,7 @@ mass_message_parse_file(File) ->
 	{ok, IoDevice} ->
 	    case mass_message_parse_body(IoDevice) of
 		{ok, Header} when is_binary(Header) ->
-		    Packet = case xml_stream:parse_element(Header) of
+		    Packet = case fxml_stream:parse_element(Header) of
 			    {error, _} -> Header;  % Header is message Body
 			    Stanza -> Stanza       % Header is xmpp stanza
 			end,

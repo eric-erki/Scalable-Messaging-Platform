@@ -115,7 +115,7 @@ reopen_log(Host) ->
     gen_server:cast(Proc, reopen).
 
 packet(#xmlel{name = <<"message">>, attrs = Attrs} = Pkt, _C2SState, JID, To) ->
-    case xml:get_attr_s(<<"type">>, Attrs) of
+    case fxml:get_attr_s(<<"type">>, Attrs) of
 	<<"normal">> -> log(JID#jid.lserver, JID, chat, [jid:to_string(To)]);
 	<<"chat">> -> log(JID#jid.lserver, JID, chat, [jid:to_string(To)]);
 	<<"groupchat">> -> log(JID#jid.lserver, JID, groupchat, [jid:to_string(To)]);

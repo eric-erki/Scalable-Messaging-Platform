@@ -120,7 +120,7 @@
 -record(body,
 	{http_reason = <<"">> :: binary(),
          attrs = []           :: [{any(), any()}],
-         els = []             :: [xml_stream:xml_stream_el()],
+         els = []             :: [fxml_stream:xml_stream_el()],
          size = 0             :: non_neg_integer()}).
 
 start(#body{attrs = Attrs} = Body, IP, SID) ->
@@ -760,8 +760,8 @@ bounce_els_from_obuf(State) ->
 				when Name == <<"presence">>;
 				     Name == <<"message">>;
 				     Name == <<"iq">> ->
-				FromS = xml:get_attr_s(<<"from">>, Attrs),
-				ToS = xml:get_attr_s(<<"to">>, Attrs),
+				FromS = fxml:get_attr_s(<<"from">>, Attrs),
+				ToS = fxml:get_attr_s(<<"to">>, Attrs),
 				case {jid:from_string(FromS),
 				      jid:from_string(ToS)}
 				    of
@@ -862,10 +862,10 @@ encode_body(#body{attrs = Attrs, els = Els}, Type) ->
 				     ({xmlstreamstart, <<"stream:stream">>,
 				       SAttrs},
 				      {AttrsAcc, XMLBuf}) ->
-					 StreamID = xml:get_attr_s(<<"id">>,
+					 StreamID = fxml:get_attr_s(<<"id">>,
 								   SAttrs),
 					 NewAttrs = case
-						      xml:get_attr_s(<<"version">>,
+						      fxml:get_attr_s(<<"version">>,
 								     SAttrs)
 							of
 						      <<"">> ->
@@ -909,7 +909,7 @@ encode_body(#body{attrs = Attrs, els = Els}, Type) ->
     end.
 
 encode_element(El, xml) ->
-    xml:element_to_binary(El);
+    fxml:element_to_binary(El);
 encode_element(El, json) ->
     El.
 
@@ -939,7 +939,7 @@ decode_body(Data, Size, Type) ->
     end.
 
 decode(Data, xml) ->
-    xml_stream:parse_element(Data);
+    fxml_stream:parse_element(Data);
 decode(Data, json) ->
     case catch jiffy:decode(Data) of
         {'EXIT', _} ->
@@ -999,7 +999,7 @@ to_bool(<<"0">>) -> false.
 attrs_to_list(Attrs) -> [attr_to_list(A) || A <- Attrs].
 
 attr_to_list({Name, Value}) ->
-    [$\s, Name, $=, $', xml:crypt(Value), $'].
+    [$\s, Name, $=, $', fxml:crypt(Value), $'].
 
 bosh_response(Body, Type) ->
     CType = case Type of

@@ -209,7 +209,7 @@ do_route(From, To, Packet, State) ->
 		       {noreply, State}
 		 end;
 	     #xmlel{name = <<"message">>, children = Els} ->
-		 case xml:remove_cdata(Els) of
+		 case fxml:remove_cdata(Els) of
 		   [#xmlel{name = <<"push">>}] ->
 		       NewState = handle_message(From, To, Packet, State),
 		       {noreply, NewState};
@@ -221,32 +221,32 @@ do_route(From, To, Packet, State) ->
     end.
 
 get_custom_fields(Packet) ->
-    case xml:get_subtag(xml:get_subtag(Packet, <<"push">>),
+    case fxml:get_subtag(fxml:get_subtag(Packet, <<"push">>),
 			<<"custom">>)
 	of
       false -> [];
       #xmlel{name = <<"custom">>, attrs = [],
 	     children = Children} ->
-	  [{xml:get_tag_attr_s(<<"name">>, C),
-	    xml:get_tag_cdata(C)}
-	   || C <- xml:remove_cdata(Children)]
+	  [{fxml:get_tag_attr_s(<<"name">>, C),
+	    fxml:get_tag_cdata(C)}
+	   || C <- fxml:remove_cdata(Children)]
     end.
 
 handle_message(From, To, Packet,
 	       #state{mode = ?MODE_ENQUEUE} = State) ->
     queue_message(From, To, Packet, State);
 handle_message(From, To, Packet, State) ->
-    DeviceID = xml:get_path_s(Packet,
+    DeviceID = fxml:get_path_s(Packet,
 			      [{elem, <<"push">>}, {elem, <<"id">>}, cdata]),
-    Msg = xml:get_path_s(Packet,
+    Msg = fxml:get_path_s(Packet,
 			 [{elem, <<"push">>}, {elem, <<"msg">>}, cdata]),
-    Badge = xml:get_path_s(Packet,
+    Badge = fxml:get_path_s(Packet,
 			   [{elem, <<"push">>}, {elem, <<"badge">>}, cdata]),
-    Sound = xml:get_path_s(Packet,
+    Sound = fxml:get_path_s(Packet,
 			   [{elem, <<"push">>}, {elem, <<"sound">>}, cdata]),
-    Sender = xml:get_path_s(Packet,
+    Sender = fxml:get_path_s(Packet,
 			    [{elem, <<"push">>}, {elem, <<"from">>}, cdata]),
-    Receiver = xml:get_path_s(Packet,
+    Receiver = fxml:get_path_s(Packet,
 			      [{elem, <<"push">>}, {elem, <<"to">>}, cdata]),
     CustomFields = get_custom_fields(Packet),
     Payload = make_payload(State, Msg, Badge, Sound, Sender,
@@ -453,14 +453,14 @@ bounce_message(From, To, Packet) ->
 
 bounce_message(From, To, Packet, Reason) ->
     #xmlel{attrs = Attrs} = Packet,
-    Type = xml:get_attr_s(<<"type">>, Attrs),
+    Type = fxml:get_attr_s(<<"type">>, Attrs),
     if Type /= <<"error">>; Type /= <<"result">> ->
 	   ejabberd_router:route(
 	     To, From,
 	     jlib:make_error_reply(
 	       Packet,
 	       ?ERRT_INTERNAL_SERVER_ERROR(
-		  xml:get_attr_s(<<"xml:lang">>, Attrs), Reason)));
+		  fxml:get_attr_s(<<"xml:lang">>, Attrs), Reason)));
        true -> ok
     end.
 

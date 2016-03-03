@@ -249,7 +249,7 @@ get_vcard(LUser, LServer, p1db) ->
     USKey = us2key(LUser, LServer),
     case p1db:get(vcard, USKey) of
         {ok, VCard, _} ->
-            case xml_stream:parse_element(VCard) of
+            case fxml_stream:parse_element(VCard) of
                 {error, _Reason} -> error;
                 El -> [El]
             end;
@@ -345,7 +345,7 @@ set_vcard(User, LServer, VCARD) ->
 		 mnesia:transaction(F);
              p1db ->
                  USKey = us2key(LUser, LServer),
-                 p1db:insert(vcard, USKey, xml:element_to_binary(VCARD));
+                 p1db:insert(vcard, USKey, fxml:element_to_binary(VCARD));
              riak ->
                  US = {LUser, LServer},
                  ejabberd_riak:put(#vcard{us = US, vcard = VCARD},

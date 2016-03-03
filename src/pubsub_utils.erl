@@ -693,7 +693,7 @@ export(_Server) ->
 			    iolist_to_binary(string:join([string:right(integer_to_list(I),6,$0)||I<-[M1,M2,M3]],":"))),
 		    PUBLISHER = ejabberd_odbc:escape(jid:to_string(Cusr)),
 		    [PayloadEl] = [{xmlel,A,B,C} || {xmlelement,A,B,C} <- Payload],
-		    PAYLOAD = ejabberd_odbc:escape(xml:element_to_binary(PayloadEl)),
+		    PAYLOAD = ejabberd_odbc:escape(fxml:element_to_binary(PayloadEl)),
 		    ["delete from pubsub_item where itemid='", ITEMID, "';\n"
 			"insert into pubsub_item(itemid,nodeid,creation,modification,publisher,payload) \n"
 			" values ('", ITEMID, "', ", NODEID, ", '", CREATION, "', '",

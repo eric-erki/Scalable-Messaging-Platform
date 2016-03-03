@@ -181,10 +181,10 @@ set_local_badge_sql(#jid{luser =LUser, lserver=LServer}, DeviceID, Count) ->
             {error, device_not_found}  %%same contract than set_local_badge_mnesia
     end.
 push_from_message(Val, From, To, Packet, Notification, AppID, SendBody, SendFrom, Badge, First, FirstFromUser) ->
-    Type = xml:get_path_s(Notification, [{elem, <<"type">>}, cdata]),
+    Type = fxml:get_path_s(Notification, [{elem, <<"type">>}, cdata]),
     case Type of
 	<<"gcm">> ->
-	    DeviceID = xml:get_path_s(Notification, [{elem, <<"id">>}, cdata]),
+	    DeviceID = fxml:get_path_s(Notification, [{elem, <<"id">>}, cdata]),
             SilentPushEnabled = gen_mod:get_module_opt(
                                   To#jid.lserver, ?MODULE,
                                   silent_push_enabled,
@@ -212,14 +212,14 @@ route_push_notification(Host, JID, AppId, PushPacket) ->
 
 
 enable_offline_notification(JID, Notification, SendBody, SendFrom, AppID1) ->
-    Type = xml:get_path_s(Notification, [{elem, <<"type">>}, cdata]),
+    Type = fxml:get_path_s(Notification, [{elem, <<"type">>}, cdata]),
     case Type of
 	<<"gcm">> ->
-	    DeviceID = xml:get_path_s(Notification, [{elem, <<"id">>}, cdata]),
+	    DeviceID = fxml:get_path_s(Notification, [{elem, <<"id">>}, cdata]),
 	    case DeviceID of
 		ID1 when is_binary(ID1), size(ID1) > 0 ->
 		    AppID =
-			case xml:get_path_s(Notification,
+			case fxml:get_path_s(Notification,
 					    [{elem, <<"appid">>}, cdata]) of
 			    <<"">> -> AppID1;
 			    A -> A
@@ -235,10 +235,10 @@ enable_offline_notification(JID, Notification, SendBody, SendFrom, AppID1) ->
     end.
 
 disable_notification(JID, Notification, _AppID) ->
-    Type = xml:get_path_s(Notification, [{elem, <<"type">>}, cdata]),
+    Type = fxml:get_path_s(Notification, [{elem, <<"type">>}, cdata]),
     case Type of
 	<<"gcm">> ->
-	    DeviceID = xml:get_path_s(Notification, [{elem, <<"id">>}, cdata]),
+	    DeviceID = fxml:get_path_s(Notification, [{elem, <<"id">>}, cdata]),
             ?INFO_MSG("Disabling p1:push for ~s with gcm token ~p",[jid:to_string(JID),DeviceID]),
 	    case DeviceID of
 		ID1 when is_binary(ID1), size(ID1) > 0 ->
@@ -308,7 +308,7 @@ process_sm_iq(From, To, #iq{type = Type, sub_el = SubEl} = IQ) ->
     case {Type, SubEl} of
 	{set, #xmlel{name = <<"disable">>}} ->
             Host = To#jid.lserver,
-            DeviceID = xml:get_tag_attr_s(<<"id">>, SubEl),
+            DeviceID = fxml:get_tag_attr_s(<<"id">>, SubEl),
             case lookup_cache(To, DeviceID) of
                 [{_ID, AppID, _SendBody, _SendFrom, _LocalBadge}] ->
                     PushService = get_push_service(Host, To, AppID),
@@ -324,8 +324,8 @@ process_sm_iq(From, To, #iq{type = Type, sub_el = SubEl} = IQ) ->
             end;
 	{set, #xmlel{name = <<"update">>}} ->
 	    Host = To#jid.lserver,
-	    OldDeviceID = xml:get_tag_attr_s(<<"oldid">>, SubEl),
-            NewDeviceID = xml:get_tag_attr_s(<<"id">>, SubEl),
+	    OldDeviceID = fxml:get_tag_attr_s(<<"oldid">>, SubEl),
+            NewDeviceID = fxml:get_tag_attr_s(<<"id">>, SubEl),
             case lookup_cache(To, OldDeviceID) of
 		[{_ID, AppID, _SendBody, _SendFrom, _LocalBadge}] ->
 		    PushService = get_push_service(Host, To, AppID),

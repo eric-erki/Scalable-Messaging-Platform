@@ -76,7 +76,7 @@ process_local_iq(#jid{lserver = Host} = From,
 		 #iq{sub_el = #xmlel{children= Payload} = SubEl} = IQ) ->
     URL = get_url(Host),
     Params = [{<<"from">>, jid:to_string(From)}],
-    case catch jiffy:decode(xml:get_cdata(Payload))
+    case catch jiffy:decode(fxml:get_cdata(Payload))
 	of
 	{error, _Reason} ->
 	    ?ERROR_MSG("Payload is not valid JSON: ~p~nJiffy error: ~p",

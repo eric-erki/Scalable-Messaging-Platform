@@ -113,7 +113,7 @@ process_iq_reply(From, To, #iq{id = ID} = IQ) ->
       _ -> nothing
     end;
 process_iq_reply(From, To, #xmlel{} = Packet) ->
-    ID = xml:get_tag_attr_s(<<"id">>, Packet),
+    ID = fxml:get_tag_attr_s(<<"id">>, Packet),
     case get_iq_callback(ID) of
 	{ok, Module, Function} ->
 	    case jlib:iq_query_or_response_info(Packet) of

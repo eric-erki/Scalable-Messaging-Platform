@@ -681,7 +681,7 @@ normal_state({route, From, ToNick,
 								   ToNick),
 					 From, Err);
 			ToJID ->
-			    ID = xml:get_attr_s(<<"id">>, Attrs),
+			    ID = fxml:get_attr_s(<<"id">>, Attrs),
 			    F = fun(#iq{} = Reply) ->
 					ejabberd_router:route(
 					  jid:replace_resource(
@@ -1029,7 +1029,7 @@ load_history(Host, Room, true, Queue) ->
 		 [length(Items), Room]),
 	  lists:foldl(fun (I, Q) ->
 			      [Nick, XML, HS, Ts, Size] = I,
-			      Item = {Nick, xml_stream:parse_element(XML),
+			      Item = {Nick, fxml_stream:parse_element(XML),
 				      HS /= <<"0">>,
 				      calendar:gregorian_seconds_to_datetime(jlib:binary_to_integer(Ts)),
 				      jlib:binary_to_integer(Size)},
@@ -1049,7 +1049,7 @@ persist_muc_history(#state{room = Room,
 			      Timestamp, Size}) ->
 				odbc_queries:add_roomhistory_sql(ejabberd_odbc:escape(Room),
 								 ejabberd_odbc:escape(FromNick),
-								 ejabberd_odbc:escape(xml:element_to_binary(Packet)),
+								 ejabberd_odbc:escape(fxml:element_to_binary(Packet)),
 								 iolist_to_binary(atom_to_list(HaveSubject)),
 								 iolist_to_binary(integer_to_list(calendar:datetime_to_gregorian_seconds(Timestamp))),
 								 iolist_to_binary(integer_to_list(Size)))

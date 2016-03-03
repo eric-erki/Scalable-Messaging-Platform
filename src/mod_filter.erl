@@ -418,30 +418,30 @@ process_local_iq(From, #jid{lserver = VH} = _To,
 			      {User, Server, Resource})
 	      of
 	    allow ->
-		case xml:get_subtag(SubEl, <<"add">>) of
+		case fxml:get_subtag(SubEl, <<"add">>) of
 		  #xmlel{name = <<"add">>, attrs = AddAttrs} ->
-		      AID = xml:get_attr_s(<<"id">>, AddAttrs),
-		      ARE = xml:get_attr_s(<<"re">>, AddAttrs),
-		      case xml:get_attr_s(<<"type">>, AddAttrs) of
+		      AID = fxml:get_attr_s(<<"id">>, AddAttrs),
+		      ARE = fxml:get_attr_s(<<"re">>, AddAttrs),
+		      case fxml:get_attr_s(<<"type">>, AddAttrs) of
 			<<"">> -> add_regexp(VH, AID, ARE);
 			ATP -> add_regexp(VH, AID, ARE, ATP)
 		      end;
 		  _ -> ok
 		end,
-		case xml:get_subtag(SubEl, <<"del">>) of
+		case fxml:get_subtag(SubEl, <<"del">>) of
 		  #xmlel{name = <<"del">>, attrs = DelAttrs} ->
-		      DID = xml:get_attr_s(<<"id">>, DelAttrs),
-		      case xml:get_attr_s(<<"re">>, DelAttrs) of
+		      DID = fxml:get_attr_s(<<"id">>, DelAttrs),
+		      case fxml:get_attr_s(<<"re">>, DelAttrs) of
 			<<"">> -> del_regexp(VH, DID);
 			DRE -> del_regexp(VH, DID, DRE)
 		      end;
 		  _ -> ok
 		end,
-		case xml:get_subtag(SubEl, <<"dellogs">>) of
+		case fxml:get_subtag(SubEl, <<"dellogs">>) of
 		  #xmlel{name = <<"dellogs">>} -> purge_logs();
 		  _ -> ok
 		end,
-		case xml:get_subtag(SubEl, <<"delrules">>) of
+		case fxml:get_subtag(SubEl, <<"delrules">>) of
 		  #xmlel{name = <<"delrules">>} -> purge_regexps(VH);
 		  _ -> ok
 		end,

@@ -123,7 +123,7 @@ out(Module, Args, 'GET', [Domain, Node] = Uri, _User) ->
 			      [{<<"Content-Type">>, <<"application/atom+xml">>},
 			       {<<"Etag">>, Etag}],
 			      <<"<?xml version=\"1.0\" encoding=\"utf-8\"?>\n",
-				(xml:element_to_binary(collection(get_collection(Uri),
+				(fxml:element_to_binary(collection(get_collection(Uri),
 								  collection_uri(Args,
 										 Domain,
 										 Node),
@@ -159,8 +159,8 @@ out(Module, Args, 'PUT', [_Domain, Node] = Uri,
     {User, UDomain}) ->
     Host = get_host(Uri),
     Jid = jid:make({User, UDomain, <<"">>}),
-    Payload = xml_stream:parse_element(Args#request.data),
-    ConfigureElement = case xml:get_subtag(Payload,
+    Payload = fxml_stream:parse_element(Args#request.data),
+    ConfigureElement = case fxml:get_subtag(Payload,
 					   <<"configure">>)
 			   of
 			 false -> [];
@@ -185,14 +185,14 @@ out(Module, Args, 'GET', [Domain] = Uri, From) ->
 	  {200,
 	   [{<<"Content-Type">>, <<"application/atomsvc+xml">>}],
 	   <<"<?xml version=\"1.0\" encoding=\"utf-8\"?>",
-	     (xml:element_to_binary(service(Args, Domain,
+	     (fxml:element_to_binary(service(Args, Domain,
 					    Collections)))/binary>>}
     end;
 out(Module, Args, 'POST', [Domain] = Uri,
     {User, UDomain}) ->
     Host = get_host(Uri),
-    Payload = xml_stream:parse_element(Args#request.data),
-    {Node, Type} = case xml:get_subtag(Payload,
+    Payload = fxml_stream:parse_element(Args#request.data),
+    {Node, Type} = case fxml:get_subtag(Payload,
 				       <<"create">>)
 		       of
 		     false -> {<<>>, <<"flat">>};
@@ -200,7 +200,7 @@ out(Module, Args, 'POST', [Domain] = Uri,
                            {get_tag_attr_or_default(<<"node">>, E, <<"">>),
                             get_tag_attr_or_default(<<"type">>, E, <<"flat">>)}
 		   end,
-    ConfigureElement = case xml:get_subtag(Payload,
+    ConfigureElement = case fxml:get_subtag(Payload,
 					   <<"configure">>)
 			   of
 			 false -> [];
@@ -216,7 +216,7 @@ out(Module, Args, 'POST', [Domain] = Uri,
       {result, [Result]} ->
 	  {200, [{<<"Content-Type">>, <<"application/xml">>}],
 	   <<"<?xml version=\"1.0\" encoding=\"utf-8\"?>",
-	     (xml:element_to_binary(Result))/binary>>}
+	     (fxml:element_to_binary(Result))/binary>>}
     end;
 out(Module, _Args, 'DELETE', [_Domain, Node] = Uri,
     {User, UDomain}) ->
@@ -242,7 +242,7 @@ out(Module, Args, 'GET', [Domain, Node, _Item] = URI,
 			      [{<<"Content-Type">>, <<"application/atom+xml">>},
 			       {<<"Etag">>, Etag}],
 			      <<"<?xml version=\"1.0\" encoding=\"utf-8\"?>",
-				(xml:element_to_binary(item_to_entry(Args,
+				(fxml:element_to_binary(item_to_entry(Args,
 								     Domain,
 								     Node,
 								     Item)))/binary>>}
@@ -266,8 +266,8 @@ get_item(Module, Uri, Failure, Success) ->
 
 publish_item(Module, Args, [Domain, Node | _R] = Uri,
 	     Slug, {User, Domain}) ->
-    Payload = xml_stream:parse_element(Args#request.data),
-    [FilteredPayload] = xml:remove_cdata([Payload]),
+    Payload = fxml_stream:parse_element(Args#request.data),
+    [FilteredPayload] = fxml:remove_cdata([Payload]),
     case Module:publish_item(get_host(Uri), Domain,
 			     get_collection(Uri),
 			     jid:make(User, Domain, <<"">>), Slug,
@@ -309,7 +309,7 @@ base_uri(#request{host = Host, port = Port}, Domain) ->
 item_to_entry(Args, Domain, Node,
 	      #pubsub_item{itemid = {Id, _}, payload = Entry} =
 		  Item) ->
-    [R] = xml:remove_cdata(Entry),
+    [R] = fxml:remove_cdata(Entry),
     item_to_entry(Args, Domain, Node, Id, R, Item).
 
 item_to_entry(Args, Domain, Node, Id,
@@ -412,10 +412,10 @@ service(Args, Domain, Collections) ->
 error(#xmlel{name = <<"error">>, attrs = Attrs} =
 	  Error) ->
     Value =
-	jlib:binary_to_integer(xml:get_attr_s(<<"code">>,
+	jlib:binary_to_integer(fxml:get_attr_s(<<"code">>,
 						Attrs)),
     {Value, [{<<"Content-type">>, <<"application/xml">>}],
-     xml:element_to_binary(Error)};
+     fxml:element_to_binary(Error)};
 error(404) -> {404, [], <<"Not Found">>};
 error(403) -> {403, [], <<"Forbidden">>};
 error(500) -> {500, [], <<"Internal server error">>};
@@ -484,7 +484,7 @@ i2l(I) when is_integer(I) ->
     jlib:integer_to_binary(I).
 
 get_tag_attr_or_default(AttrName, Element, Default) ->
-    case xml:get_tag_attr_s(AttrName, Element) of
+    case fxml:get_tag_attr_s(AttrName, Element) of
       <<"">> -> Default;
       Val -> Val
     end.

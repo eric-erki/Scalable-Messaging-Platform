@@ -233,10 +233,10 @@ set_local_badge_sql(#jid{luser =LUser, lserver=LServer}, DeviceID, Count) ->
     end.
 
 push_from_message(Val, From, To, Packet, Notification, AppID, SendBody, SendFrom, Badge, First, FirstFromUser) ->
-    Type = xml:get_path_s(Notification, [{elem, <<"type">>}, cdata]),
+    Type = fxml:get_path_s(Notification, [{elem, <<"type">>}, cdata]),
     case Type of
 	<<"applepush">> ->
-	    DeviceID = xml:get_path_s(Notification, [{elem, <<"id">>}, cdata]),
+	    DeviceID = fxml:get_path_s(Notification, [{elem, <<"id">>}, cdata]),
             SilentPushEnabled = gen_mod:get_module_opt(
                                   To#jid.lserver, ?MODULE,
                                   silent_push_enabled,
@@ -264,14 +264,14 @@ route_push_notification(Host, JID, AppId, PushPacket) ->
 
 
 enable_offline_notification(JID, Notification, SendBody, SendFrom, AppID1) ->
-    Type = xml:get_path_s(Notification, [{elem, <<"type">>}, cdata]),
+    Type = fxml:get_path_s(Notification, [{elem, <<"type">>}, cdata]),
     case Type of
 	<<"applepush">> ->
-	    DeviceID = xml:get_path_s(Notification, [{elem, <<"id">>}, cdata]),
+	    DeviceID = fxml:get_path_s(Notification, [{elem, <<"id">>}, cdata]),
 	    case catch erlang:list_to_integer(binary_to_list(DeviceID), 16) of
 		ID1 when is_integer(ID1) ->
 		    AppID =
-			case xml:get_path_s(Notification,
+			case fxml:get_path_s(Notification,
 					    [{elem, <<"appid">>}, cdata]) of
 			    <<"">> -> AppID1;
 			    A -> A
@@ -287,10 +287,10 @@ enable_offline_notification(JID, Notification, SendBody, SendFrom, AppID1) ->
     end.
 
 disable_notification(JID, Notification, _AppID) ->
-    Type = xml:get_path_s(Notification, [{elem, <<"type">>}, cdata]),
+    Type = fxml:get_path_s(Notification, [{elem, <<"type">>}, cdata]),
     case Type of
 	<<"applepush">> ->
-	    DeviceID = xml:get_path_s(Notification, [{elem, <<"id">>}, cdata]),
+	    DeviceID = fxml:get_path_s(Notification, [{elem, <<"id">>}, cdata]),
             ?INFO_MSG("Disabling p1:push for ~s with applepush token ~p",[jid:to_string(JID),DeviceID]),
 	    case catch erlang:list_to_integer(binary_to_list(DeviceID), 16) of
 		ID1 when is_integer(ID1) ->
@@ -365,7 +365,7 @@ process_sm_iq(From, To, #iq{type = Type, sub_el = SubEl} = IQ) ->
     case {Type, SubEl} of
 	{set, #xmlel{name = <<"disable">>}} ->
             Host = To#jid.lserver,
-            SDeviceID = xml:get_tag_attr_s(<<"id">>, SubEl),
+            SDeviceID = fxml:get_tag_attr_s(<<"id">>, SubEl),
             DeviceID =
                 erlang:list_to_integer(binary_to_list(SDeviceID), 16),
             case lookup_cache(To, DeviceID) of
@@ -398,10 +398,10 @@ process_customization_iq(From, To, #iq{type = Type, sub_el = SubEl} = IQ) ->
 	{_, set, #xmlel{name = <<"customize">>, children = Items}} ->
             ItemsInfo = lists:filtermap(
                          fun(#xmlel{name = <<"item">>, attrs = Attrs}) ->
-                                 From2 = xml:get_attr_s(<<"from">>, Attrs),
-                                 Mute = xml:get_attr_s(<<"mute">>, Attrs),
-                                 Delete = xml:get_attr_s(<<"delete">>, Attrs),
-                                 Sound = xml:get_attr_s(<<"sound">>, Attrs),
+                                 From2 = fxml:get_attr_s(<<"from">>, Attrs),
+                                 Mute = fxml:get_attr_s(<<"mute">>, Attrs),
+                                 Delete = fxml:get_attr_s(<<"delete">>, Attrs),
+                                 Sound = fxml:get_attr_s(<<"sound">>, Attrs),
                                  {true, {From2, Mute == <<"true">>, Delete == <<"true">>, Sound}};
                             (_) ->
                                  false
@@ -414,7 +414,7 @@ process_customization_iq(From, To, #iq{type = Type, sub_el = SubEl} = IQ) ->
             end;
 	{_, get, #xmlel{name = <<"customize">>, children = Items}} ->
             Jids = lists:filtermap(fun(#xmlel{name = <<"item">>, attrs = Attrs}) ->
-                                           case xml:get_attr_s(<<"from">>, Attrs) of
+                                           case fxml:get_attr_s(<<"from">>, Attrs) of
                                                <<"">> ->
                                                    false;
                                                V ->

@@ -174,7 +174,7 @@ log(JID, Prefix, Packet) ->
     case catch mnesia:dirty_read(log_http, {JID#jid.luser, JID#jid.lserver}) of
         [#log_http{pid = Pid}] ->
             TS = jlib:now_to_local_string(p1_time_compat:timestamp()),
-            SPacket = xml:element_to_binary(Packet),
+            SPacket = fxml:element_to_binary(Packet),
             Pid ! {log, [Prefix, <<" ">>, TS, <<"\n">>, SPacket, <<"\n">>]},
             ok;
         _ ->

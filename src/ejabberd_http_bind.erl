@@ -948,7 +948,7 @@ prepare_response(Sess, Rid, OutputEls, StreamStart) ->
 	     (?NS_HTTP_BIND)/binary, "'/>">>};
       {ok, {prebind, JID}} ->
 	  {200, ?HEADER,
-	   xml:element_to_binary(#xmlel{name = <<"body">>,
+	   fxml:element_to_binary(#xmlel{name = <<"body">>,
 					attrs =
 					    [{<<"xmlns">>, ?NS_HTTP_BIND},
 					     {<<"sid">>, Sess#http_bind.id},

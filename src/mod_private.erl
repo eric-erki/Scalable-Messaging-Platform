@@ -215,7 +215,7 @@ get_data(LUser, LServer, p1db, [{XMLNS, El} | Els], Res) ->
     USNKey = usn2key(LUser, LServer, XMLNS),
     case p1db:get(private_storage, USNKey) of
         {ok, XML, _VClock} ->
-            case xml_stream:parse_element(XML) of
+            case fxml_stream:parse_element(XML) of
                 {error, _} ->
                     get_data(LUser, LServer, p1db, Els, [El | Res]);
                 NewEl ->
@@ -265,7 +265,7 @@ get_all_data(LUser, LServer, p1db) ->
         {ok, L} ->
             lists:flatmap(
               fun({_Key, Val, _VClock}) ->
-                      case xml_stream:parse_element(Val) of
+                      case fxml_stream:parse_element(Val) of
                           #xmlel{} = El -> [El];
                           _ -> []
                       end
@@ -390,12 +390,12 @@ import_start(LServer, DBType) ->
 
 import(LServer, {odbc, _}, mnesia, <<"private_storage">>,
        [LUser, XMLNS, XML, _TimeStamp]) ->
-    El = #xmlel{} = xml_stream:parse_element(XML),
+    El = #xmlel{} = fxml_stream:parse_element(XML),
     PS = #private_storage{usns = {LUser, LServer, XMLNS}, xml = El},
     mnesia:dirty_write(PS);
 import(LServer, {odbc, _}, riak, <<"private_storage">>,
        [LUser, XMLNS, XML, _TimeStamp]) ->
-    El = #xmlel{} = xml_stream:parse_element(XML),
+    El = #xmlel{} = fxml_stream:parse_element(XML),
     PS = #private_storage{usns = {LUser, LServer, XMLNS}, xml = El},
     ejabberd_riak:put(PS, private_storage_schema(),
 		      [{'2i', [{<<"us">>, {LUser, LServer}}]}]);

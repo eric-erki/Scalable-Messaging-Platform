@@ -88,16 +88,16 @@ log_out( #xmlel{name = <<"message">>, attrs = Attrs} = OrigPacket,
             _C2SState, From, To) ->
     case filter_chat_packet(OrigPacket) of
       true ->
-	  Packet = xml:replace_tag_attr(<<"from">>,
+	  Packet = fxml:replace_tag_attr(<<"from">>,
 					jid:to_string(jid:remove_resource(From)),
 					OrigPacket),
 	  Collection = get_collection(From, To, Packet),
 	  Timestamp = get_datetime_string_for_db(p1_time_compat:timestamp()),
-	  ID = xml:get_attr_s(<<"id">>, Attrs),
+	  ID = fxml:get_attr_s(<<"id">>, Attrs),
 	  JID =
 	      ejabberd_odbc:escape(jid:to_string(jid:remove_resource(From))),
 	  Text =
-	      ejabberd_odbc:escape(xml:element_to_binary(Packet)),
+	      ejabberd_odbc:escape(fxml:element_to_binary(Packet)),
 	  Query = [<<"CALL ">>, log_msg(From#jid.lserver),
 		   <<"('">>, JID, <<"','">>, JID, <<"','">>,
 		   ejabberd_odbc:escape(Collection), <<"','">>,
@@ -146,12 +146,12 @@ get_datetime_string_for_db({MegaSecs, Secs,
 				   [Year, Month, Day, Hour, Minute, Second])).
 
 get_target(To, Packet) ->
-    case xml:get_subtag(Packet, <<"addresses">>) of
+    case fxml:get_subtag(Packet, <<"addresses">>) of
       #xmlel{name = <<"addresses">>, attrs = AAttrs,
 	     children = Addresses} ->
-	  case xml:get_attr_s(<<"xmlns">>, AAttrs) of
+	  case fxml:get_attr_s(<<"xmlns">>, AAttrs) of
 	    ?NS_ADDRESS ->
-		[xml:get_attr_s(<<"jid">>, Attrs)
+		[fxml:get_attr_s(<<"jid">>, Attrs)
 		 || #xmlel{name = <<"address">>, attrs = Attrs}
 			<- Addresses];
 	    _ -> [jid:to_string(jid:remove_resource(To))]
@@ -160,11 +160,11 @@ get_target(To, Packet) ->
     end.
 
 parse_read_notification(Packet) ->
-    case xml:get_subtag(Packet, <<"read">>) of
+    case fxml:get_subtag(Packet, <<"read">>) of
       #xmlel{name = <<"read">>, attrs = AAttrs} ->
-	  case xml:get_attr_s(<<"xmlns">>, AAttrs) of
+	  case fxml:get_attr_s(<<"xmlns">>, AAttrs) of
 	    ?NS_RECEIPTS ->
-		{read, xml:get_attr_s(<<"id">>, AAttrs)};
+		{read, fxml:get_attr_s(<<"id">>, AAttrs)};
 	    _ -> false
 	  end;
       _ -> false
@@ -173,17 +173,17 @@ parse_read_notification(Packet) ->
 filter_chat_packet(#xmlel{name = <<"message">>,
 			  attrs = Attrs} =
 		       Msg) ->
-    case xml:get_attr_s(<<"type">>, Attrs) of
+    case fxml:get_attr_s(<<"type">>, Attrs) of
       <<"chat">> ->
-	  xml:get_subtag(Msg, <<"body">>) /= false orelse
-	    xml:get_subtag(Msg, <<"x">>) /= false;
+	  fxml:get_subtag(Msg, <<"body">>) /= false orelse
+	    fxml:get_subtag(Msg, <<"x">>) /= false;
       _ -> false
     end.
 
 is_delayed(Packet) ->
-    case xml:get_subtag(Packet, <<"delay">>) of
+    case fxml:get_subtag(Packet, <<"delay">>) of
       #xmlel{name = <<"delay">>, attrs = AAttrs} ->
-	  case xml:get_attr_s(<<"xmlns">>, AAttrs) of
+	  case fxml:get_attr_s(<<"xmlns">>, AAttrs) of
 	    ?NS_DELAY -> true;
 	    _ -> false
 	  end;
@@ -206,18 +206,18 @@ log_message_to_user(From, To,
 	       not mod_carboncopy:is_carbon_copy(OrigPacket)
 	of
       true ->
-	  Packet = xml:replace_tag_attr(<<"from">>,
+	  Packet = fxml:replace_tag_attr(<<"from">>,
 					jid:to_string(jid:remove_resource(From)),
 					OrigPacket),
 	  Collection = get_collection(From, To, Packet),
 	  Timestamp = get_datetime_string_for_db(p1_time_compat:timestamp()),
-	  ID = xml:get_attr_s(<<"id">>, Attrs),
+	  ID = fxml:get_attr_s(<<"id">>, Attrs),
 	  JIDTo =
 	      ejabberd_odbc:escape(jid:to_string(jid:remove_resource(To))),
 	  JIDFrom =
 	      ejabberd_odbc:escape(jid:to_string(jid:remove_resource(From))),
 	  Text =
-	      ejabberd_odbc:escape(xml:element_to_binary(Packet)),
+	      ejabberd_odbc:escape(fxml:element_to_binary(Packet)),
 	  Query = [<<"CALL ">>, log_msg(To#jid.lserver), <<"('">>,
 		   JIDTo, <<"','">>, JIDFrom, <<"','">>,
 		   ejabberd_odbc:escape(Collection), <<"','">>,
@@ -257,11 +257,11 @@ log_message_to_user(_From, _To, _Packet) -> ok.
 
 parse_receipt_response(#xmlel{name = <<"message">>,
 			      children = Children}) ->
-    case xml:remove_cdata(Children) of
+    case fxml:remove_cdata(Children) of
       [#xmlel{name = Status, attrs = Attrs}] ->
-	  case xml:get_attr_s(<<"xmlns">>, Attrs) of
+	  case fxml:get_attr_s(<<"xmlns">>, Attrs) of
 	    ?NS_RECEIPTS ->
-		{ok, xml:get_attr_s(<<"id">>, Attrs), Status};
+		{ok, fxml:get_attr_s(<<"id">>, Attrs), Status};
 	    _ -> false
 	  end;
       _ -> false
@@ -276,7 +276,7 @@ normalize_rsm_in(R) -> R.
 
 process_sm_iq(From, _To,
 	      #iq{type = get, sub_el = El} = IQ) ->
-    Date = xml:get_tag_attr_s(<<"start">>, El),
+    Date = fxml:get_tag_attr_s(<<"start">>, El),
     {Max, Index} = case normalize_rsm_in(jlib:rsm_decode(IQ)) of
                        none ->
                            {50, 0};
@@ -309,7 +309,7 @@ process_sm_iq(From, _To,
 			     attrs = Attrs} =
 			  SubEl} =
 		  IQ) ->
-    Conversation = xml:get_attr_s(<<"conversation">>,
+    Conversation = fxml:get_attr_s(<<"conversation">>,
 				  Attrs),
     case remove_conversation(From, Conversation) of
       error ->
@@ -331,7 +331,7 @@ process_sm_iq(_From, _To, #iq{sub_el = SubEl} = IQ) ->
     IQ#iq{type = error, sub_el = [SubEl, ?ERR_BAD_REQUEST]}.
 
 parse_message_from_db(User, At, Message) ->
-    case xml_stream:parse_element(Message) of
+    case fxml_stream:parse_element(Message) of
       {error, Error} ->
 	  ?ERROR_MSG("Error parsing message from DB. User:~p "
 		     "Message: ~p  At: ~p Error:~p",

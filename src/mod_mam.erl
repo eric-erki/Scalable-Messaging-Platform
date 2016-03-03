@@ -607,7 +607,7 @@ parse_query_v0_2(Query) ->
 	  (#xmlel{name = <<"set">>}) ->
 	      [{<<"set">>, Query}];
 	  (#xmlel{name = <<"withroom">>} = El) ->
-	      [{withroom, xml:get_tag_cdata(El)}];
+	      [{withroom, fxml:get_tag_cdata(El)}];
 	  (_) ->
 	     []
       end, Query#xmlel.children).
@@ -796,7 +796,7 @@ store(Pkt, _, {LUser, LServer}, Type, Peer, Nick, _Dir, mnesia) ->
 store(Pkt, _, {LUser, LServer}, Type, Peer, Nick, _Dir, p1db) ->
     Now = p1_time_compat:timestamp(),
     USNKey = usn2key(LUser, LServer, Now),
-    XML = xml:element_to_binary(Pkt),
+    XML = fxml:element_to_binary(Pkt),
     Val = term_to_binary([{peer, Peer},
 			  {nick, Nick},
 			  {type, Type},
@@ -821,9 +821,9 @@ store(Pkt, LServer, {LUser, LHost}, Type, Peer, Nick, Dir, rest) ->
 				    false) of
 	    true ->
 		[{<<"direction">>, jlib:atom_to_binary(Dir)},
-		 {<<"body">>, xml:get_subtag_cdata(Pkt, <<"body">>)}];
+		 {<<"body">>, fxml:get_subtag_cdata(Pkt, <<"body">>)}];
 	    false ->
-		[{<<"xml">>, xml:element_to_binary(Pkt)}]
+		[{<<"xml">>, fxml:element_to_binary(Pkt)}]
 	end,
     Path = ejabberd_config:get_option({ext_api_path_archive, LServer},
 				      fun(X) -> iolist_to_binary(X) end,
@@ -1221,7 +1221,7 @@ select(_LServer, #jid{luser = LUser, lserver = LServer} = JidRequestor,
 				 match_rsm(Now, RSM) of
 				 true ->
 				     #xmlel{} = Pkt =
-					 xml_stream:parse_element(
+					 fxml_stream:parse_element(
 					   proplists:get_value(packet,
 							       Opts)),
 				     [{jlib:integer_to_binary(TS), TS,
@@ -1340,7 +1340,7 @@ build_xml_from_json(User, Attrs, StoreBody) ->
 				      children = [{xmlcdata, Body}]}]};
        true ->
 	    XML = proplists:get_value(<<"xml">>, Attrs, <<"">>),
-	    #xmlel{} = xml_stream:parse_element(XML)
+	    #xmlel{} = fxml_stream:parse_element(XML)
     end.
 
 msg_to_el(#archive_msg{timestamp = TS, packet = Pkt1, nick = Nick, peer = Peer},
@@ -1353,12 +1353,12 @@ msg_to_el(#archive_msg{timestamp = TS, packet = Pkt1, nick = Nick, peer = Peer},
     jlib:add_delay_info(Pkt3, LServer, TS).
 
 maybe_update_from_to(Pkt, JidRequestor, Peer, chat, _Nick) ->
-    case xml:get_attr_s(<<"type">>, Pkt#xmlel.attrs) of
+    case fxml:get_attr_s(<<"type">>, Pkt#xmlel.attrs) of
 	<<"groupchat">> when Peer /= undefined ->
-	    Pkt2 = xml:replace_tag_attr(<<"to">>,
+	    Pkt2 = fxml:replace_tag_attr(<<"to">>,
 					jid:to_string(JidRequestor),
 					Pkt),
-	    xml:replace_tag_attr(<<"from">>, jid:to_string(Peer),
+	    fxml:replace_tag_attr(<<"from">>, jid:to_string(Peer),
 				 Pkt2);
 	_ -> Pkt
     end;

@@ -310,7 +310,7 @@ store_offline_msg(Host, {User, _}, Msgs, Len, MaxOfflineMsgs, rest) ->
 			%% Retry 2 times, with a backoff of 500millisec
 			case rest:with_retry(post, [LServer, Path, [],
 				    {[{<<"peer">>, jid:to_string(From)},
-				      {<<"packet">>, xml:element_to_binary(El)},
+				      {<<"packet">>, fxml:element_to_binary(El)},
 				      {<<"timestamp">>, jlib:now_to_utc_string(Now,3)} ]}], 2, 500) of
 			    {ok, Code, _} when Code == 200 orelse Code == 201 ->
 				ok;
@@ -420,14 +420,14 @@ handle_offline_query(#jid{luser = U, lserver = S} = From,
 		     #iq{type = Type, sub_el = SubEl} = IQ) ->
     case Type of
 	get ->
-	    case xml:get_subtag(SubEl, <<"fetch">>) of
+	    case fxml:get_subtag(SubEl, <<"fetch">>) of
 		#xmlel{} ->
 		    handle_offline_fetch(From);
 		false ->
 		    handle_offline_items_view(From, SubEl)
 	    end;
 	set ->
-	    case xml:get_subtag(SubEl, <<"purge">>) of
+	    case fxml:get_subtag(SubEl, <<"purge">>) of
 		#xmlel{} ->
 		    delete_all_msgs(U, S);
 		false ->
@@ -470,9 +470,9 @@ handle_offline_items_remove(JID, #xmlel{children = Items}) ->
 get_nodes_from_items(Items, Action) ->
     lists:flatmap(
       fun(#xmlel{name = <<"item">>, attrs = Attrs}) ->
-	      case xml:get_attr_s(<<"action">>, Attrs) of
+	      case fxml:get_attr_s(<<"action">>, Attrs) of
 		  Action ->
-		      case xml:get_attr_s(<<"node">>, Attrs) of
+		      case fxml:get_attr_s(<<"node">>, Attrs) of
 			  <<"">> ->
 			      [];
 			  TS ->
@@ -616,7 +616,7 @@ has_no_store_hint(Packet) ->
       fxml:get_subtag_with_xmlns(Packet, <<"no-storage">>, ?NS_HINTS) =/= false.
 
 has_offline_tag(Packet) ->
-    xml:get_subtag_with_xmlns(Packet, <<"offline">>, ?NS_FLEX_OFFLINE) =/= false.
+    fxml:get_subtag_with_xmlns(Packet, <<"offline">>, ?NS_FLEX_OFFLINE) =/= false.
 
 %% Check if the packet has any content about XEP-0022
 check_event(From, To, Packet) ->
@@ -808,7 +808,7 @@ pop_offline_messages(Ls, LUser, LServer, rest) ->
                                 From = jid:from_string(proplists:get_value(<<"peer">>, Item, <<>>)),
                                 Timestamp = proplists:get_value(<<"timestamp">>, Item, <<>>),
                                 Packet = proplists:get_value(<<"packet">>, Item, <<>>),
-                                case xml_stream:parse_element(Packet) of
+                                case fxml_stream:parse_element(Packet) of
                                     {error,Reason} ->
                                         ?ERROR_MSG("Bad packet XML received from rest offline: ~p : ~p ", [Packet, Reason]),
                                         [];
@@ -1094,8 +1094,8 @@ read_message_headers(LUser, LServer, odbc) ->
 	    Hdrs = lists:flatmap(
 		     fun([XML, Seq]) ->
 			     try
-				 #xmlel{} = El = xml_stream:parse_element(XML),
-				 From = xml:get_tag_attr_s(<<"from">>, El),
+				 #xmlel{} = El = fxml_stream:parse_element(XML),
+				 From = fxml:get_tag_attr_s(<<"from">>, El),
 				 #jid{} = jid:from_string(From),
 				 TS = format_timestamp(Seq),
 				 [{<<TS/binary, "+", From/binary>>, From, El}]
@@ -1141,7 +1141,7 @@ read_message(_From, To, Seq, odbc) ->
 	   [<<"select xml from spool  where username='">>, Username,
 	    <<"'  and seq='">>, SSeq, <<"';">>]) of
 	{selected, [<<"xml">>], [[RawXML]|_]} ->
-	    case xml_stream:parse_element(RawXML) of
+	    case fxml_stream:parse_element(RawXML) of
 		#xmlel{} = El -> {ok, El};
 		{error, _} -> error
 	    end;
@@ -1657,8 +1657,8 @@ p1db_to_offmsg({LUser, LServer, Now}, Val) ->
                   (_, M) -> M
                end, OffMsg0, binary_to_term(Val)),
     El = OffMsg#offline_msg.packet,
-    #jid{} = To = jid:from_string(xml:get_tag_attr_s(<<"to">>, El)),
-    #jid{} = From = jid:from_string(xml:get_tag_attr_s(<<"from">>, El)),
+    #jid{} = To = jid:from_string(fxml:get_tag_attr_s(<<"to">>, El)),
+    #jid{} = From = jid:from_string(fxml:get_tag_attr_s(<<"from">>, El)),
     OffMsg#offline_msg{from = From, to = To}.
 
 offmsg_to_p1db(#offline_msg{packet = Pkt, expire = T}) ->
@@ -1684,7 +1684,7 @@ enc_val(_, [SExpire, SPacket]) ->
                  <<"never">> -> never;
                  _ -> ts2now(SExpire)
              end,
-    #xmlel{} = Packet = xml_stream:parse_element(SPacket),
+    #xmlel{} = Packet = fxml_stream:parse_element(SPacket),
     offmsg_to_p1db(#offline_msg{packet = Packet, expire = Expire}).
 
 dec_val([Server, User, TS], Bin) ->
@@ -1695,7 +1695,7 @@ dec_val([Server, User, TS], Bin) ->
                   never -> <<"never">>;
                   _ -> now2ts(Expire)
               end,
-    [SExpire, xml:element_to_binary(Packet)].
+    [SExpire, fxml:element_to_binary(Packet)].
 
 export(_Server) ->
     [{offline_msg,

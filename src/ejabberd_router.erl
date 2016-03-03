@@ -312,9 +312,9 @@ code_change(_OldVsn, State, _Extra) ->
 
 route_check_id(From, To,
 	       #xmlel{name = <<"iq">>, attrs = Attrs} = Packet) ->
-    case xml:get_attr_s(<<"id">>, Attrs) of
+    case fxml:get_attr_s(<<"id">>, Attrs) of
       << ?ROUTE_PREFIX, Rest/binary>> ->
-	  Type = xml:get_attr_s(<<"type">>, Attrs),
+	  Type = fxml:get_attr_s(<<"type">>, Attrs),
 	  if Type == <<"error">>; Type == <<"result">> ->
 		 case str:tokens(Rest, <<"-">>) of
 		   [_, NodeID] ->
@@ -405,7 +405,7 @@ allow_host1(MyHost, VHost) ->
     acl:match_rule(MyHost, Rule, JID) == allow.
 
 bounce_packet(From, To, #xmlel{attrs = Attrs} = Packet) ->
-    Type = xml:get_attr_s(<<"type">>, Attrs),
+    Type = fxml:get_attr_s(<<"type">>, Attrs),
     if Type == <<"error">>; Type == <<"result">> ->
 	    ?DEBUG("packet dropped~n", []),
 	    ok;

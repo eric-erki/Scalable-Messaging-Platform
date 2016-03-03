@@ -35,7 +35,7 @@
 -include("mod_privacy.hrl").
 
 build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom, BadgeCount, First, FirstPerUser, SilentPushesEnabled, Module) ->
-    Body1 = xml:get_path_s(Packet, [{elem, <<"body">>}, cdata]),
+    Body1 = fxml:get_path_s(Packet, [{elem, <<"body">>}, cdata]),
     Body =
         case check_x_attachment(Packet) of
             true ->
@@ -48,7 +48,7 @@ build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom,
                     Body1
         end,
     Pushed = check_x_pushed(Packet),
-    Composing = xml:get_subtag_with_xmlns(Packet, <<"composing">>, ?NS_CHATSTATES),
+    Composing = fxml:get_subtag_with_xmlns(Packet, <<"composing">>, ?NS_CHATSTATES),
     if
         Pushed ->
             skip;
@@ -71,15 +71,15 @@ build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom,
                             false
                 end,
             Customizations = lists:filtermap(fun(#xmlel{name = <<"customize">>} = E) ->
-                                                     case xml:get_tag_attr_s(<<"xmlns">>, E) of
+                                                     case fxml:get_tag_attr_s(<<"xmlns">>, E) of
                                                          ?NS_P1_PUSH_CUSTOMIZE ->
                                                              {true, {
-                                                                xml:get_tag_attr_s(<<"mute">>, E) == <<"true">>,
-                                                                xml:get_tag_attr_s(<<"sound">>, E),
-                                                                xml:get_tag_attr_s(<<"nick">>, E),
-                                                                case xml:get_subtag(E, <<"body">>) of
+                                                                fxml:get_tag_attr_s(<<"mute">>, E) == <<"true">>,
+                                                                fxml:get_tag_attr_s(<<"sound">>, E),
+                                                                fxml:get_tag_attr_s(<<"nick">>, E),
+                                                                case fxml:get_subtag(E, <<"body">>) of
                                                                     false -> false;
-                                                                    V -> xml:get_tag_cdata(V)
+                                                                    V -> fxml:get_tag_cdata(V)
                                                                 end
                                                                }};
                                                          _ ->
@@ -123,9 +123,9 @@ build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom,
                                   <<"">>
                           end,
                     CustomFields = lists:filtermap(fun(#xmlel{name = <<"x">>} = E) ->
-                                                           case {xml:get_tag_attr_s(<<"xmlns">>, E),
-                                                                 xml:get_tag_attr_s(<<"key">>, E),
-                                                                 xml:get_tag_attr_s(<<"value">>, E)} of
+                                                           case {fxml:get_tag_attr_s(<<"xmlns">>, E),
+                                                                 fxml:get_tag_attr_s(<<"key">>, E),
+                                                                 fxml:get_tag_attr_s(<<"value">>, E)} of
                                                                {?NS_P1_PUSH_CUSTOM, K, V} when K /= <<"">> ->
                                                                    {true, {K, V}};
                                                                _ ->
@@ -307,7 +307,7 @@ check_x_pushed1([]) ->
 check_x_pushed1([{xmlcdata, _} | Els]) ->
     check_x_pushed1(Els);
 check_x_pushed1([El | Els]) ->
-    case xml:get_tag_attr_s(<<"xmlns">>, El) of
+    case fxml:get_tag_attr_s(<<"xmlns">>, El) of
 	?NS_P1_PUSHED ->
 	    true;
 	_ ->
@@ -322,7 +322,7 @@ check_x_attachment1([]) ->
 check_x_attachment1([{xmlcdata, _} | Els]) ->
     check_x_attachment1(Els);
 check_x_attachment1([El | Els]) ->
-    case xml:get_tag_attr_s(<<"xmlns">>, El) of
+    case fxml:get_tag_attr_s(<<"xmlns">>, El) of
 	?NS_P1_ATTACHMENT ->
 	    true;
 	_ ->

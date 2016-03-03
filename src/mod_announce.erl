@@ -863,7 +863,7 @@ announce_motd_update(LServer, Packet) ->
             mnesia:transaction(F);
         p1db ->
             MsgKey = msg_key(LServer),
-            XML = xml:element_to_binary(Packet),
+            XML = fxml:element_to_binary(Packet),
             case p1db:insert(motd, MsgKey, XML) of
                 ok -> {atomic, ok};
                 {error, _} = Err -> {aborted, Err}
@@ -981,7 +981,7 @@ send_motd(#jid{luser = LUser, lserver = LServer} = JID, p1db) ->
             MsgKey = msg_key(LServer),
             case p1db:get(motd, MsgKey) of
                 {ok, XML, _VClock} ->
-                    case xml_stream:parse_element(XML) of
+                    case fxml_stream:parse_element(XML) of
                         #xmlel{} = Packet ->
                             case p1db:insert(motd, USKey, <<>>) of
                                 ok ->
@@ -1068,7 +1068,7 @@ get_stored_motd_packet(LServer, p1db) ->
     MsgKey = msg_key(LServer),
     case p1db:get(motd, MsgKey) of
         {ok, Val, _VClock} ->
-            case xml_stream:parse_element(Val) of
+            case fxml_stream:parse_element(Val) of
                 #xmlel{} = El -> {ok, El};
                 {error, _} -> error
             end;
@@ -1229,7 +1229,7 @@ import_start(LServer, DBType) ->
     init_db(DBType, LServer).
 
 import(LServer, {odbc, _}, mnesia, <<"motd">>, [<<>>, XML, _TimeStamp]) ->
-    El = xml_stream:parse_element(XML),
+    El = fxml_stream:parse_element(XML),
     mnesia:dirty_write(#motd{server = LServer, packet = El});
 import(LServer, {odbc, _}, mnesia, <<"motd">>, [LUser, <<>>, _TimeStamp]) ->
     mnesia:dirty_write(#motd_users{us = {LUser, LServer}});
@@ -1240,7 +1240,7 @@ import(LServer, {odbc, _}, p1db, <<"motd">>, [LUser, <<>>, _TimeStamp]) ->
     USKey = us2key(LUser, LServer),
     p1db:async_insert(motd, USKey, <<>>);
 import(LServer, {odbc, _}, riak, <<"motd">>, [<<>>, XML, _TimeStamp]) ->
-    El = xml_stream:parse_element(XML),
+    El = fxml_stream:parse_element(XML),
     ejabberd_riak:put(#motd{server = LServer, packet = El}, motd_schema());
 import(LServer, {odbc, _}, riak, <<"motd">>, [LUser, <<>>, _TimeStamp]) ->
     Users = #motd_users{us = {LUser, LServer}},

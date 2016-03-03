@@ -353,7 +353,7 @@ usec_to_now(Int) ->
 muc_send_system_message(RoomString, RoomHost, BodyBin, Activity) ->
     SenderJid = get_senderjid(RoomHost),
     RoomJid = jid:from_string(RoomString),
-    case xml_stream:parse_element(Activity) of
+    case fxml_stream:parse_element(Activity) of
 	{xmlel, _, _, _} = ActivityEl ->
 	    XmlEl = build_systemmessage_stanza(BodyBin, ActivityEl, RoomString),
 	    ejabberd_router:route(SenderJid, RoomJid, XmlEl),

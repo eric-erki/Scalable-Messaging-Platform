@@ -95,7 +95,7 @@ process_local_iq(_From,
 	      #iq{type = set, sub_el = SubEl} = IQ) ->
 
     #xmlel{attrs = Attrs} = SubEl,
-    case xml:get_attr_s(<<"md5">>, Attrs) of
+    case fxml:get_attr_s(<<"md5">>, Attrs) of
 	MD5 when size(MD5) == 24 ->
 	    % MD5 is Base64 encoded 128 bits binary MD5 sum
 	    make_result(Host, IQ, SubEl, put, none,[{"content-md5", MD5}]);
@@ -112,7 +112,7 @@ process_local_iq(_From,
 	      #iq{type = get, sub_el = SubEl} = IQ) ->
 
     #xmlel{attrs = Attrs} = SubEl,
-    case xml:get_attr_s(<<"fileid">>, Attrs) of
+    case fxml:get_attr_s(<<"fileid">>, Attrs) of
 	FileID when size(FileID) == 36 ->
 	    % FileID is an uuid v4
 	    make_result(Host, IQ, SubEl, get, FileID, []);

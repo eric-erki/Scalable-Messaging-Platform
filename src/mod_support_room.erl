@@ -291,8 +291,8 @@ normal_state({route, From, <<"">>,
 	      #xmlel{name = <<"message">>, attrs = Attrs,
 		     children = Els} = MPacket},
 	     StateData) ->
-    PushInfo = xml:get_subtag(#xmlel{children=Els}, <<"push_info">>),
-    case {is_agent(From, StateData), xml:get_attr_s(<<"type">>, Attrs), PushInfo} of
+    PushInfo = fxml:get_subtag(#xmlel{children=Els}, <<"push_info">>),
+    case {is_agent(From, StateData), fxml:get_attr_s(<<"type">>, Attrs), PushInfo} of
         {true, _, _} ->
             {next_state, normal_state, StateData};
         {_, <<"error">>, _} ->
@@ -301,9 +301,9 @@ normal_state({route, From, <<"">>,
             US = {From#jid.luser, From#jid.lserver},
             case (?DICT):find(US, StateData#state.user_status) of
                 {ok, Data} ->
-                    Product = xml:get_tag_attr_s(<<"product">>, PushInfo),
-                    Push = xml:get_tag_attr_s(<<"push">>, PushInfo),
-                    Alias = xml:get_tag_attr_s(<<"alias">>, PushInfo),
+                    Product = fxml:get_tag_attr_s(<<"product">>, PushInfo),
+                    Push = fxml:get_tag_attr_s(<<"push">>, PushInfo),
+                    Alias = fxml:get_tag_attr_s(<<"alias">>, PushInfo),
                     Data1 = Data#user{push_info = {Product, Push, Alias}},
                     UserStatus = (?DICT):store(US, Data1,
                                                StateData#state.user_status),
@@ -547,8 +547,8 @@ normal_state({route, From, Resource,
 normal_state({route, From, ToNick,
 	      #xmlel{name = <<"iq">>, attrs = Attrs} = Packet},
 	     StateData) ->
-    Lang = xml:get_attr_s(<<"xml:lang">>, Attrs),
-    StanzaId = xml:get_attr_s(<<"id">>, Attrs),
+    Lang = fxml:get_attr_s(<<"xml:lang">>, Attrs),
+    StanzaId = fxml:get_attr_s(<<"id">>, Attrs),
     case {(StateData#state.config)#config.allow_query_users,
 	  is_user_online_iq(StanzaId, From, StateData)}
 	of
@@ -940,7 +940,7 @@ load_history(Host, Room, true, Queue) ->
 		 [length(Items), Room]),
 	  lists:foldl(fun (I, Q) ->
 			      [Nick, XML, HS, Ts, Size] = I,
-			      Item = {Nick, xml_stream:parse_element(XML),
+			      Item = {Nick, fxml_stream:parse_element(XML),
 				      HS /= <<"0">>,
 				      calendar:gregorian_seconds_to_datetime(jlib:binary_to_integer(Ts)),
 				      jlib:binary_to_integer(Size)},
@@ -960,7 +960,7 @@ persist_support_history(#state{room = Room,
 			      Timestamp, Size}) ->
 				odbc_queries:add_roomhistory_sql(ejabberd_odbc:escape(Room),
 								 ejabberd_odbc:escape(FromNick),
-								 ejabberd_odbc:escape(xml:element_to_binary(Packet)),
+								 ejabberd_odbc:escape(fxml:element_to_binary(Packet)),
 								 iolist_to_binary(atom_to_list(HaveSubject)),
 								 iolist_to_binary(integer_to_list(calendar:datetime_to_gregorian_seconds(Timestamp))),
 								 iolist_to_binary(integer_to_list(Size)))
@@ -979,7 +979,7 @@ route(Pid, From, ToNick, Packet) ->
 process_groupchat_message(From,
 			  #xmlel{name = <<"message">>, attrs = Attrs} = Packet,
 			  StateData) ->
-    Lang = xml:get_attr_s(<<"xml:lang">>, Attrs),
+    Lang = fxml:get_attr_s(<<"xml:lang">>, Attrs),
     case is_user_online(From, StateData) orelse
 	   is_user_allowed_message_nonparticipant(From, StateData)
 	of
@@ -1092,8 +1092,8 @@ process_presence(From, _Nick,
 		 StateData) ->
     case is_agent(From, StateData) of
         true ->
-            Type = xml:get_attr_s(<<"type">>, Attrs),
-            %Lang = xml:get_attr_s(<<"xml:lang">>, Attrs),
+            Type = fxml:get_attr_s(<<"type">>, Attrs),
+            %Lang = fxml:get_attr_s(<<"xml:lang">>, Attrs),
             StateData1 =
                 if
                     Type == <<"unavailable">>;
@@ -1175,8 +1175,8 @@ process_presence(From, _Nick,
                 end,
             {next_state, normal_state, StateData1};
         false ->
-            Type = xml:get_attr_s(<<"type">>, Attrs),
-            %Lang = xml:get_attr_s(<<"xml:lang">>, Attrs),
+            Type = fxml:get_attr_s(<<"type">>, Attrs),
+            %Lang = fxml:get_attr_s(<<"xml:lang">>, Attrs),
             US = {From#jid.luser, From#jid.lserver},
             Data1 = case (?DICT):find(US, StateData#state.user_status) of
                         {ok, Data} ->
@@ -1947,8 +1947,8 @@ get_agent_nick_and_avatar(AgentLJID) ->
     IQ = mod_vcard:process_sm_iq(<<"">>, jid:make(AgentLJID), #iq{type=get}),
     {N,A} = case IQ#iq.sub_el of
                 [#xmlel{name = <<"vCard">>}=El|_] ->
-                    {xml:get_path_s(El, [{elem, <<"NICKNAME">>}, cdata]),
-                     binary:replace(xml:get_path_s(El, [{elem, <<"PHOTO">>}, {elem, <<"BINVAL">>}, cdata]),
+                    {fxml:get_path_s(El, [{elem, <<"NICKNAME">>}, cdata]),
+                     binary:replace(fxml:get_path_s(El, [{elem, <<"PHOTO">>}, {elem, <<"BINVAL">>}, cdata]),
                                     [<<" ">>, <<"\n">>], <<"">>, {global})};
                 _ ->
                     {<<"">>, <<"">>}
@@ -2017,7 +2017,7 @@ handle_agent_message(US, UserData, AgentLJID, Els, StateData) ->
                          ?NS_SUPPORT} ->
                             Since =
                                 case jlib:datetime_string_to_timestamp(
-                                       xml:get_tag_attr_s(<<"since">>, XEl)) of
+                                       fxml:get_tag_attr_s(<<"since">>, XEl)) of
                                     undefined -> {0, 0, 0};
                                     TS -> TS
                                 end,
@@ -2028,7 +2028,7 @@ handle_agent_message(US, UserData, AgentLJID, Els, StateData) ->
                                          StateData),
                             StateData;
                         _ ->
-                            case xml:get_path_s(#xmlel{children=Els}, [{elem, <<"body">>}, cdata]) of
+                            case fxml:get_path_s(#xmlel{children=Els}, [{elem, <<"body">>}, cdata]) of
                                 <<":done">> ->
                                     handle_done_event(StateData, UserData, AgentLJID, US);
                                 _ ->
@@ -2049,7 +2049,7 @@ handle_agent_message(US, UserData, AgentLJID, Els, StateData) ->
     end.
 
 check_for_push_message(US, UserData, AgentLJID, Els, StateData) ->
-    case {xml:get_path_s(#xmlel{children=Els}, [{elem, <<"body">>}, cdata]), UserData#user.is_available, UserData#user.push_info /= unavailable} of
+    case {fxml:get_path_s(#xmlel{children=Els}, [{elem, <<"body">>}, cdata]), UserData#user.is_available, UserData#user.push_info /= unavailable} of
         {<<":push ",_Tail/binary>>, _, false} ->
             Text = <<"This user don't have push information stored">>,
             Packet =
@@ -2254,7 +2254,7 @@ queue_insert(US, {Len, {MSecs, Secs, MicroSecs}}, Data,
 
 
 add_history(US, From, Packet, StateData) ->
-    Body = xml:get_path_s(Packet, [{elem, <<"body">>}, cdata]),
+    Body = fxml:get_path_s(Packet, [{elem, <<"body">>}, cdata]),
     case Body of
         <<"">> ->
             ok;
@@ -2320,9 +2320,9 @@ now2ts({MegaSecs, Secs, USecs}) ->
 
 
 get_el_xmlns(Els) ->
-    case xml:remove_cdata(Els) of
+    case fxml:remove_cdata(Els) of
         [XEl] ->
-            {XEl, xml:get_tag_attr_s(<<"xmlns">>, XEl)};
+            {XEl, fxml:get_tag_attr_s(<<"xmlns">>, XEl)};
         _ -> false
     end.
 
@@ -2333,7 +2333,7 @@ filter_presence(#xmlel{name = <<"presence">>,
 				case El of
 				  {xmlcdata, _} -> false;
 				  #xmlel{attrs = Attrs1} ->
-                                        XMLNS = xml:get_attr_s(<<"xmlns">>,
+                                        XMLNS = fxml:get_attr_s(<<"xmlns">>,
                                                                Attrs1),
                                         NS_SUPPORT = ?NS_SUPPORT,
                                         Size = byte_size(NS_SUPPORT),
@@ -2396,11 +2396,11 @@ higher_presence(Pres1, Pres2) ->
     Pri1 > Pri2.
 
 get_priority_from_presence(PresencePacket) ->
-    case xml:get_subtag(PresencePacket, <<"priority">>) of
+    case fxml:get_subtag(PresencePacket, <<"priority">>) of
       false -> 0;
       SubEl ->
 	  case catch
-		 jlib:binary_to_integer(xml:get_tag_cdata(SubEl))
+		 jlib:binary_to_integer(fxml:get_tag_cdata(SubEl))
 	      of
 	    P when is_integer(P) -> P;
 	    _ -> 0
@@ -2416,7 +2416,7 @@ nick_collision(User, Nick, StateData) ->
 add_new_user(From, Nick,
 	     #xmlel{attrs = Attrs, children = Els} = Packet,
 	     StateData) ->
-    Lang = xml:get_attr_s(<<"xml:lang">>, Attrs),
+    Lang = fxml:get_attr_s(<<"xml:lang">>, Attrs),
     MaxUsers = get_max_users(StateData),
     MaxAdminUsers = MaxUsers +
 		      get_max_users_admin_threshold(StateData),
@@ -2539,7 +2539,7 @@ add_new_user(From, Nick,
 			     From, Err),
 		StateData;
 	    captcha_required ->
-		SID = xml:get_attr_s(<<"id">>, Attrs),
+		SID = fxml:get_attr_s(<<"id">>, Attrs),
 		RoomJID = StateData#state.jid,
 		To = jid:replace_resource(RoomJID, Nick),
 		Limiter = {From#jid.luser, From#jid.lserver},
@@ -2639,11 +2639,11 @@ check_captcha(Affiliation, From, StateData) ->
 
 extract_password([]) -> false;
 extract_password([#xmlel{attrs = Attrs} = El | Els]) ->
-    case xml:get_attr_s(<<"xmlns">>, Attrs) of
+    case fxml:get_attr_s(<<"xmlns">>, Attrs) of
       ?NS_SUPPORT ->
-	  case xml:get_subtag(El, <<"password">>) of
+	  case fxml:get_subtag(El, <<"password">>) of
 	    false -> false;
-	    SubEl -> xml:get_tag_cdata(SubEl)
+	    SubEl -> fxml:get_tag_cdata(SubEl)
 	  end;
       _ -> extract_password(Els)
     end;
@@ -2718,9 +2718,9 @@ calc_shift(MaxSize, Size, Shift, [S | TSizes]) ->
 extract_history([], _Type) -> false;
 extract_history([#xmlel{attrs = Attrs} = El | Els],
 		Type) ->
-    case xml:get_attr_s(<<"xmlns">>, Attrs) of
+    case fxml:get_attr_s(<<"xmlns">>, Attrs) of
       ?NS_SUPPORT ->
-	  AttrVal = xml:get_path_s(El,
+	  AttrVal = fxml:get_path_s(El,
 				   [{elem, <<"history">>}, {attr, Type}]),
 	  case Type of
 	    <<"since">> ->
@@ -2833,7 +2833,7 @@ send_new_presence(NJID, Reason, StateData) ->
 					   | Status2];
 				      false -> Status2
 				    end,
-			  Packet = xml:append_subtags(Presence,
+			  Packet = fxml:append_subtags(Presence,
 						      [#xmlel{name = <<"x">>,
 							      attrs =
 								  [{<<"xmlns">>,
@@ -2886,7 +2886,7 @@ send_existing_presences(ToJID, StateData) ->
 						   {<<"role">>,
 						    role_to_list(FromRole)}]
 					    end,
-				Packet = xml:append_subtags(Presence,
+				Packet = fxml:append_subtags(Presence,
 							    [#xmlel{name =
 									<<"x">>,
 								    attrs =
@@ -2939,7 +2939,7 @@ lqueue_filter(F, #lqueue{queue = Q1} = LQ) ->
 
 add_message_to_history(FromNick, FromJID, Packet,
 		       StateData) ->
-    HaveSubject = case xml:get_subtag(Packet, <<"subject">>)
+    HaveSubject = case fxml:get_subtag(Packet, <<"subject">>)
 		      of
 		    false -> false;
 		    _ -> true
@@ -2957,7 +2957,7 @@ add_message_to_history(FromNick, FromJID, Packet,
                                                  {<<"stamp">>, <<T_string/binary, Tz_string/binary>>}],
                     children = [{xmlcdata, <<>>}]}],
 
-    TSPacket = xml:append_subtags(Packet, Delay),
+    TSPacket = fxml:append_subtags(Packet, Delay),
     SPacket =
 	jlib:replace_from_to(jid:replace_resource(StateData#state.jid,
 						       FromNick),
@@ -3003,9 +3003,9 @@ send_subject(JID, Lang, StateData) ->
     end.
 
 check_subject(Packet) ->
-    case xml:get_subtag(Packet, <<"subject">>) of
+    case fxml:get_subtag(Packet, <<"subject">>) of
       false -> false;
-      SubjEl -> xml:get_tag_cdata(SubjEl)
+      SubjEl -> fxml:get_tag_cdata(SubjEl)
     end.
 
 can_change_subject(Role, StateData) ->
@@ -3022,14 +3022,14 @@ process_iq_admin(From, set, Lang, SubEl, StateData) ->
     #xmlel{children = Items} = SubEl,
     process_admin_items_set(From, Items, Lang, StateData);
 process_iq_admin(From, get, Lang, SubEl, StateData) ->
-    case xml:get_subtag(SubEl, <<"item">>) of
+    case fxml:get_subtag(SubEl, <<"item">>) of
       false -> {error, ?ERR_BAD_REQUEST};
       Item ->
 	  FAffiliation = get_affiliation(From, StateData),
 	  FRole = get_role(From, StateData),
-	  case xml:get_tag_attr(<<"role">>, Item) of
+	  case fxml:get_tag_attr(<<"role">>, Item) of
 	    false ->
-		case xml:get_tag_attr(<<"affiliation">>, Item) of
+		case fxml:get_tag_attr(<<"affiliation">>, Item) of
 		  false -> {error, ?ERR_BAD_REQUEST};
 		  {value, StrAffiliation} ->
 		      case catch list_to_affiliation(StrAffiliation) of
@@ -3286,7 +3286,7 @@ find_changed_items(UJID, UAffiliation, URole,
 		   [#xmlel{name = <<"item">>, attrs = Attrs} = Item
 		    | Items],
 		   Lang, StateData, Res) ->
-    TJID = case xml:get_attr(<<"jid">>, Attrs) of
+    TJID = case fxml:get_attr(<<"jid">>, Attrs) of
 	     {value, S} ->
 		 case jid:from_string(S) of
 		   error ->
@@ -3299,7 +3299,7 @@ find_changed_items(UJID, UAffiliation, URole,
 		   J -> {value, [J]}
 		 end;
 	     _ ->
-		 case xml:get_attr(<<"nick">>, Attrs) of
+		 case fxml:get_attr(<<"nick">>, Attrs) of
 		   {value, N} ->
 		       case find_jids_by_nick(N, StateData) of
 			 false ->
@@ -3319,9 +3319,9 @@ find_changed_items(UJID, UAffiliation, URole,
       {value, [JID | _] = JIDs} ->
 	  TAffiliation = get_affiliation(JID, StateData),
 	  TRole = get_role(JID, StateData),
-	  case xml:get_attr(<<"role">>, Attrs) of
+	  case fxml:get_attr(<<"role">>, Attrs) of
 	    false ->
-		case xml:get_attr(<<"affiliation">>, Attrs) of
+		case fxml:get_attr(<<"affiliation">>, Attrs) of
 		  false -> {error, ?ERR_BAD_REQUEST};
 		  {value, StrAffiliation} ->
 		      case catch list_to_affiliation(StrAffiliation) of
@@ -3362,7 +3362,7 @@ find_changed_items(UJID, UAffiliation, URole,
 						     Items, Lang, StateData,
 						     Res);
 			      true ->
-				  Reason = xml:get_path_s(Item,
+				  Reason = fxml:get_path_s(Item,
 							  [{elem, <<"reason">>},
 							   cdata]),
 				  MoreRes = [{jid:remove_resource(Jidx),
@@ -3409,7 +3409,7 @@ find_changed_items(UJID, UAffiliation, URole,
 			    find_changed_items(UJID, UAffiliation, URole, Items,
 					       Lang, StateData, Res);
 			true ->
-			    Reason = xml:get_path_s(Item,
+			    Reason = fxml:get_path_s(Item,
 						    [{elem, <<"reason">>},
 						     cdata]),
 			    MoreRes = [{Jidx, role, SRole, Reason}
@@ -3651,10 +3651,10 @@ process_iq_owner(From, set, Lang, SubEl, StateData) ->
     case FAffiliation of
       owner ->
 	  #xmlel{children = Els} = SubEl,
-	  case xml:remove_cdata(Els) of
+	  case fxml:remove_cdata(Els) of
 	    [#xmlel{name = <<"x">>} = XEl] ->
-		case {xml:get_tag_attr_s(<<"xmlns">>, XEl),
-		      xml:get_tag_attr_s(<<"type">>, XEl)}
+		case {fxml:get_tag_attr_s(<<"xmlns">>, XEl),
+		      fxml:get_tag_attr_s(<<"type">>, XEl)}
 		    of
 		  {?NS_XDATA, <<"cancel">>} -> {result, [], StateData};
 		  {?NS_XDATA, <<"submit">>} ->
@@ -3688,10 +3688,10 @@ process_iq_owner(From, get, Lang, SubEl, StateData) ->
     case FAffiliation of
       owner ->
 	  #xmlel{children = Els} = SubEl,
-	  case xml:remove_cdata(Els) of
+	  case fxml:remove_cdata(Els) of
 	    [] -> get_config(Lang, StateData, From);
 	    [Item] ->
-		case xml:get_tag_attr(<<"affiliation">>, Item) of
+		case fxml:get_tag_attr(<<"affiliation">>, Item) of
 		  false -> {error, ?ERR_BAD_REQUEST};
 		  {value, StrAffiliation} ->
 		      case catch list_to_affiliation(StrAffiliation) of
@@ -4721,7 +4721,7 @@ process_iq_captcha(_From, set, _Lang, SubEl,
 
 process_iq_vcard(_From, get, _Lang, _SubEl, StateData) ->
     #state{config = #config{vcard = VCardRaw}} = StateData,
-    case xml_stream:parse_element(VCardRaw) of
+    case fxml_stream:parse_element(VCardRaw) of
 	#xmlel{children = VCardEls} ->
 	    {result, VCardEls, StateData};
 	{error, _} ->
@@ -4730,7 +4730,7 @@ process_iq_vcard(_From, get, _Lang, _SubEl, StateData) ->
 process_iq_vcard(From, set, Lang, SubEl, StateData) ->
     case get_affiliation(From, StateData) of
 	owner ->
-	    VCardRaw = xml:element_to_binary(SubEl),
+	    VCardRaw = fxml:element_to_binary(SubEl),
 	    Config = StateData#state.config,
 	    NewConfig = Config#config{vcard = VCardRaw},
 	    change_config(NewConfig, StateData);
@@ -4834,7 +4834,7 @@ tab_count_user(JID) ->
       _ -> 0
     end.
 
-element_size(El) -> byte_size(xml:element_to_binary(El)).
+element_size(El) -> byte_size(fxml:element_to_binary(El)).
 
 fsm_limit_opts() ->
     case ejabberd_config:get_option(

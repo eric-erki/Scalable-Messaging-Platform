@@ -88,7 +88,7 @@ user_send_packet(#xmlel{name = <<"message">>} = Packet,
     Packet;
 user_send_packet(#xmlel{name = <<"iq">>, attrs = Attrs} = Packet,
                  _C2SState, From, _To) ->
-    case xml:get_attr_s(<<"id">>, Attrs) of
+    case fxml:get_attr_s(<<"id">>, Attrs) of
       <<"">> -> ok;
       ID ->
 	  Server = From#jid.lserver,
@@ -115,13 +115,13 @@ feature_inspect_packet(JID, Server,
 	   "Has receipts: ~p~n** Receipts supported: "
 	   "~p~n** Pres: ~p~n** El: ~p",
 	   [JID, HasReceipts, ReceiptsSupported, Pres, El]),
-    Type = xml:get_attr_s(<<"type">>, Attrs),
+    Type = fxml:get_attr_s(<<"type">>, Attrs),
     case HasReceipts of
       _ when Type == <<"error">> -> ok;
       {true, ID} ->
-	  case {jid:from_string(xml:get_attr_s(<<"from">>,
+	  case {jid:from_string(fxml:get_attr_s(<<"from">>,
 						  Attrs)),
-		jid:from_string(xml:get_attr_s(<<"to">>, Attrs))}
+		jid:from_string(fxml:get_attr_s(<<"to">>, Attrs))}
 	      of
 	    {#jid{} = From, #jid{} = To} ->
 		Pkt = {From, To, El},
@@ -184,7 +184,7 @@ handle_cast({del, ID, Pid}, State) ->
 	  Timers = delete(Pid, ID, State#state.timers),
 	  case ID of
 	    {iq, _} ->
-		MsgID = xml:get_attr_s(<<"id">>, Attrs),
+		MsgID = fxml:get_attr_s(<<"id">>, Attrs),
 		Message = #xmlel{name = <<"message">>,
 				 attrs = [{<<"id">>, MsgID}],
 				 children =
@@ -202,10 +202,10 @@ handle_cast({del, ID, Pid}, State) ->
 handle_cast({del, Pid}, State) ->
     lists:foreach(fun ({_, _, {TRef, {From, To, El}}}) ->
 			  cancel_timer(TRef),
-			  El1 = xml:remove_subtags(El, <<"x">>,
+			  El1 = fxml:remove_subtags(El, <<"x">>,
 						   {<<"xmlns">>,
 						    ?NS_P1_PUSHED}),
-			  El2 = xml:append_subtags(El1,
+			  El2 = fxml:append_subtags(El1,
 						   [#xmlel{name = <<"x">>,
 							   attrs =
 							       [{<<"xmlns">>,
@@ -279,27 +279,27 @@ has_receipt(#xmlel{name = <<"message">>,
 		   attrs = MsgAttrs} =
 		Packet,
 	    Type) ->
-    case xml:get_attr_s(<<"id">>, MsgAttrs) of
+    case fxml:get_attr_s(<<"id">>, MsgAttrs) of
       <<"">> ->
 	  case Type of
 	    <<"request">> ->
 		false; %% Message must have an ID to ask a request for ack.
 	    <<"received">> ->
-                  case xml:get_subtag_with_xmlns(
+                  case fxml:get_subtag_with_xmlns(
                          Packet, <<"received">>, ?NS_RECEIPTS) of
                       false -> false;
                       #xmlel{attrs = Attrs} ->
-                          case xml:get_attr_s(<<"id">>, Attrs) of
+                          case fxml:get_attr_s(<<"id">>, Attrs) of
                               <<"">> -> false;
                               SubTagID -> {true, SubTagID}
                           end
                   end
 	  end;
       ID ->
-            case xml:get_subtag_with_xmlns(Packet, Type, ?NS_RECEIPTS) of
+            case fxml:get_subtag_with_xmlns(Packet, Type, ?NS_RECEIPTS) of
                 false -> false;
                 #xmlel{attrs = Attrs} ->
-                    case xml:get_attr_s(<<"id">>, Attrs) of
+                    case fxml:get_attr_s(<<"id">>, Attrs) of
 			<<"">> -> {true, ID};
 			SubTagID -> {true, SubTagID}
                     end

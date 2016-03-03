@@ -256,15 +256,15 @@ process_iq_v0_2(#jid{lserver = LServer} = From,
 	       #iq{type = get, sub_el = #xmlel{name = <<"query">>} = SubEl} = IQ) ->
     Fs = lists:flatmap(
 	    fun(#xmlel{name = <<"start">>} = El) ->
-		    [{<<"start">>, [xml:get_tag_cdata(El)]}];
+		    [{<<"start">>, [fxml:get_tag_cdata(El)]}];
 		(#xmlel{name = <<"end">>} = El) ->
-		    [{<<"end">>, [xml:get_tag_cdata(El)]}];
+		    [{<<"end">>, [fxml:get_tag_cdata(El)]}];
 		(#xmlel{name = <<"with">>} = El) ->
-		    [{<<"with">>, [xml:get_tag_cdata(El)]}];
+		    [{<<"with">>, [fxml:get_tag_cdata(El)]}];
 		(#xmlel{name = <<"withroom">>} = El) ->
-		    [{<<"withroom">>, [xml:get_tag_cdata(El)]}];
+		    [{<<"withroom">>, [fxml:get_tag_cdata(El)]}];
 		(#xmlel{name = <<"withtext">>} = El) ->
-		    [{<<"withtext">>, [xml:get_tag_cdata(El)]}];
+		    [{<<"withtext">>, [fxml:get_tag_cdata(El)]}];
 		(#xmlel{name = <<"set">>}) ->
 		    [{<<"set">>, SubEl}];
 		(_) ->
@@ -278,8 +278,8 @@ process_iq_v0_2(From, To, IQ) ->
 process_iq_v0_3(#jid{lserver = LServer} = From,
 		#jid{lserver = LServer} = To,
 		#iq{type = set, sub_el = #xmlel{name = <<"query">>} = SubEl} = IQ) ->
-    Fs = case {xml:get_subtag_with_xmlns(SubEl, <<"x">>, ?NS_XDATA),
-	       xml:get_subtag_with_xmlns(SubEl, <<"set">>, ?NS_RSM)} of
+    Fs = case {fxml:get_subtag_with_xmlns(SubEl, <<"x">>, ?NS_XDATA),
+	       fxml:get_subtag_with_xmlns(SubEl, <<"set">>, ?NS_RSM)} of
 	     {#xmlel{} = XData, false} ->
 		 jlib:parse_xdata_submit(XData);
 	     {#xmlel{} = XData, #xmlel{}} ->
@@ -301,7 +301,7 @@ process_iq_v0_3(From, To, IQ) ->
 process_iq(#jid{luser = LUser, lserver = LServer},
 	   #jid{lserver = LServer},
 	   #iq{type = set, sub_el = #xmlel{name = <<"prefs">>} = SubEl} = IQ) ->
-    try {case xml:get_tag_attr_s(<<"default">>, SubEl) of
+    try {case fxml:get_tag_attr_s(<<"default">>, SubEl) of
 	    <<"always">> -> always;
 	    <<"never">> -> never;
 	    <<"roster">> -> roster
@@ -358,12 +358,12 @@ process_iq(From, To, IQ, SubEl, Fs) ->
     end.
 
 should_archive(#xmlel{name = <<"message">>} = Pkt) ->
-    case {xml:get_attr_s(<<"type">>, Pkt#xmlel.attrs),
-	  xml:get_subtag_cdata(Pkt, <<"body">>)} of
+    case {fxml:get_attr_s(<<"type">>, Pkt#xmlel.attrs),
+	  fxml:get_subtag_cdata(Pkt, <<"body">>)} of
 	{<<"error">>, _} ->
 	    false;
 	{<<"groupchat">>, _} ->
-	    To = xml:get_attr_s(<<"to">>, Pkt#xmlel.attrs),
+	    To = fxml:get_attr_s(<<"to">>, Pkt#xmlel.attrs),
 	    case (jid:from_string(To))#jid.resource of
 		<<"">> -> muc;
 		_ -> false
@@ -381,7 +381,7 @@ strip_my_archived_tag(Pkt, LServer) ->
     NewEls = lists:filter(
 	    fun(#xmlel{name = <<"archived">>, attrs = Attrs}) ->
 		    case catch jid:nameprep(
-			    xml:get_attr_s(
+			    fxml:get_attr_s(
 				<<"by">>, Attrs)) of
 			LServer ->
 			    false;
@@ -460,7 +460,7 @@ do_store(Pkt, LUser, LServer, Peer, Type, _Dir, p1db) ->
     Now = p1_time_compat:timestamp(),
     LServer2 = case Type of muc -> Peer#jid.lserver; _ -> LServer end,
     USNKey = usn2key(LUser, LServer2, Now),
-    XML = xml:element_to_binary(Pkt),
+    XML = fxml:element_to_binary(Pkt),
     Val = term_to_binary([{peer, Peer},
 			  {packet, XML}]),
     case p1db:insert(archive_msg, USNKey, Val) of
@@ -481,9 +481,9 @@ do_store(Pkt, LUser, LServer, Peer, Type, Dir, rest) ->
 				    false) of
 	    true ->
 		[{<<"direction">>, jlib:atom_to_binary(Dir)},
-		 {<<"body">>, xml:get_subtag_cdata(Pkt, <<"body">>)}];
+		 {<<"body">>, fxml:get_subtag_cdata(Pkt, <<"body">>)}];
 	    false ->
-		[{<<"xml">>, xml:element_to_binary(Pkt)}]
+		[{<<"xml">>, fxml:element_to_binary(Pkt)}]
 	end,
     Path = ejabberd_config:get_option({ext_api_path_archive, LServer},
 				      fun(X) -> iolist_to_binary(X) end,
@@ -510,8 +510,8 @@ do_store(Pkt, LUser, LServer, Peer, _Type, _Dir, DBType)
 		   jid:remove_resource(Peer))),
     LPeer = jid:to_string(
 	      jid:tolower(Peer)),
-    XML = xml:element_to_binary(Pkt),
-    Body = xml:get_subtag_cdata(Pkt, <<"body">>),
+    XML = fxml:element_to_binary(Pkt),
+    Body = fxml:get_subtag_cdata(Pkt, <<"body">>),
     Key = case DBType of
 	      odbc -> undefined;
 	      sharding -> LUser
@@ -789,7 +789,7 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
 				 match_rsm(Now, RSM) of
 				 true ->
 				     #xmlel{} = Pkt =
-					 xml_stream:parse_element(
+					 fxml_stream:parse_element(
 					   proplists:get_value(packet,
 							       Opts)),
 				     [{jlib:integer_to_binary(TS), TS,
@@ -848,7 +848,7 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
 		end,
 	    {lists:map(
 	       fun([TS, XML, PeerBin]) ->
-		       #xmlel{} = El = xml_stream:parse_element(XML),
+		       #xmlel{} = El = fxml_stream:parse_element(XML),
 		       Now = usec_to_now(jlib:binary_to_integer(TS)),
 		       PeerJid = jid:tolower(jid:from_string(PeerBin)),
 		       {TS, jlib:binary_to_integer(TS),
@@ -884,7 +884,7 @@ build_xml_from_json(User, Attrs, StoreBody) ->
 				      children = [{xmlcdata, Body}]}]};
        true ->
 	    XML = proplists:get_value(<<"xml">>, Attrs, <<"">>),
-	    #xmlel{} = xml_stream:parse_element(XML)
+	    #xmlel{} = fxml_stream:parse_element(XML)
     end.
 
 msg_to_el(#archive_msg{timestamp = TS, packet = Pkt1, peer = Peer},
@@ -896,18 +896,18 @@ msg_to_el(#archive_msg{timestamp = TS, packet = Pkt1, peer = Peer},
 	   children = [#xmlel{name = <<"delay">>,
 			      attrs = [{<<"xmlns">>, ?NS_DELAY},
 				       {<<"stamp">>, Delay}]},
-		       xml:replace_tag_attr(
+		       fxml:replace_tag_attr(
 			 <<"xmlns">>, <<"jabber:client">>, Pkt)]}.
 
 maybe_update_from_to(Pkt, _JIDRequestor, undefined) ->
     Pkt;
 maybe_update_from_to(Pkt, JidRequestor, Peer) ->
-    case xml:get_attr_s(<<"type">>, Pkt#xmlel.attrs) of
+    case fxml:get_attr_s(<<"type">>, Pkt#xmlel.attrs) of
 	<<"groupchat">> ->
-	    Pkt2 = xml:replace_tag_attr(<<"to">>,
+	    Pkt2 = fxml:replace_tag_attr(<<"to">>,
 					jid:to_string(JidRequestor),
 					Pkt),
-	    xml:replace_tag_attr(<<"from">>, jid:to_string(Peer),
+	    fxml:replace_tag_attr(<<"from">>, jid:to_string(Peer),
 				 Pkt2);
 	_ -> Pkt
     end.
@@ -945,8 +945,8 @@ is_bare_copy(#jid{luser = U, lserver = S, lresource = R}, To) ->
     end.
 
 send(From, To, Msgs, RSM, Count, IsComplete, #iq{sub_el = SubEl} = IQ) ->
-    QID = xml:get_tag_attr_s(<<"queryid">>, SubEl),
-    NS = xml:get_tag_attr_s(<<"xmlns">>, SubEl),
+    QID = fxml:get_tag_attr_s(<<"queryid">>, SubEl),
+    NS = fxml:get_tag_attr_s(<<"xmlns">>, SubEl),
     QIDAttr = if QID /= <<>> ->
 		      [{<<"queryid">>, QID}];
 		 true ->
@@ -1186,7 +1186,7 @@ now_to_iso({_, _, USec} = Now) ->
 get_jids(Els) ->
     lists:flatmap(
       fun(#xmlel{name = <<"jid">>} = El) ->
-	      J = jid:from_string(xml:get_tag_cdata(El)),
+	      J = jid:from_string(fxml:get_tag_cdata(El)),
 	      [jid:tolower(jid:remove_resource(J)),
 	       jid:tolower(J)];
 	 (_) ->
