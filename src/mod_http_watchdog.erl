@@ -133,7 +133,7 @@ check_c2s(Domain) ->
 send_header(Socket, Domain) ->
     gen_tcp:send(Socket,
 		 [<<"<stream:stream version='1.0' to='">>, Domain,
-		  <<"' fxml:lang='en' xmlns='jabber:client' "
+		  <<"' xml:lang='en' xmlns='jabber:client' "
 		    "\r\n\t\t\txmlns:stream='http://etherx.jabber."
 		    "org/streams'>">>]).
 
