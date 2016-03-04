@@ -2410,11 +2410,6 @@ send_new_presence1(NJID, Reason, StateData, OldStateData) ->
             false ->
                 (?DICT):to_list(StateData#state.users)
         end,
-    InitialPresence = case (?DICT):find(LNJID, OldStateData#state.users) of
-                              {ok, _} -> true;
-                              _ -> false
-                      end,
-
     lists:foreach(fun ({LUJID, Info}) ->
                           {Role, Presence} =
                               if
@@ -2422,7 +2417,6 @@ send_new_presence1(NJID, Reason, StateData, OldStateData) ->
                                   true -> {Role1, Presence1}
                               end,
                           SRole = role_to_list(Role),
-                          SelfPresence = NJID == Info#user.jid,
 			  ItemAttrs = case Info#user.role == moderator orelse
 					     (StateData#state.config)#config.anonymous
 					       == false
@@ -2453,8 +2447,9 @@ send_new_presence1(NJID, Reason, StateData, OldStateData) ->
 				     false -> []
 				   end,
 			  Status2 = case
-				      (StateData#state.config)#config.anonymous	== false
-					andalso SelfPresence andalso InitialPresence
+				      (StateData#state.config)#config.anonymous
+					== false
+					andalso NJID == Info#user.jid
 					of
 				      true ->
 					  [#xmlel{name = <<"status">>,
@@ -2464,7 +2459,7 @@ send_new_presence1(NJID, Reason, StateData, OldStateData) ->
 					   | Status];
 				      false -> Status
 				    end,
-			  Status3 = case SelfPresence of
+			  Status3 = case NJID == Info#user.jid of
 				      true ->
 					  [#xmlel{name = <<"status">>,
 						  attrs =
@@ -2474,13 +2469,18 @@ send_new_presence1(NJID, Reason, StateData, OldStateData) ->
 				      false -> Status2
 				    end,
 			  Status4 = case (StateData#state.config)#config.logging == true
-                      andalso SelfPresence andalso InitialPresence of
-                      true ->
-                          [#xmlel{name = <<"status">>,
-                                  attrs =
-                                      [{<<"code">>, <<"170">>}],
-                                  children = []}
-                           | Status3];
+                      andalso NJID == Info#user.jid of
+				      true ->
+                          case (?DICT):find(jid:tolower(LJID),
+                                            OldStateData#state.users) of
+                              {ok, _} -> Status3;
+                              _ ->
+                                  [#xmlel{name = <<"status">>,
+                                          attrs =
+                                              [{<<"code">>, <<"170">>}],
+                                          children = []}
+                                   | Status3]
+                          end;
                       false -> Status3
                   end,
 			  Packet = fxml:append_subtags(Presence,
