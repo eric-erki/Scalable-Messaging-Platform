@@ -793,7 +793,7 @@ get_commands_spec() ->
 			tags = [offline],
 			desc = "Get the number of unread offline messages",
                         policy = user,
-			module = mod_offline, function = get_queue_length,
+			module = mod_offline, function = count_offline_messages,
 			args = [],
 			result = {res, integer}}
     ].
