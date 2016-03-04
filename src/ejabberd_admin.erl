@@ -30,7 +30,7 @@
 	 %% Server
 	 status/0, reopen_log/0, rotate_log/0,
 	 set_loglevel/1,
-	 stop_migrate/0, migrate/0,
+	 migrate/0,
 	 stop_kindly/2, send_service_message_all_mucs/2,
 	 registered_vhosts/0,
 	 reload_config/0,
@@ -112,11 +112,6 @@ get_commands_spec() ->
      #ejabberd_commands{name = migrate, tags = [server],
 			desc = "Try to migrate MUC rooms to other nodes",
 			module = ?MODULE, function = migrate,
-			args = [],
-			result = {res, rescode}},
-     #ejabberd_commands{name = stop_migrate, tags = [server],
-			desc = "Try to migrate MUC rooms to other nodes and then stop",
-			module = ?MODULE, function = stop_migrate,
 			args = [],
 			result = {res, rescode}},
      #ejabberd_commands{name = get_loglevel, tags = [logs, server],
@@ -413,7 +408,7 @@ send_service_message_all_mucs(Subject, AnnouncementText) ->
       ?MYHOSTS).
 
 %%%
-%%% Migrate w/o stopping
+%%% Migrate processes
 %%%
 migrate() ->
     case ejabberd_cluster:get_nodes()--[node()] of
@@ -430,15 +425,6 @@ migrate() ->
 		end, Cluster, Rs),
 	    ok
     end.
-
-%%%
-%%% Migrate and stop
-%%%
-stop_migrate() ->
-    migrate(),
-    application:stop(ejabberd),
-    mnesia:stop(),
-    init:stop().
 
 %%%
 %%% ejabberd_update

@@ -57,7 +57,7 @@
 	 session_established/2, session_established/3,
 	 handle_event/3, handle_sync_event/4, code_change/4,
 	 handle_info/3, terminate/3, print_state/1, migrate/3,
-	 migrate_shutdown/3, opt_type/1]).
+	 opt_type/1]).
 
 %% API:
 -export([add_rosteritem/3, del_rosteritem/2]).
@@ -239,9 +239,6 @@ migrate(FsmRef, Node, After) when node(FsmRef) == node() ->
     erlang:send_after(After, FsmRef, {migrate, Node});
 migrate(_FsmRef, _Node, _After) ->
     ok.
-
-migrate_shutdown(FsmRef, Node, After) ->
-    FsmRef ! {migrate_shutdown, Node, After}.
 
 is_remote_socket(Pid) when node(Pid) == node() ->
     case catch process_info(Pid, dictionary) of
@@ -1631,15 +1628,6 @@ handle_info({migrate, Node}, StateName, StateData) ->
     if Node /= node() -> fsm_migrate(StateName, StateData, Node, 0);
        true -> fsm_next_state(StateName, StateData)
     end;
-handle_info({migrate_shutdown, Node, After}, StateName, StateData) ->
-    case is_remote_socket(StateData#state.sockmod,
-			  StateData#state.xml_socket,
-			  StateData#state.socket)
-    of
-	true -> migrate(self(), Node, After);
-	false -> self() ! system_shutdown
-    end,
-    fsm_next_state(StateName, StateData);
 handle_info({send_filtered, Feature, From, To, Packet}, StateName, StateData) ->
     Drop = ejabberd_hooks:run_fold(c2s_filter_packet, StateData#state.server,
 				   true, [StateData#state.server, StateData, Feature, To, Packet]),
