@@ -60,7 +60,7 @@
 	 user_send_packet/4, user_receive_packet/5,
 	 c2s_replaced/1, s2s_send_packet/3, s2s_receive_packet/3,
 	 privacy_iq_set/4, privacy_iq_get/5, remove_user/2,
-	 register_user/2, backend_api_call/3,
+	 register_user/2, api_call/3, backend_api_call/3,
 	 backend_api_response_time/4, backend_api_timeout/3,
 	 backend_api_error/3, backend_api_badauth/3,
 	 pubsub_create_node/5, pubsub_delete_node/4,
@@ -457,6 +457,8 @@ privacy_iq_get(Acc, #jid{lserver=LServer}, _To, _Iq, _) ->
     cast(LServer, {inc, privacy_iq_get}),
     Acc.
 
+api_call(LServer, _Method, _Path) ->
+    cast(LServer, {inc, api_call}).
 backend_api_call(LServer, _Method, _Path) ->
     cast(LServer, {inc, backend_api_call}).
 backend_api_response_time(LServer, _Method, _Path, Ms) ->
