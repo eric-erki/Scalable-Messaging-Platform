@@ -368,7 +368,6 @@ init([Host, Opts]) ->
 			  ram_copies),
     catch ets:new(muc_online_users,
 		  [bag, named_table, public, {keypos, 2}]),
-    sync_ets_table(muc_online_users),
     mnesia:subscribe(system),
     ejabberd_cluster:subscribe(),
     Access = gen_mod:get_opt(access, Opts,
@@ -453,16 +452,6 @@ init([Host, Opts]) ->
 		history_size = HistorySize,
 		persist_history = PersistHistory,
 		room_shaper = RoomShaper}}.
-
-sync_ets_table(Table) ->
-    spawn(fun() -> sync_ets_table(Table, ejabberd_cluster:get_nodes()--[node()]) end).
-sync_ets_table(_Table, []) ->
-    ok;
-sync_ets_table(Table, [Master|_]) ->
-    case ejabberd_cluster:call(Master, ets, tab2list, [Table]) of
-	{badrpc, _} -> error;
-	Records -> [ets:insert(Table, Record) || Record<-Records], ok
-    end.
 
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State};
