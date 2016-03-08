@@ -160,7 +160,6 @@
 -define(NS_THUMBS_1, <<"urn:xmpp:thumbs:1">>).
 -define(NS_NICK,  <<"http://jabber.org/protocol/nick">>).
 -define(NS_RECEIPTS, <<"urn:xmpp:receipts">>).
-
 -define(NS_P1_REBIND, <<"p1:rebind">>).
 -define(NS_P1_ACK, <<"p1:ack">>).
 -define(NS_P1_PUSH, <<"p1:push">>).
@@ -171,3 +170,10 @@
 -define(NS_P1_PUSHED, <<"p1:pushed">>).
 -define(NS_P1_ATTACHMENT, <<"http://process-one.net/attachement">>).
 -define(NS_P1_HISTORY, <<"p1:archive">>).
+-define(NS_MIX_0, <<"urn:xmpp:mix:0">>).
+-define(NS_MIX_SERVICEINFO_0, <<"urn:xmpp:mix:0#serviceinfo">>).
+-define(NS_MIX_NODES_MESSAGES, <<"urn:xmpp:mix:nodes:messages">>).
+-define(NS_MIX_NODES_PRESENCE, <<"urn:xmpp:mix:nodes:presence">>).
+-define(NS_MIX_NODES_PARTICIPANTS, <<"urn:xmpp:mix:nodes:participants">>).
+-define(NS_MIX_NODES_SUBJECT, <<"urn:xmpp:mix:nodes:subject">>).
+-define(NS_MIX_NODES_CONFIG, <<"urn:xmpp:mix:nodes:config">>).

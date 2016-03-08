@@ -38,6 +38,7 @@
 	 start_link/0,
 	 route/3, do_route1/4,
 	 set_session/6,
+	 process_iq/3,
 	 open_session/5,
 	 open_session/6,
 	 close_session/4,
