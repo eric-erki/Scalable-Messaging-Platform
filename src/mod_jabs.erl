@@ -110,10 +110,8 @@ init([Host, Opts]) ->
     % temporary hack for SaaS: if stamp is more than 31 days old
     % then force reset (in case of node saas upgrade)
     Age = timer:now_diff(os:timestamp(), R2#jabs.stamp) div 1000000,
-    Jabs = if Age > 2678400 ->  % 31 days in seconds
-            R2#jabs{counter = 0, stamp = os:timestamp()};
-        true ->
-            R2
+    Jabs = if Age > 2678400 -> reset_jabs(R2);
+              true -> R2
     end,
     write_db(Jabs),
     [ejabberd_hooks:add(Hook, Host, ?MODULE, Hook, 20)
@@ -152,7 +150,7 @@ handle_cast({attend, User}, State) ->
     {noreply, State#jabs{ignore = Ignore}};
 handle_cast(reset, State) ->
     clean_db(State#jabs.host),
-    {noreply, State#jabs{counter = 0, stamp = os:timestamp()}};
+    {noreply, reset_jabs(State)};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -179,6 +177,9 @@ code_change(_OldVsn, State, _Extra) ->
 
 process(Host) ->
     gen_mod:get_module_proc(Host, ?PROCNAME).
+
+reset_jabs(#jabs{} = R) ->
+    R#jabs{counter = 0, stamp = os:timestamp()}.
 
 %%====================================================================
 %% database functions
@@ -210,16 +211,16 @@ read_db(Host) when is_binary(Host) ->
 read_db(Host, mnesia) ->
     case catch mnesia:dirty_read(jabs, {Host, node()}) of
         [#jabs{}=Jabs] -> Jabs#jabs{host = Host};
-        _ -> #jabs{host = Host, counter = 0, stamp = os:timestamp()}
+        _ -> reset_jabs(#jabs{host = Host})
     end;
 read_db(Host, p1db) ->
     Key = enc_key({Host, node()}),
     case p1db:get(jabs, Key) of
         {ok, Val, _VClock} -> (p1db_to_jabs(Key, Val))#jabs{host = Host};
-        _ -> #jabs{host = Host, counter = 0, stamp = os:timestamp()}
+        _ -> reset_jabs(#jabs{host = Host})
     end;
 read_db(Host, _) ->
-    #jabs{host = Host, counter = 0, stamp = os:timestamp()}.
+    reset_jabs(#jabs{host = Host}).
 
 write_db(Jabs) when is_record(Jabs, jabs) ->
     write_db(Jabs, gen_mod:db_type(Jabs#jabs.host, ?MODULE)).
