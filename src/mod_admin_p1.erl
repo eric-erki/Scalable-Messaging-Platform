@@ -1180,7 +1180,6 @@ setup_apns(Host, ProductionCertData, SandboxCertData) ->
     end.
 
 applepush_cfg(Host, ProductionCert, SandboxCert) ->
-    [Service|_] = binary:split(Host, <<".">>),
     ProductionAppId = appid_from_cert(ProductionCert),
     SandboxAppId = appid_from_cert(SandboxCert),
     {append_host_config, [
@@ -1188,22 +1187,22 @@ applepush_cfg(Host, ProductionCert, SandboxCert) ->
 		{mod_applepush, [
 			{db_type, odbc},
 			{iqdisc, 50},
-			{default_service, <<"production.", Service/binary>>},
+			{default_service, <<"apnsprod.", Host/binary>>},
 			{push_services,
-			    [{ProductionAppId, <<"production.", Service/binary>>}
+			    [{ProductionAppId, <<"apnsprod.", Host/binary>>}
 				|| ProductionAppId =/= undefined] ++
-			    [{SandboxAppId, <<"sandbox.", Service/binary>>}
+			    [{SandboxAppId, <<"apnsdev.", Host/binary>>}
 				|| SandboxAppId =/= undefined]
 			    }
 			]},
 		{mod_applepush_service, [
 			{hosts,
-			    [{<<"production.", Service/binary>>, [
+			    [{<<"apnsprod.", Host/binary>>, [
 					{certfile, ProductionCert},
 					{gateway, <<"gateway.push.apple.com">>},
 					{port, 2195}]}
 				|| ProductionAppId =/= undefined] ++
-			    [{<<"sandbox.", Service/binary>>, [
+			    [{<<"apnsdev.", Host/binary>>, [
 					{certfile, SandboxCert},
 					{gateway, <<"gateway.sandbox.push.apple.com">>},
 					{port, 2195}]}
@@ -1263,18 +1262,17 @@ setup_gcm(Host, ApiKey, AppId) ->
     end.
 
 gcm_cfg(Host, ApiKey, AppId) ->
-    [Service|_] = binary:split(Host, <<".">>),
     {append_host_config, [
 	    {Host, [{modules, [
 		{mod_gcm, [
 			{db_type, odbc},
 			{iqdisc, 50},
-			{default_service, Service},
-			{push_services, [{AppId, Service}]}
+			{default_service, <<"gcm.", Host/binary>>},
+			{push_services, [{AppId, <<"gcm.", Host/binary>>}]}
 			]},
 		{mod_gcm_service, [
 			{hosts, [
-				{Service, [
+				{<<"gcm.", Host/binary>>, [
 					{gateway, <<"https://android.googleapis.com/gcm/send">>},
 					{apikey, ApiKey}]}
 				]}
