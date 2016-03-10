@@ -1181,7 +1181,10 @@ setup_apns(Host, ProductionCertData, SandboxCertData) ->
 
 applepush_cfg(Host, ProductionCert, SandboxCert) ->
     ProductionAppId = appid_from_cert(ProductionCert),
-    SandboxAppId = <<(appid_from_cert(SandboxCert))/binary, "_dev">>,
+    SandboxAppId = case appid_from_cert(SandboxCert) of
+	undefined -> undefined;
+	AppId -> <<AppId/binary, "_dev">>
+    end,
     {append_host_config, [
 	    {Host, [{modules, [
 		{mod_applepush, [
@@ -1221,10 +1224,10 @@ appid_from_cert(Cert) ->
 	    right, $\n),
     list_to_binary(AppId).
 
-write_cert(<<>>) ->
-    {error, undefined};
 write_cert(CertData) ->
     write_cert(CertData, <<>>).
+write_cert(<<>>, _) ->
+    {error, undefined};
 write_cert(CertData, Ext) ->
     BaseDir = filename:dirname(os:getenv("EJABBERD_CONFIG_PATH")),
     TmpFile = filename:append(BaseDir, <<"new.pem">>),
