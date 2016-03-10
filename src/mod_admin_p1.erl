@@ -1180,8 +1180,8 @@ setup_apns(Host, ProductionCertData, SandboxCertData) ->
     end.
 
 applepush_cfg(Host, ProductionCert, SandboxCert) ->
-    ProductionAppId = binary_part(ProductionCert, 0, byte_size(ProductionCert)-4),
-    SandboxAppId = binary_part(SandboxCert, 0, byte_size(SandboxCert)-4),
+    ProductionAppId = appid_from_cert(ProductionCert),
+    SandboxAppId = <<(appid_from_cert(SandboxCert))/binary, "_dev">>,
     {append_host_config, [
 	    {Host, [{modules, [
 		{mod_applepush, [
