@@ -68,6 +68,7 @@
 -define(MAX_QUEUE_SIZE, 1000).
 -define(CACHE_SIZE, 4096).
 -define(MAX_PAYLOAD_SIZE, 2048).
+-define(MAX_RESEND_COUNT, 5).
 
 -define(APNS_PRIORITY_HIGH, 10).
 -define(APNS_PRIORITY_NORMAL, 5).
@@ -388,7 +389,7 @@ do_route(From, To, Packet, State) ->
 		#xmlel{name = <<"message">>, children = Els} ->
 		    case fxml:remove_cdata(Els) of
 			[#xmlel{name = <<"push">>}] ->
-			    NewState = handle_message(From, To, Packet, State),
+			    NewState = handle_message(From, To, Packet, 0, State),
 			    {noreply, NewState};
 			[#xmlel{name = <<"disable">>}] ->
 			    {noreply, State};
@@ -408,9 +409,9 @@ get_custom_fields(Packet) ->
                 C <- fxml:remove_cdata(Children) ]
     end.
 
-handle_message(From, To, Packet, #state{socket = undefined} = State) ->
-    queue_message(From, To, Packet, State);
-handle_message(From, To, Packet, State) ->
+handle_message(From, To, Packet, ResendCount, #state{socket = undefined} = State) ->
+    queue_message(From, To, Packet, ResendCount, State);
+handle_message(From, To, Packet, ResendCount, State) ->
     DeviceID =
 	fxml:get_path_s(Packet,
 		       [{elem, <<"push">>}, {elem, <<"id">>}, cdata]),
@@ -459,8 +460,14 @@ handle_message(From, To, Packet, State) ->
 			      [State#state.host, Reason]),
 		    ssl:close(State#state.socket),
 		    self() ! connect,
-		    queue_message(From, To, Packet,
-				  State#state{socket = undefined})
+		    if ResendCount >= ?MAX_RESEND_COUNT ->
+			    bounce_message(From, To, Packet,
+					   <<"Too many resend in push service">>),
+			    State#state{socket = undefined};
+		       true ->
+			    queue_message(From, To, Packet, ResendCount+1,
+					  State#state{socket = undefined})
+		    end
 	    end;
 	true ->
 	    State
@@ -647,23 +654,23 @@ bounce_message(From, To, Packet, Reason) ->
 	    ok
     end.
 
-queue_message(From, To, Packet, State) ->
+queue_message(From, To, Packet, ResendCount, State) ->
     case State#state.queue of
 	{?MAX_QUEUE_SIZE, Queue} ->
-	    {{value, {From1, To1, Packet1}}, Queue1} = queue:out(Queue),
+	    {{value, {From1, To1, Packet1, _}}, Queue1} = queue:out(Queue),
 	    bounce_message(From1, To1, Packet1,
 			   <<"Unable to connect to push service">>),
-	    Queue2 = queue:in({From, To, Packet}, Queue1),
+	    Queue2 = queue:in({From, To, Packet, ResendCount}, Queue1),
 	    State#state{queue = {?MAX_QUEUE_SIZE, Queue2}};
 	{Size, Queue} ->
-	    Queue1 = queue:in({From, To, Packet}, Queue),
+	    Queue1 = queue:in({From, To, Packet, ResendCount}, Queue),
 	    State#state{queue = {Size+1, Queue1}}
     end.
 
 resend_messages(#state{queue = {_, Queue}} = State) ->
     lists:foldl(
-      fun({From, To, Packet}, AccState) ->
-	      case catch handle_message(From, To, Packet, AccState) of
+      fun({From, To, Packet, ResendCount}, AccState) ->
+	      case catch handle_message(From, To, Packet, ResendCount, AccState) of
 		  {'EXIT', _} = Err ->
 		      ?ERROR_MSG("error while processing message:~n"
 				 "** From: ~p~n"
