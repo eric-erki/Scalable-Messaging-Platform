@@ -1161,7 +1161,7 @@ setup_apns(Host, ProductionCertData, SandboxCertData) ->
 	undefined ->
 	    % if mod_applepush not started, write certs, generate config, start applepush
 	    ProductionCert = write_cert(ProductionCertData),
-	    SandboxCert = write_cert(SandboxCertData),
+	    SandboxCert = write_cert(SandboxCertData, <<"_dev">>),
 	    Config = applepush_cfg(Host, ProductionCert, SandboxCert),
 	    BaseDir = filename:dirname(os:getenv("EJABBERD_CONFIG_PATH")),
 	    ConfigFile = filename:append(BaseDir, <<"applepush.yml">>),
@@ -1180,8 +1180,8 @@ setup_apns(Host, ProductionCertData, SandboxCertData) ->
     end.
 
 applepush_cfg(Host, ProductionCert, SandboxCert) ->
-    ProductionAppId = appid_from_cert(ProductionCert),
-    SandboxAppId = appid_from_cert(SandboxCert),
+    ProductionAppId = binary_part(ProductionCert, 0, byte_size(ProductionCert)-4),
+    SandboxAppId = binary_part(SandboxCert, 0, byte_size(SandboxCert)-4),
     {append_host_config, [
 	    {Host, [{modules, [
 		{mod_applepush, [
@@ -1224,12 +1224,14 @@ appid_from_cert(Cert) ->
 write_cert(<<>>) ->
     {error, undefined};
 write_cert(CertData) ->
+    write_cert(CertData, <<>>).
+write_cert(CertData, Ext) ->
     BaseDir = filename:dirname(os:getenv("EJABBERD_CONFIG_PATH")),
     TmpFile = filename:append(BaseDir, <<"new.pem">>),
     case file:write_file(TmpFile, CertData) of
 	ok ->
 	    AppId = appid_from_cert(TmpFile),
-	    CertFile = filename:append(BaseDir, <<AppId/binary, ".pem">>),
+	    CertFile = filename:append(BaseDir, <<AppId/binary, Ext/binary, ".pem">>),
 	    case file:rename(TmpFile, CertFile) of
 		ok -> CertFile;
 		Error -> Error
