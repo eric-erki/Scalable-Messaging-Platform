@@ -261,6 +261,7 @@ Welcome to this XMPP server."
           - "flat"
           - "hometree"
           - "pep"
+      mod_mix: []
       mod_roster: 
         versioning: true
         store_current_id: true
@@ -314,6 +315,7 @@ Welcome to this XMPP server."
           - "flat"
           - "hometree"
           - "pep"
+      mod_mix: []
       mod_roster: 
         versioning: true
         store_current_id: true
