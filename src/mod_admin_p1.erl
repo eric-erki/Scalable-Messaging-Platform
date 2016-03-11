@@ -1168,15 +1168,14 @@ setup_apns(Host, ProductionCertData, SandboxCertData) ->
 	    file:write_file(ConfigFile, fast_yaml:encode([Config])),
 	    start_appended_modules(Config),
 	    0;
-	{Prod, [{_ProdId, Prod, ProdFile}, {_DevId, _Dev, DevFile}]} ->
-	    % if applepush is started the standard way, just overwrite certs
-	    file:write_file(ProdFile, ProductionCertData),
-	    file:write_file(DevFile, SandboxCertData),
-	    0;
-	Other ->
-	    % if applepush starded a custom way, abort
-	    ?ERROR_MSG("Can not cope with custom applepush configuration: ~p", [Other]),
-	    1
+	%{Prod, [{ProdId, Prod, ProdFile}, {DevId, Dev, DevFile}]} ->
+	    % TODO maybe avoid restart if only cert payload changed
+	    % so we just write files
+	    % 0;
+	_ ->
+	    % if applepush configuration changed, stop it first and config from scratch
+	    [gen_mod:stop_module(Host, Mod) || Mod <- [mod_applepush, mod_applepush_service]],
+	    setup_apns(Host, ProductionCertData, SandboxCertData)
     end.
 
 applepush_cfg(Host, ProductionCert, SandboxCert) ->
