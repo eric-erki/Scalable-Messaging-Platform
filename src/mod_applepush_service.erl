@@ -30,7 +30,7 @@
 -behaviour(gen_mod).
 
 %% API
--export([start_link/2, start/2, stop/1,
+-export([start_link/3, start/2, stop/1,
          force_reconnect/1]).
 
 -export([init/1, handle_call/3, handle_cast/2,
@@ -80,9 +80,9 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link(Host, Opts) ->
+start_link(Host, ServerHost, Opts) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:start_link({local, Proc}, ?MODULE, [Host, Opts], []).
+    gen_server:start_link({local, Proc}, ?MODULE, [Host, ServerHost, Opts], []).
 
 start(Host, Opts) ->
     MyHosts = case catch gen_mod:get_opt(
@@ -101,7 +101,7 @@ start(Host, Opts) ->
 	      Proc = gen_mod:get_module_proc(MyHost, ?PROCNAME),
 	      ChildSpec =
 		  {Proc,
-		   {?MODULE, start_link, [MyHost, MyOpts]},
+		   {?MODULE, start_link, [MyHost, Host, MyOpts]},
 		   transient,
 		   1000,
 		   worker,
@@ -160,7 +160,7 @@ force_reconnect(Host) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([MyHost, Opts]) ->
+init([MyHost, ServerHost, Opts]) ->
     CertFile = gen_mod:get_opt(certfile, Opts,
                                fun iolist_to_string/1,
                                ""),
@@ -189,7 +189,7 @@ init([MyHost, Opts]) ->
 	_ ->
 	    self() ! connect_feedback
     end,
-    ejabberd_router:register_route(MyHost),
+    ejabberd_router:register_route(MyHost, ServerHost),
     {ok, #state{host = MyHost,
 		gateway = Gateway,
 		port = Port,

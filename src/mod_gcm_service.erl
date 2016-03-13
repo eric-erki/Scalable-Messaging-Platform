@@ -33,7 +33,7 @@
 -behaviour(gen_mod).
 
 %% API
--export([start_link/2, start/2, stop/1]).
+-export([start_link/3, start/2, stop/1]).
 
 -export([init/1, handle_call/3, handle_cast/2,
 	 handle_info/2, terminate/2, code_change/3,
@@ -67,9 +67,9 @@
 -define(HTTP_CONNECT_TIMEOUT, 10 * 1000).
 -define(GCM_PRIORITY_HIGH, <<"high">>).
 
-start_link(Host, Opts) ->
+start_link(Host, ServerHost, Opts) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:start_link({local, Proc}, ?MODULE, [Host, Opts], []).
+    gen_server:start_link({local, Proc}, ?MODULE, [Host, ServerHost, Opts], []).
 
 start(Host, Opts) ->
     ejabberd:start_app(ssl),
@@ -91,7 +91,7 @@ start(Host, Opts) ->
 	      Proc = gen_mod:get_module_proc(MyHost, ?PROCNAME),
 	      ChildSpec =
 		  {Proc,
-		   {?MODULE, start_link, [MyHost, MyOpts]},
+		   {?MODULE, start_link, [MyHost, Host, MyOpts]},
 		   transient,
 		   1000,
 		   worker,
@@ -123,7 +123,7 @@ stop(Host) ->
 %% gen_server callbacks
 %%====================================================================
 
-init([MyHost, Opts]) ->
+init([MyHost, ServerHost, Opts]) ->
     SoundFile = gen_mod:get_opt(sound_file, Opts,
                                 fun iolist_to_binary/1,
                                 <<"pushalert.wav">>),
@@ -131,7 +131,7 @@ init([MyHost, Opts]) ->
                               fun iolist_to_string/1,
 			      "https://android.googleapis.com/gcm/send"),
     ApiKey = gen_mod:get_opt(apikey, Opts, fun iolist_to_string/1, ""),
-    ejabberd_router:register_route(MyHost),
+    ejabberd_router:register_route(MyHost, ServerHost),
     {ok,
      #state{host = MyHost, gateway = Gateway,
 	    queue = {0, queue:new()}, apikey = ApiKey,

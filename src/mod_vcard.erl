@@ -125,7 +125,7 @@ init(Host, ServerHost, Search) ->
                   ?WARNING_MSG("vcard search functionality is "
                                "not implemented for p1db backend", []);
               _ ->
-                  ejabberd_router:register_route(Host)
+                  ejabberd_router:register_route(Host, ServerHost)
           end,
 	  loop(Host, ServerHost)
     end.

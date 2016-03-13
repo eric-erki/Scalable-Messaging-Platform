@@ -246,6 +246,7 @@ stop(Host) ->
 init([ServerHost, Opts]) ->
     ?DEBUG("pubsub init ~p ~p", [ServerHost, Opts]),
     Host = gen_mod:get_opt_host(ServerHost, Opts, <<"pubsub.@HOST@">>),
+    ejabberd_router:register_route(Host, ServerHost),
     Access = gen_mod:get_opt(access_createnode, Opts,
 	    fun(A) when is_atom(A) -> A end, all),
     PepOffline = gen_mod:get_opt(ignore_pep_from_offline, Opts,
@@ -314,7 +315,6 @@ init([ServerHost, Opts]) ->
 	false ->
 	    ok
     end,
-    ejabberd_router:register_route(Host),
     State = init_send_pool(ServerHost),
     {ok, State}.
 

@@ -138,7 +138,7 @@ init([LServerS, Opts]) ->
     create_cache(),
     try_start_loop(),
     ejabberd_router_multicast:register_route(LServerS),
-    ejabberd_router:register_route(LServiceS),
+    ejabberd_router:register_route(LServiceS, LServerS),
     {ok,
      #state{lservice = LServiceS, lserver = LServerS,
 	    access = Access, service_limits = SLimits}}.

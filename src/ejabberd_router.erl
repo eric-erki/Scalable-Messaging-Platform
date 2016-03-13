@@ -36,7 +36,9 @@
 	 route_error/4,
 	 register_route/1,
 	 register_route/2,
+	 register_route/3,
 	 register_routes/1,
+	 host_of_route/1,
 	 unregister_route/1,
 	 unregister_routes/1,
 	 dirty_get_all_routes/0,
@@ -58,6 +60,7 @@
 -type local_hint() :: undefined | {apply, atom(), atom()}.
 
 -record(route, {domain = <<"">>        :: binary(),
+		server_host = <<"">>   :: binary(),
                 pid = []               :: [pid()],
                 local_hint             :: local_hint(),
                 clock = vclock:fresh() :: vclock:vclock()}).
@@ -101,19 +104,30 @@ route_error(From, To, ErrPacket, OrigPacket) ->
 -spec register_route(binary()) -> term().
 
 register_route(Domain) ->
-    register_route(Domain, undefined).
+    ?WARNING_MSG("~s:register_route/1 is deprected, "
+		 "use ~s:register_route/2 instead",
+		 [?MODULE, ?MODULE]),
+    register_route(Domain, ?MYNAME).
 
--spec register_route(binary(), local_hint()) -> ok.
+-spec register_route(binary(), binary()) -> term().
 
-register_route(Domain, LocalHint) ->
-    case jid:nameprep(Domain) of
-        error ->
-            erlang:error({invalid_domain, Domain});
-        LDomain when LocalHint /= undefined ->
+register_route(Domain, ServerHost) ->
+    register_route(Domain, ServerHost, undefined).
+
+-spec register_route(binary(), binary(), local_hint()) -> ok.
+
+register_route(Domain, ServerHost, LocalHint) ->
+    case {jid:nameprep(Domain), jid:nameprep(ServerHost)} of
+	{error, _} ->
+	    erlang:error({invalid_domain, Domain});
+	{_, error} ->
+	    erlang:error({invalid_domain, ServerHost});
+        {LDomain, LServerHost} when LocalHint /= undefined ->
             mnesia:dirty_write(#route{domain = LDomain,
+				      server_host = LServerHost,
                                       local_hint = LocalHint});
-        LDomain ->
-	    Msg = {register_route, self(), LDomain},
+        {LDomain, LServerHost} ->
+	    Msg = {register_route, self(), LDomain, LServerHost},
 	    lists:foreach(
 	      fun(Node) when Node == node() ->
 		      gen_server:call(?MODULE, Msg);
@@ -122,10 +136,10 @@ register_route(Domain, LocalHint) ->
 	      end, ejabberd_cluster:get_nodes())
     end.
 
--spec register_routes([binary()]) -> ok.
+-spec register_routes([{binary(), binary()}]) -> ok.
 
 register_routes(Domains) ->
-    lists:foreach(fun (Domain) -> register_route(Domain)
+    lists:foreach(fun ({Domain, ServerHost}) -> register_route(Domain, ServerHost)
 		  end,
 		  Domains).
 
@@ -152,13 +166,14 @@ unregister_route(Domain) ->
             end
     end.
 
-add_route(Pid, LDomain) ->
+add_route(Pid, LDomain, LServerHost) ->
     case mnesia:dirty_read(route, LDomain) of
 	[R] ->
 	    Pids = lists:usort([Pid|R#route.pid]),
 	    mnesia:dirty_write(R#route{pid = Pids});
 	[] ->
-	    mnesia:dirty_write(#route{pid = [Pid], domain = LDomain})
+	    mnesia:dirty_write(#route{pid = [Pid], domain = LDomain,
+				      server_host = LServerHost})
     end.
 
 del_route(Node, LDomain) ->
@@ -197,6 +212,21 @@ make_id() ->
     <<?ROUTE_PREFIX, (randoms:get_string())/binary,
       "-", (ejabberd_cluster:node_id())/binary>>.
 
+-spec host_of_route(binary()) -> binary().
+
+host_of_route(Domain) ->
+    case jid:nameprep(Domain) of
+	error ->
+	    erlang:error({invalid_domain, Domain});
+	LDomain ->
+	    case mnesia:dirty_read(route, LDomain) of
+		[#route{server_host = ServerHost}|_] ->
+		    ServerHost;
+		[] ->
+		    erlang:error({unregistered_route, Domain})
+	    end
+    end.
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -227,8 +257,8 @@ init([]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
-handle_call({register_route, Pid, LDomain}, _From, State) ->
-    Res = add_route(Pid, LDomain),
+handle_call({register_route, Pid, LDomain, LServerHost}, _From, State) ->
+    Res = add_route(Pid, LDomain, LServerHost),
     {reply, Res, State};
 handle_call({unregister_route, Node, LDomain}, _From, State) ->
     Res = del_route(Node, LDomain),
@@ -258,8 +288,8 @@ handle_info({route, From, To, Packet}, State) ->
       _ -> ok
     end,
     {noreply, State};
-handle_info({register_route, Pid, LDomain}, State) ->
-    add_route(Pid, LDomain),
+handle_info({register_route, Pid, LDomain, LServerHost}, State) ->
+    add_route(Pid, LDomain, LServerHost),
     {noreply, State};
 handle_info({unregister_route, Node, LDomain}, State) ->
     del_route(Node, LDomain),
@@ -270,7 +300,7 @@ handle_info({node_up, Node}, State) ->
 	      Pids = lists:filter(fun(P) -> node(P) == node() end, R#route.pid),
 	      lists:foreach(
 		fun(P) ->
-			Msg = {register_route, P, R#route.domain},
+			Msg = {register_route, P, R#route.domain, R#route.server_host},
 			ejabberd_cluster:send({?MODULE, Node}, Msg)
 		end, Pids);
 	 (_) ->
@@ -505,12 +535,10 @@ update_tables() ->
         _ ->
             ok
     end,
-    case catch mnesia:table_info(route, attributes) of
-      [domain, node, pid] -> mnesia:delete_table(route);
-      [domain, pid] -> mnesia:delete_table(route);
-      [domain, pid, local_hint] -> mnesia:delete_table(route);
-      [domain, pid, local_hint, clock] -> ok;
-      {'EXIT', _} -> ok
+    try
+	mnesia:transform_table(route, ignore, record_info(fields, route))
+    catch exit:{aborted, {no_exists, _}} ->
+	    ok
     end,
     case lists:member(local_route,
 		      mnesia:system_info(tables))

@@ -196,7 +196,7 @@ bounce_resource_packet(From, To, Packet) ->
     stop.
 
 add_host(Host) ->
-    ejabberd_router:register_route(Host, {apply, ?MODULE, route}),
+    ejabberd_router:register_route(Host, Host, {apply, ?MODULE, route}),
     ejabberd_hooks:add(local_send_to_resource_hook, Host,
 		       ?MODULE, bounce_resource_packet, 100).
 
