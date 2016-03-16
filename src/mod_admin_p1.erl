@@ -1256,13 +1256,13 @@ setup_gcm(Host, ApiKey, AppId) ->
 	    file:write_file(ConfigFile, fast_yaml:encode([Config])),
 	    start_appended_modules(Config),
 	    0;
-	{Service, [{AppId, Service, ApiKey}]} ->
-	    % if gcm is started the standard way, nothing to do
-	    0;
-	Other ->
-	    % if gcm starded a custom way, abort
-	    ?ERROR_MSG("Can not cope with custom gcm configuration: ~p", [Other]),
-	    1
+	%{Service, [{AppId, Service, ApiKey}]} ->
+	    % TODO can we avoid restart ?
+	    % 0;
+	_ ->
+	    % if gcm configuration changed, stop it first and config from scratch
+	    [gen_mod:stop_module(Host, Mod) || Mod <- [mod_gcm, mod_gcm_service]],
+	    setup_gcm(Host, ApiKey, AppId)
     end.
 
 gcm_cfg(Host, ApiKey, AppId) ->
