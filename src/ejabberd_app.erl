@@ -239,7 +239,6 @@ start_apps() ->
     ejabberd:start_app(p1_tls),
     ejabberd:start_app(fast_xml),
     ejabberd:start_app(stringprep),
-    ejabberd:start_app(ezlib),
     http_p1:start(),
     p1db_start(),
     ejabberd:start_app(cache_tab).
