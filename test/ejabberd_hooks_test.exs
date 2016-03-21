@@ -18,6 +18,17 @@
 #
 # ----------------------------------------------------------------------
 
+# Notes on the tests:
+#
+# This test suite will print out errors in logs for tests:
+#
+#   test "Error in run_fold is ignored"
+#   test "Throw in run_fold is ignored"
+#   test "Exit in run_fold is ignored"
+#
+# Those tests are not failing and we can safely ignore those errors in
+# log as we are exercising hook handler recovery from that situation.
+
 defmodule EjabberdHooksTest do
   use ExUnit.Case, async: false
   
