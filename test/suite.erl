@@ -76,7 +76,8 @@ init_config(Config) ->
      {resource, <<"resource!@#$%^&*()'\"`~<>+-/;:_=[]{}|\\">>},
      {master_resource, <<"master_resource!@#$%^&*()'\"`~<>+-/;:_=[]{}|\\">>},
      {slave_resource, <<"slave_resource!@#$%^&*()'\"`~<>+-/;:_=[]{}|\\">>},
-     {password, <<"password!@#$%^&*()'\"`~<>+-/;:_=[]{}|\\">>}
+     {password, <<"password!@#$%^&*()'\"`~<>+-/;:_=[]{}|\\">>},
+     {backends, get_config_backends()}
      |Config].
 
 find_top_dir(Dir) ->
@@ -98,6 +99,17 @@ setup_ejabberd_lib_path(Config) ->
 	    code:replace_path(ejabberd, NewEjPath);
 	_ ->
 	    ok
+    end.
+
+%% Read environment variable CT_DB=riak,mysql to limit the backends to test.
+%% You can thus limit the backend you want to test with:
+%%  CT_BACKENDS=riak,mysql rebar ct suites=ejabberd
+get_config_backends() ->
+    case os:getenv("CT_BACKENDS") of
+        false  -> all;
+        String ->
+            Backends0 = string:tokens(String, ","),
+            lists:map(fun(Backend) -> string:strip(Backend, both, $ ) end, Backends0)
     end.
 
 process_config_tpl(Content, []) ->
