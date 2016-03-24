@@ -2328,7 +2328,7 @@ read_sql_queries(File) ->
     end.
 
 drop_table_queries(Queries, Type) ->
-    lists:foldr(
+    lists:foldl(
       fun(Query, Acc) ->
               case split(str:to_lower(Query)) of
                   [<<"create">>, <<"table">>, Table|_] when Type == mssql ->
