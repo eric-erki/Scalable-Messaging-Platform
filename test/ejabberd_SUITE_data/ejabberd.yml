@@ -188,6 +188,7 @@ Welcome to this XMPP server."
     odbc_server: "@@mssql_server@@"
     odbc_port: @@mssql_port@@
     odbc_pool_size: 1
+    odbc_keepalive_interval: 30
     odbc_password: "@@mssql_pass@@"
     odbc_database: "@@mssql_db@@"
     auth_method: odbc
