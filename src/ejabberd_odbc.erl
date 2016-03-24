@@ -346,6 +346,7 @@ connecting(connect, #state{host = Host, shard = Shard} = State) ->
 		   [mysql | Args] -> apply(fun mysql_connect/5, Args);
            [pgsql | Args] -> apply(fun pgsql_connect/5, Args);
            [sqlite | Args] -> apply(fun sqlite_connect/1, Args);
+		   [mssql | Args] -> apply(fun odbc_connect/1, Args);
 		   [odbc | Args] -> apply(fun odbc_connect/1, Args)
 		 end,
     {_, PendingRequests} = State#state.pending_requests,
@@ -581,6 +582,8 @@ sql_query_internal(#sql_query{} = Query) ->
             case State#state.db_type of
                 odbc ->
                     generic_sql_query(Query);
+		mssql ->
+		    generic_sql_query(Query);
                 pgsql ->
                     Key = {?PREPARE_KEY, Query#sql_query.hash},
                     case get(Key) of
@@ -630,7 +633,10 @@ sql_query_internal(Query) ->
     ?DEBUG("SQL: \"~s\"", [Query]),
     Res = case State#state.db_type of
 	    odbc ->
-		to_odbc(odbc:sql_query(State#state.db_ref, Query,
+		to_odbc(odbc:sql_query(State#state.db_ref, [Query],
+                                       (?TRANSACTION_TIMEOUT) - 1000));
+	    mssql ->
+		to_odbc(odbc:sql_query(State#state.db_ref, [Query],
                                        (?TRANSACTION_TIMEOUT) - 1000));
 	    pgsql ->
 		pgsql_to_odbc(pgsql:squery(State#state.db_ref, Query));
@@ -977,8 +983,8 @@ db_opts(Host) ->
 	    case Type of
 		mssql ->
 		    Username = get_mssql_user(Server, User),
-		    [odbc, <<"DSN=", Host/binary, ";UID=", Username/binary,
-			     ";PWD=", Pass/binary>>];
+		    [mssql, <<"DSN=", Host/binary, ";UID=", Username/binary,
+			      ";PWD=", Pass/binary>>];
 		_ ->
 		    [Type, Server, Port, DB, User, Pass]
 	    end
@@ -1027,8 +1033,8 @@ db_opts(Host, ShardNumber) ->
 	    case Type of
 		mssql ->
 		    Username = get_mssql_user(Server, User),
-		    [odbc, <<"DSN=", Host/binary, ";UID=", Username/binary,
-			     ";PWD=", Pass/binary>>];
+		    [mssql, <<"DSN=", Host/binary, ";UID=", Username/binary,
+			      ";PWD=", Pass/binary>>];
 		_ ->
 		    [Type, Server, Port, DB, User, Pass]
 	    end

@@ -1638,7 +1638,7 @@ make_matchspec(LUser, LServer, Start, End, none) ->
 	      Msg
       end).
 
-make_sql_query(User, _LServer, Start, End, With, RSM) ->
+make_sql_query(User, LServer, Start, End, With, RSM) ->
     {Max, Direction, ID} = case RSM of
 	#rsm_in{} ->
 	    {RSM#rsm_in.max,
@@ -1647,8 +1647,16 @@ make_sql_query(User, _LServer, Start, End, With, RSM) ->
 	none ->
 	    {none, none, <<>>}
     end,
-    LimitClause = if is_integer(Max), Max >= 0 ->
+    ODBCType = ejabberd_config:get_option(
+		 {odbc_type, LServer},
+		 ejabberd_odbc:opt_type(odbc_type)),
+    LimitClause = if is_integer(Max), Max >= 0, ODBCType /= mssql ->
 			  [<<" limit ">>, jlib:integer_to_binary(Max+1)];
+		     true ->
+			  []
+		  end,
+    TopClause = if is_integer(Max), Max >= 0, ODBCType == mssql ->
+			  [<<" TOP ">>, jlib:integer_to_binary(Max+1)];
 		     true ->
 			  []
 		  end,
@@ -1698,7 +1706,7 @@ make_sql_query(User, _LServer, Start, End, With, RSM) ->
 		end,
     SUser = ejabberd_odbc:escape(User),
 
-    Query = [<<"SELECT timestamp, xml, peer, kind, nick"
+    Query = [<<"SELECT ">>, TopClause, <<" timestamp, xml, peer, kind, nick"
 	      " FROM archive WHERE username='">>,
 	     SUser, <<"'">>, WithClause, StartClause, EndClause,
 	     PageClause],
