@@ -3427,6 +3427,7 @@ broadcast(_Host, _Node, _Nidx, _Type, _NodeOptions, [], _Stanza, _SHIM) ->
 broadcast(Host, _Node, _Nidx, _Type, NodeOptions, Subs, Stanza, SHIM) ->
     From = service_jid(Host),
     NotificationType = get_option(NodeOptions, notification_type, headline),
+    BroadcastAll = get_option(NodeOptions, broadcast_all_resources), %% XXX this is not standard, but usefull
     Message = add_message_type(Stanza, NotificationType),
     lists:foreach(fun ({LJID, _NodeId, SubIds}) ->
 		Send = case {SHIM, SubIds} of
@@ -3434,7 +3435,14 @@ broadcast(Host, _Node, _Nidx, _Type, NodeOptions, Subs, Stanza, SHIM) ->
 		    {true, [_]} -> Message;
 		    {true, _} -> add_shim_headers(Message, subid_shim(SubIds))
 		end,
-		ejabberd_router:route(From, jid:make(LJID), Send)
+		case BroadcastAll of
+		    true ->
+			{U, S, _} = LJID,
+			[ejabberd_router:route(From, jid:make({U, S, R}), Send)
+			    || R <- user_resources(U, S)];
+		    false ->
+			ejabberd_router:route(From, jid:make(LJID), Send)
+		end
 	end,
 	Subs),
     true.
