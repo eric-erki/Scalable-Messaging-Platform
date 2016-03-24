@@ -44,6 +44,11 @@ init_config(Config) ->
                                                     {pgsql_db, <<"ejabberd_test">>},
                                                     {pgsql_user, <<"ejabberd_test">>},
                                                     {pgsql_pass, <<"ejabberd_test">>},
+						    {mssql_server, <<"epryfngzbm.database.windows.net">>},
+                                                    {mssql_port, 1433},
+                                                    {mssql_db, <<"ejabberd-test">>},
+                                                    {mssql_user, <<"ejabberd">>},
+                                                    {mssql_pass, <<"Ju6ede7b">>},
 						    {data_dir, DataDir}
                                                    ]),
     ConfigPath = filename:join([CWD, "ejabberd.yml"]),

@@ -59,6 +59,15 @@ init_per_group(mysql, Config) ->
         Err ->
             {skip, {mysql_not_available, Err}}
     end;
+init_per_group(mssql, Config) ->
+    case catch ejabberd_odbc:sql_query(?MSSQL_VHOST, [<<"select 1;">>]) of
+        {selected, _, _} ->
+            mod_muc:shutdown_rooms(?MSSQL_VHOST),
+            create_sql_tables(mssql, ?config(base_dir, Config)),
+            set_opt(server, ?MSSQL_VHOST, Config);
+        Err ->
+            {skip, {mssql_not_available, Err}}
+    end;
 init_per_group(pgsql, Config) ->
     case catch ejabberd_odbc:sql_query(?PGSQL_VHOST, [<<"select 1;">>]) of
         {selected, _, _} ->
@@ -101,6 +110,8 @@ end_per_group(mnesia, _Config) ->
 end_per_group(redis, _Config) ->
     ok;
 end_per_group(mysql, _Config) ->
+    ok;
+end_per_group(mssql, _Config) ->
     ok;
 end_per_group(pgsql, _Config) ->
     ok;
@@ -350,6 +361,7 @@ groups() ->
      {mnesia, [sequence], db_tests(mnesia)},
      {redis, [sequence], db_tests(redis)},
      {mysql, [sequence], db_tests(mysql)},
+     {mssql, [sequence], db_tests(mssql)},
      {pgsql, [sequence], db_tests(pgsql)},
      {sqlite, [sequence], db_tests(sqlite)},
      {riak, [sequence], db_tests(riak)},
@@ -361,6 +373,7 @@ all() ->
      {group, mnesia},
      {group, redis},
      {group, mysql},
+     {group, mssql},
      {group, pgsql},
      {group, sqlite},
      {group, extauth},
@@ -2290,12 +2303,14 @@ create_sql_tables(Type, BaseDir) ->
     {VHost, File} = case Type of
                         mysql ->
                             {?MYSQL_VHOST, "mysql.sql"};
+			mssql ->
+			    {?MSSQL_VHOST, "mssql.sql"};
                         pgsql ->
                             {?PGSQL_VHOST, "pg.sql"}
                     end,
     SQLFile = filename:join([BaseDir, "sql", File]),
     CreationQueries = read_sql_queries(SQLFile),
-    DropTableQueries = drop_table_queries(CreationQueries),
+    DropTableQueries = drop_table_queries(CreationQueries, Type),
     case ejabberd_odbc:sql_transaction(
            VHost, DropTableQueries ++ CreationQueries) of
         {atomic, ok} ->
@@ -2312,11 +2327,14 @@ read_sql_queries(File) ->
             ct:fail({open_file_failed, File, Err})
     end.
 
-drop_table_queries(Queries) ->
-    lists:foldl(
+drop_table_queries(Queries, Type) ->
+    lists:foldr(
       fun(Query, Acc) ->
               case split(str:to_lower(Query)) of
-                  [<<"create">>, <<"table">>, Table|_] ->
+                  [<<"create">>, <<"table">>, Table|_] when Type == mssql ->
+		      [<<"IF OBJECT_ID('", Table/binary, "', 'U') ",
+			 "IS NOT NULL DROP TABLE ", Table/binary>>|Acc];
+		  [<<"create">>, <<"table">>, Table|_] ->
                       [<<"DROP TABLE IF EXISTS ", Table/binary, ";">>|Acc];
                   _ ->
                       Acc
@@ -2331,12 +2349,12 @@ read_lines(Fd, File, Acc) ->
                              Acc;
                          <<>> ->
                              Acc;
-                         _ ->
-                             [Line|Acc]
+                         Line1 ->
+                             [Line1|Acc]
                      end,
             read_lines(Fd, File, NewAcc);
         eof ->
-            QueryList = str:tokens(list_to_binary(lists:reverse(Acc)), <<";">>),
+            QueryList = re:split(list_to_binary(lists:reverse(Acc)), <<";">>),
             lists:flatmap(
               fun(Query) ->
                       case str:strip(str:strip(Query, both, $\r), both, $\n) of

@@ -230,6 +230,7 @@ otherName.7 = 1.3.6.1.5.5.7.8.5;UTF8:test_single@ldap.localhost
 otherName.8 = 1.3.6.1.5.5.7.8.5;UTF8:test_single@p1db.localhost
 otherName.9 = 1.3.6.1.5.5.7.8.5;UTF8:test_single@riak.localhost
 otherName.10 = 1.3.6.1.5.5.7.8.5;UTF8:test_single@redis.localhost
+otherName.11 = 1.3.6.1.5.5.7.8.5;UTF8:test_single@mssql.localhost
 
 [ v3_ca ]
 crlDistributionPoints = URI:http://localhost:5280/data/crl.der

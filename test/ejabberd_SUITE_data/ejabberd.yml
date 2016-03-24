@@ -182,6 +182,69 @@ Welcome to this XMPP server."
       mod_stats: []
       mod_time: []
       mod_version: []
+  "mssql.localhost": 
+    odbc_username: "@@mssql_user@@"
+    odbc_type: mssql
+    odbc_server: "@@mssql_server@@"
+    odbc_port: @@mssql_port@@
+    odbc_pool_size: 1
+    odbc_password: "@@mssql_pass@@"
+    odbc_database: "@@mssql_db@@"
+    auth_method: odbc
+    sm_db_type: odbc
+    modules: 
+      mod_announce: 
+        db_type: odbc
+        access: local
+      mod_blocking: []
+      mod_caps: 
+        db_type: odbc
+      mod_last: 
+        db_type: odbc
+      mod_muc: 
+        db_type: odbc
+      mod_offline: 
+        db_type: odbc
+      mod_privacy: 
+        db_type: odbc
+      mod_private: 
+        db_type: odbc
+      mod_pubsub: 
+        db_type: odbc
+        access_createnode: pubsub_createnode
+        ignore_pep_from_offline: true
+        last_item_cache: false
+        plugins: 
+          - "flat"
+          - "hometree"
+          - "pep"
+      mod_mix: []
+      mod_roster: 
+        versioning: true
+        store_current_id: true
+        use_cache: true
+        db_type: odbc
+      mod_mam: 
+        db_type: odbc
+      mod_vcard: 
+        db_type: odbc
+      mod_vcard_xupdate:
+        db_type: odbc
+      mod_carboncopy:
+        db_type: odbc
+      mod_adhoc: []
+      mod_configure: []
+      mod_disco: []
+      mod_ping: []
+      mod_proxy65: []
+      mod_register: 
+        welcome_message: 
+          subject: "Welcome!"
+          body: "Hi.
+Welcome to this XMPP server."
+      mod_stats: []
+      mod_time: []
+      mod_version: []
   "p1db.localhost": 
     auth_method: p1db
     modules: 
@@ -419,6 +482,7 @@ hosts:
   - "mnesia.localhost"
   - "redis.localhost"
   - "mysql.localhost"
+  - "mssql.localhost"
   - "pgsql.localhost"
   - "extauth.localhost"
   - "ldap.localhost"
