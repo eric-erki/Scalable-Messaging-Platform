@@ -3153,11 +3153,9 @@ subscription_to_string(_) -> <<"none">>.
 	Host :: mod_pubsub:host())
     -> jid()
     ).
-service_jid(Host) ->
-    case Host of
-	{U, S, _} -> {jid, U, S, <<>>, U, S, <<>>};
-	_ -> {jid, <<>>, Host, <<>>, <<>>, Host, <<>>}
-    end.
+service_jid(#jid{} = Jid) -> Jid;
+service_jid({U, S, R}) -> jid:make(U, S, R);
+service_jid(Host) -> jid:make(<<>>, Host, <<>>).
 
 %% @spec (LJID, NotifyType, Depth, NodeOptions, SubOptions) -> boolean()
 %%        LJID = jid()
@@ -3409,7 +3407,8 @@ broadcast(Host, Node, Nidx, Type, NodeOptions, Notify, Condition, Stanza, SHIM) 
     broadcast(Host, Node, Nidx, Type, NodeOptions, Notify, get_option(NodeOptions, Condition), Stanza, SHIM).
 
 broadcast({U, S, R}, Node, Nidx, Type, NodeOptions, Subs, Stanza, SHIM) ->
-    broadcast(S, Node, Nidx, Type, NodeOptions, Subs, Stanza, SHIM)
+    PepSender = jid:make(U, S, <<>>),
+    broadcast(PepSender, Node, Nidx, Type, NodeOptions, Subs, Stanza, SHIM)
     or
     case ejabberd_sm:get_session_pid(U, S, user_resource(U, S, R)) of
 	C2SPid when is_pid(C2SPid) ->
