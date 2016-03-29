@@ -30,7 +30,7 @@
 
 -behaviour(application).
 
--export([start_modules/0, start/2, prep_stop/1, stop/1,
+-export([start/2, prep_stop/1, stop/1,
 	 init/0, opt_type/1]).
 
 -include("ejabberd.hrl").
@@ -67,7 +67,7 @@ start(normal, _Args) ->
     maybe_add_nameservers(),
     ejabberd_auth:start(),
     ejabberd_oauth:start(),
-    start_modules(),
+    gen_mod:start_modules(),
     ejabberd_node_groups:start(),
     ejabberd_cluster:boot(),
     ejabberd_listener:start_listeners(),
@@ -81,7 +81,7 @@ start(_, _) ->
 %% before shutting down the processes of the application.
 prep_stop(State) ->
     ejabberd_listener:stop_listeners(),
-    stop_modules(),
+    gen_mod:stop_modules(),
     ejabberd_admin:stop(),
     broadcast_c2s_shutdown(),
     timer:sleep(5000),
@@ -123,41 +123,6 @@ db_init() ->
     ejabberd:start_app(mnesia, permanent),
     mnesia:wait_for_tables(mnesia:system_info(local_tables), infinity).
 
-%% Start all the modules in all the hosts
-start_modules() ->
-    lists:foreach(
-      fun(Host) ->
-              Modules = ejabberd_config:get_option(
-                          {modules, Host},
-                          fun(Mods) ->
-                                  lists:map(
-                                    fun({M, A}) when is_atom(M), is_list(A) ->
-                                            {M, A}
-                                    end, Mods)
-                          end, []),
-              lists:foreach(
-                fun({Module, Args}) ->
-                        gen_mod:start_module(Host, Module, Args)
-                end, Modules)
-      end, ?MYHOSTS).
-
-%% Stop all the modules in all the hosts
-stop_modules() ->
-    lists:foreach(
-      fun(Host) ->
-              Modules = ejabberd_config:get_option(
-                          {modules, Host},
-                          fun(Mods) ->
-                                  lists:map(
-                                    fun({M, A}) when is_atom(M), is_list(A) ->
-                                            {M, A}
-                                    end, Mods)
-                          end, []),
-              lists:foreach(
-                fun({Module, _Args}) ->
-                        gen_mod:stop_module_keep_config(Host, Module)
-                end, Modules)
-      end, ?MYHOSTS).
 
 %% If ejabberd is running on some Windows machine, get nameservers and add to Erlang
 maybe_add_nameservers() ->
