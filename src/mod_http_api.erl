@@ -188,7 +188,9 @@ check_permissions2(#request{ip={IP, _Port}}, Call, _Policy) ->
             end;
         _ ->
             unauthorized_response()
-    end.
+    end;
+check_permissions2(_Request, _Call, _Policy) ->
+    unauthorized_response().
 
 %% ------------------
 %% command processing
