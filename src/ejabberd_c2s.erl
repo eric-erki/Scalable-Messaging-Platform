@@ -683,7 +683,9 @@ wait_for_auth({xmlstreamelement, El}, StateData) ->
 	    send_element(StateData, Res),
 	    fsm_next_state(wait_for_auth, StateData);
 	{auth, _ID, set, {_U, _P, _D, <<"">>}} ->
-	    Err = jlib:make_error_reply(El, ?ERR_AUTH_NO_RESOURCE_PROVIDED((StateData#state.lang))),
+	    Lang = StateData#state.lang,
+	    Txt = <<"No resource provided">>,
+	    Err = jlib:make_error_reply(El, ?ERRT_NOT_ACCEPTABLE(Lang, Txt)),
 	    send_element(StateData, Err),
 	    fsm_next_state(wait_for_auth, StateData);
 	{auth, _ID, set, {U, P, D, R}} ->
@@ -729,8 +731,12 @@ wait_for_auth({xmlstreamelement, El}, StateData) ->
 						 NewStateData#state{debug = DebugFlag})
 			    end;
 			_ ->
+			    Lang = StateData#state.lang,
+			    Txt = <<"Legacy authentication failed">>,
+			    Err = jlib:make_error_reply(
+				    El, ?ERRT_NOT_AUTHORIZED(Lang, Txt)),
 			    reject_auth(StateData, U, JID, "not authorized"),
-			    send_element(StateData, jlib:make_error_reply(El, ?ERR_NOT_AUTHORIZED)),
+			    send_element(StateData, Err),
 			    fsm_next_state(wait_for_auth, StateData)
 		    end;
 		_ ->
@@ -741,8 +747,11 @@ wait_for_auth({xmlstreamelement, El}, StateData) ->
 			    send_element(StateData, jlib:make_error_reply(El, ?ERR_JID_MALFORMED)),
 			    fsm_next_state(wait_for_auth, StateData);
 		       true ->
+			    Lang = StateData#state.lang,
+			    Txt = <<"Legacy authentication forbidden">>,
+			    Err = jlib:make_error_reply(El, ?ERRT_NOT_ALLOWED(Lang, Txt)),
 			    reject_auth(StateData, U, JID, "not allowed"),
-			    send_element(StateData, jlib:make_error_reply(El, ?ERR_NOT_ALLOWED)),
+			    send_element(StateData, Err),
 			    fsm_next_state(wait_for_auth, StateData)
 		    end
 	    end;
@@ -984,7 +993,8 @@ wait_for_bind({xmlstreamelement, #xmlel{name = Name, attrs = Attrs} = El}, State
     end;
 wait_for_bind({xmlstreamelement, El}, StateData) ->
     case jlib:iq_query_info(El) of
-	#iq{type = set, xmlns = ?NS_BIND, sub_el = SubEl} = IQ ->
+	#iq{type = set, lang = Lang, xmlns = ?NS_BIND, sub_el = SubEl} =
+	IQ ->
 	    U = StateData#state.user,
 	    R1 = fxml:get_path_s(SubEl, [{elem, <<"resource">>}, cdata]),
 	    R = case jid:resourceprep(R1) of
@@ -994,7 +1004,8 @@ wait_for_bind({xmlstreamelement, El}, StateData) ->
 		end,
 	    case R of
 		error ->
-		    Err = jlib:make_error_reply(El, ?ERR_BAD_REQUEST),
+		Txt = <<"Malformed resource">>,
+		Err = jlib:make_error_reply(El, ?ERRT_BAD_REQUEST(Lang, Txt)),
 		    send_element(StateData, Err),
 		    fsm_next_state(wait_for_bind, StateData);
 		_ ->
@@ -1037,6 +1048,7 @@ open_session(StateData) ->
     U = StateData#state.user,
     S = StateData#state.server,
     JID = StateData#state.jid,
+    Lang = StateData#state.lang,
     case acl:match_rule(S, StateData#state.access, JID) of
         allow ->
             ?INFO_MSG("(~w) Opened session for ~s",
@@ -1059,7 +1071,8 @@ open_session(StateData) ->
                                StateData#state.server, [JID]),
             ?INFO_MSG("(~w) Forbidden session for ~s",
                       [StateData#state.socket, jid:to_string(JID)]),
-            {error, ?ERR_NOT_ALLOWED}
+	    Txt = <<"Denied by ACL">>,
+            {error, ?ERRT_NOT_ALLOWED(Lang, Txt)}
     end.
 
 session_established({xmlstreamelement, #xmlel{name = Name} = El}, StateData)
@@ -2274,18 +2287,23 @@ get_priority_from_presence(PresencePacket) ->
     end.
 
 process_privacy_iq(From, To,
-		   #iq{type = Type, sub_el = SubEl} = IQ, StateData) ->
-    {Res, NewStateData} = case Type of
+		   #iq{type = Type, lang = Lang, sub_el = SubEl} = IQ, StateData) ->
+    Txt = <<"No module is handling this query">>,
+    {Res, NewStateData} =
+	case Type of
 			      get ->
-				  R = ejabberd_hooks:run_fold(privacy_iq_get,
+		R = ejabberd_hooks:run_fold(
+		      privacy_iq_get,
 							      StateData#state.server,
-							      {error, ?ERR_FEATURE_NOT_IMPLEMENTED},
-							      [From, To, IQ, StateData#state.privacy_list]),
+		      {error, ?ERRT_FEATURE_NOT_IMPLEMENTED(Lang, Txt)},
+		      [From, To, IQ,
+		       StateData#state.privacy_list]),
 				  {R, StateData};
 			      set ->
-				  case ejabberd_hooks:run_fold(privacy_iq_set,
+		case ejabberd_hooks:run_fold(
+		       privacy_iq_set,
 							       StateData#state.server,
-							       {error, ?ERR_FEATURE_NOT_IMPLEMENTED},
+		       {error, ?ERRT_FEATURE_NOT_IMPLEMENTED(Lang, Txt)},
 							       [From, To, IQ])
 				  of
 				      {result, R, NewPrivList} ->
@@ -2360,14 +2378,15 @@ process_unauthenticated_stanza(StateData, El) ->
 		    El
 	    end,
     case jlib:iq_query_info(NewEl) of
-	#iq{} = IQ ->
+      #iq{lang = L} = IQ ->
 	    Res = ejabberd_hooks:run_fold(c2s_unauthenticated_iq,
 					  StateData#state.server, empty,
 					  [StateData#state.server, IQ, StateData#state.ip]),
 	    case Res of
 		empty ->
+		Txt = <<"Authentication required">>,
 		    ResIQ = IQ#iq{type = error,
-				  sub_el = [?ERR_SERVICE_UNAVAILABLE]},
+			      sub_el = [?ERRT_SERVICE_UNAVAILABLE(L, Txt)]},
 		    Res1 = jlib:replace_from_to(jid:make(<<"">>,
 							 StateData#state.server,
 							 <<"">>),
@@ -3686,6 +3705,7 @@ handle_unacked_stanzas(StateData)
 		    false
 	      end
 	end,
+    Lang = StateData#state.lang,
     ReRoute = case ResendOnTimeout of
 		  true ->
 		      fun(From, To, El, Time) ->
@@ -3694,7 +3714,11 @@ handle_unacked_stanzas(StateData)
 		      end;
 		  false ->
 		      fun(From, To, El, _Time) ->
-			      Err = jlib:make_error_reply(El, ?ERR_SERVICE_UNAVAILABLE),
+			    Txt = <<"User session not found">>,
+			    Err =
+				jlib:make_error_reply(
+				  El,
+				  ?ERRT_SERVICE_UNAVAILABLE(Lang, Txt)),
 			      ejabberd_router:route(To, From, Err)
 		      end
 	      end,
@@ -3702,7 +3726,9 @@ handle_unacked_stanzas(StateData)
 		?DEBUG("Dropping presence stanza from ~s",
 		       [jid:to_string(From)]);
 	   (From, To, #xmlel{name = <<"iq">>} = El, _Time) ->
-		Err = jlib:make_error_reply(El, ?ERR_SERVICE_UNAVAILABLE),
+		Txt = <<"User session not found">>,
+		Err = jlib:make_error_reply(
+			El, ?ERRT_SERVICE_UNAVAILABLE(Lang, Txt)),
 		ejabberd_router:route(To, From, Err);
 	   (From, To, El, Time) ->
 		%% We'll drop the stanza if it was <forwarded/> by some

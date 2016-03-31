@@ -199,8 +199,10 @@ check_in_subscription(Acc, User, Server, _JID, _Type, _Reason) ->
 -spec bounce_offline_message(jid(), jid(), xmlel()) -> stop.
 
 bounce_offline_message(From, To, Packet) ->
-    Err = jlib:make_error_reply(Packet,
-				?ERR_SERVICE_UNAVAILABLE),
+    Lang = fxml:get_tag_attr_s(<<"xml:lang">>, Packet),
+    Txt = <<"User session not found">>,
+    Err = jlib:make_error_reply(
+	    Packet, ?ERRT_SERVICE_UNAVAILABLE(Lang, Txt)),
     ejabberd_router:route(To, From, Err),
     stop.
 
@@ -608,6 +610,7 @@ do_route1(From, To, Packet, Hops) ->
 	To,
     #xmlel{name = Name, attrs = Attrs} = Packet,
     ejabberd_hooks:run(message_to_user, LServer, [From, To, Packet]),
+    Lang = fxml:get_attr_s(<<"xml:lang">>, Attrs),
     case LResource of
       <<"">> ->
 	  case Name of
@@ -681,8 +684,9 @@ do_route1(From, To, Packet, Hops) ->
 		  <<"headline">> -> route_message(From, To, Packet, headline);
 		  <<"error">> -> ok;
 		  <<"groupchat">> ->
-		      Err = jlib:make_error_reply(Packet,
-						  ?ERR_SERVICE_UNAVAILABLE),
+		      ErrTxt = <<"Incorrect message type">>,
+		      Err = jlib:make_error_reply(
+			      Packet, ?ERRT_SERVICE_UNAVAILABLE(Lang, ErrTxt)),
 		      ejabberd_router:route(To, From, Err);
 		  _ ->
 		      route_message(From, To, Packet, normal)
@@ -702,8 +706,10 @@ do_route1(From, To, Packet, Hops) ->
 			<<"">> -> route_message(From, To, Packet, normal);
 			<<"error">> -> ok;
 			_ ->
-			    Err = jlib:make_error_reply(Packet,
-							?ERR_SERVICE_UNAVAILABLE),
+			    ErrTxt = <<"Incorrect message type">>,
+			    Err = jlib:make_error_reply(
+				    Packet,
+				    ?ERRT_SERVICE_UNAVAILABLE(Lang, ErrTxt)),
 			    ejabberd_router:route(To, From, Err)
 		      end;
 		  <<"iq">> ->
@@ -711,8 +717,10 @@ do_route1(From, To, Packet, Hops) ->
 			<<"error">> -> ok;
 			<<"result">> -> ok;
 			_ ->
-			    Err = jlib:make_error_reply(Packet,
-							?ERR_SERVICE_UNAVAILABLE),
+			    ErrTxt = <<"User session not found">>,
+			    Err = jlib:make_error_reply(
+				    Packet,
+				    ?ERRT_SERVICE_UNAVAILABLE(Lang, ErrTxt)),
 			    ejabberd_router:route(To, From, Err)
 		      end;
 		  _ -> ?DEBUG("packet dropped~n", [])
@@ -844,7 +852,7 @@ get_max_user_sessions(LUser, Host) ->
 process_iq(From, To, Packet) ->
     IQ = jlib:iq_query_info(Packet),
     case IQ of
-      #iq{xmlns = XMLNS} ->
+      #iq{xmlns = XMLNS, lang = Lang} ->
 	  Host = To#jid.lserver,
 	  case ets:lookup(sm_iqtable, {XMLNS, Host}) of
 	    [{_, Module, Function}] ->
@@ -862,8 +870,10 @@ process_iq(From, To, Packet) ->
 		gen_iq_handler:handle(Host, Module, Function, Opts,
 				      From, To, IQ);
 	    [] ->
-		Err = jlib:make_error_reply(Packet,
-					    ?ERR_SERVICE_UNAVAILABLE),
+		Txt = <<"No module is handling this query">>,
+		Err = jlib:make_error_reply(
+			Packet,
+			?ERRT_SERVICE_UNAVAILABLE(Lang, Txt)),
 		ejabberd_router:route(To, From, Err)
 	  end;
       reply -> ok;
