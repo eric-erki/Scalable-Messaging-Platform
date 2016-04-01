@@ -186,7 +186,8 @@ check_permissions2(#request{ip={IP, _Port}}, Call, _Policy) ->
                 true -> {allowed, Call, admin};
                 _ -> unauthorized_response()
             end;
-        _ ->
+        E ->
+	    ?DEBUG("Unauthorized: ~p", [E]),
             unauthorized_response()
     end;
 check_permissions2(_Request, _Call, _Policy) ->
