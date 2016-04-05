@@ -410,9 +410,13 @@ get_commands_definition(Version) ->
 	end,
     lists:foldl(F, [], L).
 
-command_execution_allowed(Name, Auth, Version) ->
-    Command = #ejabberd_commands{policy = admin, args = []},
+command_execution_allowed(Name, Auth1, Version) ->
+    Command = #ejabberd_commands{name = Name, policy = restricted, args = []},
     AccessCommands = get_access_commands(undefined, Version),
+    Auth = case is_admin(Command, Auth1) of
+               true -> admin;
+               false -> Auth1
+           end,
     case check_access_commands(AccessCommands, Auth, Name, Command, []) of
 	ok -> true;
 	_ -> false
@@ -755,7 +759,9 @@ is_admin(_Name, admin) ->
     true;
 is_admin(_Name, {_User, _Server, _, false}) ->
     false;
-is_admin(Name, {User, Server, _, true} = Auth) ->
+is_admin(Name, Auth) when is_atom(Name) ->
+    is_admin(get_command_definition(Name), Auth);
+is_admin(Cmd, {User, Server, _, true} = Auth)->
     AdminAccess = ejabberd_config:get_option(
                     commands_admin_access,
                     fun(A) when is_atom(A) -> A end,
@@ -763,7 +769,7 @@ is_admin(Name, {User, Server, _, true} = Auth) ->
     case acl:match_rule(Server, AdminAccess,
                         jid:make(User, Server, <<"">>)) of
         allow ->
-            case catch check_auth(get_command_definition(Name), Auth) of
+            case catch check_auth(Cmd, Auth) of
                 {ok, _, _} -> true;
                 _ -> false
             end;
