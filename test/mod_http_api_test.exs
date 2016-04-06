@@ -22,13 +22,14 @@ defmodule ModHttpApiTest do
   @author "mremond@process-one.net"
 
   use ExUnit.Case, async: true
-	
-	require Record
+
+  require Record
   Record.defrecord :request, Record.extract(:request, from_lib: "ejabberd/include/ejabberd_http.hrl")
   Record.defrecord :ejabberd_commands, Record.extract(:ejabberd_commands, from_lib: "ejabberd/include/ejabberd_commands.hrl")
 
-	setup_all do
+  setup_all do
     :ok = :mnesia.start
+    :ok = :stringprep.start
     :ok = :ejabberd_config.start(["localhost"], [])
 
     :ok = :ejabberd_commands.init
@@ -48,7 +49,7 @@ defmodule ModHttpApiTest do
     :ejabberd_config.add_local_option(:commands, [[{:add_commands, [:open_cmd]}]])
     request = request(method: :POST, data: "[]")
     {200, _, _} = :mod_http_api.process(["open_cmd"], request)
-	end
+  end
 
   # This related to the commands config file option
   test "Attempting to access a command that is not exposed as HTTP API returns 401" do
@@ -65,6 +66,10 @@ defmodule ModHttpApiTest do
     {401, _, _} = :mod_http_api.process(["restricted_cmd"], request)
   end
 
+  @tag pending: true
+  test "If admin_ip_access is enabled, we can call restricted API without authentication from that IP" do
+  end
+
   # Define a set of test commands that we expose through API
   # We define one for each policy type
   defp cmds do
@@ -77,7 +82,7 @@ defmodule ModHttpApiTest do
                         function: cmd,
                         args: [],
                         result: {:res, :rescode})
-			end)
+    end)
   end
 
   def open_cmd, do: :ok
@@ -91,6 +96,6 @@ defmodule ModHttpApiTest do
     catch
       _,_ -> :ok
     end
-	end
-	
+  end
+
 end
