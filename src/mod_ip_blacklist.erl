@@ -54,7 +54,6 @@
 -record(bl_c2s, {ip = <<"">> :: binary()}).
 
 start(_Host, _Opts) ->
-    http_p1:start(),
     Pid = spawn(?MODULE, preinit, [self(), #state{}]),
     receive {ok, Pid, PreinitResult} -> PreinitResult end.
 

@@ -66,14 +66,14 @@
 
 start() ->
     [SNode, Timeout, Args] = case init:get_plain_arguments() of
-                                  [SNode01, "--no-timeout" | Args01] ->
-                                      [SNode01, infinity, Args01];
-                                  [SNode02 | Args02] ->
-                                      [SNode02, 60000, Args02];
-                                  _ ->
-                                      print_usage(?DEFAULT_VERSION),
-                                      halt(?STATUS_USAGE)
-                              end,
+                                 [SNode2, "--no-timeout" | Args2] ->
+                                     [SNode2, infinity, Args2];
+                                 [SNode3 | Args3] ->
+                                     [SNode3, 60000, Args3];
+                                 _ ->
+                                     print_usage(?DEFAULT_VERSION),
+                                     halt(?STATUS_USAGE)
+                             end,
     SNode1 = case string:tokens(SNode, "@") of
                  [_Node, _Server] ->
                      SNode;
@@ -85,7 +85,7 @@ start() ->
                          false ->
                              lists:flatten([SNode, "@", inet_db:gethostname()]);
                          _ ->
-				     SNode
+                             SNode
                      end
              end,
     Node = list_to_atom(SNode1),
@@ -95,7 +95,7 @@ start() ->
                            [Node, Reason]),
                      %% TODO: show minimal start help
                      ?STATUS_BADRPC;
-			 {invalid_version, V} ->
+                 {invalid_version, V} ->
                      print("Invalid API version number: ~p~n", [V]),
                      ?STATUS_ERROR;
                  S ->
@@ -212,7 +212,7 @@ process(["help" | Mode], Version) ->
     end;
 
 process(["--version", Arg | Args], _) ->
-    Version =
+    Version = 
 	try
 	    list_to_integer(Arg)
 	catch _:_ ->
@@ -235,7 +235,7 @@ process2(["--auth", User, Server, Pass | Args], AccessCommands, Version) ->
     process2(Args, AccessCommands, {list_to_binary(User), list_to_binary(Server),
 				    list_to_binary(Pass), true}, Version);
 process2(Args, AccessCommands, Version) ->
-    process2(Args, AccessCommands, admin, Version).
+    process2(Args, AccessCommands, noauth, Version).
 
 
 
@@ -317,7 +317,7 @@ call_command([CmdString | Args], Auth, AccessCommands, Version) ->
 	{ArgsFormat, ResultFormat} ->
 	    case (catch format_args(Args, ArgsFormat)) of
 		ArgsFormatted when is_list(ArgsFormatted) ->
-		    Result = ejabberd_commands:execute_command(AccessCommands,
+		    Result = ejabberd_commands:execute_command(AccessCommands, 
 							       Auth, Command,
 							       ArgsFormatted,
 							       Version),
@@ -500,7 +500,7 @@ print_usage(HelpMode, MaxC, ShCode, Version) ->
 	get_list_ctls(),
 
     print(
-       ["Usage: ", ?B("ejabberdctl"), " [--node ", ?U("nodename"), "] [--version ", ?U("api_version"), "] [--auth ",
+       ["Usage: ", ?B("ejabberdctl"), " [--no-timeout] [--node ", ?U("nodename"), "] [--version ", ?U("api_version"), "] [--auth ",
 	?U("user"), " ", ?U("host"), " ", ?U("password"), "] ",
 	?U("command"), " [", ?U("options"), "]\n"
 	"\n"

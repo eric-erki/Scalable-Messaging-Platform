@@ -1224,7 +1224,8 @@ connected_users_info() ->
 			      PI when is_integer(PI) -> PI;
 			      _ -> nil
 			  end,
-	      {[U, $@, S, $/, R], atom_to_list(Conn), IPS, Port, PriorityI, NodeS, Uptime}
+	      {binary_to_list(<<U/binary, $@, S/binary, $/, R/binary>>),
+	       atom_to_list(Conn), IPS, Port, PriorityI, NodeS, Uptime}
       end,
       USRIs).
 
@@ -1657,7 +1658,7 @@ push_roster_item(LU, LS, R, U, S, Action) ->
     ejabberd_sm:route(LJID, LJID, BroadcastEl),
     Item = build_roster_item(U, S, Action),
     ResIQ = build_iq_roster_push(Item),
-    ejabberd_router:route(LJID, LJID, ResIQ).
+    ejabberd_router:route(jid:remove_resource(LJID), LJID, ResIQ).
 
 build_roster_item(U, S, {add, Nick, Subs, Group}) ->
     {xmlel, <<"item">>,

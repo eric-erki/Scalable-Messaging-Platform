@@ -173,6 +173,7 @@ handle_call({starttls, TLSOpts, Data}, _From,
 handle_call({compress, Data}, _From,
 	    #state{socket = Socket, sock_mod = SockMod} =
 		State) ->
+    ejabberd:start_app(ezlib),
     {ok, ZlibSocket} = ezlib:enable_zlib(SockMod,
 						 Socket),
     if Data /= undefined -> do_send(State, Data);

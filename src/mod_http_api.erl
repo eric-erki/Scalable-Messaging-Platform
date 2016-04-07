@@ -568,7 +568,7 @@ json_response(Code, Body) when is_integer(Code) ->
 
 log(Call, Args, {Addr, Port}) ->
     AddrS = jlib:ip_to_list({Addr, Port}),
-    ?INFO_MSG("Admin call ~s ~p from ~s:~p", [Call, Args, AddrS, Port]).
+    ?INFO_MSG("API call ~s ~p from ~s:~p", [Call, Args, AddrS, Port]).
 
 mod_opt_type(admin_ip_access) ->
     fun(Access) when is_atom(Access) -> Access end;
