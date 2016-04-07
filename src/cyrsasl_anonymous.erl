@@ -48,5 +48,5 @@ mech_step(#state{server = Server}, ClientIn) ->
     User = randoms:get_string(),
     case ejabberd_auth:is_user_exists(User, Server) of
         true  -> mech_step(Server, ClientIn);
-        false -> {ok, [{username, User}, {auth_module, ejabberd_auth_anonymous}]}
+        false -> {ok, [{username, User}, {authzid, User}, {auth_module, ejabberd_auth_anonymous}]}
     end.
