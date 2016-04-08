@@ -356,7 +356,7 @@ init([{SockMod, Socket}, Opts, FSMLimitOpts]) ->
 			   tls_required = StartTLSRequired,
 			   tls_enabled = TLSEnabled,
 			   tls_options = TLSOpts,
-			   sid = {p1_time_compat:timestamp(), self()},
+			   sid = ejabberd_sm:make_sid(),
 			   streamid = new_id(),
 			   access = Access,
 			   shaper = Shaper,
@@ -2797,7 +2797,7 @@ rebind(StateData, JID, StreamID) ->
 		{rebind, NewStateData} ->
 		    ?INFO_MSG("(~w) Reopened session for ~s",
 			      [StateData#state.socket, jid:to_string(JID)]),
-		    SID = {p1_time_compat:timestamp(), self()},
+		    SID = ejabberd_sm:make_sid(),
 		    StateData2 = NewStateData#state{
 				   socket = StateData#state.socket,
 				   sockmod = StateData#state.sockmod,
@@ -4151,4 +4151,3 @@ sm_close_migrated_session(StateData) ->
 				       StateData#state.user,
 				       StateData#state.server,
 				       StateData#state.resource).
-
