@@ -27,11 +27,11 @@
 
 -author('alexey@process-one.net').
 
--export([start/1, stop/0, mech_new/4, mech_step/2, parse/1]).
+-export([start/1, stop/0, mech_new/6, mech_step/2, parse/1]).
 
 -behaviour(cyrsasl).
 
--record(state, {host}).
+-record(state, {host, is_user_exists}).
 
 start(_Opts) ->
     cyrsasl:register_mechanism(<<"X-OAUTH2">>, ?MODULE, plain),
@@ -39,20 +39,25 @@ start(_Opts) ->
 
 stop() -> ok.
 
-mech_new(Host, _GetPassword, _CheckPassword, _CheckPasswordDigest) ->
-    {ok, #state{host = Host}}.
+mech_new(Host, _GetPassword, _CheckPassword, _CheckPasswordDigest,
+         IsUserExists, _ClientCertFile) ->
+    {ok, #state{host = Host, is_user_exists = IsUserExists}}.
 
 mech_step(State, ClientIn) ->
     case prepare(ClientIn) of
         [AuthzId, User, Token] ->
-            case ejabberd_oauth:check_token(
-                   User, State#state.host, <<"sasl_auth">>, Token) of
+            case (State#state.is_user_exists)(User) of
                 true ->
-                    {ok,
-                     [{username, User}, {authzid, AuthzId},
-                      {auth_module, ejabberd_oauth}]};
-                false ->
-                    {error, <<"not-authorized">>, User}
+                    case ejabberd_oauth:check_token(
+                           User, State#state.host, <<"sasl_auth">>, Token) of
+                        true ->
+                            {ok,
+                             [{username, User}, {authzid, AuthzId},
+                              {auth_module, ejabberd_oauth}]};
+                        false ->
+                            {error, <<"not-authorized">>, User}
+                    end;
+                _ -> {error, <<"not-authorized">>, User}
             end;
         _ -> {error, <<"bad-protocol">>}
     end.
