@@ -55,6 +55,7 @@
          {muc_users, gauge},
          {pubsub_nodes, gauge},
          {pubsub_users, gauge},
+         {jabs, gauge},
          {sessions, gauge},
          {memory, gauge},
          {processes, gauge},
