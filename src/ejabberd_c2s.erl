@@ -781,7 +781,7 @@ wait_for_auth({xmlstreamelement, El}, StateData) ->
 wait_for_auth(timeout, StateData) ->
     fsm_stop(StateData);
 wait_for_auth({xmlstreamend, _Name}, StateData) ->
-    fsm_send_and_stop(StateData);
+    fsm_stop(StateData);
 wait_for_auth({xmlstreamerror, _}, StateData) ->
     fsm_send_and_stop(StateData, ?INVALID_XML_ERR);
 wait_for_auth(closed, StateData) ->
@@ -919,7 +919,7 @@ wait_for_feature_request({xmlstreamelement, El}, StateData) ->
 wait_for_feature_request(timeout, StateData) ->
     fsm_stop(StateData);
 wait_for_feature_request({xmlstreamend, _Name}, StateData) ->
-    fsm_send_and_stop(StateData);
+    fsm_stop(StateData);
 wait_for_feature_request({xmlstreamerror, _}, StateData) ->
     fsm_send_and_stop(StateData, ?INVALID_XML_ERR);
 wait_for_feature_request(closed, StateData) ->
@@ -968,7 +968,7 @@ wait_for_sasl_response({xmlstreamelement, El}, StateData) ->
 wait_for_sasl_response(timeout, StateData) ->
     fsm_stop(StateData);
 wait_for_sasl_response({xmlstreamend, _Name}, StateData) ->
-    fsm_send_and_stop(StateData);
+    fsm_stop(StateData);
 wait_for_sasl_response({xmlstreamerror, _}, StateData) ->
     fsm_send_and_stop(StateData, ?INVALID_XML_ERR);
 wait_for_sasl_response(closed, StateData) ->
@@ -1034,7 +1034,7 @@ wait_for_bind({xmlstreamelement, El}, StateData) ->
 wait_for_bind(timeout, StateData) ->
     fsm_stop(StateData);
 wait_for_bind({xmlstreamend, _Name}, StateData) ->
-    fsm_send_and_stop(StateData);
+    fsm_stop(StateData);
 wait_for_bind({xmlstreamerror, _}, StateData) ->
     fsm_send_and_stop(StateData, ?INVALID_XML_ERR);
 wait_for_bind(closed, StateData) ->
@@ -1106,7 +1106,7 @@ session_established(timeout, StateData) ->
 		       [?MODULE, [], session_established, StateData]),
     fsm_next_state(session_established, StateData);
 session_established({xmlstreamend, _Name}, StateData) ->
-    fsm_send_and_stop(StateData);
+    fsm_stop(StateData);
 session_established({xmlstreamerror,
 		     <<"XML stanza is too big">> = E},
 		    StateData) ->
@@ -1319,8 +1319,7 @@ handle_info({kick, Reason, Xmlelement}, _StateName, StateData) ->
     %% Catch the send because the session we are kicking might be in detached state (no socket),
     %% and we want to terminate it cleanly anyway.
     catch send_element(StateData, Xmlelement),
-    catch send_trailer(StateData),
-    {stop, normal, StateData#state{authenticated = Reason}};
+    fsm_stop(StateData#state{authenticated = Reason});
 handle_info({route, _From, _To, {broadcast, Data}}, StateName, StateData) ->
     ?DEBUG("broadcast~n~p~n", [Data]),
     case Data of
@@ -1362,7 +1361,6 @@ handle_info({route, _From, _To, {broadcast, Data}}, StateName, StateData) ->
 	    if StreamID2 == StateData#state.streamid ->
 		    Pid2 ! {rebind, prepare_acks_for_rebind(StateData)},
 		    receive after 1000 -> ok end,
-		    catch send_trailer(StateData),
 		    fsm_stop(StateData#state{authenticated = rebinded});
 	       true ->
 		    Pid2 ! {rebind, false},
@@ -1777,6 +1775,7 @@ terminate(_Reason, StateName, StateData) ->
 	true ->
 	    ok
     end,
+    catch send_trailer(StateData),
     (StateData#state.sockmod):close(StateData#state.socket),
     ok.
 
@@ -4082,10 +4081,8 @@ fsm_send_and_stop(StateData, Server, Version, Lang, El) ->
     fsm_send_and_stop(StateData, El).
 fsm_send_and_stop(StateData, El) ->
     send_element(StateData, El),
-    fsm_send_and_stop(StateData).
-fsm_send_and_stop(StateData) ->
-    catch send_trailer(StateData),
-    {stop, normal, StateData}.
+    fsm_stop(StateData).
+
 fsm_stop(StateData) ->
     {stop, normal, StateData}.
 
