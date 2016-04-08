@@ -36,7 +36,7 @@
          terminate/2, code_change/3]).
 
 -export([start_link/0, to_record/3, add/3, add_list/3,
-	 load_from_config/0, match_rule/3, match_acl/3,
+	 load_from_config/0, match_rule/3, match_acl/3, match_access/4,
 	 transform_options/1, opt_type/1]).
 
 -export([add_access/3]).
@@ -271,6 +271,19 @@ normalize_spec(Spec) ->
             end
     end.
 
+-spec match_access(global | binary(), access_name(),
+                   jid() | ljid() | inet:ip_address(),
+                   atom()) -> any().
+
+match_access(_Host, all, _JID, _Default) ->
+    allow;
+match_access(_Host, none, _JID, _Default) ->
+    deny;
+match_access(_Host, {user, UserPattern}, JID, Default) ->
+    match_user_spec({user, UserPattern}, JID, Default);
+match_access(Host, AccessRule, JID, _Default) ->
+    match_rule(Host, AccessRule, JID).
+
 -spec match_rule(global | binary(), access_name(),
                  jid() | ljid() | inet:ip_address()) -> any().
 
@@ -376,6 +389,16 @@ get_aclspecs(ACL, Host) ->
               Specs
       end, ets:lookup(acl, {ACL, Host}) ++
           ets:lookup(acl, {ACL, global})).
+
+
+match_user_spec(Spec, JID, Default) ->
+    case do_match_user_spec(Spec, jid:tolower(JID)) of
+        true -> Default;
+        false -> deny
+    end.
+
+do_match_user_spec({user, {U, S}}, {User, Server, _Resource}) ->
+    U == User andalso S == Server.
 
 is_regexp_match(String, RegExp) ->
     case ejabberd_regexp:run(String, RegExp) of
