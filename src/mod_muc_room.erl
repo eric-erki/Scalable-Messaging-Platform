@@ -43,7 +43,7 @@
 	 route/4,
 	 moderate_room_history/2,
 	 persist_recent_messages/1,
-	 expand_opts/1, encode_opts/2, decode_opts/2,
+	 expand_opts/1,
 	 is_occupant_or_admin/2,
 	 config_fields/0, get_role/2, get_affiliation/2,
 	 tab_online_users/2]).
@@ -82,6 +82,16 @@
 -define(FSMOPTS, fsm_limit_opts()).
 
 -endif.
+
+-callback set_affiliation(binary(), binary(), binary(), jid(), affiliation(),
+			  binary()) -> ok | {error, any()}.
+-callback set_affiliations(binary(), binary(), binary(),
+			   ?TDICT) -> ok | {error, any()}.
+-callback get_affiliation(binary(), binary(), binary(),
+			  binary(), binary()) -> {ok, affiliation()} | {error, any()}.
+-callback get_affiliations(binary(), binary(), binary()) -> {ok, ?TDICT} | {error, any()}.
+-callback search_affiliation(binary(), binary(), binary(), affiliation()) ->
+    {ok, [{ljid(), {affiliation(), binary()}}]} | {error, any()}.
 
 %%%----------------------------------------------------------------------
 %%% API
@@ -1484,122 +1494,79 @@ expulse_participant(Packet, From, StateData, Reason1) ->
 set_affiliation(JID, Affiliation, StateData) ->
     set_affiliation(JID, Affiliation, StateData, <<"">>).
 
-set_affiliation(JID, Affiliation, StateData, Reason) ->
-    DBType = gen_mod:db_type(StateData#state.server_host, mod_muc),
-    set_affiliation(JID, Affiliation, StateData, Reason, DBType).
-
 set_affiliation(JID, Affiliation,
-                #state{config = #config{persistent = true}} = StateData,
-                Reason, p1db) ->
-    {LUser, LServer, _} = jid:tolower(JID),
+		#state{config = #config{persistent = false}} = StateData,
+		Reason) ->
+    set_affiliation_fallback(JID, Affiliation, StateData, Reason);
+set_affiliation(JID, Affiliation, StateData, Reason) ->
+    ServerHost = StateData#state.server_host,
     Room = StateData#state.room,
     Host = StateData#state.host,
-    AffKey = mod_muc:rhus2key(Room, Host, LUser, LServer),
-    case Affiliation of
-        none ->
-            p1db:delete(muc_affiliations, AffKey);
-        _ ->
-            Val = term_to_binary([{affiliation, Affiliation},
-                                  {reason, Reason}]),
-            p1db:insert(muc_affiliations, AffKey, Val)
-    end,
-    StateData;
-set_affiliation(JID, Affiliation, StateData, Reason, _) ->
+    Mod = gen_mod:db_mod(ServerHost, mod_muc),
+    case Mod:set_affiliation(ServerHost, Room, Host, JID, Affiliation, Reason) of
+	ok ->
+	    StateData;
+	{error, _} ->
+	    set_affiliation_fallback(JID, Affiliation, StateData, Reason)
+    end.
+
+set_affiliation_fallback(JID, Affiliation, StateData, Reason) ->
     LJID = jid:remove_resource(jid:tolower(JID)),
     Affiliations = case Affiliation of
-		     none ->
-			 (?DICT):erase(LJID, StateData#state.affiliations);
-		     _ ->
-			 (?DICT):store(LJID, {Affiliation, Reason},
-				       StateData#state.affiliations)
+		       none ->
+			   (?DICT):erase(LJID, StateData#state.affiliations);
+		       _ ->
+			   (?DICT):store(LJID, {Affiliation, Reason},
+					 StateData#state.affiliations)
 		   end,
     StateData#state{affiliations = Affiliations}.
 
-set_affiliations(Affiliations, StateData) ->
-    DBType = gen_mod:db_type(StateData#state.server_host, mod_muc),
-    set_affiliations(Affiliations, StateData, DBType).
-
 set_affiliations(Affiliations,
-                 #state{config = #config{persistent = true}} = StateData,
-                 p1db) ->
+                 #state{config = #config{persistent = false}} = StateData) ->
+    set_affiliations_fallback(Affiliations, StateData);
+set_affiliations(Affiliations, StateData) ->
     Room = StateData#state.room,
     Host = StateData#state.host,
-    case clear_affiliations(StateData) of
-        ok ->
-            lists:foreach(
-              fun({_JID, {none, _Reason}}) ->
-                      ok;
-                 ({JID, {Affiliation, Reason}}) ->
-                      {LUser, LServer, _} = jid:tolower(JID),
-                      AffKey = mod_muc:rhus2key(Room, Host, LUser, LServer),
-                      Val = term_to_binary([{affiliation, Affiliation},
-                                            {reason, Reason}]),
-                      p1db:insert(muc_affiliations, AffKey, Val)
-              end, (?DICT):to_list(Affiliations)),
-            StateData;
-        {error, _} ->
-            StateData
-    end;
-set_affiliations(Affiliations, StateData, _DBType) ->
+    ServerHost = StateData#state.server_host,
+    Mod = gen_mod:db_mod(ServerHost, mod_muc),
+    case Mod:set_affiliations(ServerHost, Room, Host, Affiliations) of
+	ok ->
+	    StateData;
+	{error, _} ->
+	    set_affiliations_fallback(Affiliations, StateData)
+    end.
+
+set_affiliations_fallback(Affiliations, StateData) ->
     StateData#state{affiliations = Affiliations}.
-
-clear_affiliations(StateData) ->
-    DBType = gen_mod:db_type(StateData#state.server_host, mod_muc),
-    clear_affiliations(StateData, DBType).
-
-clear_affiliations(#state{config = #config{persistent = true}} = StateData,
-                   p1db) ->
-    Room = StateData#state.room,
-    Host = StateData#state.host,
-    RHPrefix = mod_muc:rh_prefix(Room, Host),
-    case p1db:get_by_prefix(muc_affiliations, RHPrefix) of
-        {ok, L} ->
-            lists:foreach(
-              fun({Key, _, _}) ->
-                      p1db:async_delete(muc_affiliations, Key)
-              end, L);
-        {error, _} = Err ->
-            Err
-    end;
-clear_affiliations(_StateData, _DBType) ->
-    ok.
 
 get_affiliation(JID, StateData) ->
     case get_service_affiliation(JID, StateData) of
         owner ->
             owner;
         none ->
-            DBType = gen_mod:db_type(StateData#state.server_host, mod_muc),
-            case get_affiliation(JID, StateData, DBType) of
+            case do_get_affiliation(JID, StateData) of
                 {Affiliation, _Reason} -> Affiliation;
                 Affiliation -> Affiliation
             end
     end.
 
-get_affiliation(JID, #state{config = #config{persistent = true}} = StateData,
-                p1db) ->
+do_get_affiliation(JID, #state{config = #config{persistent = false}} = StateData) ->
+    do_get_affiliation_fallback(JID, StateData);
+do_get_affiliation(JID, StateData) ->
     Room = StateData#state.room,
     Host = StateData#state.host,
     LServer = JID#jid.lserver,
     LUser = JID#jid.luser,
-    AffKey = mod_muc:rhus2key(Room, Host, LUser, LServer),
-    case p1db:get(muc_affiliations, AffKey) of
-        {ok, Val, _VClock} ->
-            PropList = binary_to_term(Val),
-            proplists:get_value(affiliation, PropList, none);
-	{error, notfound} ->
-	    ServAffKey = mod_muc:rhus2key(Room, Host, <<>>, LServer),
-	    case p1db:get(muc_affiliations, ServAffKey) of
-		{ok, Val, _VClock} ->
-		    PropList = binary_to_term(Val),
-		    proplists:get_value(affiliation, PropList, none);
-		{error, _} ->
-		    none
-	    end;
-        {error, _} ->
-            none
-    end;
-get_affiliation(JID, StateData, _DBType) ->
+    ServerHost = StateData#state.server_host,
+    Mod = gen_mod:db_mod(ServerHost, mod_muc),
+    case Mod:get_affiliation(ServerHost, Room, Host, LUser, LServer) of
+	{error, _} ->
+	    do_get_affiliation_fallback(JID, StateData);
+	{ok, Affiliation} ->
+	    Affiliation
+    end.
+
+do_get_affiliation_fallback(JID, StateData) ->
     LJID = jid:tolower(JID),
     case (?DICT):find(LJID, StateData#state.affiliations) of
         {ok, Affiliation} -> Affiliation;
@@ -1626,31 +1593,21 @@ get_affiliation(JID, StateData, _DBType) ->
             end
     end.
 
+get_affiliations(#state{config = #config{persistent = false}} = StateData) ->
+    get_affiliations_callback(StateData);
 get_affiliations(StateData) ->
-    DBType = gen_mod:db_type(StateData#state.server_host, mod_muc),
-    get_affiliations(StateData, DBType).
-
-get_affiliations(#state{config = #config{persistent = true}} = StateData,
-                 p1db) ->
     Room = StateData#state.room,
     Host = StateData#state.host,
-    RHPrefix = mod_muc:rh_prefix(Room, Host),
-    case p1db:get_by_prefix(muc_affiliations, RHPrefix) of
-        {ok, L} ->
-            (?DICT):from_list(
-              lists:map(
-                fun({Key, Val, _VClock}) ->
-                        PropList = binary_to_term(Val),
-                        Reason = proplists:get_value(reason, PropList, <<>>),
-                        Affiliation = proplists:get_value(
-                                        affiliation, PropList, none),
-                        {LUser, LServer} = mod_muc:key2us(RHPrefix, Key),
-                        {{LUser, LServer, <<"">>}, {Affiliation, Reason}}
-                end, L));
-        {error, _} ->
-            StateData#state.affiliations
-    end;
-get_affiliations(StateData, _DBType) ->
+    ServerHost = StateData#state.server_host,
+    Mod = gen_mod:db_mod(ServerHost, mod_muc),
+    case Mod:get_affiliations(ServerHost, Room, Host) of
+	{error, _} ->
+	    get_affiliations_callback(StateData);
+	{ok, Affiliations} ->
+	    Affiliations
+    end.
+
+get_affiliations_callback(StateData) ->
     StateData#state.affiliations.
 
 get_service_affiliation(JID, StateData) ->
@@ -2929,35 +2886,22 @@ search_role(Role, StateData) ->
 		 end,
 		 (?DICT):to_list(StateData#state.users)).
 
-search_affiliation(Affiliation, StateData) ->
-    DBType = gen_mod:db_type(StateData#state.server_host, mod_muc),
-    search_affiliation(Affiliation, StateData, DBType).
-
 search_affiliation(Affiliation,
-                   #state{config = #config{persistent = true}} = StateData,
-                   p1db) ->
+                   #state{config = #config{persistent = false}} = StateData) ->
+    search_affiliation_fallback(Affiliation, StateData);
+search_affiliation(Affiliation, StateData) ->
     Room = StateData#state.room,
     Host = StateData#state.host,
-    RHPrefix = mod_muc:rh_prefix(Room, Host),
-    case p1db:get_by_prefix(muc_affiliations, RHPrefix) of
-        {ok, L} ->
-            lists:flatmap(
-              fun({Key, Val, _VClock}) ->
-                      PropList = binary_to_term(Val),
-                      Reason = proplists:get_value(reason, PropList, <<>>),
-                      case proplists:get_value(affiliation, PropList, none) of
-                          Affiliation ->
-                              {LUser, LServer} = mod_muc:key2us(RHPrefix, Key),
-                              [{{LUser, LServer, <<"">>},
-                                {Affiliation, Reason}}];
-                          _ ->
-                              []
-                      end
-              end, L);
-        {error, _} ->
-            []
-    end;
-search_affiliation(Affiliation, StateData, _DBType) ->
+    ServerHost = StateData#state.server_host,
+    Mod = gen_mod:db_mod(ServerHost, mod_muc),
+    case Mod:search_affiliation(ServerHost, Room, Host, Affiliation) of
+	{ok, AffiliationList} ->
+	    AffiliationList;
+	{error, _} ->
+	    search_affiliation_fallback(Affiliation, StateData)
+    end.
+
+search_affiliation_fallback(Affiliation, StateData) ->
     lists:filter(fun ({_, A}) ->
 			 case A of
 			   {A1, _Reason} -> Affiliation == A1;
@@ -4484,51 +4428,6 @@ expand_opts(CompactOpts) ->
 
 config_fields() ->
     [subject, subject_author | record_info(fields, config)].
-
-%% Part of P1DB/SQL schema value encoding/decoding
-decode_opts(_, Bin) ->
-    CompactOpts = binary_to_term(Bin),
-    Opts = expand_opts(CompactOpts),
-    lists:map(
-      fun({_Key, Val}) ->
-              if is_atom(Val) ->
-                      jlib:atom_to_binary(Val);
-                 is_integer(Val) ->
-                      Val;
-                 is_binary(Val) ->
-                      Val;
-                 true ->
-                      jlib:term_to_expr(Val)
-              end
-      end, Opts).
-
-encode_opts(_, Vals) ->
-    Opts = lists:map(
-             fun({Key, BinVal}) ->
-                     Val = case Key of
-                               subject -> BinVal;
-                               subject_author -> BinVal;
-                               title -> BinVal;
-                               description -> BinVal;
-                               password -> BinVal;
-                               voice_request_min_interval ->
-                                   BinVal;
-                               max_users when BinVal == <<"none">> ->
-                                   none;
-                               max_users ->
-                                   BinVal;
-			       vcard ->
-				   BinVal;
-			       hibernate_time ->
-				   BinVal;
-                               captcha_whitelist ->
-                                   jlib:expr_to_term(BinVal);
-                               _ ->
-                                   jlib:binary_to_atom(BinVal)
-                           end,
-                     {Key, Val}
-             end, lists:zip(config_fields(), Vals)),
-    term_to_binary(Opts).
 
 destroy_room(DEl, StateData) ->
     lists:foreach(fun ({_LJID, Info}) ->

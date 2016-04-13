@@ -49,6 +49,7 @@
 	 broadcast_service_message/2,
 	 export/1,
 	 import/5,
+	 import_start/2,
 	 can_use_nick/4,
 	 register_room/4,
 	 import_info/0,
@@ -57,8 +58,7 @@
 	 is_broadcasted/1,
 	 moderate_room_history/2,
 	 persist_recent_messages/1,
-	 enc_key/1, dec_key/1, enc_aff/2, dec_aff/2,
-	 rh_prefix/2, key2us/2, rhus2key/4, import_start/2]).
+         opts_to_binary/1]).
 
 -export([init/1, handle_call/3, handle_cast/2,
 	 handle_info/2, terminate/2, code_change/3,
@@ -80,6 +80,17 @@
          room_shaper = none :: shaper:shaper()}).
 
 -define(PROCNAME, ejabberd_mod_muc).
+
+-type muc_room_opts() :: [{atom(), any()}].
+-callback init(binary(), gen_mod:opts()) -> any().
+-callback import(binary(), binary(), [binary()]) -> ok.
+-callback store_room(binary(), binary(), binary(), list()) -> {atomic, any()}.
+-callback restore_room(binary(), binary(), binary()) -> muc_room_opts() | error.
+-callback forget_room(binary(), binary(), binary()) -> {atomic, any()}.
+-callback can_use_nick(binary(), binary(), jid(), binary()) -> boolean().
+-callback get_rooms(binary(), binary()) -> [#muc_room{}].
+-callback get_nick(binary(), binary(), jid()) -> binary() | error.
+-callback set_nick(binary(), binary(), jid(), binary()) -> {atomic, ok | false}.
 
 %%====================================================================
 %% API
@@ -147,122 +158,20 @@ create_room(Host, Name, From, Nick, Opts) ->
 
 store_room(ServerHost, Host, Name, Config, Affiliations) ->
     LServer = jid:nameprep(ServerHost),
-    store_room(LServer, Host, Name, Config, Affiliations,
-	       gen_mod:db_type(LServer, ?MODULE)).
-
-store_room(_LServer, Host, Name, Config, Affiliations, mnesia) ->
     Opts = [{affiliations, Affiliations}|Config],
-    F = fun () ->
-		mnesia:write(#muc_room{name_host = {Name, Host},
-				       opts = Opts})
-	end,
-    mnesia:transaction(F);
-store_room(_LServer, Host, Name, Config, _Affiliations, p1db) ->
-    RoomKey = rh2key(Name, Host),
-    CfgVal = term_to_binary(Config),
-    case p1db:insert(muc_config, RoomKey, CfgVal) of
-        ok ->
-            {atomic, ok};
-        {error, _} = Err ->
-            {aborted, Err}
-    end;
-store_room(_LServer, Host, Name, Config, Affiliations, riak) ->
-    Opts = [{affiliations, Affiliations}|Config],
-    {atomic, ejabberd_riak:put(#muc_room{name_host = {Name, Host},
-                                         opts = Opts},
-			       muc_room_schema())};
-store_room(LServer, Host, Name, Config, Affiliations, odbc) ->
-    Opts = [{affiliations, Affiliations}|Config],
-    SName = ejabberd_odbc:escape(Name),
-    SHost = ejabberd_odbc:escape(Host),
-    SOpts = ejabberd_odbc:encode_term(Opts),
-    F = fun () ->
-		odbc_queries:update_t(<<"muc_room">>,
-				      [<<"name">>, <<"host">>, <<"opts">>],
-				      [SName, SHost, SOpts],
-				      [<<"name='">>, SName, <<"' and host='">>,
-				       SHost, <<"'">>])
-	end,
-    ejabberd_odbc:sql_transaction(LServer, F).
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+    Mod:store_room(LServer, Host, Name, Opts).
 
 restore_room(ServerHost, Host, Name) ->
     LServer = jid:nameprep(ServerHost),
-    restore_room(LServer, Host, Name,
-                 gen_mod:db_type(LServer, ?MODULE)).
-
-restore_room(_LServer, Host, Name, mnesia) ->
-    case catch mnesia:dirty_read(muc_room, {Name, Host}) of
-      [#muc_room{opts = Opts}] -> Opts;
-      _ -> error
-    end;
-restore_room(_LServer, Host, Name, p1db) ->
-    RoomKey = rh2key(Name, Host),
-    case p1db:get(muc_config, RoomKey) of
-        {ok, CfgVal, _VClock} ->
-            Config = binary_to_term(CfgVal),
-            [{affiliations, []}|Config];
-        {error, _} ->
-            error
-    end;
-restore_room(_LServer, Host, Name, riak) ->
-    case ejabberd_riak:get(muc_room, muc_room_schema(), {Name, Host}) of
-        {ok, #muc_room{opts = Opts}} -> Opts;
-        _ -> error
-    end;
-restore_room(LServer, Host, Name, odbc) ->
-    SName = ejabberd_odbc:escape(Name),
-    SHost = ejabberd_odbc:escape(Host),
-    case catch ejabberd_odbc:sql_query(LServer,
-				       [<<"select opts from muc_room where name='">>,
-					SName, <<"' and host='">>, SHost,
-					<<"';">>])
-	of
-      {selected, [<<"opts">>], [[Opts]]} ->
-	  opts_to_binary(ejabberd_odbc:decode_term(Opts));
-      _ -> error
-    end.
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+    Mod:restore_room(LServer, Host, Name).
 
 forget_room(ServerHost, Host, Name) ->
     LServer = jid:nameprep(ServerHost),
-    forget_room(LServer, Host, Name,
-		gen_mod:db_type(LServer, ?MODULE)).
-
-forget_room(LServer, Host, Name, mnesia) ->
     remove_room_mam(LServer, Host, Name),
-    F = fun () -> mnesia:delete({muc_room, {Name, Host}})
-	end,
-    mnesia:transaction(F);
-forget_room(LServer, Host, Name, p1db) ->
-    remove_room_mam(LServer, Host, Name),
-    RoomKey = rh2key(Name, Host),
-    DelRes = p1db:delete(muc_config, RoomKey),
-    if DelRes == ok; DelRes == {error, notfound} ->
-            RHPrefix = rh_prefix(Name, Host),
-            case p1db:get_by_prefix(muc_affiliations, RHPrefix) of
-                {ok, L} ->
-                    lists:foreach(
-                      fun({Key, _, _}) ->
-                              p1db:async_delete(muc_affiliations, Key)
-                      end, L);
-                {error, _} = Err ->
-                    {aborted, Err}
-            end;
-       true ->
-            {aborted, DelRes}
-    end;
-forget_room(LServer, Host, Name, riak) ->
-    remove_room_mam(LServer, Host, Name),
-    {atomic, ejabberd_riak:delete(muc_room, {Name, Host})};
-forget_room(LServer, Host, Name, odbc) ->
-    remove_room_mam(LServer, Host, Name),
-    SName = ejabberd_odbc:escape(Name),
-    SHost = ejabberd_odbc:escape(Host),
-    F = fun () ->
-		ejabberd_odbc:sql_query_t([<<"delete from muc_room where name='">>,
-					   SName, <<"' and host='">>, SHost,
-					   <<"';">>])
-	end,
-    ejabberd_odbc:sql_transaction(LServer, F).
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+    Mod:forget_room(LServer, Host, Name).
 
 remove_room_mam(LServer, Host, Name) ->
     case gen_mod:is_loaded(LServer, mod_mam) of
@@ -293,64 +202,8 @@ process_iq_disco_items(Host, From, To,
 can_use_nick(_ServerHost, _Host, _JID, <<"">>) -> false;
 can_use_nick(ServerHost, Host, JID, Nick) ->
     LServer = jid:nameprep(ServerHost),
-    can_use_nick(LServer, Host, JID, Nick,
-		 gen_mod:db_type(LServer, ?MODULE)).
-
-can_use_nick(_LServer, Host, JID, Nick, mnesia) ->
-    {LUser, LServer, _} = jid:tolower(JID),
-    LUS = {LUser, LServer},
-    case catch mnesia:dirty_select(muc_registered,
-				   [{#muc_registered{us_host = '$1',
-						     nick = Nick, _ = '_'},
-				     [{'==', {element, 2, '$1'}, Host}],
-				     ['$_']}])
-	of
-      {'EXIT', _Reason} -> true;
-      [] -> true;
-      [#muc_registered{us_host = {U, _Host}}] -> U == LUS
-    end;
-can_use_nick(_LServer, Host, JID, Nick, p1db) ->
-    {LUser, LServer, _} = jid:tolower(JID),
-    NHKey = nh2key(Nick, Host),
-    case p1db:get(muc_nick, NHKey) of
-        {ok, SJID, _VClock} ->
-            case jid:from_string(SJID) of
-                #jid{luser = LUser, lserver = LServer} ->
-                    true;
-                #jid{} ->
-                    false;
-                error ->
-                    true
-            end;
-        {error, _} ->
-            true
-    end;
-can_use_nick(_LServer, Host, JID, Nick, riak) ->
-    {LUser, LServer, _} = jid:tolower(JID),
-    LUS = {LUser, LServer},
-    case ejabberd_riak:get_by_index(muc_registered,
-				    muc_registered_schema(),
-                                    <<"nick_host">>, {Nick, Host}) of
-        {ok, []} ->
-            true;
-        {ok, [#muc_registered{us_host = {U, _Host}}]} ->
-            U == LUS;
-        {error, _} ->
-            true
-    end;
-can_use_nick(LServer, Host, JID, Nick, odbc) ->
-    SJID =
-	jid:to_string(jid:tolower(jid:remove_resource(JID))),
-    SNick = ejabberd_odbc:escape(Nick),
-    SHost = ejabberd_odbc:escape(Host),
-    case catch ejabberd_odbc:sql_query(LServer,
-				       [<<"select jid from muc_registered ">>,
-					<<"where nick='">>, SNick,
-					<<"' and host='">>, SHost, <<"';">>])
-	of
-      {selected, [<<"jid">>], [[SJID1]]} -> SJID == SJID1;
-      _ -> true
-    end.
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+    Mod:can_use_nick(LServer, Host, JID, Nick).
 
 %%====================================================================
 %% gen_server callbacks
@@ -359,8 +212,9 @@ can_use_nick(LServer, Host, JID, Nick, odbc) ->
 init([Host, Opts]) ->
     MyHost = gen_mod:get_opt_host(Host, Opts,
 				  <<"conference.@HOST@">>),
-    init_db(gen_mod:db_type(Host, Opts), Host),
     update_muc_online_table(),
+    Mod = gen_mod:db_mod(Host, Opts, ?MODULE),
+    Mod:init(Host, [{host, MyHost}|Opts]),
     mnesia:create_table(muc_online_room,
 			[{ram_copies, [node()]}, {local_content, true},
 			 {attributes, record_info(fields, muc_online_room)}]),
@@ -537,52 +391,6 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-init_db(mnesia, _Host) ->
-    mnesia:create_table(muc_room,
-                        [{disc_copies, [node()]},
-                         {attributes, record_info(fields, muc_room)}]),
-    mnesia:create_table(muc_registered,
-                        [{disc_copies, [node()]},
-                         {attributes,
-                          record_info(fields, muc_registered)}]),
-    update_tables(),
-    mnesia:add_table_index(muc_registered, nick);
-init_db(p1db, Host) ->
-    Group = gen_mod:get_module_opt(
-	      Host, ?MODULE, p1db_group, fun(G) when is_atom(G) -> G end,
-	      ejabberd_config:get_option(
-		{p1db_group, Host}, fun(G) when is_atom(G) -> G end)),
-    p1db:open_table(muc_config,
-		    [{group, Group}, {nosync, true},
-                     {schema, [{keys, [service, room]},
-                               {vals, mod_muc_room:config_fields()},
-                               {enc_key, fun ?MODULE:enc_key/1},
-                               {dec_key, fun ?MODULE:dec_key/1},
-                               {enc_val, fun mod_muc_room:encode_opts/2},
-                               {dec_val, fun mod_muc_room:decode_opts/2}]}]),
-    p1db:open_table(muc_affiliations,
-		    [{group, Group}, {nosync, true},
-                     {schema, [{keys, [service, room, server, user]},
-                               {vals, [affiliation, reason]},
-                               {enc_key, fun ?MODULE:enc_key/1},
-                               {dec_key, fun ?MODULE:dec_key/1},
-                               {enc_val, fun ?MODULE:enc_aff/2},
-                               {dec_val, fun ?MODULE:dec_aff/2}]}]),
-    p1db:open_table(muc_nick,
-		    [{group, Group}, {nosync, true},
-                     {schema, [{keys, [service, nick]},
-                               {vals, [jid]},
-                               {enc_key, fun ?MODULE:enc_key/1},
-                               {dec_key, fun ?MODULE:dec_key/1}]}]),
-    p1db:open_table(muc_user,
-		    [{group, Group}, {nosync, true},
-                     {schema, [{keys, [service, server, user]},
-                               {vals, [nick]},
-                               {enc_key, fun ?MODULE:enc_key/1},
-                               {dec_key, fun ?MODULE:dec_key/1}]}]);
-init_db(_, _) ->
-    ok.
-
 do_route(Host, ServerHost, Access, HistorySize,
 	 PersistHistory, RoomShaper, From, To, Packet,
 	 DefRoomOpts, Hops) ->
@@ -796,58 +604,8 @@ check_create_roomid(ServerHost, RoomID) ->
 
 get_rooms(ServerHost, Host) ->
     LServer = jid:nameprep(ServerHost),
-    get_rooms(LServer, Host,
-              gen_mod:db_type(LServer, ?MODULE)).
-
-get_rooms(_LServer, Host, mnesia) ->
-    case catch mnesia:dirty_select(muc_room,
-				   [{#muc_room{name_host = {'_', Host},
-					       _ = '_'},
-				     [], ['$_']}])
-	of
-      {'EXIT', Reason} -> ?ERROR_MSG("~p", [Reason]), [];
-      Rs -> Rs
-    end;
-get_rooms(_LServer, Host, p1db) ->
-    HPrefix = host_prefix(Host),
-    case p1db:get_by_prefix(muc_config, HPrefix) of
-        {ok, CfgList} ->
-            lists:map(
-              fun({Key, CfgVal, _VClock}) ->
-                      Room = key2room(HPrefix, Key),
-                      Cfg = binary_to_term(CfgVal),
-                      Opts = [{affiliations, []}|Cfg],
-                      #muc_room{name_host = {Room, Host},
-                                opts = Opts}
-              end, CfgList);
-        {error, _} ->
-            []
-    end;
-get_rooms(_LServer, Host, riak) ->
-    case ejabberd_riak:get(muc_room, muc_room_schema()) of
-        {ok, Rs} ->
-            lists:filter(
-              fun(#muc_room{name_host = {_, H}}) ->
-                      Host == H
-              end, Rs);
-        _Err ->
-            []
-    end;
-get_rooms(LServer, Host, odbc) ->
-    SHost = ejabberd_odbc:escape(Host),
-    case catch ejabberd_odbc:sql_query(LServer,
-				       [<<"select name, opts from muc_room ">>,
-					<<"where host='">>, SHost, <<"';">>])
-	of
-      {selected, [<<"name">>, <<"opts">>], RoomOpts} ->
-	  lists:map(fun ([Room, Opts]) ->
-			    #muc_room{name_host = {Room, Host},
-				      opts = opts_to_binary(
-                                               ejabberd_odbc:decode_term(Opts))}
-		    end,
-		    RoomOpts);
-      Err -> ?ERROR_MSG("failed to get rooms: ~p", [Err]), []
-    end.
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+    Mod:get_rooms(LServer, Host).
 
 load_permanent_rooms(Host, ServerHost, Access,
 		     HistorySize, PersistHistory, RoomShaper) ->
@@ -1110,48 +868,8 @@ iq_get_unique(From) ->
 
 get_nick(ServerHost, Host, From) ->
     LServer = jid:nameprep(ServerHost),
-    get_nick(LServer, Host, From,
-	     gen_mod:db_type(LServer, ?MODULE)).
-
-get_nick(_LServer, Host, From, mnesia) ->
-    {LUser, LServer, _} = jid:tolower(From),
-    LUS = {LUser, LServer},
-    case catch mnesia:dirty_read(muc_registered,
-				 {LUS, Host})
-	of
-      {'EXIT', _Reason} -> error;
-      [] -> error;
-      [#muc_registered{nick = Nick}] -> Nick
-    end;
-get_nick(_LServer, Host, From, p1db) ->
-    {LUser, LServer, _} = jid:tolower(From),
-    USHKey = ush2key(LUser, LServer, Host),
-    case p1db:get(muc_user, USHKey) of
-        {ok, Nick, _VClock} -> Nick;
-        {error, _} -> error
-    end;
-get_nick(LServer, Host, From, riak) ->
-    {LUser, LServer, _} = jid:tolower(From),
-    US = {LUser, LServer},
-    case ejabberd_riak:get(muc_registered,
-			   muc_registered_schema(),
-			   {US, Host}) of
-        {ok, #muc_registered{nick = Nick}} -> Nick;
-        {error, _} -> error
-    end;
-get_nick(LServer, Host, From, odbc) ->
-    SJID =
-	ejabberd_odbc:escape(jid:to_string(jid:tolower(jid:remove_resource(From)))),
-    SHost = ejabberd_odbc:escape(Host),
-    case catch ejabberd_odbc:sql_query(LServer,
-				       [<<"select nick from muc_registered where "
-					  "jid='">>,
-					SJID, <<"' and host='">>, SHost,
-					<<"';">>])
-	of
-      {selected, [<<"nick">>], [[Nick]]} -> Nick;
-      _ -> error
-    end.
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+    Mod:get_nick(LServer, Host, From).
 
 iq_get_register_info(ServerHost, Host, From, Lang) ->
     {Nick, Registered} = case get_nick(ServerHost, Host,
@@ -1190,156 +908,8 @@ iq_get_register_info(ServerHost, Host, From, Lang) ->
 
 set_nick(ServerHost, Host, From, Nick) ->
     LServer = jid:nameprep(ServerHost),
-    set_nick(LServer, Host, From, Nick,
-	     gen_mod:db_type(LServer, ?MODULE)).
-
-set_nick(_LServer, Host, From, Nick, mnesia) ->
-    {LUser, LServer, _} = jid:tolower(From),
-    LUS = {LUser, LServer},
-    F = fun () ->
-		case Nick of
-		  <<"">> ->
-		      mnesia:delete({muc_registered, {LUS, Host}}), ok;
-		  _ ->
-		      Allow = case mnesia:select(muc_registered,
-						 [{#muc_registered{us_host =
-								       '$1',
-								   nick = Nick,
-								   _ = '_'},
-						   [{'==', {element, 2, '$1'},
-						     Host}],
-						   ['$_']}])
-				  of
-				[] -> true;
-				[#muc_registered{us_host = {U, _Host}}] ->
-				    U == LUS
-			      end,
-		      if Allow ->
-			     mnesia:write(#muc_registered{us_host = {LUS, Host},
-							  nick = Nick}),
-			     ok;
-			 true -> false
-		      end
-		end
-	end,
-    mnesia:transaction(F);
-set_nick(_LServer, Host, From, <<"">>, p1db) ->
-    {LUser, LServer, _} = jid:tolower(From),
-    USHKey = ush2key(LUser, LServer, Host),
-    case p1db:get(muc_user, USHKey) of
-        {ok, Nick, _VClock} ->
-            NHKey = nh2key(Nick, Host),
-            case p1db:delete(muc_nick, NHKey) of
-                ok ->
-                    case p1db:delete(muc_user, USHKey) of
-                        ok -> {atomic, ok};
-                        {error, notfound} -> {atomic, ok};
-                        {error, _} = Err -> {aborted, Err}
-                    end;
-                {error, notfound} ->
-                    {atomic, ok};
-                {error, _} = Err ->
-                    {aborted, Err}
-            end;
-	{error, notfound} ->
-	    {atomic, ok};
-        {error, _} = Err ->
-            {aborted, Err}
-    end;
-set_nick(_LServer, Host, From, Nick, p1db) ->
-    {LUser, LServer, _} = jid:tolower(From),
-    NHKey = nh2key(Nick, Host),
-    case can_use_nick(LServer, Host, From, Nick, p1db) of
-        true ->
-            case set_nick(LServer, Host, From, <<"">>, p1db) of
-                {atomic, ok} ->
-                    SJID = jid:to_string({LUser, LServer, <<"">>}),
-                    case p1db:insert(muc_nick, NHKey, SJID) of
-                        ok ->
-                            USHKey = ush2key(LUser, LServer, Host),
-                            case p1db:insert(muc_user, USHKey, Nick) of
-                                ok ->
-                                    {atomic, ok};
-                                {error, _} = Err ->
-                                    {aborted, Err}
-                            end;
-                        {error, _} = Err ->
-                            {aborted, Err}
-                    end;
-                Aborted ->
-                    Aborted
-            end;
-        false ->
-            {atomic, false}
-    end;
-set_nick(LServer, Host, From, Nick, riak) ->
-    {LUser, LServer, _} = jid:tolower(From),
-    LUS = {LUser, LServer},
-    {atomic,
-     case Nick of
-         <<"">> ->
-             ejabberd_riak:delete(muc_registered, {LUS, Host});
-         _ ->
-             Allow = case ejabberd_riak:get_by_index(
-                            muc_registered,
-			    muc_registered_schema(),
-                            <<"nick_host">>, {Nick, Host}) of
-                         {ok, []} ->
-                             true;
-                         {ok, [#muc_registered{us_host = {U, _Host}}]} ->
-                             U == LUS;
-                         {error, _} ->
-                             false
-                     end,
-             if Allow ->
-                     ejabberd_riak:put(#muc_registered{us_host = {LUS, Host},
-                                                       nick = Nick},
-				       muc_registered_schema(),
-                                       [{'2i', [{<<"nick_host">>,
-                                                 {Nick, Host}}]}]);
-                true ->
-                     false
-             end
-     end};
-set_nick(LServer, Host, From, Nick, odbc) ->
-    JID =
-	jid:to_string(jid:tolower(jid:remove_resource(From))),
-    SJID = ejabberd_odbc:escape(JID),
-    SNick = ejabberd_odbc:escape(Nick),
-    SHost = ejabberd_odbc:escape(Host),
-    F = fun () ->
-		case Nick of
-		  <<"">> ->
-		      ejabberd_odbc:sql_query_t([<<"delete from muc_registered where ">>,
-						 <<"jid='">>, SJID,
-						 <<"' and host='">>, Host,
-						 <<"';">>]),
-		      ok;
-		  _ ->
-		      Allow = case
-				ejabberd_odbc:sql_query_t([<<"select jid from muc_registered ">>,
-							   <<"where nick='">>,
-							   SNick,
-							   <<"' and host='">>,
-							   SHost, <<"';">>])
-				  of
-				{selected, [<<"jid">>], [[J]]} -> J == JID;
-				_ -> true
-			      end,
-		      if Allow ->
-			     odbc_queries:update_t(<<"muc_registered">>,
-						   [<<"jid">>, <<"host">>,
-						    <<"nick">>],
-						   [SJID, SHost, SNick],
-						   [<<"jid='">>, SJID,
-						    <<"' and host='">>, SHost,
-						    <<"'">>]),
-			     ok;
-			 true -> false
-		      end
-		end
-	end,
-    ejabberd_odbc:sql_transaction(LServer, F).
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+    Mod:set_nick(LServer, Host, From, Nick).
 
 iq_set_register_info(ServerHost, Host, From, Nick,
 		     Lang) ->
@@ -1467,16 +1037,6 @@ opts_to_binary(Opts) ->
               Opt
       end, Opts).
 
-update_tables() ->
-    update_muc_room_table(),
-    update_muc_registered_table().
-
-muc_room_schema() ->
-    {record_info(fields, muc_room), #muc_room{}}.
-
-muc_registered_schema() ->
-    {record_info(fields, muc_registered), #muc_registered{}}.
-
 update_muc_online_table() ->
     case catch mnesia:table_info(muc_online_room,
 				 local_content)
@@ -1493,43 +1053,6 @@ update_muc_online_table() ->
             end;
       {'EXIT', _} ->
             ok
-    end.
-
-update_muc_room_table() ->
-    Fields = record_info(fields, muc_room),
-    case mnesia:table_info(muc_room, attributes) of
-      Fields ->
-          ejabberd_config:convert_table_to_binary(
-            muc_room, Fields, set,
-            fun(#muc_room{name_host = {N, _}}) -> N end,
-            fun(#muc_room{name_host = {N, H},
-                          opts = Opts} = R) ->
-                    R#muc_room{name_host = {iolist_to_binary(N),
-                                            iolist_to_binary(H)},
-                               opts = opts_to_binary(Opts)}
-            end);
-      _ ->
-	  ?INFO_MSG("Recreating muc_room table", []),
-	  mnesia:transform_table(muc_room, ignore, Fields)
-    end.
-
-update_muc_registered_table() ->
-    Fields = record_info(fields, muc_registered),
-    case mnesia:table_info(muc_registered, attributes) of
-      Fields ->
-          ejabberd_config:convert_table_to_binary(
-            muc_registered, Fields, set,
-            fun(#muc_registered{us_host = {_, H}}) -> H end,
-            fun(#muc_registered{us_host = {{U, S}, H},
-                                nick = Nick} = R) ->
-                    R#muc_registered{us_host = {{iolist_to_binary(U),
-                                                 iolist_to_binary(S)},
-                                                iolist_to_binary(H)},
-                                     nick = iolist_to_binary(Nick)}
-            end);
-      _ ->
-	  ?INFO_MSG("Recreating muc_registered table", []),
-	  mnesia:transform_table(muc_registered, ignore, Fields)
     end.
 
 is_broadcasted(RoomHost) ->
@@ -1558,162 +1081,20 @@ get_room_state_if_broadcasted({Room, Host}) ->
 	    error
     end.
 
-rh2key(Room, Host) ->
-    <<Host/binary, 0, Room/binary>>.
-
-nh2key(Nick, Host) ->
-    <<Host/binary, 0, Nick/binary>>.
-
-ush2key(LUser, LServer, Host) ->
-    <<Host/binary, 0, LServer/binary, 0, LUser/binary>>.
-
-host_prefix(Host) ->
-    <<Host/binary, 0>>.
-
-rh_prefix(Room, Host) ->
-    <<Host/binary, 0, Room/binary, 0>>.
-
-rhus2key(Room, Host, LUser, LServer) ->
-    <<Host/binary, 0, Room/binary, 0, LServer/binary, 0, LUser/binary>>.
-
-key2us(RHPrefix, Key) ->
-    Size = size(RHPrefix),
-    <<_:Size/binary, SKey/binary>> = Key,
-    SLen = str:chr(SKey, 0) - 1,
-    <<Server:SLen/binary, 0, User/binary>> = SKey,
-    {User, Server}.
-
-key2room(HPrefix, Key) ->
-    Size = size(HPrefix),
-    <<_:Size/binary, Room/binary>> = Key,
-    Room.
-
-%% P1DB/SQL schema
-enc_key([Host]) ->
-    <<Host/binary>>;
-enc_key([Host, Val]) ->
-    <<Host/binary, 0, Val/binary>>;
-enc_key([Host, Server, User]) ->
-    <<Host/binary, 0, Server/binary, 0, User/binary>>;
-enc_key([Host, Room, Server, User]) ->
-    <<Host/binary, 0, Room/binary, 0, Server/binary, 0, User/binary>>.
-
-dec_key(Key) ->
-    binary:split(Key, <<0>>, [global]).
-
-enc_aff(_, [Affiliation, Reason]) ->
-    term_to_binary([{affiliation, jlib:binary_to_atom(Affiliation)},
-                    {reason, Reason}]).
-
-dec_aff(_, Bin) ->
-    PropList = binary_to_term(Bin),
-    Affiliation = proplists:get_value(affiliation, PropList, none),
-    Reason = proplists:get_value(reason, PropList, <<>>),
-    [jlib:atom_to_binary(Affiliation), Reason].
-
-export(_Server) ->
-    [{muc_room,
-      fun(Host, #muc_room{name_host = {Name, RoomHost}, opts = Opts}) ->
-              case str:suffix(Host, RoomHost) of
-                  true ->
-                      SName = ejabberd_odbc:escape(Name),
-                      SRoomHost = ejabberd_odbc:escape(RoomHost),
-                      SOpts = ejabberd_odbc:encode_term(Opts),
-                      [[<<"delete from muc_room where name='">>, SName,
-                        <<"' and host='">>, SRoomHost, <<"';">>],
-                       [<<"insert into muc_room(name, host, opts) ",
-                          "values (">>,
-                        <<"'">>, SName, <<"', '">>, SRoomHost,
-                        <<"', '">>, SOpts, <<"');">>]];
-                  false ->
-                      []
-              end
-      end},
-     {muc_registered,
-      fun(Host, #muc_registered{us_host = {{U, S}, RoomHost},
-                                nick = Nick}) ->
-              case str:suffix(Host, RoomHost) of
-                  true ->
-                      SJID = ejabberd_odbc:escape(
-                               jid:to_string(
-                                 jid:make(U, S, <<"">>))),
-                      SNick = ejabberd_odbc:escape(Nick),
-                      SRoomHost = ejabberd_odbc:escape(RoomHost),
-                      [[<<"delete from muc_registered where jid='">>,
-                        SJID, <<"' and host='">>, SRoomHost, <<"';">>],
-                       [<<"insert into muc_registered(jid, host, "
-                          "nick) values ('">>,
-                        SJID, <<"', '">>, SRoomHost, <<"', '">>, SNick,
-                        <<"');">>]];
-                  false ->
-                      []
-              end
-      end}].
-
 import_info() ->
     [{<<"muc_room">>, 4}, {<<"muc_registered">>, 4}].
 
 import_start(LServer, DBType) ->
-    init_db(DBType, LServer).
+    Mod = gen_mod:db_mod(DBType, ?MODULE),
+    Mod:init(LServer, []).
 
-import(_LServer, {odbc, _}, mnesia, <<"muc_room">>,
-       [Name, RoomHost, SOpts, _TimeStamp]) ->
-    Opts = opts_to_binary(ejabberd_odbc:decode_term(SOpts)),
-    mnesia:dirty_write(
-      #muc_room{name_host = {Name, RoomHost},
-                opts = Opts});
-import(_LServer, {odbc, _}, mnesia, <<"muc_registered">>,
-       [J, RoomHost, Nick, _TimeStamp]) ->
-    #jid{user = U, server = S} = jid:from_string(J),
-    mnesia:dirty_write(
-      #muc_registered{us_host = {{U, S}, RoomHost},
-                      nick = Nick});
-import(_LServer, {odbc, _}, riak, <<"muc_room">>,
-       [Name, RoomHost, SOpts, _TimeStamp]) ->
-    Opts = opts_to_binary(ejabberd_odbc:decode_term(SOpts)),
-    ejabberd_riak:put(
-      #muc_room{name_host = {Name, RoomHost}, opts = Opts},
-      muc_room_schema());
-import(_LServer, {odbc, _}, riak, <<"muc_registered">>,
-       [J, RoomHost, Nick, _TimeStamp]) ->
-    #jid{user = U, server = S} = jid:from_string(J),
-    R = #muc_registered{us_host = {{U, S}, RoomHost}, nick = Nick},
-    ejabberd_riak:put(R, muc_registered_schema(),
-		      [{'2i', [{<<"nick_host">>, {Nick, RoomHost}}]}]);
-import(_LServer, {odbc, _}, p1db, <<"muc_room">>,
-       [Room, Host, SOpts, _TimeStamp]) ->
-    Opts = opts_to_binary(ejabberd_odbc:decode_term(SOpts)),
-    {Affiliations, Config} = lists:partition(
-                               fun({affiliations, _}) -> true;
-                                  (_) -> false
-                               end, Opts),
-    RHKey = rh2key(Room, Host),
-    p1db:async_insert(muc_config, RHKey, term_to_binary(Config)),
-    lists:foreach(
-      fun({affiliations, Affs}) ->
-              lists:foreach(
-                fun({JID, Aff}) ->
-                        {Affiliation, Reason} = case Aff of
-                                                    {A, R} -> {A, R};
-                                                    A -> {A, <<"">>}
-                                                end,
-                        {LUser, LServer, _} = jid:tolower(JID),
-                        RHUSKey = rhus2key(Room, Host, LUser, LServer),
-                        Val = term_to_binary([{affiliation, Affiliation},
-                                              {reason, Reason}]),
-                        p1db:async_insert(muc_affiliations, RHUSKey, Val)
-                end, Affs)
-      end, Affiliations);
-import(_LServer, {odbc, _}, p1db, <<"muc_registered">>,
-       [J, Host, Nick, _TimeStamp]) ->
-    #jid{user = U, server = S} = jid:from_string(J),
-    NHKey = nh2key(Nick, Host),
-    USHKey = ush2key(U, S, Host),
-    SJID = jid:to_string({U, S, <<"">>}),
-    p1db:async_insert(muc_nick, NHKey, SJID),
-    p1db:async_insert(muc_user, USHKey, Nick);
-import(_LServer, {odbc, _}, odbc, _, _) ->
-    ok.
+import(LServer, {odbc, _}, DBType, Tab, L) ->
+    Mod = gen_mod:db_mod(DBType, ?MODULE),
+    Mod:import(LServer, Tab, L).
+
+export(LServer) ->
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+    Mod:export(LServer).
 
 mod_opt_type(access) ->
     fun (A) when is_atom(A) -> A end;
