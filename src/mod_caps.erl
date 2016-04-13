@@ -40,7 +40,6 @@
 -export([read_caps/1, caps_stream_features/2,
 	 disco_features/5, disco_identity/5, disco_info/5,
 	 get_features/2, export/1, import_info/0, import/5,
-	 enc_key/1, dec_key/1, enc_val/2, dec_val/2,
          import_start/2, import_stop/2]).
 
 %% gen_mod callbacks
@@ -58,6 +57,7 @@
 -include("logger.hrl").
 
 -include("jlib.hrl").
+-include("mod_caps.hrl").
 
 -define(PROCNAME, ejabberd_mod_caps).
 
@@ -75,13 +75,14 @@
 
 -export_type([caps/0]).
 
--record(caps_features,
-{
-    node_pair = {<<"">>, <<"">>} :: {binary(), binary()},
-    features  = []               :: [binary()] | pos_integer()
-}).
-
 -record(state, {host = <<"">> :: binary()}).
+
+-callback init(binary(), gen_mod:opts()) -> any().
+-callback import(binary(), {binary(), binary()}, [binary() | pos_integer()]) -> ok.
+-callback caps_read(binary(), {binary(), binary()}) ->
+    {ok, non_neg_integer() | [binary()]} | error.
+-callback caps_write(binary(), {binary(), binary()},
+		     non_neg_integer() | [binary()]) -> any().
 
 start_link(Host, Opts) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
@@ -303,41 +304,9 @@ c2s_broadcast_recipients(InAcc, Host, C2SState,
     end;
 c2s_broadcast_recipients(Acc, _, _, _, _, _) -> Acc.
 
-init_db(mnesia, _Host) ->
-    case catch mnesia:table_info(caps_features, storage_type) of
-        {'EXIT', _} ->
-            ok;
-        disc_only_copies ->
-            ok;
-        _ ->
-            mnesia:delete_table(caps_features)
-    end,
-    mnesia:create_table(caps_features,
-                        [{disc_only_copies, [node()]},
-                         {local_content, true},
-                         {attributes,
-                          record_info(fields, caps_features)}]),
-    update_table(),
-    mnesia:add_table_copy(caps_features, node(),
-                          disc_only_copies);
-init_db(p1db, Host) ->
-    Group = gen_mod:get_module_opt(
-	      Host, ?MODULE, p1db_group, fun(G) when is_atom(G) -> G end,
-	      ejabberd_config:get_option(
-		{p1db_group, Host}, fun(G) when is_atom(G) -> G end)),
-    p1db:open_table(caps_features,
-                    [{group, Group}, {nosync, true},
-                     {schema, [{keys, [node, ver, feature]},
-                               {vals, [timestamp]},
-                               {enc_key, fun ?MODULE:enc_key/1},
-                               {dec_key, fun ?MODULE:dec_key/1},
-                               {enc_val, fun ?MODULE:enc_val/2},
-                               {dec_val, fun ?MODULE:dec_val/2}]}]);
-init_db(_, _) ->
-    ok.
-
 init([Host, Opts]) ->
-    init_db(gen_mod:db_type(Host, Opts), Host),
+    Mod = gen_mod:db_mod(Host, Opts, ?MODULE),
+    Mod:init(Host, Opts),
     MaxSize = gen_mod:get_opt(cache_size, Opts,
                               fun(I) when is_integer(I), I>0 -> I end,
                               1000),
@@ -466,104 +435,13 @@ feature_response(_IQResult, Host, From, Caps,
 
 caps_read_fun(Host, Node) ->
     LServer = jid:nameprep(Host),
-    DBType = gen_mod:db_type(LServer, ?MODULE),
-    caps_read_fun(LServer, Node, DBType).
-
-caps_read_fun(_LServer, Node, mnesia) ->
-    fun () ->
-	    case mnesia:dirty_read({caps_features, Node}) of
-	      [#caps_features{features = Features}] -> {ok, Features};
-	      _ -> error
-	    end
-    end;
-caps_read_fun(_LServer, Node, p1db) ->
-    fun() ->
-            NVPrefix = nv_prefix(Node),
-            case p1db:get_by_prefix(caps_features, NVPrefix) of
-                {ok, []} ->
-                    error;
-                {ok, L} ->
-                    NullFeature = null_feature(Node),
-                    case lists:map(
-                           fun({Key, <<T:32>>, _}) ->
-                                   case key2feature(NVPrefix, Key) of
-                                       NullFeature -> T;
-                                       Feature -> Feature
-                                   end
-                           end, L) of
-                        [TS|_] when is_integer(TS) ->
-                            {ok, TS};
-                        Features ->
-                            {ok, Features}
-                    end;
-                {error, _} ->
-                    error
-            end
-    end;
-caps_read_fun(_LServer, Node, riak) ->
-    fun() ->
-            case ejabberd_riak:get(caps_features, caps_features_schema(), Node) of
-                {ok, #caps_features{features = Features}} -> {ok, Features};
-                _ -> error
-            end
-    end;
-caps_read_fun(LServer, {Node, SubNode}, odbc) ->
-    fun() ->
-            SNode = ejabberd_odbc:escape(Node),
-            SSubNode = ejabberd_odbc:escape(SubNode),
-            case ejabberd_odbc:sql_query(
-                   LServer, [<<"select feature from caps_features where ">>,
-                             <<"node='">>, SNode, <<"' and subnode='">>,
-                             SSubNode, <<"';">>]) of
-                {selected, [<<"feature">>], [[H]|_] = Fs} ->
-                    case catch jlib:binary_to_integer(H) of
-                        Int when is_integer(Int), Int>=0 ->
-                            {ok, Int};
-                        _ ->
-                            {ok, lists:flatten(Fs)}
-                    end;
-                _ ->
-                    error
-            end
-    end.
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+    fun() -> Mod:caps_read(LServer, Node) end.
 
 caps_write_fun(Host, Node, Features) ->
     LServer = jid:nameprep(Host),
-    DBType = gen_mod:db_type(LServer, ?MODULE),
-    caps_write_fun(LServer, Node, Features, DBType).
-
-caps_write_fun(_LServer, Node, Features, mnesia) ->
-    fun () ->
-	    mnesia:dirty_write(#caps_features{node_pair = Node,
-					      features = Features})
-    end;
-caps_write_fun(_LServer, Node, Features, p1db) ->
-    fun () ->
-            if is_list(Features) ->
-                    p1db:delete(caps_features, null_feature(Node)),
-                    lists:foreach(
-                      fun(Feature) ->
-                              NVFKey = nvf2key(Node, Feature),
-                              p1db:insert(caps_features,
-                                          NVFKey, <<(now_ts()):32>>)
-                      end, Features);
-               true ->
-                    NVFKey = null_feature(Node),
-                    p1db:insert(caps_features, NVFKey, <<Features:32>>)
-            end
-    end;
-caps_write_fun(_LServer, Node, Features, riak) ->
-    fun () ->
-            ejabberd_riak:put(#caps_features{node_pair = Node,
-                                             features = Features},
-			      caps_features_schema())
-    end;
-caps_write_fun(LServer, NodePair, Features, odbc) ->
-    fun () ->
-            ejabberd_odbc:sql_transaction(
-              LServer,
-              sql_write_features_t(NodePair, Features))
-    end.
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+    fun() -> Mod:caps_write(LServer, Node, Features) end.
 
 make_my_disco_hash(Host) ->
     JID = jid:make(<<"">>, Host, <<"">>),
@@ -713,101 +591,17 @@ is_valid_node(Node) ->
             false
     end.
 
-nvf2key({Node, Ver}, Feature) ->
-    <<Node/binary, 0, Ver/binary, 0, Feature/binary>>.
-
-nv_prefix({Node, Ver}) ->
-    <<Node/binary, 0, Ver/binary, 0>>.
-
-null_feature({Node, Ver}) ->
-    <<Node/binary, 0, Ver/binary, 0, 0>>.
-
-key2feature(Prefix, Key) ->
-    Size = size(Prefix),
-    <<_:Size/binary, Feature/binary>> = Key,
-    Feature.
-
-update_table() ->
-    Fields = record_info(fields, caps_features),
-    case mnesia:table_info(caps_features, attributes) of
-        Fields ->
-            ejabberd_config:convert_table_to_binary(
-              caps_features, Fields, set,
-              fun(#caps_features{node_pair = {N, _}}) -> N end,
-              fun(#caps_features{node_pair = {N, P},
-                                 features = Fs} = R) ->
-                      NewFs = if is_integer(Fs) ->
-                                      Fs;
-                                 true ->
-                                      [iolist_to_binary(F) || F <- Fs]
-                              end,
-                      R#caps_features{node_pair = {iolist_to_binary(N),
-                                                   iolist_to_binary(P)},
-                                      features = NewFs}
-              end);
-        _ ->
-            ?INFO_MSG("Recreating caps_features table", []),
-            mnesia:transform_table(caps_features, ignore, Fields)
-    end.
-
-sql_write_features_t({Node, SubNode}, Features) ->
-    SNode = ejabberd_odbc:escape(Node),
-    SSubNode = ejabberd_odbc:escape(SubNode),
-    NewFeatures = if is_integer(Features) ->
-                          [jlib:integer_to_binary(Features)];
-                     true ->
-                          Features
-                  end,
-    [[<<"delete from caps_features where node='">>,
-      SNode, <<"' and subnode='">>, SSubNode, <<"';">>]|
-     [[<<"insert into caps_features(node, subnode, feature) ">>,
-       <<"values ('">>, SNode, <<"', '">>, SSubNode, <<"', '">>,
-       ejabberd_odbc:escape(F), <<"');">>] || F <- NewFeatures]].
-
-%% P1DB/SQL schema
-enc_key([Node]) ->
-    <<Node/binary>>;
-enc_key([Node, Ver]) ->
-    <<Node/binary, 0, Ver/binary>>;
-enc_key([Node, Ver, null]) ->
-    <<Node/binary, 0, Ver/binary, 0, 0>>;
-enc_key([Node, Ver, Feature]) ->
-    <<Node/binary, 0, Ver/binary, 0, Feature/binary>>.
-
-dec_key(Key) ->
-    NLen = str:chr(Key, 0) - 1,
-    <<Node:NLen/binary, 0, VKey/binary>> = Key,
-    VLen = str:chr(VKey, 0) - 1,
-    <<Ver:VLen/binary, 0, Feature/binary>> = VKey,
-    case Feature of
-        <<0>> -> [Node, Ver, null];
-        _ -> [Node, Ver, Feature]
-    end.
-
-enc_val(_, [I]) ->
-    <<I:32>>.
-
-dec_val(_, <<I:32>>) ->
-    [I].
-
-caps_features_schema() ->
-    {record_info(fields, caps_features), #caps_features{}}.
-
-export(_Server) ->
-    [{caps_features,
-      fun(_Host, #caps_features{node_pair = NodePair,
-                                features = Features}) ->
-              sql_write_features_t(NodePair, Features);
-         (_Host, _R) ->
-              []
-      end}].
+export(LServer) ->
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+    Mod:export(LServer).
 
 import_info() ->
     [{<<"caps_features">>, 4}].
 
 import_start(LServer, DBType) ->
     ets:new(caps_features_tmp, [private, named_table, bag]),
-    init_db(DBType, LServer),
+    Mod = gen_mod:db_mod(DBType, ?MODULE),
+    Mod:init(LServer, []),
     ok.
 
 import(_LServer, {odbc, _}, _DBType, <<"caps_features">>,
@@ -828,34 +622,8 @@ import_next(_LServer, _DBType, '$end_of_table') ->
     ok;
 import_next(LServer, DBType, NodePair) ->
     Features = [F || {_, F} <- ets:lookup(caps_features_tmp, NodePair)],
-    case Features of
-        [I] when is_integer(I), DBType == mnesia ->
-            mnesia:dirty_write(
-              #caps_features{node_pair = NodePair, features = I});
-        [I] when is_integer(I), DBType == riak ->
-            ejabberd_riak:put(
-              #caps_features{node_pair = NodePair, features = I},
-	      caps_features_schema());
-        [I] when is_integer(I), DBType == p1db ->
-            NVFKey = null_feature(NodePair),
-            p1db:async_insert(caps_features, NVFKey, <<I:32>>);
-        _ when DBType == mnesia ->
-            mnesia:dirty_write(
-              #caps_features{node_pair = NodePair, features = Features});
-        _ when DBType == riak ->
-            ejabberd_riak:put(
-              #caps_features{node_pair = NodePair, features = Features},
-	      caps_features_schema());
-        _ when DBType == p1db ->
-            lists:foreach(
-              fun(Feature) ->
-                      NVFKey = nvf2key(NodePair, Feature),
-                      p1db:async_insert(caps_features,
-                                        NVFKey, <<(now_ts()):32>>)
-              end, Features);
-        _ when DBType == odbc ->
-            ok
-    end,
+    Mod = gen_mod:db_mod(DBType, ?MODULE),
+    Mod:import(LServer, NodePair, Features),
     import_next(LServer, DBType, ets:next(caps_features_tmp, NodePair)).
 
 mod_opt_type(cache_life_time) ->
