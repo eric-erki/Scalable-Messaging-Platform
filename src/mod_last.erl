@@ -37,7 +37,6 @@
 	 process_sm_iq/3, on_presence_update/4, import_info/0,
 	 import/5, store_last_info/4, get_last_info/2,
 	 import_start/2,
-	 dec_val/2, enc_key/1, dec_key/1, enc_val/2,
 	 remove_user/2, transform_options/1, mod_opt_type/1,
 	 opt_type/1]).
 
@@ -47,15 +46,21 @@
 -include("jlib.hrl").
 
 -include("mod_privacy.hrl").
+-include("mod_last.hrl").
 
--record(last_activity, {us = {<<"">>, <<"">>} :: {binary(), binary()},
-                        timestamp = 0 :: non_neg_integer(),
-                        status = <<"">> :: binary()}).
+-callback init(binary(), gen_mod:opts()) -> any().
+-callback import(binary(), #last_activity{}) -> ok | pass.
+-callback get_last(binary(), binary()) ->
+    {ok, non_neg_integer(), binary()} | not_found | {error, any()}.
+-callback store_last_info(binary(), binary(), non_neg_integer(), binary()) ->
+    {atomic, any()}.
+-callback remove_user(binary(), binary()) -> {atomic, any()}.
 
 start(Host, Opts) ->
     IQDisc = gen_mod:get_opt(iqdisc, Opts, fun gen_iq_handler:check_type/1,
                              one_queue),
-    init_db(gen_mod:db_type(Host, Opts), Host),
+    Mod = gen_mod:db_mod(Host, Opts, ?MODULE),
+    Mod:init(Host, Opts),
     gen_iq_handler:add_iq_handler(ejabberd_local, Host,
 				  ?NS_LAST, ?MODULE, process_local_iq, IQDisc),
     gen_iq_handler:add_iq_handler(ejabberd_sm, Host,
@@ -64,28 +69,6 @@ start(Host, Opts) ->
 		       remove_user, 50),
     ejabberd_hooks:add(unset_presence_hook, Host, ?MODULE,
 		       on_presence_update, 50).
-
-init_db(mnesia, _Host) ->
-    mnesia:create_table(last_activity,
-                        [{disc_copies, [node()]},
-                         {attributes,
-                          record_info(fields, last_activity)}]),
-    update_table();
-init_db(p1db, Host) ->
-    Group = gen_mod:get_module_opt(
-	      Host, ?MODULE, p1db_group, fun(G) when is_atom(G) -> G end,
-	      ejabberd_config:get_option(
-		{p1db_group, Host}, fun(G) when is_atom(G) -> G end)),
-    p1db:open_table(last_activity,
-		    [{group, Group}, {nosync, true},
-                     {schema, [{keys, [server, user]},
-                               {vals, [timestamp, status]},
-                               {enc_key, fun ?MODULE:enc_key/1},
-                               {dec_key, fun ?MODULE:dec_key/1},
-                               {enc_val, fun ?MODULE:enc_val/2},
-                               {dec_val, fun ?MODULE:dec_val/2}]}]);
-init_db(_, _) ->
-    ok.
 
 stop(Host) ->
     ejabberd_hooks:delete(remove_user, Host, ?MODULE,
@@ -179,51 +162,8 @@ process_sm_iq(From, To,
 %% @spec (LUser::string(), LServer::string()) ->
 %%      {ok, TimeStamp::integer(), Status::string()} | not_found | {error, Reason}
 get_last(LUser, LServer) ->
-    get_last(LUser, LServer,
-	     gen_mod:db_type(LServer, ?MODULE)).
-
-get_last(LUser, LServer, mnesia) ->
-    case catch mnesia:dirty_read(last_activity,
-				 {LUser, LServer})
-	of
-      {'EXIT', Reason} -> {error, Reason};
-      [] -> not_found;
-      [#last_activity{timestamp = TimeStamp,
-		      status = Status}] ->
-	  {ok, TimeStamp, Status}
-    end;
-get_last(LUser, LServer, p1db) ->
-    USKey = us2key(LUser, LServer),
-    case p1db:get(last_activity, USKey) of
-        {ok, Val, _VClock} ->
-            #last_activity{timestamp = TimeStamp,
-                           status = Status}
-                = p1db_to_la({LUser, LServer}, Val),
-            {ok, TimeStamp, Status};
-        {error, notfound} ->
-            not_found;
-        {error, _} = Err ->
-            Err
-    end;
-get_last(LUser, LServer, riak) ->
-    case ejabberd_riak:get(last_activity, last_activity_schema(),
-			   {LUser, LServer}) of
-        {ok, #last_activity{timestamp = TimeStamp,
-                            status = Status}} ->
-            {ok, TimeStamp, Status};
-        {error, notfound} ->
-            not_found;
-        Err ->
-            Err
-    end;
-get_last(LUser, LServer, odbc) ->
-    case catch odbc_queries:get_last(LServer, LUser) of
-        {selected, []} ->
-            not_found;
-        {selected, [{TimeStamp, Status}]} ->
-            {ok, TimeStamp, Status};
-        Reason -> {error, {invalid_result, Reason}}
-    end.
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+    Mod:get_last(LUser, LServer).
 
 get_last_iq(#iq{lang = Lang} = IQ, SubEl, LUser, LServer) ->
     case ejabberd_sm:get_user_resources(LUser, LServer) of
@@ -266,34 +206,8 @@ on_presence_update(User, Server, _Resource, Status) ->
 store_last_info(User, Server, TimeStamp, Status) ->
     LUser = jid:nodeprep(User),
     LServer = jid:nameprep(Server),
-    DBType = gen_mod:db_type(LServer, ?MODULE),
-    store_last_info(LUser, LServer, TimeStamp, Status,
-		    DBType).
-
-store_last_info(LUser, LServer, TimeStamp, Status,
-		mnesia) ->
-    US = {LUser, LServer},
-    F = fun () ->
-		mnesia:write(#last_activity{us = US,
-					    timestamp = TimeStamp,
-					    status = Status})
-	end,
-    mnesia:transaction(F);
-store_last_info(LUser, LServer, TimeStamp, Status, p1db) ->
-    USKey = us2key(LUser, LServer),
-    Val = la_to_p1db(#last_activity{timestamp = TimeStamp,
-                                    status = Status}),
-    {atomic, p1db:insert(last_activity, USKey, Val)};
-store_last_info(LUser, LServer, TimeStamp, Status,
-                riak) ->
-    US = {LUser, LServer},
-    {atomic, ejabberd_riak:put(#last_activity{us = US,
-                                              timestamp = TimeStamp,
-                                              status = Status},
-			       last_activity_schema())};
-store_last_info(LUser, LServer, TimeStamp, Status,
-		odbc) ->
-    odbc_queries:set_last_t(LServer, LUser, TimeStamp, Status).
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+    Mod:store_last_info(LUser, LServer, TimeStamp, Status).
 
 %% @spec (LUser::string(), LServer::string()) ->
 %%      {ok, TimeStamp::integer(), Status::string()} | not_found
@@ -306,84 +220,15 @@ get_last_info(LUser, LServer) ->
 remove_user(User, Server) ->
     LUser = jid:nodeprep(User),
     LServer = jid:nameprep(Server),
-    DBType = gen_mod:db_type(LServer, ?MODULE),
-    remove_user(LUser, LServer, DBType).
-
-remove_user(LUser, LServer, mnesia) ->
-    US = {LUser, LServer},
-    F = fun () -> mnesia:delete({last_activity, US}) end,
-    mnesia:transaction(F);
-remove_user(LUser, LServer, odbc) ->
-    odbc_queries:del_last(LServer, LUser);
-remove_user(LUser, LServer, p1db) ->
-    USKey = us2key(LUser, LServer),
-    {atomic, p1db:delete(last_activity, USKey)};
-remove_user(LUser, LServer, riak) ->
-    {atomic, ejabberd_riak:delete(last_activity, {LUser, LServer})}.
-
-update_table() ->
-    Fields = record_info(fields, last_activity),
-    case mnesia:table_info(last_activity, attributes) of
-      Fields ->
-          ejabberd_config:convert_table_to_binary(
-            last_activity, Fields, set,
-            fun(#last_activity{us = {U, _}}) -> U end,
-            fun(#last_activity{us = {U, S}, status = Status} = R) ->
-                    R#last_activity{us = {iolist_to_binary(U),
-                                          iolist_to_binary(S)},
-                                    status = iolist_to_binary(Status)}
-            end);
-      _ ->
-	  ?INFO_MSG("Recreating last_activity table", []),
-	  mnesia:transform_table(last_activity, ignore, Fields)
-    end.
-
-last_activity_schema() ->
-    {record_info(fields, last_activity), #last_activity{}}.
-
-%% P1DB schema
-enc_key([Server]) ->
-    <<Server/binary>>;
-enc_key([Server, User]) ->
-    <<Server/binary, 0, User/binary>>.
-
-dec_key(Key) ->
-    SLen = str:chr(Key, 0) - 1,
-    <<Server:SLen/binary, 0, User/binary>> = Key,
-    [Server, User].
-
-enc_val(_, [TimeStamp, Status]) ->
-    la_to_p1db(#last_activity{timestamp = TimeStamp,
-                              status = Status}).
-
-dec_val([Server, User], Bin) ->
-    #last_activity{timestamp = TimeStamp,
-                   status = Status} = p1db_to_la({User, Server}, Bin),
-    [TimeStamp, Status].
-
-export(_Server) ->
-    [{last_activity,
-      fun(Host, #last_activity{us = {LUser, LServer},
-                               timestamp = TimeStamp, status = Status})
-            when LServer == Host ->
-              Username = ejabberd_odbc:escape(LUser),
-              Seconds =
-                  ejabberd_odbc:escape(jlib:integer_to_binary(TimeStamp)),
-              State = ejabberd_odbc:escape(Status),
-              [[<<"delete from last where username='">>, Username, <<"';">>],
-               [<<"insert into last(username, seconds, "
-                  "state) values ('">>,
-                Username, <<"', '">>, Seconds, <<"', '">>, State,
-                <<"');">>]];
-         (_Host, _R) ->
-              []
-      end}].
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+    Mod:remove_user(LUser, LServer).
 
 import_info() ->
     [{<<"last">>, 3}].
 
 import_start(LServer, DBType) ->
-    init_db(DBType, LServer).
+    Mod = gen_mod:db_mod(DBType, ?MODULE),
+    Mod:init(LServer, []).
 
 import(LServer, {odbc, _}, DBType, <<"last">>, [LUser, TimeStamp, State]) ->
     TS = case TimeStamp of
@@ -393,36 +238,12 @@ import(LServer, {odbc, _}, DBType, <<"last">>, [LUser, TimeStamp, State]) ->
     LA = #last_activity{us = {LUser, LServer},
                         timestamp = TS,
                         status = State},
-    case DBType of
-        mnesia ->
-            mnesia:dirty_write(LA);
-        riak ->
-            ejabberd_riak:put(LA, last_activity_schema());
-        p1db ->
-            USKey = us2key(LUser, LServer),
-            p1db:async_insert(last_activity, USKey, la_to_p1db(LA));
-        odbc ->
-            ok
-    end.
+    Mod = gen_mod:db_mod(DBType, ?MODULE),
+    Mod:import(LServer, LA).
 
-us2key(LUser, LServer) ->
-    <<LServer/binary, 0, LUser/binary>>.
-
-la_to_p1db(#last_activity{timestamp = TimeStamp, status = Status}) ->
-    term_to_binary(
-      [{timestamp, TimeStamp},
-       {status, Status}]).
-
-p1db_to_la({LUser, LServer}, Val) ->
-    LA = #last_activity{us = {LUser, LServer}},
-    lists:foldl(
-      fun({timestamp, TimeStamp}, R) ->
-              R#last_activity{timestamp = TimeStamp};
-         ({status, Status}, R) ->
-              R#last_activity{status = Status};
-         (_, R) ->
-              R
-      end, LA, binary_to_term(Val)).
+export(LServer) ->
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+    Mod:export(LServer).
 
 transform_options(Opts) ->
     lists:foldl(fun transform_options/2, [], Opts).
