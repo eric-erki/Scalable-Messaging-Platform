@@ -36,8 +36,7 @@
 %% API
 -export([start_link/2, start/2, stop/1, export/1, import_info/0,
 	 import/5, closed_connection/3, get_connection_params/3,
-	 enc_key/1, dec_key/1, enc_val/2, dec_val/2,
-         import_start/2]).
+         import_start/2, data_to_binary/2]).
 
 -export([init/1, handle_call/3, handle_cast/2,
 	 handle_info/2, terminate/2, code_change/3,
@@ -50,7 +49,9 @@
 
 -include("adhoc.hrl").
 
--define(DEFAULT_IRC_ENCODING, <<"iso8859-1">>).
+-include("mod_irc.hrl").
+
+-define(DEFAULT_IRC_ENCODING, <<"iso8859-15">>).
 
 -define(DEFAULT_IRC_PORT, 6667).
 
@@ -58,26 +59,18 @@
 	[<<"koi8-r">>, <<"iso8859-1">>, <<"iso8859-2">>,
 	 <<"utf-8">>, <<"utf-8+latin-1">>]).
 
--type conn_param() :: {binary(), binary(), inet:port_number(), binary()} |
-                      {binary(), binary(), inet:port_number()} |
-                      {binary(), binary()} |
-                      {binary()}.
-
--record(irc_connection,
-        {jid_server_host = {#jid{}, <<"">>, <<"">>} :: {jid(), binary(), binary()},
-         pid = self()                               :: pid()}).
-
--record(irc_custom,
-        {us_host = {{<<"">>, <<"">>}, <<"">>} :: {{binary(), binary()},
-                                                  binary()},
-         data = [] :: [{username, binary()} |
-                       {connections_params, [conn_param()]}]}).
-
 -record(state, {host = <<"">>        :: binary(),
                 server_host = <<"">> :: binary(),
                 access = all         :: atom()}).
 
 -define(PROCNAME, ejabberd_mod_irc).
+
+-callback init(binary(), gen_mod:opts()) -> any().
+-callback import(binary(), binary(), [binary()]) -> ok.
+-callback get_data(binary(), binary(), {binary(), binary()}) ->
+    error | empty | irc_data().
+-callback set_data(binary(), binary(), {binary(), binary()}, irc_data()) ->
+    {atomic, any()}.
 
 %%====================================================================
 %% API
@@ -119,7 +112,8 @@ init([Host, Opts]) ->
     ejabberd:start_app(iconv),
     MyHost = gen_mod:get_opt_host(Host, Opts,
 				  <<"irc.@HOST@">>),
-    init_db(gen_mod:db_type(Host, Opts), Host),
+    Mod = gen_mod:db_mod(Host, Opts, ?MODULE),
+    Mod:init(Host, Opts),
     Access = gen_mod:get_opt(access, Opts,
                              fun(A) when is_atom(A) -> A end,
                              all),
@@ -189,27 +183,6 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-init_db(mnesia, _Host) ->
-    mnesia:create_table(irc_custom,
-                        [{disc_copies, [node()]},
-                         {attributes, record_info(fields, irc_custom)}]),
-    update_table();
-init_db(p1db, Host) ->
-    Group = gen_mod:get_module_opt(
-	      Host, ?MODULE, p1db_group, fun(G) when is_atom(G) -> G end,
-	      ejabberd_config:get_option(
-		{p1db_group, Host}, fun(G) when is_atom(G) -> G end)),
-    p1db:open_table(irc_custom,
-		    [{group, Group}, {nosync, true},
-                     {schema, [{keys, [service, server, user]},
-                               {vals, [data]},
-                               {enc_key, fun ?MODULE:enc_key/1},
-                               {dec_key, fun ?MODULE:dec_key/1},
-                               {enc_val, fun ?MODULE:enc_val/2},
-                               {dec_val, fun ?MODULE:dec_val/2}]}]);
-init_db(_, _) ->
-    ok.
-
 start_supervisor(Host) ->
     Proc = gen_mod:get_module_proc(Host,
 				   ejabberd_mod_irc_sup),
@@ -607,54 +580,8 @@ process_irc_register(ServerHost, Host, From, _To,
 
 get_data(ServerHost, Host, From) ->
     LServer = jid:nameprep(ServerHost),
-    get_data(LServer, Host, From,
-             gen_mod:db_type(LServer, ?MODULE)).
-
-get_data(_LServer, Host, From, mnesia) ->
-    #jid{luser = LUser, lserver = LServer} = From,
-    US = {LUser, LServer},
-    case catch mnesia:dirty_read({irc_custom, {US, Host}})
-	of
-      {'EXIT', _Reason} -> error;
-      [] -> empty;
-      [#irc_custom{data = Data}] -> Data
-    end;
-get_data(LServer, Host, From, p1db) ->
-    #jid{luser = LUser, lserver = LServer} = From,
-    USHKey = ush2key(LUser, LServer, Host),
-    case p1db:get(irc_custom, USHKey) of
-        {ok, Val, _VClock} ->
-            binary_to_term(Val);
-        {error, notfound} ->
-            empty;
-        _Err ->
-            error
-    end;
-get_data(LServer, Host, From, riak) ->
-    #jid{luser = LUser, lserver = LServer} = From,
-    US = {LUser, LServer},
-    case ejabberd_riak:get(irc_custom, irc_custom_schema(), {US, Host}) of
-        {ok, #irc_custom{data = Data}} ->
-            Data;
-        {error, notfound} ->
-            empty;
-        _Err ->
-            error
-    end;
-get_data(LServer, Host, From, odbc) ->
-    SJID =
-	ejabberd_odbc:escape(jid:to_string(jid:tolower(jid:remove_resource(From)))),
-    SHost = ejabberd_odbc:escape(Host),
-    case catch ejabberd_odbc:sql_query(LServer,
-				       [<<"select data from irc_custom where jid='">>,
-					SJID, <<"' and host='">>, SHost,
-					<<"';">>])
-	of
-      {selected, [<<"data">>], [[SData]]} ->
-	  data_to_binary(From, ejabberd_odbc:decode_term(SData));
-      {'EXIT', _} -> error;
-      {selected, _, _} -> empty
-    end.
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+    Mod:get_data(LServer, Host, From).
 
 get_form(ServerHost, Host, From, [], Lang) ->
     #jid{user = User, server = Server} = From,
@@ -764,44 +691,8 @@ get_form(_ServerHost, _Host, _, _, _Lang) ->
 
 set_data(ServerHost, Host, From, Data) ->
     LServer = jid:nameprep(ServerHost),
-    set_data(LServer, Host, From, data_to_binary(From, Data),
-	     gen_mod:db_type(LServer, ?MODULE)).
-
-set_data(_LServer, Host, From, Data, mnesia) ->
-    {LUser, LServer, _} = jid:tolower(From),
-    US = {LUser, LServer},
-    F = fun () ->
-		mnesia:write(#irc_custom{us_host = {US, Host},
-					 data = Data})
-	end,
-    mnesia:transaction(F);
-set_data(LServer, Host, From, Data, p1db) ->
-    {LUser, LServer, _} = jid:tolower(From),
-    USHKey = ush2key(LUser, LServer, Host),
-    case p1db:insert(irc_custom, USHKey, term_to_binary(Data)) of
-        ok -> {atomic, ok};
-        {error, _} = Err -> {aborted, Err}
-    end;
-set_data(LServer, Host, From, Data, riak) ->
-    {LUser, LServer, _} = jid:tolower(From),
-    US = {LUser, LServer},
-    {atomic, ejabberd_riak:put(#irc_custom{us_host = {US, Host},
-                                           data = Data},
-			       irc_custom_schema())};
-set_data(LServer, Host, From, Data, odbc) ->
-    SJID =
-	ejabberd_odbc:escape(jid:to_string(jid:tolower(jid:remove_resource(From)))),
-    SHost = ejabberd_odbc:escape(Host),
-    SData = ejabberd_odbc:encode_term(Data),
-    F = fun () ->
-		odbc_queries:update_t(<<"irc_custom">>,
-				      [<<"jid">>, <<"host">>, <<"data">>],
-				      [SJID, SHost, SData],
-				      [<<"jid='">>, SJID, <<"' and host='">>,
-				       SHost, <<"'">>]),
-		ok
-	end,
-    ejabberd_odbc:sql_transaction(LServer, F).
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+    Mod:set_data(LServer, Host, From, data_to_binary(From, Data)).
 
 set_form(ServerHost, Host, From, [], Lang, XData) ->
     case {lists:keysearch(<<"username">>, 1, XData),
@@ -1336,107 +1227,20 @@ conn_params_to_list(Params) ->
                Port, binary_to_list(P)}
       end, Params).
 
-irc_custom_schema() ->
-    {record_info(fields, irc_custom), #irc_custom{}}.
-
-ush2key(LUser, LServer, Host) ->
-    <<Host/binary, 0, LServer/binary, 0, LUser/binary>>.
-
-%% P1DB/SQL schema
-enc_key([Host]) ->
-    <<Host/binary>>;
-enc_key([Host, Server]) ->
-    <<Host/binary, 0, Server/binary>>;
-enc_key([Host, Server, User]) ->
-    <<Host/binary, 0, Server/binary, 0, User/binary>>.
-
-dec_key(Key) ->
-    HLen = str:chr(Key, 0) - 1,
-    <<Host:HLen/binary, 0, SKey/binary>> = Key,
-    SLen = str:chr(SKey, 0) - 1,
-    <<Server:SLen/binary, 0, User/binary>> = SKey,
-    [Host, Server, User].
-
-enc_val(_, [Expr]) ->
-    Term = jlib:expr_to_term(Expr),
-    term_to_binary(Term).
-
-dec_val(_, Bin) ->
-    Term = binary_to_term(Bin),
-    [jlib:term_to_expr(Term)].
-
-update_table() ->
-    Fields = record_info(fields, irc_custom),
-    case mnesia:table_info(irc_custom, attributes) of
-      Fields ->
-          ejabberd_config:convert_table_to_binary(
-            irc_custom, Fields, set,
-            fun(#irc_custom{us_host = {_, H}}) -> H end,
-            fun(#irc_custom{us_host = {{U, S}, H},
-                            data = Data} = R) ->
-		    JID = jid:make(U, S, <<"">>),
-                    R#irc_custom{us_host = {{iolist_to_binary(U),
-                                             iolist_to_binary(S)},
-                                            iolist_to_binary(H)},
-                                 data = data_to_binary(JID, Data)}
-            end);
-      _ ->
-	  ?INFO_MSG("Recreating irc_custom table", []),
-	  mnesia:transform_table(irc_custom, ignore, Fields)
-    end.
-
-export(_Server) ->
-    [{irc_custom,
-      fun(Host, #irc_custom{us_host = {{U, S}, IRCHost},
-                            data = Data}) ->
-              case str:suffix(Host, IRCHost) of
-                  true ->
-                      SJID = ejabberd_odbc:escape(
-                               jid:to_string(
-                                 jid:make(U, S, <<"">>))),
-                      SIRCHost = ejabberd_odbc:escape(IRCHost),
-                      SData = ejabberd_odbc:encode_term(Data),
-                      [[<<"delete from irc_custom where jid='">>, SJID,
-                        <<"' and host='">>, SIRCHost, <<"';">>],
-                       [<<"insert into irc_custom(jid, host, "
-                          "data) values ('">>,
-                        SJID, <<"', '">>, SIRCHost, <<"', '">>, SData,
-                        <<"');">>]];
-                  false ->
-                      []
-              end
-      end}].
+export(LServer) ->
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+    Mod:export(LServer).
 
 import_info() ->
     [{<<"irc_custom">>, 4}].
 
 import_start(LServer, DBType) ->
-    init_db(DBType, LServer),
-    ok.
+    Mod = gen_mod:db_mod(DBType, ?MODULE),
+    Mod:init(LServer, []).
 
-import(_LServer, {odbc, _}, mnesia, <<"irc_custom">>,
-       [SJID, IRCHost, SData, _TimeStamp]) ->
-    #jid{luser = U, lserver = S} = jid:from_string(SJID),
-    Data = ejabberd_odbc:decode_term(SData),
-    mnesia:dirty_write(
-      #irc_custom{us_host = {{U, S}, IRCHost},
-                  data = Data});
-import(_LServer, {odbc, _}, p1db, <<"irc_custom">>,
-       [SJID, IRCHost, SData, _TimeStamp]) ->
-    #jid{luser = U, lserver = S} = jid:from_string(SJID),
-    Data = ejabberd_odbc:decode_term(SData),
-    USHKey = ush2key(U, S, IRCHost),
-    p1db:async_insert(irc_custom, USHKey, term_to_binary(Data));
-import(_LServer, {odbc, _}, riak, <<"irc_custom">>,
-       [SJID, IRCHost, SData, _TimeStamp]) ->
-    #jid{luser = U, lserver = S} = jid:from_string(SJID),
-    Data = ejabberd_odbc:decode_term(SData),
-    ejabberd_riak:put(
-      #irc_custom{us_host = {{U, S}, IRCHost},
-                  data = Data},
-      irc_custom_schema());
-import(_LServer, {odbc, _}, odbc, <<"irc_custom">>, _) ->
-    ok.
+import(LServer, {odbc, _}, DBType, Tab, L) ->
+    Mod = gen_mod:db_mod(DBType, ?MODULE),
+    Mod:init(LServer, Tab, L).
 
 mod_opt_type(access) ->
     fun (A) when is_atom(A) -> A end;
