@@ -82,7 +82,7 @@ handle_info(#offline_msg{us = UserServer} = Msg, State) ->
     Len = length(Msgs),
     MaxOfflineMsgs = mod_offline:get_max_user_messages(AccessMaxOfflineMsgs,
                                            UserServer, Host),
-    mod_offline:store_offline_msg(Host, UserServer, Msgs, Len, MaxOfflineMsgs, DBType),
+    mod_offline:store_offline_msg(Host, UserServer, Msgs, Len, MaxOfflineMsgs),
     {noreply, State};
 
 handle_info(_Info, State) ->
