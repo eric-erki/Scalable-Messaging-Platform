@@ -56,6 +56,7 @@
 -callback search(binary(), [{binary(), [binary()]}], boolean(),
 		 infinity | pos_integer()) -> [binary()].
 -callback remove_user(binary(), binary()) -> {atomic, any()}.
+-callback is_search_supported(binary()) -> boolean().
 
 start(Host, Opts) ->
     Mod = gen_mod:db_mod(Host, Opts, ?MODULE),
@@ -82,11 +83,13 @@ init(Host, ServerHost, Search) ->
     case Search of
       false -> loop(Host, ServerHost);
       _ ->
-          case gen_mod:db_type(ServerHost, ?MODULE) of
-              p1db ->
+	  Mod = gen_mod:db_mod(ServerHost, ?MODULE),
+	  case Mod:is_search_supported(ServerHost) of
+	      false ->
                   ?WARNING_MSG("vcard search functionality is "
-                               "not implemented for p1db backend", []);
-              _ ->
+                               "not implemented for ~s backend",
+			       [gen_mod:db_type(ServerHost, ?MODULE)]);
+              true ->
                   ejabberd_router:register_route(Host, ServerHost)
           end,
 	  loop(Host, ServerHost)

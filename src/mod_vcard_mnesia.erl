@@ -11,7 +11,8 @@
 -behaviour(mod_vcard).
 
 %% API
--export([init/2, import/3, get_vcard/2, set_vcard/4, search/4, remove_user/2]).
+-export([init/2, import/3, get_vcard/2, set_vcard/4, search/4, remove_user/2,
+	 is_search_supported/1]).
 
 -include("ejabberd.hrl").
 -include("jlib.hrl").
@@ -42,6 +43,9 @@ init(_Host, _Opts) ->
     mnesia:add_table_index(vcard_search, lemail),
     mnesia:add_table_index(vcard_search, lorgname),
     mnesia:add_table_index(vcard_search, lorgunit).
+
+is_search_supported(_ServerHost) ->
+    true.
 
 get_vcard(LUser, LServer) ->
     US = {LUser, LServer},

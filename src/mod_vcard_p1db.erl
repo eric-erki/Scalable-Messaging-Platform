@@ -12,7 +12,7 @@
 
 %% API
 -export([init/2, get_vcard/2, set_vcard/4, search/4, remove_user/2,
-	 import/3]).
+	 import/3, is_search_supported/1]).
 -export([enc_key/1, dec_key/1]).
 
 -include("jlib.hrl").
@@ -33,6 +33,9 @@ init(Host, _Opts) ->
                                {vals, [vcard]},
                                {enc_key, fun ?MODULE:enc_key/1},
                                {dec_key, fun ?MODULE:dec_key/1}]}]).
+
+is_search_supported(_LServer) ->
+    false.
 
 get_vcard(LUser, LServer) ->
     USKey = us2key(LUser, LServer),

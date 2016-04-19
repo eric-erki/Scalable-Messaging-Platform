@@ -14,7 +14,7 @@
 
 %% API
 -export([init/2, get_vcard/2, set_vcard/4, search/4, remove_user/2,
-	 import/3, export/1]).
+	 import/3, export/1, is_search_supported/1]).
 
 -include("jlib.hrl").
 -include("mod_vcard.hrl").
@@ -26,6 +26,9 @@
 %%%===================================================================
 init(_Host, _Opts) ->
     ok.
+
+is_search_supported(_LServer) ->
+    true.
 
 get_vcard(LUser, LServer) ->
     case catch odbc_queries:get_vcard(LServer, LUser) of

@@ -12,7 +12,7 @@
 
 %% API
 -export([init/2, get_vcard/2, set_vcard/4, search/4, remove_user/2,
-	 import/3]).
+	 import/3, is_search_supported/1]).
 
 -include("jlib.hrl").
 -include("mod_vcard.hrl").
@@ -22,6 +22,9 @@
 %%%===================================================================
 init(_Host, _Opts) ->
     ok.
+
+is_search_supported(_LServer) ->
+    false.
 
 get_vcard(LUser, LServer) ->
     case ejabberd_riak:get(vcard, vcard_schema(), {LUser, LServer}) of
