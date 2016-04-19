@@ -623,7 +623,7 @@ import_start(LServer, DBType) ->
     ets:new(privacy_list_data_tmp, [private, named_table, bag]),
     ets:new(privacy_list_tmp, [private, named_table, bag,
                                {keypos, #privacy.us}]),
-    Mod = gen_mod:db_type(DBType, ?MODULE),
+    Mod = gen_mod:db_mod(DBType, ?MODULE),
     Mod:init(LServer, []).
 
 import(LServer, {odbc, _}, _DBType, <<"privacy_default_list">>, [LUser, Name]) ->
