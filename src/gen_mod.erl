@@ -329,6 +329,7 @@ db_mod(mnesia, Module) -> list_to_atom(atom_to_list(Module) ++ "_mnesia");
 db_mod(riak, Module) -> list_to_atom(atom_to_list(Module) ++ "_riak");
 db_mod(p1db, Module) -> list_to_atom(atom_to_list(Module) ++ "_p1db");
 db_mod(rest, Module) -> list_to_atom(atom_to_list(Module) ++ "_rest");
+db_mod(sharding, Module) -> list_to_atom(atom_to_list(Module) ++ "_sharding");
 db_mod(Host, Module) when is_binary(Host) orelse Host == global ->
     db_mod(db_type(Host, Module), Module).
 
