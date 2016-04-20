@@ -286,7 +286,7 @@ search_affiliation(_ServerHost, Room, Host, Affiliation) ->
 
 import(_LServer, <<"muc_room">>,
        [Room, Host, SOpts, _TimeStamp]) ->
-    Opts = mod_muc:opts_to_binary(ejabberd_odbc:decode_term(SOpts)),
+    Opts = mod_muc:opts_to_binary(ejabberd_sql:decode_term(SOpts)),
     {Affiliations, Config} = lists:partition(
                                fun({affiliations, _}) -> true;
                                   (_) -> false

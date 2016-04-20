@@ -143,7 +143,7 @@ check_password(User, Server, Password, Digest,
 %% where
 %%   AuthModule = ejabberd_auth_anonymous | ejabberd_auth_external
 %%                 | ejabberd_auth_internal | ejabberd_auth_ldap
-%%                 | ejabberd_auth_odbc | ejabberd_auth_pam
+%%                 | ejabberd_auth_sql | ejabberd_auth_pam
 -spec check_password_with_authmodule(binary(), binary(), binary()) -> false |
                                                                       {true, atom()}.
 
@@ -476,13 +476,13 @@ import_start(LServer, p1db) ->
 import_start(_LServer, _) ->
     ok.
 
-import(Server, {odbc, _}, mnesia, <<"users">>, Fields) ->
+import(Server, {sql, _}, mnesia, <<"users">>, Fields) ->
     ejabberd_auth_internal:import(Server, Fields);
-import(Server, {odbc, _}, p1db, <<"users">>, Fields) ->
+import(Server, {sql, _}, p1db, <<"users">>, Fields) ->
     ejabberd_auth_p1db:import(Server, Fields);
-import(Server, {odbc, _}, riak, <<"users">>, Fields) ->
+import(Server, {sql, _}, riak, <<"users">>, Fields) ->
     ejabberd_auth_riak:import(Server, Fields);
-import(_LServer, {odbc, _}, odbc, <<"users">>, _) ->
+import(_LServer, {sql, _}, sql, <<"users">>, _) ->
     ok.
 
 -spec create_users(binary(), binary(), binary(),
@@ -490,7 +490,7 @@ import(_LServer, {odbc, _}, odbc, <<"users">>, _) ->
 
 create_users(UserPattern, PassPattern, Server, Total, DBType) ->
     Fd = case DBType of
-	     odbc ->
+	     sql ->
 		 Filename = filename:join("/tmp", "users.sql"),
 		 {ok, Fd0} = file:open(Filename, [write, raw]),
 		 io:format("writing sql queries at " ++ Filename ++ "~n"),
@@ -518,7 +518,7 @@ create_users(UserPattern, PassPattern, Server, Total, DBType) ->
                                 password = Pass},
 			ejabberd_auth_riak:passwd_schema(),
                         [{'2i', [{<<"host">>, LServer}]}]);
-                  odbc ->
+                  sql ->
 		      SQL = ["INSERT INTO users(username, password) VALUES('",
 			     LUser, "', '", Pass, "');", io_lib:nl()],
 		      ok = file:write(Fd, SQL)

@@ -101,7 +101,7 @@ get_commands_spec() ->
 			module = ?MODULE, function = delete_account,
 			args = [{user, binary}, {server, binary}],
 			result = {res, integer}},
-     % XXX Works only for mnesia & odbc, TODO: move to mod_roster
+     % XXX Works only for mnesia & sql, TODO: move to mod_roster
      #ejabberd_commands{name = add_rosteritem_groups,
 			tags = [roster],
 			desc = "Add new groups in an existing roster item",
@@ -113,7 +113,7 @@ get_commands_spec() ->
 			    [{user, binary}, {server, binary}, {jid, binary},
 			     {groups, binary}, {push, binary}],
 			result = {res, integer}},
-     % XXX Works only for mnesia & odbc, TODO: move to mod_roster
+     % XXX Works only for mnesia & sql, TODO: move to mod_roster
      #ejabberd_commands{name = del_rosteritem_groups,
 			tags = [roster],
 			desc = "Delete groups in an existing roster item",
@@ -125,7 +125,7 @@ get_commands_spec() ->
 			    [{user, binary}, {server, binary}, {jid, binary},
 			     {groups, binary}, {push, binary}],
 			result = {res, integer}},
-     % XXX Works only for mnesia & odbc, TODO: move to mod_roster
+     % XXX Works only for mnesia & sql, TODO: move to mod_roster
      #ejabberd_commands{name = modify_rosteritem_groups,
 			tags = [roster],
 			desc = "Modify the groups of an existing roster item",
@@ -190,7 +190,7 @@ get_commands_spec() ->
 				 {group, string}, {nick, string},
 				 {subscription, string}, {pending, string},
 				 {show, string}, {status, string}]}}}}},
-     % XXX Works only with mnesia or odbc. Doesn't work with
+     % XXX Works only with mnesia or sql. Doesn't work with
      % s2s. Doesn't work with virtual hosts.
      #ejabberd_commands{name = set_rosternick,
 			tags = [roster],
@@ -429,17 +429,17 @@ change_rosternick(User, Server, Nick) ->
 			end, get_resources(U, S))
 		    end, mnesia:match_object(#roster{jid = LJID, _ = '_'}))
 		end);
-	odbc ->
+	sql ->
 	    %%% XXX This way of doing does not work with several domains
-	    ejabberd_odbc:sql_transaction(LServer,
+	    ejabberd_sql:sql_transaction(LServer,
 		fun() ->
-		    SNick = ejabberd_odbc:escape(Nick),
-		    SJID = ejabberd_odbc:escape(JID),
-		    ejabberd_odbc:sql_query_t(
+		    SNick = ejabberd_sql:escape(Nick),
+		    SJID = ejabberd_sql:escape(JID),
+		    ejabberd_sql:sql_query_t(
 				["update rosterusers"
 				 " set nick='", SNick, "'"
 				 " where jid='", SJID, "';"]),
-		    case ejabberd_odbc:sql_query_t(
+		    case ejabberd_sql:sql_query_t(
 			["select username from rosterusers"
 			 " where jid='", SJID, "'"
 			 " and subscription = 'B';"]) of
@@ -581,15 +581,15 @@ change_rosteritem_group(User, Server, JID, GroupsFun,
 						_ -> not_in_roster
 					      end
 				      end);
-	       odbc ->
-		   ejabberd_odbc:sql_transaction(LServer,
+	       sql ->
+		   ejabberd_sql:sql_transaction(LServer,
 						 fun () ->
 							 Username =
-							     ejabberd_odbc:escape(User),
+							     ejabberd_sql:escape(User),
 							 SJID =
-							     ejabberd_odbc:escape(jid:to_string(LJID)),
+							     ejabberd_sql:escape(jid:to_string(LJID)),
 							 case
-							   ejabberd_odbc:sql_query_t([<<"select nick, subscription from rosterusers "
+							   ejabberd_sql:sql_query_t([<<"select nick, subscription from rosterusers "
 											"      where username='">>,
 										      Username,
 										      <<"'         and jid='">>,
@@ -614,7 +614,7 @@ change_rosteritem_group(User, Server, JID, GroupsFun,
 								     _ -> none
 								   end,
 							       Groups = case
-									  odbc_queries:get_roster_groups(LServer,
+									  sql_queries:get_roster_groups(LServer,
 													 Username,
 													 SJID)
 									    of
@@ -631,7 +631,7 @@ change_rosteritem_group(User, Server, JID, GroupsFun,
 									end,
 							       NewGroups2 =
 								   GroupsFun(Groups),
-							       ejabberd_odbc:sql_query_t([<<"delete from rostergroups       where "
+							       ejabberd_sql:sql_query_t([<<"delete from rostergroups       where "
 											    "username='">>,
 											  Username,
 											  <<"'         and jid='">>,
@@ -639,13 +639,13 @@ change_rosteritem_group(User, Server, JID, GroupsFun,
 											  <<"';">>]),
 							       lists:foreach(fun
 									       (Group) ->
-										   ejabberd_odbc:sql_query_t([<<"insert into rostergroups(           "
+										   ejabberd_sql:sql_query_t([<<"insert into rostergroups(           "
 														"   username, jid, grp)  values ('">>,
 													      Username,
 													      <<"','">>,
 													      SJID,
 													      <<"','">>,
-													      ejabberd_odbc:escape(Group),
+													      ejabberd_sql:escape(Group),
 													      <<"');">>])
 									     end,
 									     NewGroups2),
@@ -776,7 +776,7 @@ server_info() ->
     {LocalSessions, LocalFailed} = ejabberd_cluster:multicall(Nodes, ?MODULE, local_sessions_number, []),
     Sessions = ets:info(session, size),
     OdbcPoolSize = lists:sum(
-	    [workers_number(gen_mod:get_module_proc(Host, ejabberd_odbc_sup))
+	    [workers_number(gen_mod:get_module_proc(Host, ejabberd_sql_sup))
 		|| Host <- Hosts]),
     HttpPoolSize = case catch http_p1:get_pool_size() of
 	{'EXIT', _} -> 0;
@@ -810,7 +810,7 @@ server_info() ->
 	{memory, Memory},
 	{processes, Processes},
 	{iq_handlers, IqHandlers},
-	{odbc_pool_size, OdbcPoolSize},
+	{sql_pool_size, OdbcPoolSize},
 	{http_pool_size, HttpPoolSize}
 	]).
 
@@ -857,12 +857,12 @@ del_rosteritem(User, Server, JID, Push) ->
 							     {User, Server,
 							      LJID}})
 				      end);
-	       odbc ->
-		   case ejabberd_odbc:sql_transaction(Server,
+	       sql ->
+		   case ejabberd_sql:sql_transaction(Server,
 						      fun () ->
 							      SJID =
 								  jid:to_string(LJID),
-							      odbc_queries:del_roster(Server,
+							      sql_queries:del_roster(Server,
 										      User,
 										      SJID)
 						      end)
@@ -961,10 +961,10 @@ roster_push(User, Server, JID, Nick, Subscription,
 roster_backend(Server) ->
     Modules = gen_mod:loaded_modules(Server),
     Mnesia = lists:member(mod_roster, Modules),
-    Odbc = lists:member(mod_roster_odbc, Modules),
+    Odbc = lists:member(mod_roster_sql, Modules),
     if Mnesia -> mnesia;
        true ->
-	   if Odbc -> odbc;
+	   if Odbc -> sql;
 	      true -> none
 	   end
     end.
@@ -1134,9 +1134,9 @@ purge_mam(Host, Days) ->
 	    -1
     end.
 
-purge_mam(Host, Days, odbc) ->
+purge_mam(Host, Days, sql) ->
     Timestamp = p1_time_compat:system_time(micro_seconds) - (3600*24 * Days * 1000000),
-    case ejabberd_odbc:sql_query(Host,
+    case ejabberd_sql:sql_query(Host,
 				 [<<"DELETE FROM archive "
 				   "WHERE timestamp < ">>,
 				  integer_to_binary(Timestamp),
@@ -1187,7 +1187,7 @@ applepush_cfg(Host, ProductionCert, SandboxCert) ->
     {append_host_config, [
 	    {Host, [{modules, [
 		{mod_applepush, [
-			{db_type, odbc},
+			{db_type, sql},
 			{iqdisc, 50},
 			{default_service, <<"apnsprod.", Host/binary>>},
 			{push_services,
@@ -1269,7 +1269,7 @@ gcm_cfg(Host, ApiKey, AppId) ->
     {append_host_config, [
 	    {Host, [{modules, [
 		{mod_gcm, [
-			{db_type, odbc},
+			{db_type, sql},
 			{iqdisc, 50},
 			{default_service, <<"gcm.", Host/binary>>},
 			{push_services, [{AppId, <<"gcm.", Host/binary>>}]}

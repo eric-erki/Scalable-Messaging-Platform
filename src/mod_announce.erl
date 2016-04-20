@@ -917,7 +917,7 @@ import_start(LServer, DBType) ->
     Mod = gen_mod:db_mod(DBType, ?MODULE),
     Mod:init(LServer, []).
 
-import(LServer, {odbc, _}, DBType, Tab, List) ->
+import(LServer, {sql, _}, DBType, Tab, List) ->
     Mod = gen_mod:db_mod(DBType, ?MODULE),
     Mod:import(LServer, Tab, List).
 

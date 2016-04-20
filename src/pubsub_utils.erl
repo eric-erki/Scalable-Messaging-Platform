@@ -311,10 +311,10 @@ item_to_p1db(Nidx, Item) ->
     {ID, _} = Item#pubsub_item.itemid,
     Item#pubsub_item{itemid = {ID, Nidx}, nodeidx=Nidx}.
 
-write_odbc(Node, States, Items) ->
-    nodetree_tree_odbc:set_node(Node),
-    [node_flat_odbc:set_state(State) || State <- States],
-    [node_flat_odbc:set_item(Item) || Item <- Items],
+write_sql(Node, States, Items) ->
+    nodetree_tree_sql:set_node(Node),
+    [node_flat_sql:set_state(State) || State <- States],
+    [node_flat_sql:set_item(Item) || Item <- Items],
     ok.
 
 
@@ -685,15 +685,15 @@ export(_Server) ->
 				creation = {{C1, C2, C3}, Cusr},
 				modification = {{M1, M2, M3}, _Musr},
 				payload = Payload}) ->
-		    ITEMID = ejabberd_odbc:escape(Itemid1),
+		    ITEMID = ejabberd_sql:escape(Itemid1),
 		    NODEID = integer_to_list(Itemid2),
-		    CREATION = ejabberd_odbc:escape(
+		    CREATION = ejabberd_sql:escape(
 			    iolist_to_binary(string:join([string:right(integer_to_list(I),6,$0)||I<-[C1,C2,C3]],":"))),
-		    MODIFICATION = ejabberd_odbc:escape(
+		    MODIFICATION = ejabberd_sql:escape(
 			    iolist_to_binary(string:join([string:right(integer_to_list(I),6,$0)||I<-[M1,M2,M3]],":"))),
-		    PUBLISHER = ejabberd_odbc:escape(jid:to_string(Cusr)),
+		    PUBLISHER = ejabberd_sql:escape(jid:to_string(Cusr)),
 		    [PayloadEl] = [{xmlel,A,B,C} || {xmlelement,A,B,C} <- Payload],
-		    PAYLOAD = ejabberd_odbc:escape(fxml:element_to_binary(PayloadEl)),
+		    PAYLOAD = ejabberd_sql:escape(fxml:element_to_binary(PayloadEl)),
 		    ["delete from pubsub_item where itemid='", ITEMID, "';\n"
 			"insert into pubsub_item(itemid,nodeid,creation,modification,publisher,payload) \n"
 			" values ('", ITEMID, "', ", NODEID, ", '", CREATION, "', '",
@@ -713,7 +713,7 @@ export(_Server) ->
 				affiliation = Affiliation,
 				subscriptions = Subscriptions}) ->
 		    STATEID = integer_to_list(Stateid),
-		    JID = ejabberd_odbc:escape(jid:to_string(Jid)),
+		    JID = ejabberd_sql:escape(jid:to_string(Jid)),
 		    NODEID = integer_to_list(Nodeidx),
 		    AFFILIATION = string:substr(atom_to_list(Affiliation),1,1),
 		    SUBSCRIPTIONS = parse_subscriptions(Subscriptions),
@@ -736,13 +736,13 @@ export(_Server) ->
 				owners = Owners,
 				options = Options}) ->
 		    HOST = case Hostid of
-			{U,S,R} -> ejabberd_odbc:escape(jid:to_string({U,S,R}));
-			_ -> ejabberd_odbc:escape(Hostid)
+			{U,S,R} -> ejabberd_sql:escape(jid:to_string({U,S,R}));
+			_ -> ejabberd_sql:escape(Hostid)
 		    end,
-		    NODE = ejabberd_odbc:escape(Nodeid),
+		    NODE = ejabberd_sql:escape(Nodeid),
 		    NODEID = integer_to_list(Id),
 		    PARENT = "",
-		    TYPE = ejabberd_odbc:escape(<<Type/binary, "_odbc">>),
+		    TYPE = ejabberd_sql:escape(<<Type/binary, "_sql">>),
 		    ["delete from pubsub_node where nodeid='", NODEID, "';\n"
 			"insert into pubsub_node(host,node,nodeid,parent,type) \n"
 			" values ('", HOST, "', '", NODE, "', ", NODEID, ", '", PARENT, "', '", TYPE, "');\n"

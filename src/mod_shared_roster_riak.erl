@@ -123,7 +123,7 @@ remove_user_from_group(Host, US, Group) ->
 
 import(LServer, <<"sr_group">>, [Group, SOpts, _TimeStamp]) ->
     G = #sr_group{group_host = {Group, LServer},
-                  opts = ejabberd_odbc:decode_term(SOpts)},
+                  opts = ejabberd_sql:decode_term(SOpts)},
     ejabberd_riak:put(G, sr_group_schema(), [{'2i', [{<<"host">>, LServer}]}]);
 import(LServer, <<"sr_user">>, [SJID, Group|_]) ->
     #jid{luser = U, lserver = S} = jid:from_string(SJID),

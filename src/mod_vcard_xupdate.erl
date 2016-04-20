@@ -131,7 +131,7 @@ import_start(LServer, DBType) ->
     Mod = gen_mod:db_mod(DBType, ?MODULE),
     Mod:init(LServer, []).
 
-import(LServer, {odbc, _}, DBType, Tab, [LUser, Hash, TimeStamp]) ->
+import(LServer, {sql, _}, DBType, Tab, [LUser, Hash, TimeStamp]) ->
     Mod = gen_mod:db_mod(DBType, ?MODULE),
     Mod:import(LServer, Tab, [LUser, Hash, TimeStamp]).
 

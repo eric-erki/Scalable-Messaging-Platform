@@ -1304,17 +1304,17 @@ import_stop(_LServer, _DBType) ->
     ets:delete(rostergroups_tmp),
     ok.
 
-import(LServer, {odbc, _}, _DBType, <<"rostergroups">>, [LUser, SJID, Group]) ->
+import(LServer, {sql, _}, _DBType, <<"rostergroups">>, [LUser, SJID, Group]) ->
     LJID = jid:tolower(jid:from_string(SJID)),
     ets:insert(rostergroups_tmp, {{LUser, LServer, LJID}, Group}),
     ok;
-import(LServer, {odbc, _}, DBType, <<"rosterusers">>, Row) ->
+import(LServer, {sql, _}, DBType, <<"rosterusers">>, Row) ->
     I = mod_roster_sql:raw_to_record(LServer, lists:sublist(Row, 9)),
     Groups = [G || {_, G} <- ets:lookup(rostergroups_tmp, I#roster.usj)],
     RosterItem = I#roster{groups = Groups},
     Mod = gen_mod:db_mod(DBType, ?MODULE),
     Mod:import(LServer, <<"rosterusers">>, RosterItem);
-import(LServer, {odbc, _}, DBType, <<"roster_version">>, [LUser, Ver]) ->
+import(LServer, {sql, _}, DBType, <<"roster_version">>, [LUser, Ver]) ->
     Mod = gen_mod:db_mod(DBType, ?MODULE),
     Mod:import(LServer, <<"roster_version">>, [LUser, Ver]).
 
@@ -1335,7 +1335,7 @@ make_roster_range(I, Total) ->
 
 create_rosters(UserPattern, Server, Total, DBType) ->
     Fd = case DBType of
-	     odbc ->
+	     sql ->
 		 Filename = filename:join("/tmp", "rosterusers.sql"),
 		 {ok, Fd0} = file:open(Filename, [write, raw]),
 		 io:format("writing sql queries at " ++ Filename ++ "~n"),

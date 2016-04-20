@@ -22,13 +22,13 @@ init(_Host, _Opts) ->
     ok.
 
 enable(LUser, LServer, LResource, NS) ->
-    S = ejabberd_odbc:escape(LServer),
-    U = ejabberd_odbc:escape(LUser),
-    R = ejabberd_odbc:escape(LResource),
-    case odbc_queries:update(
+    S = ejabberd_sql:escape(LServer),
+    U = ejabberd_sql:escape(LUser),
+    R = ejabberd_sql:escape(LResource),
+    case sql_queries:update(
 	   LServer, <<"carboncopy">>,
 	   [<<"server">>, <<"username">>, <<"resource">>, <<"version">>],
-	   [S, U, R, ejabberd_odbc:escape(NS)],
+	   [S, U, R, ejabberd_sql:escape(NS)],
 	   [<<"server='">>, S, <<"' and username='">>, U,
 	    <<"' and resource='">>, R, <<"'">>]) of
 	ok ->
@@ -38,12 +38,12 @@ enable(LUser, LServer, LResource, NS) ->
     end.
 
 disable(LUser, LServer, LResource) ->
-    case ejabberd_odbc:sql_query(
+    case ejabberd_sql:sql_query(
 	   LServer,
 	   [<<"DELETE FROM carboncopy WHERE Server='">>,
-	    ejabberd_odbc:escape(LServer), <<"' AND Username='">>,
-	    ejabberd_odbc:escape(LUser),
-	    <<"' AND Resource='">>, ejabberd_odbc:escape(LResource), <<"'">>]) of
+	    ejabberd_sql:escape(LServer), <<"' AND Username='">>,
+	    ejabberd_sql:escape(LUser),
+	    <<"' AND Resource='">>, ejabberd_sql:escape(LResource), <<"'">>]) of
         {updated, _} ->
             ok;
         {error, Err} ->
@@ -51,11 +51,11 @@ disable(LUser, LServer, LResource) ->
     end.
 
 list(LUser, LServer) ->
-    case ejabberd_odbc:sql_query(
+    case ejabberd_sql:sql_query(
 	   LServer,
 	   [<<"SELECT Resource, Version FROM carboncopy WHERE Server='">>,
-	    ejabberd_odbc:escape(LServer), <<"' AND Username='">>,
-	    ejabberd_odbc:escape(LUser), <<"'">>]) of
+	    ejabberd_sql:escape(LServer), <<"' AND Username='">>,
+	    ejabberd_sql:escape(LUser), <<"'">>]) of
         {selected, _, Values} ->
             [{R, V} || [R, V] <- Values];
         _ ->

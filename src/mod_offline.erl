@@ -832,7 +832,7 @@ import_start(LServer, DBType) ->
     Mod = gen_mod:db_mod(DBType, ?MODULE),
     Mod:init(LServer, []).
 
-import(LServer, {odbc, _}, DBType, <<"spool">>,
+import(LServer, {sql, _}, DBType, <<"spool">>,
        [LUser, XML, _Seq, _TimeStamp]) ->
     El = #xmlel{} = fxml_stream:parse_element(XML),
     From = #jid{} = jid:from_string(

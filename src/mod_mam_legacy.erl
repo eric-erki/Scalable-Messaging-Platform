@@ -84,7 +84,7 @@ start(Host, Opts) ->
 		       remove_user, 50),
     ok.
 
-init_db(DBType, Host) when DBType==odbc orelse DBType==sharding ->
+init_db(DBType, Host) when DBType==sql orelse DBType==sharding ->
     Muchost = gen_mod:get_module_opt_host(Host, mod_muc,
 					 <<"conference.@HOST@">>),
     ets:insert(ejabberd_modules, {ejabberd_module, {mod_mam, Muchost},
@@ -186,17 +186,17 @@ remove_user(LUser, LServer, p1db) ->
     end;
 remove_user(_LUser, _LServer, rest) ->
     {atomic, ok};
-remove_user(LUser, LServer, DBType) when DBType==odbc orelse
+remove_user(LUser, LServer, DBType) when DBType==sql orelse
 					 DBType==sharding ->
-    SUser = ejabberd_odbc:escape(LUser),
+    SUser = ejabberd_sql:escape(LUser),
     Key = case DBType of
-	      odbc -> undefined;
+	      sql -> undefined;
 	      sharding -> LUser
     end,
-    ejabberd_odbc:sql_query(
+    ejabberd_sql:sql_query(
       LServer, Key,
       [<<"delete from archive where username='">>, SUser, <<"';">>]),
-    ejabberd_odbc:sql_query(
+    ejabberd_sql:sql_query(
       LServer, Key,
       [<<"delete from archive_prefs where username='">>, SUser, <<"';">>]).
 
@@ -502,7 +502,7 @@ do_store(Pkt, LUser, LServer, Peer, Type, Dir, rest) ->
 	    {error, Err}
     end;
 do_store(Pkt, LUser, LServer, Peer, _Type, _Dir, DBType)
-  when DBType==odbc orelse DBType==sharding->
+  when DBType==sql orelse DBType==sharding->
     TSinteger = p1_time_compat:system_time(micro_seconds),
     ID = TS = jlib:integer_to_binary(TSinteger),
     BarePeer = jid:to_string(
@@ -513,19 +513,19 @@ do_store(Pkt, LUser, LServer, Peer, _Type, _Dir, DBType)
     XML = fxml:element_to_binary(Pkt),
     Body = fxml:get_subtag_cdata(Pkt, <<"body">>),
     Key = case DBType of
-	      odbc -> undefined;
+	      sql -> undefined;
 	      sharding -> LUser
 	  end,
-    case ejabberd_odbc:sql_query(
+    case ejabberd_sql:sql_query(
 	    LServer, Key,
 	    [<<"insert into archive (username, timestamp, "
 		    "peer, bare_peer, xml, txt) values (">>,
-		<<"'">>, ejabberd_odbc:escape(LUser), <<"', ">>,
+		<<"'">>, ejabberd_sql:escape(LUser), <<"', ">>,
 		<<"'">>, TS, <<"', ">>,
-		<<"'">>, ejabberd_odbc:escape(LPeer), <<"', ">>,
-		<<"'">>, ejabberd_odbc:escape(BarePeer), <<"', ">>,
-		<<"'">>, ejabberd_odbc:escape(XML), <<"', ">>,
-		<<"'">>, ejabberd_odbc:escape(Body), <<"');">>]) of
+		<<"'">>, ejabberd_sql:escape(LPeer), <<"', ">>,
+		<<"'">>, ejabberd_sql:escape(BarePeer), <<"', ">>,
+		<<"'">>, ejabberd_sql:escape(XML), <<"', ">>,
+		<<"'">>, ejabberd_sql:escape(Body), <<"');">>]) of
 	{updated, _} ->
 	    {ok, ID};
 	Err ->
@@ -534,7 +534,7 @@ do_store(Pkt, LUser, LServer, Peer, _Type, _Dir, DBType)
 
 write_prefs(LUser, LServer, Host, Default, Always, Never) ->
     DBType = case gen_mod:db_type(Host, ?MODULE) of
-		 odbc -> {odbc, Host};
+		 sql -> {sql, Host};
 		 sharding -> {sharding, Host};
 		 DB -> DB
 	     end,
@@ -564,12 +564,12 @@ write_prefs(LUser, _LServer, #archive_prefs{default = Default,
 					   never = Never,
 					   always = Always},
 	    {DBType, Host}) ->
-    SUser = ejabberd_odbc:escape(LUser),
+    SUser = ejabberd_sql:escape(LUser),
     SDefault = erlang:atom_to_binary(Default, utf8),
-    SAlways = ejabberd_odbc:encode_term(Always),
-    SNever = ejabberd_odbc:encode_term(Never),
+    SAlways = ejabberd_sql:encode_term(Always),
+    SNever = ejabberd_sql:encode_term(Never),
     Key = case DBType of
-	      odbc -> undefined;
+	      sql -> undefined;
 	      sharding -> LUser
     end,
     case update(Host, Key, <<"archive_prefs">>,
@@ -626,20 +626,20 @@ get_prefs(_LUser, _LServer, rest) ->
     %% Unsupported so far
     error;
 get_prefs(LUser, LServer, DBType)
-  when DBType==odbc orelse DBType==sharding->
+  when DBType==sql orelse DBType==sharding->
     Key = case DBType of
-	      odbc -> undefined;
+	      sql -> undefined;
 	      sharding -> LUser
 	  end,
-    case ejabberd_odbc:sql_query(
+    case ejabberd_sql:sql_query(
 	   LServer, Key,
 	   [<<"select def, always, never from archive_prefs ">>,
 	    <<"where username='">>,
-	    ejabberd_odbc:escape(LUser), <<"';">>]) of
+	    ejabberd_sql:escape(LUser), <<"';">>]) of
 	{selected, _, [[SDefault, SAlways, SNever]]} ->
 	    Default = erlang:binary_to_existing_atom(SDefault, utf8),
-	    Always = ejabberd_odbc:decode_term(SAlways),
-	    Never = ejabberd_odbc:decode_term(SNever),
+	    Always = ejabberd_sql:decode_term(SAlways),
+	    Never = ejabberd_sql:decode_term(SNever),
 	    {ok, #archive_prefs{us = {LUser, LServer},
 		    default = Default,
 		    always = Always,
@@ -651,7 +651,7 @@ get_prefs(LUser, LServer, DBType)
 select_and_send(#jid{lserver = LServer} = From,
 		To, Start, End, With, RSM, IQ) ->
     DBType = case gen_mod:db_type(LServer, ?MODULE) of
-		 odbc -> {odbc, LServer};
+		 sql -> {sql, LServer};
 		 sharding -> {sharding, LServer};
 		 DB -> DB
 	     end,
@@ -820,7 +820,7 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
 	{Query, CountQuery} = make_sql_query(LUser, LServer,
 					     Start, End, With, RSM),
     Key = case DBType of
-	      odbc -> undefined;
+	      sql -> undefined;
 	      sharding -> LUser
 	  end,
     % XXX TODO from XEP-0313:
@@ -829,8 +829,8 @@ select(#jid{luser = LUser, lserver = LServer} = JidRequestor,
     % query returns a number of stanzas greater than this limit and
     % the client did not specify a limit using RSM then the server
     % should return a policy-violation error to the client.
-    case {ejabberd_odbc:sql_query(Host, Key, Query),
-	  ejabberd_odbc:sql_query(Host, Key, CountQuery)} of
+    case {ejabberd_sql:sql_query(Host, Key, Query),
+	  ejabberd_sql:sql_query(Host, Key, CountQuery)} of
 	{{selected, _, Res}, {selected, _, [[Count]]}} ->
 	    {Max, Direction} = case RSM of
 				   #rsm_in{max = M, direction = D} -> {M, D};
@@ -1105,14 +1105,14 @@ make_sql_query(LUser, _LServer, Start, End, With, RSM) ->
 			 [];
 		     {text, Txt} ->
 			 [<<" and match (txt) against ('">>,
-			  ejabberd_odbc:escape(Txt), <<"')">>];
+			  ejabberd_sql:escape(Txt), <<"')">>];
 		     {_, _, <<>>} ->
 			 [<<" and bare_peer='">>,
-			  ejabberd_odbc:escape(jid:to_string(With)),
+			  ejabberd_sql:escape(jid:to_string(With)),
 			  <<"'">>];
 		     {_, _, _} ->
 			 [<<" and peer='">>,
-			  ejabberd_odbc:escape(jid:to_string(With)),
+			  ejabberd_sql:escape(jid:to_string(With)),
 			  <<"'">>];
 		     none ->
 			 []
@@ -1144,7 +1144,7 @@ make_sql_query(LUser, _LServer, Start, End, With, RSM) ->
 		    _ ->
 			[]
 		end,
-    SUser = ejabberd_odbc:escape(LUser),
+    SUser = ejabberd_sql:escape(LUser),
 
     Query = [<<"SELECT timestamp, xml, peer"
 	      " FROM archive WHERE username='">>,
@@ -1198,14 +1198,14 @@ update(LServer, Key, Table, Fields, Vals, Where) ->
 				   <<A/binary, "='", B/binary, "'">>
 			   end,
 			   Fields, Vals),
-    case ejabberd_odbc:sql_query(LServer, Key,
+    case ejabberd_sql:sql_query(LServer, Key,
 				 [<<"update ">>, Table, <<" set ">>,
 				  join(UPairs, <<", ">>), <<" where ">>, Where,
 				  <<";">>])
 	of
 	{updated, 1} -> {updated, 1};
 	_ ->
-	    ejabberd_odbc:sql_query(LServer, Key,
+	    ejabberd_sql:sql_query(LServer, Key,
 				    [<<"insert into ">>, Table, <<"(">>,
 				     join(Fields, <<", ">>), <<") values ('">>,
 				     join(Vals, <<"', '">>), <<"');">>])

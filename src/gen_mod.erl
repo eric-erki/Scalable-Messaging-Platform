@@ -48,7 +48,7 @@
          opts = [] :: opts() | '_' | '$2'}).
 
 -type opts() :: [{atom(), any()}].
--type db_type() :: odbc | sharding | mnesia | riak | p1db | rest.
+-type db_type() :: sql | sharding | mnesia | riak | p1db | rest.
 
 -callback start(binary(), opts()) -> any().
 -callback stop(binary()) -> any().
@@ -297,7 +297,8 @@ validate_opts(Module, Opts) ->
 
 -spec v_db(db_type() | internal) -> db_type().
 
-v_db(odbc) -> odbc;
+v_db(odbc) -> sql;
+v_db(sql) -> sql;
 v_db(sharding) -> sharding;
 v_db(internal) -> mnesia;
 v_db(mnesia) -> mnesia;
@@ -325,6 +326,7 @@ default_db(Host) ->
 -spec db_mod(binary() | global | db_type(), module()) -> module().
 
 db_mod(odbc, Module) -> list_to_atom(atom_to_list(Module) ++ "_sql");
+db_mod(sql, Module) -> list_to_atom(atom_to_list(Module) ++ "_sql");
 db_mod(mnesia, Module) -> list_to_atom(atom_to_list(Module) ++ "_mnesia");
 db_mod(riak, Module) -> list_to_atom(atom_to_list(Module) ++ "_riak");
 db_mod(p1db, Module) -> list_to_atom(atom_to_list(Module) ++ "_p1db");

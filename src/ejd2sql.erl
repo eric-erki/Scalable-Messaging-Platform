@@ -1,5 +1,5 @@
 %%%----------------------------------------------------------------------
-%%% File    : ejd2odbc.erl
+%%% File    : ejd2sql.erl
 %%% Author  : Alexey Shchepin <alexey@process-one.net>
 %%% Purpose : Export some mnesia tables to SQL DB
 %%% Created : 22 Aug 2005 by Alexey Shchepin <alexey@process-one.net>
@@ -23,7 +23,7 @@
 %%%
 %%%----------------------------------------------------------------------
 
--module(ejd2odbc).
+-module(ejd2sql).
 
 -author('alexey@process-one.net').
 
@@ -43,7 +43,7 @@
 %%% A table can be converted from Mnesia to an ODBC database by calling
 %%% one of the API function with the following parameters:
 %%% - Server is the server domain you want to convert
-%%% - Output can be either odbc to export to the configured relational
+%%% - Output can be either sql to export to the configured relational
 %%%   database or "Filename" to export to text file.
 
 modules() ->
@@ -111,7 +111,7 @@ import(Mod, Server, Dir, ToType) ->
               FileName = filename:join([Dir, File]),
               case open_sql_dump(FileName) of
                   {ok, #sql_dump{type = FromType} = Dump} ->
-                      import_rows(LServer, {odbc, FromType}, ToType,
+                      import_rows(LServer, {sql, FromType}, ToType,
                                   Tab, Mod, Dump, FieldsNumber),
                       close_sql_dump(Dump);
                   {error, enoent} ->
@@ -164,8 +164,8 @@ export(LServer, Table, IO, ConvertFun) ->
 
 output(_LServer, _Table, _IO, []) ->
     ok;
-output(LServer, _Table, odbc, SQLs) ->
-    ejabberd_odbc:sql_transaction(LServer, SQLs);
+output(LServer, _Table, sql, SQLs) ->
+    ejabberd_sql:sql_transaction(LServer, SQLs);
 output(_LServer, Table, Fd, SQLs) ->
     file:write(Fd, ["-- \n-- Mnesia table: ", atom_to_list(Table),
                     "\n--\n", SQLs]).

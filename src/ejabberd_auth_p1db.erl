@@ -338,8 +338,8 @@ export(_Server) ->
       fun(Host, {USKey, Password}) ->
               {LUser, LServer} = key2us(USKey),
               if LServer == Host ->
-                      Username = ejabberd_odbc:escape(LUser),
-                      Pass = ejabberd_odbc:escape(Password),
+                      Username = ejabberd_sql:escape(LUser),
+                      Pass = ejabberd_sql:escape(Password),
                       [[<<"delete from users where username='">>,
                         Username, <<"';">>],
                        [<<"insert into users(username, password) "

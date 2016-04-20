@@ -187,19 +187,19 @@ store_room(_LServer, Host, Name, Config, Affiliations, riak) ->
     {atomic, ejabberd_riak:put(#support_room{name_host = {Name, Host},
                                          opts = Opts},
 			       support_room_schema())};
-store_room(LServer, Host, Name, Config, Affiliations, odbc) ->
+store_room(LServer, Host, Name, Config, Affiliations, sql) ->
     Opts = [{affiliations, Affiliations}|Config],
-    SName = ejabberd_odbc:escape(Name),
-    SHost = ejabberd_odbc:escape(Host),
-    SOpts = ejabberd_odbc:encode_term(Opts),
+    SName = ejabberd_sql:escape(Name),
+    SHost = ejabberd_sql:escape(Host),
+    SOpts = ejabberd_sql:encode_term(Opts),
     F = fun () ->
-		odbc_queries:update_t(<<"support_room">>,
+		sql_queries:update_t(<<"support_room">>,
 				      [<<"name">>, <<"host">>, <<"opts">>],
 				      [SName, SHost, SOpts],
 				      [<<"name='">>, SName, <<"' and host='">>,
 				       SHost, <<"'">>])
 	end,
-    ejabberd_odbc:sql_transaction(LServer, F).
+    ejabberd_sql:sql_transaction(LServer, F).
 
 restore_room(ServerHost, Host, Name) ->
     LServer = jid:nameprep(ServerHost),
@@ -225,16 +225,16 @@ restore_room(_LServer, Host, Name, riak) ->
         {ok, #support_room{opts = Opts}} -> Opts;
         _ -> error
     end;
-restore_room(LServer, Host, Name, odbc) ->
-    SName = ejabberd_odbc:escape(Name),
-    SHost = ejabberd_odbc:escape(Host),
-    case catch ejabberd_odbc:sql_query(LServer,
+restore_room(LServer, Host, Name, sql) ->
+    SName = ejabberd_sql:escape(Name),
+    SHost = ejabberd_sql:escape(Host),
+    case catch ejabberd_sql:sql_query(LServer,
 				       [<<"select opts from support_room where name='">>,
 					SName, <<"' and host='">>, SHost,
 					<<"';">>])
 	of
       {selected, [<<"opts">>], [[Opts]]} ->
-	  opts_to_binary(ejabberd_odbc:decode_term(Opts));
+	  opts_to_binary(ejabberd_sql:decode_term(Opts));
       _ -> error
     end.
 
@@ -266,15 +266,15 @@ forget_room(_LServer, Host, Name, p1db) ->
     end;
 forget_room(_LServer, Host, Name, riak) ->
     {atomic, ejabberd_riak:delete(support_room, {Name, Host})};
-forget_room(LServer, Host, Name, odbc) ->
-    SName = ejabberd_odbc:escape(Name),
-    SHost = ejabberd_odbc:escape(Host),
+forget_room(LServer, Host, Name, sql) ->
+    SName = ejabberd_sql:escape(Name),
+    SHost = ejabberd_sql:escape(Host),
     F = fun () ->
-		ejabberd_odbc:sql_query_t([<<"delete from support_room where name='">>,
+		ejabberd_sql:sql_query_t([<<"delete from support_room where name='">>,
 					   SName, <<"' and host='">>, SHost,
 					   <<"';">>])
 	end,
-    ejabberd_odbc:sql_transaction(LServer, F).
+    ejabberd_sql:sql_transaction(LServer, F).
 
 process_iq_disco_items(Host, From, To,
 		       #iq{lang = Lang} = IQ) ->
@@ -334,12 +334,12 @@ can_use_nick(LServer, Host, JID, Nick, riak) ->
         {error, _} ->
             true
     end;
-can_use_nick(LServer, Host, JID, Nick, odbc) ->
+can_use_nick(LServer, Host, JID, Nick, sql) ->
     SJID =
 	jid:to_string(jid:tolower(jid:remove_resource(JID))),
-    SNick = ejabberd_odbc:escape(Nick),
-    SHost = ejabberd_odbc:escape(Host),
-    case catch ejabberd_odbc:sql_query(LServer,
+    SNick = ejabberd_sql:escape(Nick),
+    SHost = ejabberd_sql:escape(Host),
+    case catch ejabberd_sql:sql_query(LServer,
 				       [<<"select jid from support_registered ">>,
 					<<"where nick='">>, SNick,
 					<<"' and host='">>, SHost, <<"';">>])
@@ -791,9 +791,9 @@ get_rooms(_LServer, Host, riak) ->
         _Err ->
             []
     end;
-get_rooms(LServer, Host, odbc) ->
-    SHost = ejabberd_odbc:escape(Host),
-    case catch ejabberd_odbc:sql_query(LServer,
+get_rooms(LServer, Host, sql) ->
+    SHost = ejabberd_sql:escape(Host),
+    case catch ejabberd_sql:sql_query(LServer,
 				       [<<"select name, opts from support_room ">>,
 					<<"where host='">>, SHost, <<"';">>])
 	of
@@ -801,7 +801,7 @@ get_rooms(LServer, Host, odbc) ->
 	  lists:map(fun ([Room, Opts]) ->
 			    #support_room{name_host = {Room, Host},
 				      opts = opts_to_binary(
-                                               ejabberd_odbc:decode_term(Opts))}
+                                               ejabberd_sql:decode_term(Opts))}
 		    end,
 		    RoomOpts);
       Err -> ?ERROR_MSG("failed to get rooms: ~p", [Err]), []
@@ -1076,11 +1076,11 @@ get_nick(LServer, Host, From, riak) ->
         {ok, #support_registered{nick = Nick}} -> Nick;
         {error, _} -> error
     end;
-get_nick(LServer, Host, From, odbc) ->
+get_nick(LServer, Host, From, sql) ->
     SJID =
-	ejabberd_odbc:escape(jid:to_string(jid:tolower(jid:remove_resource(From)))),
-    SHost = ejabberd_odbc:escape(Host),
-    case catch ejabberd_odbc:sql_query(LServer,
+	ejabberd_sql:escape(jid:to_string(jid:tolower(jid:remove_resource(From)))),
+    SHost = ejabberd_sql:escape(Host),
+    case catch ejabberd_sql:sql_query(LServer,
 				       [<<"select nick from support_registered where "
 					  "jid='">>,
 					SJID, <<"' and host='">>, SHost,
@@ -1237,23 +1237,23 @@ set_nick(LServer, Host, From, Nick, riak) ->
                      false
              end
      end};
-set_nick(LServer, Host, From, Nick, odbc) ->
+set_nick(LServer, Host, From, Nick, sql) ->
     JID =
 	jid:to_string(jid:tolower(jid:remove_resource(From))),
-    SJID = ejabberd_odbc:escape(JID),
-    SNick = ejabberd_odbc:escape(Nick),
-    SHost = ejabberd_odbc:escape(Host),
+    SJID = ejabberd_sql:escape(JID),
+    SNick = ejabberd_sql:escape(Nick),
+    SHost = ejabberd_sql:escape(Host),
     F = fun () ->
 		case Nick of
 		  <<"">> ->
-		      ejabberd_odbc:sql_query_t([<<"delete from support_registered where ">>,
+		      ejabberd_sql:sql_query_t([<<"delete from support_registered where ">>,
 						 <<"jid='">>, SJID,
 						 <<"' and host='">>, Host,
 						 <<"';">>]),
 		      ok;
 		  _ ->
 		      Allow = case
-				ejabberd_odbc:sql_query_t([<<"select jid from support_registered ">>,
+				ejabberd_sql:sql_query_t([<<"select jid from support_registered ">>,
 							   <<"where nick='">>,
 							   SNick,
 							   <<"' and host='">>,
@@ -1263,7 +1263,7 @@ set_nick(LServer, Host, From, Nick, odbc) ->
 				_ -> true
 			      end,
 		      if Allow ->
-			     odbc_queries:update_t(<<"support_registered">>,
+			     sql_queries:update_t(<<"support_registered">>,
 						   [<<"jid">>, <<"host">>,
 						    <<"nick">>],
 						   [SJID, SHost, SNick],
@@ -1275,7 +1275,7 @@ set_nick(LServer, Host, From, Nick, odbc) ->
 		      end
 		end
 	end,
-    ejabberd_odbc:sql_transaction(LServer, F).
+    ejabberd_sql:sql_transaction(LServer, F).
 
 iq_set_register_info(ServerHost, Host, From, Nick,
 		     Lang) ->
@@ -1614,9 +1614,9 @@ export(_Server) ->
       fun(Host, #support_room{name_host = {Name, RoomHost}, opts = Opts}) ->
               case str:suffix(Host, RoomHost) of
                   true ->
-                      SName = ejabberd_odbc:escape(Name),
-                      SRoomHost = ejabberd_odbc:escape(RoomHost),
-                      SOpts = ejabberd_odbc:encode_term(Opts),
+                      SName = ejabberd_sql:escape(Name),
+                      SRoomHost = ejabberd_sql:escape(RoomHost),
+                      SOpts = ejabberd_sql:encode_term(Opts),
                       [[<<"delete from support_room where name='">>, SName,
                         <<"' and host='">>, SRoomHost, <<"';">>],
                        [<<"insert into support_room(name, host, opts) ",
@@ -1632,11 +1632,11 @@ export(_Server) ->
                                 nick = Nick}) ->
               case str:suffix(Host, RoomHost) of
                   true ->
-                      SJID = ejabberd_odbc:escape(
+                      SJID = ejabberd_sql:escape(
                                jid:to_string(
                                  jid:make(U, S, <<"">>))),
-                      SNick = ejabberd_odbc:escape(Nick),
-                      SRoomHost = ejabberd_odbc:escape(RoomHost),
+                      SNick = ejabberd_sql:escape(Nick),
+                      SRoomHost = ejabberd_sql:escape(RoomHost),
                       [[<<"delete from support_registered where jid='">>,
                         SJID, <<"' and host='">>, SRoomHost, <<"';">>],
                        [<<"insert into support_registered(jid, host, "
@@ -1654,33 +1654,33 @@ import_info() ->
 import_start(LServer, DBType) ->
     init_db(DBType, LServer).
 
-import(_LServer, {odbc, _}, mnesia, <<"support_room">>,
+import(_LServer, {sql, _}, mnesia, <<"support_room">>,
        [Name, RoomHost, SOpts, _TimeStamp]) ->
-    Opts = opts_to_binary(ejabberd_odbc:decode_term(SOpts)),
+    Opts = opts_to_binary(ejabberd_sql:decode_term(SOpts)),
     mnesia:dirty_write(
       #support_room{name_host = {Name, RoomHost},
                 opts = Opts});
-import(_LServer, {odbc, _}, mnesia, <<"support_registered">>,
+import(_LServer, {sql, _}, mnesia, <<"support_registered">>,
        [J, RoomHost, Nick, _TimeStamp]) ->
     #jid{user = U, server = S} = jid:from_string(J),
     mnesia:dirty_write(
       #support_registered{us_host = {{U, S}, RoomHost},
                       nick = Nick});
-import(_LServer, {odbc, _}, riak, <<"support_room">>,
+import(_LServer, {sql, _}, riak, <<"support_room">>,
        [Name, RoomHost, SOpts, _TimeStamp]) ->
-    Opts = opts_to_binary(ejabberd_odbc:decode_term(SOpts)),
+    Opts = opts_to_binary(ejabberd_sql:decode_term(SOpts)),
     ejabberd_riak:put(
       #support_room{name_host = {Name, RoomHost}, opts = Opts},
       support_room_schema());
-import(_LServer, {odbc, _}, riak, <<"support_registered">>,
+import(_LServer, {sql, _}, riak, <<"support_registered">>,
        [J, RoomHost, Nick, _TimeStamp]) ->
     #jid{user = U, server = S} = jid:from_string(J),
     R = #support_registered{us_host = {{U, S}, RoomHost}, nick = Nick},
     ejabberd_riak:put(R, support_registered_schema(),
 		      [{'2i', [{<<"nick_host">>, {Nick, RoomHost}}]}]);
-import(_LServer, {odbc, _}, p1db, <<"support_room">>,
+import(_LServer, {sql, _}, p1db, <<"support_room">>,
        [Room, Host, SOpts, _TimeStamp]) ->
-    Opts = opts_to_binary(ejabberd_odbc:decode_term(SOpts)),
+    Opts = opts_to_binary(ejabberd_sql:decode_term(SOpts)),
     {Affiliations, Config} = lists:partition(
                                fun({affiliations, _}) -> true;
                                   (_) -> false
@@ -1702,7 +1702,7 @@ import(_LServer, {odbc, _}, p1db, <<"support_room">>,
                         p1db:async_insert(support_affiliations, RHUSKey, Val)
                 end, Affs)
       end, Affiliations);
-import(_LServer, {odbc, _}, p1db, <<"support_registered">>,
+import(_LServer, {sql, _}, p1db, <<"support_registered">>,
        [J, Host, Nick, _TimeStamp]) ->
     #jid{user = U, server = S} = jid:from_string(J),
     NHKey = nh2key(Nick, Host),
@@ -1710,7 +1710,7 @@ import(_LServer, {odbc, _}, p1db, <<"support_registered">>,
     SJID = jid:to_string({U, S, <<"">>}),
     p1db:async_insert(support_nick, NHKey, SJID),
     p1db:async_insert(support_user, USHKey, Nick);
-import(_LServer, {odbc, _}, odbc, _, _) ->
+import(_LServer, {sql, _}, sql, _, _) ->
     ok.
 
 register_support_channel(Channel, Host, AdminJid) ->

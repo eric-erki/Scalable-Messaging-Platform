@@ -176,7 +176,7 @@ export(LServer) ->
     Mod = gen_mod:db_mod(LServer, ?MODULE),
     Mod:export(LServer).
 
-import(LServer, {odbc, _}, DBType, Tab, L) ->
+import(LServer, {sql, _}, DBType, Tab, L) ->
     Mod = gen_mod:db_mod(DBType, ?MODULE),
     Mod:import(LServer, Tab, L).
 

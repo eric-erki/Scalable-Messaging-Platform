@@ -1,7 +1,7 @@
 %%%----------------------------------------------------------------------
-%%% File    : ejabberd_odbc.erl
+%%% File    : ejabberd_sql.erl
 %%% Author  : Alexey Shchepin <alexey@process-one.net>
-%%% Purpose : Serve ODBC connection
+%%% Purpose : Serve SQL connection
 %%% Created :  8 Dec 2004 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
@@ -23,7 +23,7 @@
 %%%
 %%%----------------------------------------------------------------------
 
--module(ejabberd_odbc).
+-module(ejabberd_sql).
 
 -behaviour(ejabberd_config).
 
@@ -78,9 +78,9 @@
 	 max_pending_requests_len            :: non_neg_integer(),
 	 pending_requests = {0, queue:new()} :: {non_neg_integer(), ?TQUEUE}}).
 
--define(STATE_KEY, ejabberd_odbc_state).
+-define(STATE_KEY, ejabberd_sql_state).
 
--define(NESTING_KEY, ejabberd_odbc_nesting_level).
+-define(NESTING_KEY, ejabberd_sql_nesting_level).
 
 -define(TOP_LEVEL_TXN, 0).
 
@@ -98,7 +98,7 @@
 
 -define(KEEPALIVE_QUERY, [<<"SELECT 1;">>]).
 
--define(PREPARE_KEY, ejabberd_odbc_prepare).
+-define(PREPARE_KEY, ejabberd_sql_prepare).
 
 %%-define(DBGFSM, true).
 
@@ -159,7 +159,7 @@ sql_query_on_all_connections(Host, Query) ->
 					    p1_time_compat:monotonic_time(milli_seconds)},
 					   ?TRANSACTION_TIMEOUT)
 	end,
-    lists:map(F, ejabberd_odbc_sup:get_pids(Host)).
+    lists:map(F, ejabberd_sql_sup:get_pids(Host)).
 
 -spec sql_query_on_all_connections(binary(), term(), sql_query()) ->
     [sql_query_result()].
@@ -171,7 +171,7 @@ sql_query_on_all_connections(Host, Key, Query) ->
 					    p1_time_compat:monotonic_time(milli_seconds)},
 					   ?TRANSACTION_TIMEOUT)
 	end,
-    lists:map(F, ejabberd_odbc_sup:get_pids_shard(Host, Key)).
+    lists:map(F, ejabberd_sql_sup:get_pids_shard(Host, Key)).
 
 %% SQL transaction based on a list of queries
 %% This function automatically
@@ -219,7 +219,7 @@ sql_call(Host, Msg) ->
     case get(?STATE_KEY) of
 	undefined ->
 	    (?GEN_FSM):sync_send_event(
-	      ejabberd_odbc_sup:get_random_pid(Host),
+	      ejabberd_sql_sup:get_random_pid(Host),
 	      {sql_cmd, Msg, p1_time_compat:monotonic_time(milli_seconds)},
 	      ?TRANSACTION_TIMEOUT);
 	_State -> nested_op(Msg)
@@ -229,7 +229,7 @@ sql_call(Host, Key, Msg) ->
     case get(?STATE_KEY) of
       undefined ->
 	    (?GEN_FSM):sync_send_event(
-	      ejabberd_odbc_sup:get_random_pid_shard(Host, Key),
+	      ejabberd_sql_sup:get_random_pid_shard(Host, Key),
 	      {sql_cmd, Msg,
 	       p1_time_compat:monotonic_time(milli_seconds)},
 	      ?TRANSACTION_TIMEOUT);
@@ -259,7 +259,7 @@ sql_query_t(Query) ->
 
 %% Escape character that will confuse an SQL engine
 escape(S) ->
-	<<  <<(odbc_queries:escape(Char))/binary>> || <<Char>> <= S >>.
+	<<  <<(sql_queries:escape(Char))/binary>> || <<Char>> <= S >>.
 
 %% Escape character that will confuse an SQL engine
 %% Percent and underscore only need to be escaped for pattern matching like
@@ -268,7 +268,7 @@ escape_like(S) when is_binary(S) ->
     << <<(escape_like(C))/binary>> || <<C>> <= S >>;
 escape_like($%) -> <<"\\%">>;
 escape_like($_) -> <<"\\_">>;
-escape_like(C) when is_integer(C), C >= 0, C =< 255 -> odbc_queries:escape(C).
+escape_like(C) when is_integer(C), C >= 0, C =< 255 -> sql_queries:escape(C).
 
 escape_like_arg(S) when is_binary(S) ->
     << <<(escape_like_arg(C))/binary>> || <<C>> <= S >>;
@@ -309,7 +309,7 @@ sqlite_db(Host) ->
 
 -spec sqlite_file(binary()) -> string().
 sqlite_file(Host) ->
-    case ejabberd_config:get_option({odbc_database, Host},
+    case ejabberd_config:get_option({sql_database, Host},
 				    fun iolist_to_binary/1) of
 	undefined ->
 	    {ok, Cwd} = file:get_cwd(),
@@ -324,7 +324,7 @@ sqlite_file(Host) ->
 %%%----------------------------------------------------------------------
 init([Host, StartInterval, Shard]) ->
     case ejabberd_config:get_option(
-           {odbc_keepalive_interval, Host},
+           {sql_keepalive_interval, Host},
            fun(I) when is_integer(I), I>0 -> I end) of
         undefined ->
             ok;
@@ -947,14 +947,14 @@ log(Level, Format, Args) ->
     end.
 
 db_opts(Host) ->
-    Type = ejabberd_config:get_option({odbc_type, Host},
+    Type = ejabberd_config:get_option({sql_type, Host},
                                       fun(mysql) -> mysql;
                                          (pgsql) -> pgsql;
                                          (sqlite) -> sqlite;
 					 (mssql) -> mssql;
                                          (odbc) -> odbc
                                       end, odbc),
-    Server = ejabberd_config:get_option({odbc_server, Host},
+    Server = ejabberd_config:get_option({sql_server, Host},
                                         fun iolist_to_binary/1,
                                         <<"localhost">>),
     case Type of
@@ -964,20 +964,20 @@ db_opts(Host) ->
             [sqlite, Host];
         _ ->
             Port = ejabberd_config:get_option(
-                     {odbc_port, Host},
+                     {sql_port, Host},
                      fun(P) when is_integer(P), P > 0, P < 65536 -> P end,
                      case Type of
 			 mssql -> ?MSSQL_PORT;
                          mysql -> ?MYSQL_PORT;
                          pgsql -> ?PGSQL_PORT
                      end),
-            DB = ejabberd_config:get_option({odbc_database, Host},
+            DB = ejabberd_config:get_option({sql_database, Host},
                                             fun iolist_to_binary/1,
                                             <<"ejabberd">>),
-            User = ejabberd_config:get_option({odbc_username, Host},
+            User = ejabberd_config:get_option({sql_username, Host},
                                               fun iolist_to_binary/1,
                                               <<"ejabberd">>),
-            Pass = ejabberd_config:get_option({odbc_password, Host},
+            Pass = ejabberd_config:get_option({sql_password, Host},
                                               fun iolist_to_binary/1,
                                               <<"">>),
 	    case Type of
@@ -1000,18 +1000,18 @@ db_opts(Host, ShardNumber) ->
 
     Shard = lists:nth(ShardNumber, Shards),
 
-    Type = case lists:keyfind(odbc_type, 1, Shard) of
-	       {odbc_type, Value1} -> Value1
+    Type = case lists:keyfind(sql_type, 1, Shard) of
+	       {sql_type, Value1} -> Value1
 	   end,
-    Server = case lists:keyfind(odbc_server, 1, Shard) of
-		 {odbc_server, Value2} -> iolist_to_binary(Value2)
+    Server = case lists:keyfind(sql_server, 1, Shard) of
+		 {sql_server, Value2} -> iolist_to_binary(Value2)
 	     end,
 
     case Type of
         odbc ->
             [odbc, Server];
         _ ->
-            Port = case lists:keyfind(odbc_port, 1, Shard) of
+            Port = case lists:keyfind(sql_port, 1, Shard) of
 		       {_, P} when is_integer(P), P > 0, P < 65536 -> P;
 		       _ ->
 			   case Type of
@@ -1021,14 +1021,14 @@ db_opts(Host, ShardNumber) ->
 			   end
 		   end,
 
-	    DB = case lists:keyfind(odbc_database, 1, Shard) of
-		     {odbc_database, Value3} -> iolist_to_binary(Value3)
+	    DB = case lists:keyfind(sql_database, 1, Shard) of
+		     {sql_database, Value3} -> iolist_to_binary(Value3)
 		 end,
-	    User = case lists:keyfind(odbc_username, 1, Shard) of
-		       {odbc_username, Value4} -> iolist_to_binary(Value4)
+	    User = case lists:keyfind(sql_username, 1, Shard) of
+		       {sql_username, Value4} -> iolist_to_binary(Value4)
 		   end,
-	    Pass = case lists:keyfind(odbc_password, 1, Shard) of
-		       {odbc_password, Value5} -> iolist_to_binary(Value5)
+	    Pass = case lists:keyfind(sql_password, 1, Shard) of
+		       {sql_password, Value5} -> iolist_to_binary(Value5)
 		   end,
 	    case Type of
 		mssql ->
@@ -1041,14 +1041,14 @@ db_opts(Host, ShardNumber) ->
     end.
 
 init_mssql(Host) ->
-    Server = ejabberd_config:get_option({odbc_server, Host},
+    Server = ejabberd_config:get_option({sql_server, Host},
                                         fun iolist_to_binary/1,
                                         <<"localhost">>),
     Port = ejabberd_config:get_option(
-	     {odbc_port, Host},
+	     {sql_port, Host},
 	     fun(P) when is_integer(P), P > 0, P < 65536 -> P end,
 	     ?MSSQL_PORT),
-    DB = ejabberd_config:get_option({odbc_database, Host},
+    DB = ejabberd_config:get_option({sql_database, Host},
 				    fun iolist_to_binary/1,
 				    <<"ejabberd">>),
     FreeTDS = io_lib:fwrite("[~s]~n"
@@ -1148,23 +1148,23 @@ check_error(Result, _Query) ->
 
 opt_type(max_fsm_queue) ->
     fun (N) when is_integer(N), N > 0 -> N end;
-opt_type(odbc_database) -> fun iolist_to_binary/1;
-opt_type(odbc_keepalive_interval) ->
+opt_type(sql_database) -> fun iolist_to_binary/1;
+opt_type(sql_keepalive_interval) ->
     fun (I) when is_integer(I), I > 0 -> I end;
-opt_type(odbc_password) -> fun iolist_to_binary/1;
-opt_type(odbc_port) ->
+opt_type(sql_password) -> fun iolist_to_binary/1;
+opt_type(sql_port) ->
     fun (P) when is_integer(P), P > 0, P < 65536 -> P end;
-opt_type(odbc_server) -> fun iolist_to_binary/1;
-opt_type(odbc_type) ->
+opt_type(sql_server) -> fun iolist_to_binary/1;
+opt_type(sql_type) ->
     fun (mysql) -> mysql;
 	(pgsql) -> pgsql;
 	(sqlite) -> sqlite;
 	(mssql) -> mssql;
 	(odbc) -> odbc
     end;
-opt_type(odbc_username) -> fun iolist_to_binary/1;
+opt_type(sql_username) -> fun iolist_to_binary/1;
 opt_type(shards) -> fun (S) when is_list(S) -> S end;
 opt_type(_) ->
-    [odbc_keepalive_interval, max_fsm_queue, odbc_database,
-     odbc_password, odbc_port, odbc_server, odbc_type,
-     odbc_username, shards].
+    [sql_keepalive_interval, max_fsm_queue, sql_database,
+     sql_password, sql_port, sql_server, sql_type,
+     sql_username, shards].

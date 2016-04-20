@@ -362,9 +362,9 @@ get_env(App, Key, Default) ->
 %     %% TODO (for MySQL):
 %     %% Query = [<<"select table_rows from information_schema.tables where table_name='">>,
 %     %%          db_mnesia_to_sql(Table), <<"'">>];
-%     %% can use odbc_queries:count_records_where(Host, db_mnesia_to_sql(Table), <<>>)
+%     %% can use sql_queries:count_records_where(Host, db_mnesia_to_sql(Table), <<>>)
 %     Query = [<<"select count(*) from ">>, db_mnesia_to_sql(Table)],
-%     case catch ejabberd_odbc:sql_query(Host, Query) of
+%     case catch ejabberd_sql:sql_query(Host, Query) of
 %         {selected, [_], [[V]]} ->
 %             case catch jlib:binary_to_integer(V) of
 %                 {'EXIT', _} -> 0;
@@ -842,8 +842,8 @@ queue({message_queue_len, I}) -> I;
 queue({dictionary, D}) -> proplists:get_value('$internal_queue_len', D, 0);
 queue(_) -> 0.
 
-workers(Host, ejabberd_odbc_sup) ->
-    Sup = gen_mod:get_module_proc(Host, ejabberd_odbc_sup),
+workers(Host, ejabberd_sql_sup) ->
+    Sup = gen_mod:get_module_proc(Host, ejabberd_sql_sup),
     workers(Host, Sup);
 workers(Host, mod_offline_pool) ->
     Sup = gen_mod:get_module_proc(Host, mod_offline_pool),
@@ -882,7 +882,7 @@ health_check(Host, all) ->
            {iq_queues, <<"iq handlers overloaded">>, <<"iq handlers dead">>},
            {sm_queues, <<"session managers overloaded">>, <<"sessions dead">>}]},
          {<<"Database">>,
-          [{odbc_queues, <<"odbc driver overloaded">>, <<"service down">>},
+          [{sql_queues, <<"sql driver overloaded">>, <<"service down">>},
            {offline_queues, <<"offline spool overloaded">>, <<"service down">>}]},
          {<<"Client">>,
           [{client_conn_time, <<"connection is slow">>, <<"service unavailable">>},
@@ -914,8 +914,8 @@ check_level(c2s_queues, Spec) ->
 check_level(s2s_queues, Spec) ->
     Value = get(s2s_message_queues)+get(s2s_internal_queues),
     check_level(ok, Value, Spec);
-check_level(odbc_queues, Spec) ->
-    Value = get(odbc_message_queues)+get(odbc_internal_queues),
+check_level(sql_queues, Spec) ->
+    Value = get(sql_message_queues)+get(sql_internal_queues),
     check_level(ok, Value, Spec);
 check_level(offline_queues, Spec) ->
     Value = get(offline_message_queues)+get(offline_internal_queues),

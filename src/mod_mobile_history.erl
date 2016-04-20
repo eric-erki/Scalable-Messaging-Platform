@@ -95,15 +95,15 @@ log_out( #xmlel{name = <<"message">>, attrs = Attrs} = OrigPacket,
 	  Timestamp = get_datetime_string_for_db(p1_time_compat:timestamp()),
 	  ID = fxml:get_attr_s(<<"id">>, Attrs),
 	  JID =
-	      ejabberd_odbc:escape(jid:to_string(jid:remove_resource(From))),
+	      ejabberd_sql:escape(jid:to_string(jid:remove_resource(From))),
 	  Text =
-	      ejabberd_odbc:escape(fxml:element_to_binary(Packet)),
+	      ejabberd_sql:escape(fxml:element_to_binary(Packet)),
 	  Query = [<<"CALL ">>, log_msg(From#jid.lserver),
 		   <<"('">>, JID, <<"','">>, JID, <<"','">>,
-		   ejabberd_odbc:escape(Collection), <<"','">>,
-		   ejabberd_odbc:escape(ID), <<"','">>, Text, <<"','">>,
-		   ejabberd_odbc:escape(Timestamp), <<"', true)">>],
-	  case ejabberd_odbc:sql_query(get_pool_name_for(From#jid.server),
+		   ejabberd_sql:escape(Collection), <<"','">>,
+		   ejabberd_sql:escape(ID), <<"','">>, Text, <<"','">>,
+		   ejabberd_sql:escape(Timestamp), <<"', true)">>],
+	  case ejabberd_sql:sql_query(get_pool_name_for(From#jid.server),
 				  lists:flatten(Query)) of
             {error, Cause} ->
                 ?ERROR_MSG("Error storing history message sent by ~p to ~p: ~p", [jid:to_string(From), jid:to_string(To), Cause]);
@@ -115,11 +115,11 @@ log_out( #xmlel{name = <<"message">>, attrs = Attrs} = OrigPacket,
 	  case parse_read_notification(OrigPacket) of
 	    {read, ID} ->
 		JID =
-		    ejabberd_odbc:escape(jid:to_string(jid:remove_resource(From))),
+		    ejabberd_sql:escape(jid:to_string(jid:remove_resource(From))),
 		Query = [<<"CALL ">>, set_read(From#jid.lserver),
-			 <<"('">>, JID, <<"','">>, ejabberd_odbc:escape(ID),
-			 <<"', '">>, ejabberd_odbc:escape(Timestamp), <<"')">>],
-		case ejabberd_odbc:sql_query(get_pool_name_for(From#jid.server),
+			 <<"('">>, JID, <<"','">>, ejabberd_sql:escape(ID),
+			 <<"', '">>, ejabberd_sql:escape(Timestamp), <<"')">>],
+		case ejabberd_sql:sql_query(get_pool_name_for(From#jid.server),
 					lists:flatten(Query)) of
                 {error, Cause} ->
                     ?ERROR_MSG("Error storing read notification for user ~p,  message ~p : ~p", [JID, ID, Cause]);
@@ -213,17 +213,17 @@ log_message_to_user(From, To,
 	  Timestamp = get_datetime_string_for_db(p1_time_compat:timestamp()),
 	  ID = fxml:get_attr_s(<<"id">>, Attrs),
 	  JIDTo =
-	      ejabberd_odbc:escape(jid:to_string(jid:remove_resource(To))),
+	      ejabberd_sql:escape(jid:to_string(jid:remove_resource(To))),
 	  JIDFrom =
-	      ejabberd_odbc:escape(jid:to_string(jid:remove_resource(From))),
+	      ejabberd_sql:escape(jid:to_string(jid:remove_resource(From))),
 	  Text =
-	      ejabberd_odbc:escape(fxml:element_to_binary(Packet)),
+	      ejabberd_sql:escape(fxml:element_to_binary(Packet)),
 	  Query = [<<"CALL ">>, log_msg(To#jid.lserver), <<"('">>,
 		   JIDTo, <<"','">>, JIDFrom, <<"','">>,
-		   ejabberd_odbc:escape(Collection), <<"','">>,
-		   ejabberd_odbc:escape(ID), <<"','">>, Text, <<"','">>,
-		   ejabberd_odbc:escape(Timestamp), <<"', false)">>],
-	  case ejabberd_odbc:sql_query(get_pool_name_for(To#jid.server),
+		   ejabberd_sql:escape(Collection), <<"','">>,
+		   ejabberd_sql:escape(ID), <<"','">>, Text, <<"','">>,
+		   ejabberd_sql:escape(Timestamp), <<"', false)">>],
+	  case ejabberd_sql:sql_query(get_pool_name_for(To#jid.server),
 				  lists:flatten(Query)) of
             {error, Cause} ->
                 ?ERROR_MSG("Error storing history message received by ~p from ~p: ~p", [jid:to_string(To), jid:to_string(From), Cause]);
@@ -235,15 +235,15 @@ log_message_to_user(From, To,
 	    {ok, MsgID, Status}
 		when Status /= <<"on-sender-server">> ->
 		JIDTo =
-		    ejabberd_odbc:escape(jid:to_string(jid:remove_resource(To))),
+		    ejabberd_sql:escape(jid:to_string(jid:remove_resource(To))),
 		Timestamp =
-		    ejabberd_odbc:escape(get_datetime_string_for_db(p1_time_compat:timestamp())),
+		    ejabberd_sql:escape(get_datetime_string_for_db(p1_time_compat:timestamp())),
 		Query = [<<"CALL ">>,
 			 set_deliver_status(To#jid.lserver), <<"('">>, JIDTo,
-			 <<"','">>, ejabberd_odbc:escape(MsgID), <<"','">>,
-			 ejabberd_odbc:escape(Status), <<"','">>, Timestamp,
+			 <<"','">>, ejabberd_sql:escape(MsgID), <<"','">>,
+			 ejabberd_sql:escape(Status), <<"','">>, Timestamp,
 			 <<"')">>],
-	    case ejabberd_odbc:sql_query(get_pool_name_for(To#jid.server),
+	    case ejabberd_sql:sql_query(get_pool_name_for(To#jid.server),
 					lists:flatten(Query)) of
                 {error, Cause} ->
                     ?ERROR_MSG("Error storing delivery notification for user ~p,  message ~p : ~p", [JIDTo, MsgID, Cause]);
@@ -349,17 +349,17 @@ get_user_history(JID, StartingDate, Index, Max) ->
     Query = [<<"SELECT SQL_CALC_FOUND_ROWS message, "
 	       "at, is_read, deliver_status FROM messages_vie"
 	       "w WHERE jid='">>,
-	     ejabberd_odbc:escape(JIDStr), <<"' AND modified > '">>,
-	     ejabberd_odbc:escape(Date),
+	     ejabberd_sql:escape(JIDStr), <<"' AND modified > '">>,
+	     ejabberd_sql:escape(Date),
 	     <<"' ORDER BY at ASC LIMIT ">>,
 	     iolist_to_binary(integer_to_list(Index)), <<",">>,
 	     iolist_to_binary(integer_to_list(Max))],
     {atomic, {Rows, Count}} =
-	ejabberd_odbc:sql_bloc(get_pool_name_for(JID#jid.server),
+	ejabberd_sql:sql_bloc(get_pool_name_for(JID#jid.server),
 			       fun () ->
 				       {selected, _, Rows} =
-					   ejabberd_odbc:sql_query_t(lists:flatten(Query)),
-                                       {selected, _, [[Count]]} = ejabberd_odbc:sql_query_t([<<"SELECT FOUND_ROWS()">>]),
+					   ejabberd_sql:sql_query_t(lists:flatten(Query)),
+                                       {selected, _, [[Count]]} = ejabberd_sql:sql_query_t([<<"SELECT FOUND_ROWS()">>]),
 				       {Rows, jlib:binary_to_integer(Count)}
 			       end),
     {Rows, Count}.
@@ -369,9 +369,9 @@ remove_conversation(JID, Conversation) ->
 	jid:to_string(jid:remove_resource(JID)),
     Query = [<<"CALL ">>,
 	     remove_conversation_history(JID#jid.lserver), <<"('">>,
-	     ejabberd_odbc:escape(JIDStr), <<"','">>,
-	     ejabberd_odbc:escape(Conversation), <<"')">>],
-    case ejabberd_odbc:sql_query(get_pool_name_for(JID#jid.server),
+	     ejabberd_sql:escape(JIDStr), <<"','">>,
+	     ejabberd_sql:escape(Conversation), <<"')">>],
+    case ejabberd_sql:sql_query(get_pool_name_for(JID#jid.server),
 				 lists:flatten(Query))
 	of
       {error, Cause} ->
@@ -388,7 +388,7 @@ remove_all_history(JID) ->
     Query = [<<"CALL ">>,
 	     remove_user_history(JID#jid.lserver), <<"('">>, JIDStr,
 	     <<"')">>],
-    case ejabberd_odbc:sql_query(get_pool_name_for(JID#jid.server),
+    case ejabberd_sql:sql_query(get_pool_name_for(JID#jid.server),
 				 lists:flatten(Query))
 	of
       {error, Cause} ->
@@ -432,8 +432,8 @@ remove_user_history(Host) ->
     gen_mod:get_module_opt(Host, ?MODULE, proc_remove_user_history, fun(X) -> X end,
         ?PROC_REMOVE_USER_HISTORY).
 
-%ejabberd_odbc:sql_query(Host, "CALL log_msg(JID, Sender, Collection, ID, Packet, Date, false)");
-%ejabberd_odbc:sql_query(Host, "CALL set_read(JID, ID)");
+%ejabberd_sql:sql_query(Host, "CALL log_msg(JID, Sender, Collection, ID, Packet, Date, false)");
+%ejabberd_sql:sql_query(Host, "CALL set_read(JID, ID)");
 
 %"SELECT * from message_view where user=user and at >= date offset = ? limit = ?"
 

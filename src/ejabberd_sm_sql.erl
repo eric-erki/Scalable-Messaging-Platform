@@ -32,11 +32,11 @@
 %%%===================================================================
 -spec init() -> ok | {error, any()}.
 init() ->
-    Node = ejabberd_odbc:escape(jlib:atom_to_binary(node())),
+    Node = ejabberd_sql:escape(jlib:atom_to_binary(node())),
     ?INFO_MSG("Cleaning SQL SM table...", []),
     lists:foldl(
       fun(Host, ok) ->
-	      case ejabberd_odbc:sql_query(
+	      case ejabberd_sql:sql_query(
 		     Host, [<<"delete from sm where node='">>, Node, <<"'">>]) of
 		  {updated, _} ->
 		      ok;
@@ -50,14 +50,14 @@ init() ->
 
 set_session(#session{sid = {Now, Pid}, usr = {U, LServer, R},
 		     priority = Priority, info = Info}) ->
-    Username = ejabberd_odbc:escape(U),
-    Resource = ejabberd_odbc:escape(R),
-    InfoS = ejabberd_odbc:encode_term(Info),
+    Username = ejabberd_sql:escape(U),
+    Resource = ejabberd_sql:escape(R),
+    InfoS = ejabberd_sql:encode_term(Info),
     PrioS = enc_priority(Priority),
     TS = now_to_timestamp(Now),
     PidS = list_to_binary(erlang:pid_to_list(Pid)),
-    Node = ejabberd_odbc:escape(jlib:atom_to_binary(node(Pid))),
-    case odbc_queries:update(
+    Node = ejabberd_sql:escape(jlib:atom_to_binary(node(Pid))),
+    case sql_queries:update(
 	   LServer,
 	   <<"sm">>,
 	   [<<"usec">>, <<"pid">>, <<"node">>, <<"username">>,
@@ -71,9 +71,9 @@ set_session(#session{sid = {Now, Pid}, usr = {U, LServer, R},
     end.
 
 delete_session({LUser, LServer, LResource}) ->
-    Username = ejabberd_odbc:escape(LUser),
-    Resource = ejabberd_odbc:escape(LResource),
-    ejabberd_odbc:sql_query(
+    Username = ejabberd_sql:escape(LUser),
+    Resource = ejabberd_sql:escape(LResource),
+    ejabberd_sql:sql_query(
       LServer, [<<"delete from sm where username='">>,
                 Username, <<"' and resource='">>, Resource, <<"'">>]),
     ok.
@@ -85,7 +85,7 @@ get_sessions() ->
       end, ejabberd_sm:get_vh_by_backend(?MODULE)).
 
 get_sessions(LServer) ->
-    case ejabberd_odbc:sql_query(
+    case ejabberd_sql:sql_query(
 	   LServer, [<<"select usec, pid, username, ">>,
 		     <<"resource, priority, info from sm">>]) of
 	{selected, _, Rows} ->
@@ -96,8 +96,8 @@ get_sessions(LServer) ->
     end.
 
 get_sessions(LUser, LServer) ->
-    Username = ejabberd_odbc:escape(LUser),
-    case ejabberd_odbc:sql_query(
+    Username = ejabberd_sql:escape(LUser),
+    case ejabberd_sql:sql_query(
 	   LServer, [<<"select usec, pid, username, ">>,
 		     <<"resource, priority, info from sm where ">>,
 		     <<"username='">>, Username, <<"'">>]) of
@@ -109,9 +109,9 @@ get_sessions(LUser, LServer) ->
     end.
 
 get_session(LUser, LServer, LResource) ->
-    Username = ejabberd_odbc:escape(LUser),
-    Resource = ejabberd_odbc:escape(LResource),
-    case ejabberd_odbc:sql_query(
+    Username = ejabberd_sql:escape(LUser),
+    Resource = ejabberd_sql:escape(LResource),
+    case ejabberd_sql:sql_query(
 	   LServer, [<<"select usec, pid, username, ">>,
 		     <<"resource, priority, info from sm where ">>,
 		     <<"username='">>, Username, <<"' and resource='">>,
@@ -126,10 +126,10 @@ get_session(LUser, LServer, LResource) ->
     end.
 
 get_node_sessions(Node) ->
-    SNode = ejabberd_odbc:escape(jlib:atom_to_binary(Node)),
+    SNode = ejabberd_sql:escape(jlib:atom_to_binary(Node)),
     lists:flatmap(
       fun(Host) ->
-              case ejabberd_odbc:sql_query(
+              case ejabberd_sql:sql_query(
                      Host, [<<"select usec, pid, username, ">>,
                             <<"resource, priority, info from sm ">>,
                             <<"where node='">>, SNode, <<"'">>]) of
@@ -142,17 +142,17 @@ get_node_sessions(Node) ->
       end, ejabberd_sm:get_vh_by_backend(?MODULE)).
 
 delete_node(Node) ->
-    SNode = ejabberd_odbc:escape(jlib:atom_to_binary(Node)),
+    SNode = ejabberd_sql:escape(jlib:atom_to_binary(Node)),
     lists:foreach(
       fun(Host) ->
-	      ejabberd_odbc:sql_query(
+	      ejabberd_sql:sql_query(
                 Host, [<<"delete from sm where node='">>, SNode, <<"'">>])
       end, ejabberd_sm:get_vh_by_backend(?MODULE)).
 
 get_sessions_number() ->
     lists:foldl(
       fun(Host, Acc) ->
-              case ejabberd_odbc:sql_query(
+              case ejabberd_sql:sql_query(
                      Host, [<<"select count(*) from sm">>]) of
                   {selected, _, [[Count]]} ->
                       jlib:binary_to_integer(Count);
@@ -193,7 +193,7 @@ row_to_session(LServer, [USec, PidS, User, Resource, PrioS, InfoS]) ->
     Now = timestamp_to_now(USec),
     Pid = erlang:list_to_pid(binary_to_list(PidS)),
     Priority = dec_priority(PrioS),
-    Info = ejabberd_odbc:decode_term(InfoS),
+    Info = ejabberd_sql:decode_term(InfoS),
     #session{sid = {Now, Pid}, us = {User, LServer},
 	     usr = {User, LServer, Resource},
 	     priority = Priority,

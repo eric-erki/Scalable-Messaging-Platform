@@ -929,8 +929,8 @@ load_history(_Host, _Room, false, Queue) -> Queue;
 load_history(Host, Room, true, Queue) ->
     ?INFO_MSG("Loading history for room ~s on host ~s",
 	      [Room, Host]),
-    case odbc_queries:load_roomhistory(Host,
-				       ejabberd_odbc:escape(Room))
+    case sql_queries:load_roomhistory(Host,
+				       ejabberd_sql:escape(Room))
 	of
       {selected,
        [<<"nick">>, <<"packet">>, <<"have_subject">>,
@@ -958,16 +958,16 @@ persist_support_history(#state{room = Room,
 	      [Room, Server]),
     Queries = lists:map(fun ({FromNick, Packet, HaveSubject,
 			      Timestamp, Size}) ->
-				odbc_queries:add_roomhistory_sql(ejabberd_odbc:escape(Room),
-								 ejabberd_odbc:escape(FromNick),
-								 ejabberd_odbc:escape(fxml:element_to_binary(Packet)),
+				sql_queries:add_roomhistory_sql(ejabberd_sql:escape(Room),
+								 ejabberd_sql:escape(FromNick),
+								 ejabberd_sql:escape(fxml:element_to_binary(Packet)),
 								 iolist_to_binary(atom_to_list(HaveSubject)),
 								 iolist_to_binary(integer_to_list(calendar:datetime_to_gregorian_seconds(Timestamp))),
 								 iolist_to_binary(integer_to_list(Size)))
 			end,
 			lqueue_to_list(Q)),
-    odbc_queries:clear_and_add_roomhistory(Server,
-					   ejabberd_odbc:escape(Room), Queries),
+    sql_queries:clear_and_add_roomhistory(Server,
+					   ejabberd_sql:escape(Room), Queries),
     {ok, {persisted, length(Queries)}};
 %% en mod_support, cuando se levantan los support persistentes, si se crea, y el flag persist_history esta en true,
 %% se levantan los mensajes persistentes tb.

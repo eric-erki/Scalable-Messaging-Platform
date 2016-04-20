@@ -136,7 +136,7 @@ set_local_badge(JID, DeviceID, Count) ->
             set_local_badge_mnesia(JID, DeviceID, Count);
 	p1db ->
 	    set_local_badge_p1db(JID, DeviceID, Count);
-        odbc ->
+        sql ->
             set_local_badge_sql(JID, DeviceID, Count)
     end.
 
@@ -170,9 +170,9 @@ set_local_badge_p1db(JID, DeviceID, Count) ->
     end.
 
 set_local_badge_sql(#jid{luser =LUser, lserver=LServer}, DeviceID, Count) ->
-    Username = ejabberd_odbc:escape(LUser),
-    SDeviceID = ejabberd_odbc:escape(DeviceID),
-    case ejabberd_odbc:sql_query(LServer,
+    Username = ejabberd_sql:escape(LUser),
+    SDeviceID = ejabberd_sql:escape(DeviceID),
+    case ejabberd_sql:sql_query(LServer,
       [<<"UPDATE gcm_cache SET local_badge =">>, integer_to_list(Count), <<" WHERE"
         " username='">>, Username, <<"' and ">>, <<"device_id='">>, SDeviceID, <<"';">>]) of
         {updated, 1} ->
@@ -430,7 +430,7 @@ lookup_cache(JID) ->
             lookup_cache_mnesia(JID);
 	p1db ->
 	    lookup_cache_p1db(JID);
-        odbc ->
+        sql ->
             lookup_cache_sql(JID)
     end.
 
@@ -456,7 +456,7 @@ lookup_cache_p1db(JID) ->
 
 lookup_cache_sql(JID) ->
     #jid{luser = LUser, lserver = LServer} = JID,
-    Username = ejabberd_odbc:escape(LUser),
+    Username = ejabberd_sql:escape(LUser),
     do_lookup_cache_sql(
       LServer,
       [<<"select device_id, app_id, send_body, send_from, local_badge from gcm_cache "
@@ -468,7 +468,7 @@ lookup_cache(JID, DeviceID) ->
             lookup_cache_mnesia(JID, DeviceID);
 	p1db ->
 	    lookup_cache_p1db(JID, DeviceID);
-        odbc ->
+        sql ->
             lookup_cache_sql(JID, DeviceID)
     end.
 
@@ -490,8 +490,8 @@ lookup_cache_p1db(JID, DeviceID) ->
 
 lookup_cache_sql(JID, DeviceID) ->
     #jid{luser = LUser, lserver = LServer} = JID,
-    Username = ejabberd_odbc:escape(LUser),
-    SDeviceID = ejabberd_odbc:escape(DeviceID),
+    Username = ejabberd_sql:escape(LUser),
+    SDeviceID = ejabberd_sql:escape(DeviceID),
     do_lookup_cache_sql(
       LServer,
       [<<"select device_id, app_id, send_body, send_from, local_badge from gcm_cache "
@@ -516,7 +516,7 @@ format_options(DeviceID, Options) ->
     {DeviceID, AppID, SendBody, SendFrom, LocalBadge}.
 
 do_lookup_cache_sql(LServer, Query) ->
-    case ejabberd_odbc:sql_query(LServer, Query) of
+    case ejabberd_sql:sql_query(LServer, Query) of
         {selected, [<<"device_id">>, <<"app_id">>, <<"send_body">>, <<"send_from">>, <<"local_badge">>],
          EntryList} ->
             lists:map(
@@ -551,7 +551,7 @@ do_lookup_cache_sql(LServer, Query) ->
 
 store_cache(JID, DeviceID, AppID, SendBody, SendFrom, TimeStamp) ->
     case gen_mod:db_type(JID#jid.lserver, ?MODULE) of
-        odbc ->
+        sql ->
 	    store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom);
 	DBType ->
 	    Options = [{appid, AppID},
@@ -633,9 +633,9 @@ store_cache_p1db(JID, DeviceID, Options) ->
 
 store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom) ->
     #jid{luser = LUser, lserver = LServer} = JID,
-    Username = ejabberd_odbc:escape(LUser),
-    SDeviceID = ejabberd_odbc:escape(DeviceID),
-    SAppID = ejabberd_odbc:escape(AppID),
+    Username = ejabberd_sql:escape(LUser),
+    SDeviceID = ejabberd_sql:escape(DeviceID),
+    SAppID = ejabberd_sql:escape(AppID),
     SSendBody =
         case SendBody of
             all -> <<"A">>;
@@ -652,7 +652,7 @@ store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom) ->
         end,
     F = fun() ->
                 %% We must keep the previous local_badge if it exists.
-                case ejabberd_odbc:sql_query_t(
+                case ejabberd_sql:sql_query_t(
                   [<<"select app_id, send_body, send_from from gcm_cache "
                     "where username='">>, Username, <<"' and ">>,
                    <<"device_id='">>, SDeviceID, <<"';">>]) of
@@ -661,21 +661,21 @@ store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom) ->
                             ok;
                         {selected, _Fields, [[_AppId, _SSendBody, _SSendFrom]]} ->
                             %% Something changed,  use the new values (but keep the previous local_badge)
-                            ejabberd_odbc:sql_query_t(
+                            ejabberd_sql:sql_query_t(
                               [<<"UPDATE gcm_cache SET app_id ='">>, SAppID, <<"', send_body='">>,
                                 SSendBody, <<"', send_from='">>, SSendFrom, <<"' WHERE"
                                 " username='">>, Username, <<"' and ">>, <<"device_id='">>, SDeviceID, <<"';">>]);
 
                         {selected, _Fields, []} ->
                             %% No previous entry, add the new one
-                            ejabberd_odbc:sql_query_t(
+                            ejabberd_sql:sql_query_t(
                               [<<"insert into gcm_cache(username, device_id, app_id, "
                                 "                            send_body, send_from) "
                                 "values ('">>, Username, <<"', '">>, SDeviceID, <<"', '">>,
                                SAppID, <<"', '">>, SSendBody, <<"', '">>, SSendFrom, <<"');">>])
                 end
         end,
-        {atomic, _} = odbc_queries:sql_transaction(LServer, F).
+        {atomic, _} = sql_queries:sql_transaction(LServer, F).
 
 update_cache(JID, OldDeviceID, NewDeviceID) ->
     case lookup_cache(JID, OldDeviceID) of
@@ -692,7 +692,7 @@ delete_cache(JID, DeviceID) ->
             delete_cache_mnesia(JID, DeviceID);
 	p1db ->
 	    delete_cache_p1db(JID, DeviceID);
-        odbc ->
+        sql ->
             delete_cache_sql(JID, DeviceID)
     end.
 
@@ -708,9 +708,9 @@ delete_cache_p1db(JID, DeviceID) ->
 
 delete_cache_sql(JID, DeviceID) ->
     #jid{luser = LUser, lserver = LServer} = JID,
-    Username = ejabberd_odbc:escape(LUser),
-    SDeviceID = ejabberd_odbc:escape(DeviceID),
-    ejabberd_odbc:sql_query(
+    Username = ejabberd_sql:escape(LUser),
+    SDeviceID = ejabberd_sql:escape(DeviceID),
+    ejabberd_sql:sql_query(
       LServer,
       [<<"delete from gcm_cache "
         "where username='">>, Username, <<"' and ">>,
@@ -722,7 +722,7 @@ delete_cache(JID) ->
             delete_cache_mnesia(JID);
 	p1db ->
 	    delete_cache_p1db(JID);
-        odbc ->
+        sql ->
             delete_cache_sql(JID)
     end.
 
@@ -746,8 +746,8 @@ delete_cache_p1db(JID) ->
 
 delete_cache_sql(JID) ->
     #jid{luser = LUser, lserver = LServer} = JID,
-    Username = ejabberd_odbc:escape(LUser),
-    ejabberd_odbc:sql_query(
+    Username = ejabberd_sql:escape(LUser),
+    ejabberd_sql:sql_query(
       LServer,
       [<<"delete from gcm_cache "
         "where username='">>, Username, <<"';">>]).
@@ -841,12 +841,12 @@ export(_Server) ->
                                  device_id = DeviceID,
                                  options = Options})
 	 when LServer == Host ->
-	      Username = ejabberd_odbc:escape(LUser),
-              SDeviceID = ejabberd_odbc:escape(DeviceID),
+	      Username = ejabberd_sql:escape(LUser),
+              SDeviceID = ejabberd_sql:escape(DeviceID),
               AppID = proplists:get_value(appid, Options, "gcm.localhost"),
               SendBody = proplists:get_value(send_body, Options, none),
               SendFrom = proplists:get_value(send_from, Options, true),
-              SAppID = ejabberd_odbc:escape(AppID),
+              SAppID = ejabberd_sql:escape(AppID),
               SSendBody =
                   case SendBody of
                       all -> "A";
@@ -917,7 +917,7 @@ transform_module_options(Opts) ->
       fun({backend, sql}) ->
               ?WARNING_MSG("Option 'backend' is obsoleted, "
                            "use 'db_type' instead", []),
-              {db_type, odbc};
+              {db_type, sql};
          ({backend, mnesia}) ->
               ?WARNING_MSG("Option 'backend' is obsoleted, "
                            "use 'db_type' instead", []),

@@ -158,11 +158,11 @@ build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom,
 build_and_customize_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields, Module) ->
     LServer = JID#jid.lserver,
     case gen_mod:db_type(LServer, Module) of
-        odbc ->
-            LUser = ejabberd_odbc:escape(JID#jid.luser),
+        sql ->
+            LUser = ejabberd_sql:escape(JID#jid.luser),
             SJID = jid:remove_resource(jid:tolower(jid:from_string(Sender))),
-            LSender = ejabberd_odbc:escape(jid:to_string(SJID)),
-            case ejabberd_odbc:sql_query(LServer,
+            LSender = ejabberd_sql:escape(jid:to_string(SJID)),
+            case ejabberd_sql:sql_query(LServer,
                                          [<<"SELECT mute, sound FROM push_customizations WHERE username = '">>, LUser,
                                           <<"' AND match_jid = '">>, LSender, <<"';">>]) of
                 {selected, _, [[1, _]]} ->

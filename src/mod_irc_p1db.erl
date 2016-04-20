@@ -57,7 +57,7 @@ set_data(LServer, Host, From, Data) ->
 
 import(_LServer, <<"irc_custom">>, [SJID, IRCHost, SData, _TimeStamp]) ->
     #jid{luser = U, lserver = S} = jid:from_string(SJID),
-    Data = ejabberd_odbc:decode_term(SData),
+    Data = ejabberd_sql:decode_term(SData),
     USHKey = ush2key(U, S, IRCHost),
     p1db:async_insert(irc_custom, USHKey, term_to_binary(Data)).
 

@@ -377,7 +377,7 @@ delete_old_messages(TypeBin, Days) when TypeBin == <<"chat">>;
 		lists:map(
 		  fun(Host) ->
 			  case gen_mod:db_type(Host, ?MODULE) of
-			      odbc -> {odbc, Host};
+			      sql -> {sql, Host};
 			      sharding -> {sharding, Host};
 			      Other -> {Other, global}
 			  end

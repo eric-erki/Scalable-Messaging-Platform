@@ -44,7 +44,7 @@ set_data(_LServer, Host, From, Data) ->
 
 import(_LServer, <<"irc_custom">>, [SJID, IRCHost, SData, _TimeStamp]) ->
     #jid{luser = U, lserver = S} = jid:from_string(SJID),
-    Data = ejabberd_odbc:decode_term(SData),
+    Data = ejabberd_sql:decode_term(SData),
     mnesia:dirty_write(
       #irc_custom{us_host = {{U, S}, IRCHost},
                   data = Data}).

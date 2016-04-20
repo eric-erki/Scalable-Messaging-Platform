@@ -35,7 +35,7 @@
 % Commands API
 -export([
 	 % Adminsys
-	 compile/1, get_cookie/0, remove_node/1, export2odbc/2,
+	 compile/1, get_cookie/0, remove_node/1, export2sql/2,
 	 restart_module/2,
 
 	 % Sessions
@@ -158,10 +158,10 @@ get_commands_spec() ->
 			result = {res, rescode},
 			result_example = ok,
 			result_desc = "Status code: 0 on success, 1 otherwise"},
-     #ejabberd_commands{name = export2odbc, tags = [mnesia],
+     #ejabberd_commands{name = export2sql, tags = [mnesia],
 			%% Copied to ejabberd 2.1.x after 11
 			desc = "Export Mnesia tables to files in directory",
-			module = ?MODULE, function = export2odbc,
+			module = ?MODULE, function = export2sql,
 			args = [{host, string}, {path, string}],
 			result = {res, rescode}},
     #ejabberd_commands{name = restart_module,
@@ -812,7 +812,7 @@ remove_node(Node) ->
     mnesia:del_table_copy(schema, list_to_atom(Node)),
     ok.
 
-export2odbc(Host, Directory) ->
+export2sql(Host, Directory) ->
     Tables = [
 	      {export_last, last},
 	      {export_offline, offline},
@@ -824,7 +824,7 @@ export2odbc(Host, Directory) ->
     Export = fun({TableFun, Table}) ->
 		     Filename = filename:join([Directory, atom_to_list(Table)++".txt"]),
 		     io:format("Trying to export Mnesia table '~p' on Host '~s' to file '~s'~n", [Table, Host, Filename]),
-		     Res = (catch ejd2odbc:TableFun(Host, Filename)),
+		     Res = (catch ejd2sql:TableFun(Host, Filename)),
 		     io:format("  Result: ~p~n", [Res])
 	     end,
     lists:foreach(Export, Tables),

@@ -604,7 +604,7 @@ import_start(LServer, DBType) ->
     Mod:init(LServer, []),
     ok.
 
-import(_LServer, {odbc, _}, _DBType, <<"caps_features">>,
+import(_LServer, {sql, _}, _DBType, <<"caps_features">>,
        [Node, SubNode, Feature, _TimeStamp]) ->
     Feature1 = case catch jlib:binary_to_integer(Feature) of
                    I when is_integer(I), I>0 -> I;

@@ -204,7 +204,7 @@ remove_user_from_group(Host, US, Group) ->
 
 import(LServer, <<"sr_group">>,
        [Group, SOpts, _TimeStamp]) ->
-    Opts = ejabberd_odbc:decode_term(SOpts),
+    Opts = ejabberd_sql:decode_term(SOpts),
     GHKey = gh2key(Group, LServer),
     Val = term_to_binary(Opts),
     p1db:async_insert(sr_opts, GHKey, Val);

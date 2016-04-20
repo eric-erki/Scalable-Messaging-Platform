@@ -134,7 +134,7 @@ search_affiliation(_ServerHost, _Room, _Host, _Affiliation) ->
 
 import(_LServer, <<"muc_room">>,
        [Name, RoomHost, SOpts, _TimeStamp]) ->
-    Opts = mod_muc:opts_to_binary(ejabberd_odbc:decode_term(SOpts)),
+    Opts = mod_muc:opts_to_binary(ejabberd_sql:decode_term(SOpts)),
     mnesia:dirty_write(
       #muc_room{name_host = {Name, RoomHost},
                 opts = Opts});

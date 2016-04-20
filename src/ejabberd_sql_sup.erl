@@ -23,7 +23,7 @@
 %%%
 %%%----------------------------------------------------------------------
 
--module(ejabberd_odbc_sup).
+-module(ejabberd_sql_sup).
 
 -behaviour(ejabberd_config).
 
@@ -43,7 +43,7 @@
 
 -define(DEFAULT_POOL_SIZE, 10).
 
--define(DEFAULT_ODBC_START_INTERVAL, 30).
+-define(DEFAULT_SQL_START_INTERVAL, 30).
 
 -define(CONNECT_TIMEOUT, 500).
 
@@ -55,7 +55,7 @@ start_link(Host) ->
 init([Host]) ->
     PoolSize = get_pool_size(Host),
     StartInterval = get_start_interval(Host),
-    Type = ejabberd_config:get_option({odbc_type, Host},
+    Type = ejabberd_config:get_option({sql_type, Host},
                                       fun(mysql) -> mysql;
                                          (pgsql) -> pgsql;
                                          (sqlite) -> sqlite;
@@ -66,7 +66,7 @@ init([Host]) ->
         sqlite ->
             check_sqlite_db(Host);
 	mssql ->
-	    ejabberd_odbc:init_mssql(Host);
+	    ejabberd_sql:init_mssql(Host);
         _ ->
             ok
     end,
@@ -78,8 +78,8 @@ init([Host]) ->
 
     Pool =
 	lists:map(fun (I) ->
-			  {ejabberd_odbc:get_proc(Host, I),
-			   {ejabberd_odbc, start_link,
+			  {ejabberd_sql:get_proc(Host, I),
+			   {ejabberd_sql, start_link,
 			    [Host, I, StartInterval * 1000]},
 			   transient, 2000, worker, [?MODULE]}
 		  end,
@@ -90,8 +90,8 @@ init([Host]) ->
 	  fun(S) ->
 		  lists:map(
 		    fun (I) ->
-			    {ejabberd_odbc:get_proc(Host, S, I),
-			     {ejabberd_odbc, start_link,
+			    {ejabberd_sql:get_proc(Host, S, I),
+			     {ejabberd_sql, start_link,
 			      [Host, S, I, StartInterval * 1000]},
 			     transient, 2000, worker, [?MODULE]}
 		    end,
@@ -105,13 +105,13 @@ init([Host]) ->
 
 get_start_interval(Host) ->
     ejabberd_config:get_option(
-      {odbc_start_interval, Host},
+      {sql_start_interval, Host},
       fun(I) when is_integer(I), I>0 -> I end,
-      ?DEFAULT_ODBC_START_INTERVAL).
+      ?DEFAULT_SQL_START_INTERVAL).
 
 get_pool_size(Host) ->
     ejabberd_config:get_option(
-      {odbc_pool_size, Host},
+      {sql_pool_size, Host},
       fun(I) when is_integer(I), I>0 -> I end,
       ?DEFAULT_POOL_SIZE).
 
@@ -122,11 +122,11 @@ get_shard_size(Host) ->
       undefined).
 
 get_pids(Host) ->
-    [ejabberd_odbc:get_proc(Host, I) ||
+    [ejabberd_sql:get_proc(Host, I) ||
 	I <- lists:seq(1, get_pool_size(Host))].
 
 get_pids_shard(Host, Key) ->
-    [ejabberd_odbc:get_proc(Host, get_shard(Host, Key), I) ||
+    [ejabberd_sql:get_proc(Host, get_shard(Host, Key), I) ||
 	I <- lists:seq(1, get_pool_size(Host))].
 
 get_shard(Host, Key) ->
@@ -137,7 +137,7 @@ get_random_pid(Host) ->
 
 get_random_pid(Host, Term) ->
     I = erlang:phash2(Term, get_pool_size(Host)) + 1,
-    ejabberd_odbc:get_proc(Host, I).
+    ejabberd_sql:get_proc(Host, I).
 
 get_random_pid_shard(Host, Key) ->
     get_random_pid_shard(Host, Key, p1_time_compat:timestamp()).
@@ -145,19 +145,19 @@ get_random_pid_shard(Host, Key) ->
 get_random_pid_shard(Host, Key, Term) ->
     I = erlang:phash2(Term, get_pool_size(Host)) + 1,
     S = get_shard(Host, Key),
-    ejabberd_odbc:get_proc(Host, S, I).
+    ejabberd_sql:get_proc(Host, S, I).
 
 
 transform_options(Opts) ->
     lists:foldl(fun transform_options/2, [], Opts).
 
 transform_options({odbc_server, {Type, Server, Port, DB, User, Pass}}, Opts) ->
-    [{odbc_type, Type},
-     {odbc_server, Server},
-     {odbc_port, Port},
-     {odbc_database, DB},
-     {odbc_username, User},
-     {odbc_password, Pass}|Opts];
+    [{sql_type, Type},
+     {sql_server, Server},
+     {sql_port, Port},
+     {sql_database, DB},
+     {sql_username, User},
+     {sql_password, Pass}|Opts];
 transform_options({odbc_server, {mysql, Server, DB, User, Pass}}, Opts) ->
     transform_options({odbc_server, {mysql, Server, ?MYSQL_PORT, DB, User, Pass}}, Opts);
 transform_options({odbc_server, {pgsql, Server, DB, User, Pass}}, Opts) ->
@@ -168,8 +168,8 @@ transform_options(Opt, Opts) ->
     [Opt|Opts].
 
 check_sqlite_db(Host) ->
-    DB = ejabberd_odbc:sqlite_db(Host),
-    File = ejabberd_odbc:sqlite_file(Host),
+    DB = ejabberd_sql:sqlite_db(Host),
+    File = ejabberd_sql:sqlite_file(Host),
     Ret = case filelib:ensure_dir(File) of
 	      ok ->
 		  case sqlite3:open(DB, [{file, File}]) of
@@ -242,11 +242,11 @@ read_lines(Fd, File, Acc) ->
             []
     end.
 
-opt_type(odbc_pool_size) ->
+opt_type(sql_pool_size) ->
     fun (I) when is_integer(I), I > 0 -> I end;
-opt_type(odbc_start_interval) ->
+opt_type(sql_start_interval) ->
     fun (I) when is_integer(I), I > 0 -> I end;
-opt_type(odbc_type) ->
+opt_type(sql_type) ->
     fun (mysql) -> mysql;
 	(pgsql) -> pgsql;
 	(sqlite) -> sqlite;
@@ -257,5 +257,5 @@ opt_type(shard_size) ->
     fun (I) when is_integer(I), I > 0 -> I end;
 opt_type(shards) -> fun (S) when is_list(S) -> S end;
 opt_type(_) ->
-    [odbc_pool_size, odbc_start_interval, odbc_type,
+    [sql_pool_size, sql_start_interval, sql_type,
      shard_size, shards].

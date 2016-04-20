@@ -230,7 +230,7 @@ import_start(LServer, DBType) ->
     Mod = gen_mod:db_mod(DBType, ?MODULE),
     Mod:init(LServer, []).
 
-import(LServer, {odbc, _}, DBType, <<"last">>, [LUser, TimeStamp, State]) ->
+import(LServer, {sql, _}, DBType, <<"last">>, [LUser, TimeStamp, State]) ->
     TS = case TimeStamp of
              <<"">> -> 0;
              _ -> jlib:binary_to_integer(TimeStamp)

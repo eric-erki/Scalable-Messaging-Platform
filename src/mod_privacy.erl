@@ -626,11 +626,11 @@ import_start(LServer, DBType) ->
     Mod = gen_mod:db_mod(DBType, ?MODULE),
     Mod:init(LServer, []).
 
-import(LServer, {odbc, _}, _DBType, <<"privacy_default_list">>, [LUser, Name]) ->
+import(LServer, {sql, _}, _DBType, <<"privacy_default_list">>, [LUser, Name]) ->
     US = {LUser, LServer},
     ets:insert(privacy_default_list_tmp, {US, Name}),
     ok;
-import(LServer, {odbc, SQLType}, _DBType, <<"privacy_list_data">>, Row1) ->
+import(LServer, {sql, SQLType}, _DBType, <<"privacy_list_data">>, Row1) ->
     [ID|Row] = prepare_list_data(SQLType, Row1),
     case mod_privacy_sql:raw_to_item(Row) of
         [Item] ->
@@ -640,7 +640,7 @@ import(LServer, {odbc, SQLType}, _DBType, <<"privacy_list_data">>, Row1) ->
         [] ->
             ok
     end;
-import(LServer, {odbc, SQLType}, _DBType, <<"privacy_list">>,
+import(LServer, {sql, SQLType}, _DBType, <<"privacy_list">>,
        [LUser, Name, ID, _TimeStamp]) ->
     US = {LUser, LServer},
     IS = {prepare_id(SQLType, ID), LServer},

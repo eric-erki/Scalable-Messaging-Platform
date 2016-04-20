@@ -31,11 +31,11 @@ need_cache(_Host) ->
 
 remove_user(LUser, LServer) ->
     Key = LUser,
-    SUser = ejabberd_odbc:escape(LUser),
-    ejabberd_odbc:sql_query(
+    SUser = ejabberd_sql:escape(LUser),
+    ejabberd_sql:sql_query(
       LServer, Key,
       [<<"delete from archive where username='">>, SUser, <<"';">>]),
-    ejabberd_odbc:sql_query(
+    ejabberd_sql:sql_query(
       LServer, Key,
       [<<"delete from archive_prefs where username='">>, SUser, <<"';">>]).
 
@@ -49,7 +49,7 @@ delete_old_messages(ServerHost, TimeStamp, Type) ->
 		 end,
     TS = integer_to_binary(now_to_usec(TimeStamp)),
     %% TODO: should traverse all shards
-    ejabberd_odbc:sql_query(
+    ejabberd_sql:sql_query(
       ServerHost, [<<"delete from archive where timestamp<">>,
 		   TS, TypeClause, <<";">>]),
     ok.
@@ -74,18 +74,18 @@ store(Pkt, LServer, {LUser, LHost}, Type, Peer, Nick, _Dir) ->
     XML = fxml:element_to_binary(Pkt),
     Body = fxml:get_subtag_cdata(Pkt, <<"body">>),
     Key = LUser,
-    case ejabberd_odbc:sql_query(
+    case ejabberd_sql:sql_query(
 	    LServer, Key,
 	    [<<"insert into archive (username, timestamp, "
 		    "peer, bare_peer, xml, txt, kind, nick) values (">>,
-		<<"'">>, ejabberd_odbc:escape(SUser), <<"', ">>,
+		<<"'">>, ejabberd_sql:escape(SUser), <<"', ">>,
 		<<"'">>, TS, <<"', ">>,
-		<<"'">>, ejabberd_odbc:escape(LPeer), <<"', ">>,
-		<<"'">>, ejabberd_odbc:escape(BarePeer), <<"', ">>,
-		<<"'">>, ejabberd_odbc:escape(XML), <<"', ">>,
-		<<"'">>, ejabberd_odbc:escape(Body), <<"', ">>,
+		<<"'">>, ejabberd_sql:escape(LPeer), <<"', ">>,
+		<<"'">>, ejabberd_sql:escape(BarePeer), <<"', ">>,
+		<<"'">>, ejabberd_sql:escape(XML), <<"', ">>,
+		<<"'">>, ejabberd_sql:escape(Body), <<"', ">>,
 		<<"'">>, jlib:atom_to_binary(Type), <<"', ">>,
-		<<"'">>, ejabberd_odbc:escape(Nick), <<"');">>]) of
+		<<"'">>, ejabberd_sql:escape(Nick), <<"');">>]) of
 	{updated, _} ->
 	    {ok, ID};
 	Err ->
@@ -96,10 +96,10 @@ write_prefs(LUser, _LServer, #archive_prefs{default = Default,
 					   never = Never,
 					   always = Always},
 	    ServerHost) ->
-    SUser = ejabberd_odbc:escape(LUser),
+    SUser = ejabberd_sql:escape(LUser),
     SDefault = erlang:atom_to_binary(Default, utf8),
-    SAlways = ejabberd_odbc:encode_term(Always),
-    SNever = ejabberd_odbc:encode_term(Never),
+    SAlways = ejabberd_sql:encode_term(Always),
+    SNever = ejabberd_sql:encode_term(Never),
     Key = LUser,
     case update(ServerHost, Key, <<"archive_prefs">>,
 		[<<"username">>, <<"def">>, <<"always">>, <<"never">>],
@@ -113,15 +113,15 @@ write_prefs(LUser, _LServer, #archive_prefs{default = Default,
 
 get_prefs(LUser, LServer) ->
     Key = LUser,
-    case ejabberd_odbc:sql_query(
+    case ejabberd_sql:sql_query(
 	   LServer, Key,
 	   [<<"select def, always, never from archive_prefs ">>,
 	    <<"where username='">>,
-	    ejabberd_odbc:escape(LUser), <<"';">>]) of
+	    ejabberd_sql:escape(LUser), <<"';">>]) of
 	{selected, _, [[SDefault, SAlways, SNever]]} ->
 	    Default = erlang:binary_to_existing_atom(SDefault, utf8),
-	    Always = ejabberd_odbc:decode_term(SAlways),
-	    Never = ejabberd_odbc:decode_term(SNever),
+	    Always = ejabberd_sql:decode_term(SAlways),
+	    Never = ejabberd_sql:decode_term(SNever),
 	    {ok, #archive_prefs{us = {LUser, LServer},
 		    default = Default,
 		    always = Always,
@@ -145,8 +145,8 @@ select(LServer, JidRequestor, #jid{luser = LUser} = JidArchive,
     % and the client did not specify a limit using RSM then the server should
     % return a policy-violation error to the client." We currently don't do this
     % for v0.2 requests, but we do limit #rsm_in.max for v0.3 and newer.
-    case {ejabberd_odbc:sql_query(LServer, Key, Query),
-	  ejabberd_odbc:sql_query(LServer, Key, CountQuery)} of
+    case {ejabberd_sql:sql_query(LServer, Key, Query),
+	  ejabberd_sql:sql_query(LServer, Key, CountQuery)} of
 	{{selected, _, Res}, {selected, _, [[Count]]}} ->
 	    {Max, Direction} = case RSM of
 				   #rsm_in{max = M, direction = D} -> {M, D};
@@ -216,8 +216,8 @@ make_sql_query(User, LServer, Start, End, With, RSM) ->
 	    {none, none, <<>>}
     end,
     ODBCType = ejabberd_config:get_option(
-		 {odbc_type, LServer},
-		 ejabberd_odbc:opt_type(odbc_type)),
+		 {sql_type, LServer},
+		 ejabberd_sql:opt_type(sql_type)),
     LimitClause = if is_integer(Max), Max >= 0, ODBCType /= mssql ->
 			  [<<" limit ">>, jlib:integer_to_binary(Max+1)];
 		     true ->
@@ -233,14 +233,14 @@ make_sql_query(User, LServer, Start, End, With, RSM) ->
 			 [];
 		     {text, Txt} ->
 			 [<<" and match (txt) against ('">>,
-			  ejabberd_odbc:escape(Txt), <<"')">>];
+			  ejabberd_sql:escape(Txt), <<"')">>];
 		     {_, _, <<>>} ->
 			 [<<" and bare_peer='">>,
-			  ejabberd_odbc:escape(jid:to_string(With)),
+			  ejabberd_sql:escape(jid:to_string(With)),
 			  <<"'">>];
 		     {_, _, _} ->
 			 [<<" and peer='">>,
-			  ejabberd_odbc:escape(jid:to_string(With)),
+			  ejabberd_sql:escape(jid:to_string(With)),
 			  <<"'">>];
 		     none ->
 			 []
@@ -272,7 +272,7 @@ make_sql_query(User, LServer, Start, End, With, RSM) ->
 		    _ ->
 			[]
 		end,
-    SUser = ejabberd_odbc:escape(User),
+    SUser = ejabberd_sql:escape(User),
 
     Query = [<<"SELECT ">>, TopClause, <<" timestamp, xml, peer, kind, nick"
 	      " FROM archive WHERE username='">>,
@@ -301,14 +301,14 @@ update(LServer, Key, Table, Fields, Vals, Where) ->
 				   <<A/binary, "='", B/binary, "'">>
 			   end,
 			   Fields, Vals),
-    case ejabberd_odbc:sql_query(LServer, Key,
+    case ejabberd_sql:sql_query(LServer, Key,
 				 [<<"update ">>, Table, <<" set ">>,
 				  join(UPairs, <<", ">>), <<" where ">>, Where,
 				  <<";">>])
 	of
 	{updated, 1} -> {updated, 1};
 	_ ->
-	    ejabberd_odbc:sql_query(LServer, Key,
+	    ejabberd_sql:sql_query(LServer, Key,
 				    [<<"insert into ">>, Table, <<"(">>,
 				     join(Fields, <<", ">>), <<") values ('">>,
 				     join(Vals, <<"', '">>), <<"');">>])

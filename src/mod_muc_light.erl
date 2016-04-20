@@ -320,13 +320,13 @@ get_room_state(Room_pid) ->
 %%
 %% muc-purge-archive
 %%
-%% Note: this code assumes odbc storage is used for the archive table.
+%% Note: this code assumes sql storage is used for the archive table.
 muc_purge_archive(RoomHost, Days) ->
     TimestampLimit = get_timestamp_n_days_ago(Days),
     ?INFO_MSG("Messages older than ~p will be removed",
 	[jlib:now_to_utc_string(usec_to_now(TimestampLimit))]),
     TimestampBin = jlib:integer_to_binary(TimestampLimit),
-    ejabberd_odbc:sql_query(RoomHost,
+    ejabberd_sql:sql_query(RoomHost,
                             [<<"delete from archive where timestamp<'">>,
 			     TimestampBin, <<"';">>]),
     {ok, ""}.
