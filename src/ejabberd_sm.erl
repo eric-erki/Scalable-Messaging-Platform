@@ -704,6 +704,7 @@ do_route1(From, To, Packet, Hops) ->
 			<<"chat">> -> route_message(From, To, Packet, chat);
 			<<"normal">> -> route_message(From, To, Packet, normal);
 			<<"">> -> route_message(From, To, Packet, normal);
+			<<"headline">> -> ok;
 			<<"error">> -> ok;
 			_ ->
 			    ErrTxt = <<"Incorrect message type">>,
