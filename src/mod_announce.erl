@@ -927,7 +927,7 @@ export(LServer) ->
 
 mod_opt_type(access) ->
     fun (A) when is_atom(A) -> A end;
-mod_opt_type(db_type) -> fun gen_mod:v_db/1;
+mod_opt_type(db_type) -> fun(T) -> ejabberd_config:v_db(?MODULE, T) end;
 mod_opt_type(p1db_group) ->
     fun (G) when is_atom(G) -> G end;
 mod_opt_type(_) -> [access, db_type, p1db_group].

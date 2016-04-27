@@ -99,7 +99,7 @@ reset(Host) ->
 %%====================================================================
 
 init([Host, Opts]) ->
-    init_db(gen_mod:db_type(Host, Opts), Host),
+    init_db(gen_mod:db_type(Host, Opts, ?MODULE), Host),
     ejabberd_commands:register_commands(commands(Host)),
     Ignore = gen_mod:get_opt(ignore, Opts,
                              fun(L) when is_list(L) -> L end, []),
@@ -371,7 +371,7 @@ dec_val(Key, Bin) ->
      J#jabs.ignore].
 
 
-mod_opt_type(db_type) -> fun gen_mod:v_db/1;
+mod_opt_type(db_type) -> fun(T) -> ejabberd_config:v_db(?MODULE, T) end;
 mod_opt_type(ignore) ->
     fun (L) when is_list(L) -> L end;
 mod_opt_type(p1db_group) ->

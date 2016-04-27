@@ -281,7 +281,7 @@ list(User, Server) ->
     Mod = gen_mod:db_mod(Server, ?MODULE),
     Mod:list(User, Server).
 
-mod_opt_type(db_type) -> fun gen_mod:v_db/1;
+mod_opt_type(db_type) -> fun(T) -> ejabberd_config:v_db(?MODULE, T) end;
 mod_opt_type(iqdisc) -> fun gen_iq_handler:check_type/1;
 mod_opt_type(p1db_group) ->
     fun (G) when is_atom(G) -> G end;

@@ -68,7 +68,7 @@ init([Host, Opts]) ->
     {ok,
      #state{host = Host,
             access_max_offline_messages = AccessMaxOfflineMsgs,
-            dbtype = gen_mod:db_type(Host, Opts)}}.
+            dbtype = gen_mod:db_type(Host, Opts, mod_offline)}}.
 
 
 handle_cast(_Msg, State) -> {noreply, State}.
@@ -102,5 +102,5 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
 mod_opt_type(access_max_user_messages) ->
     fun (A) when is_atom(A) -> A end;
-mod_opt_type(db_type) -> fun gen_mod:v_db/1;
+mod_opt_type(db_type) -> fun(T) -> ejabberd_config:v_db(mod_offline, T) end;
 mod_opt_type(_) -> [access_max_user_messages, db_type].
