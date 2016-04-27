@@ -1,13 +1,8 @@
 #!/bin/sh
 
-# This must be running from same binary environment as we build installers:
-# ssh cean@build.vpn.p1
-# prod64
-# cd ~/crossbuild
-# ~/.crossbuild.sh
-
 root=~/crossbuild
-dll=$root/lib
+dll=$root/lib-18
+erts=7.3
 cd $root
 
 ejsrc=ejabberd
@@ -16,7 +11,7 @@ ejdeps=$root/$ejsrc/deps
 zlib=zlib-1.2.8
 expat=expat-2.1.0
 yaml=yaml-0.1.5
-ssl=openssl-1.0.2f
+ssl=openssl-1.0.2g
 iconv=libiconv-1.14
 sql=sqlite-autoconf-3081002
 
@@ -25,10 +20,12 @@ CC=$CHOST-gcc
 CCX=$CHOST-g++
 LD=$CHOST-ld
 AR=$CHOST-ar
+AS=$CHOST-as
 RC=$CHOST-windres
 ST=$CHOST-strip
 w=/usr/$CHOST/include
-i=$root/erl6.4/usr/include
+i=$root/erl$erts/usr/include
+l=$root/erl$erts/usr/lib
 h=$CEAN_ROOT/src/otp/erts/emulator/sys/win32
 e=$CEAN_ROOT/src/otp/lib/erl_interface/include
 
@@ -41,7 +38,7 @@ mkdir -p $dll
 cd $ejdeps/ezlib/c_src
 rm *o
 $CC -I$w -I$h -I$i -I$e -I$root/$zlib -D_WIN32 -c ezlib_drv.c
-$CC -shared -o $dll/ezlib_drv.dll ezlib_drv.o $dll/ei_md.lib $dll/zlib1.dll
+$CC -shared -o $dll/ezlib_drv.dll ezlib_drv.o $l/ei_md.lib $dll/zlib1.dll
 cd -
 
 cd $ejdeps/stringprep/c_src
@@ -71,7 +68,7 @@ cd -
 cd $ejdeps/fast_tls/c_src
 rm *o
 [ -d $root/$ssl ] || curl https://www.openssl.org/source/$ssl.tar.gz | tar -C $root -zxf -
-(cd $root/$ssl; ./Configure mingw64; make CC=$CHOST-gcc; $CHOST-ranlib *.a)
+(cd $root/$ssl; ./Configure mingw64; make CC=$CC; $CHOST-ranlib *.a)
 $CC -I$w -I$h -I$i -I$e -I$root/$ssl/include -D_WIN32 -c p1_sha.c fast_tls_drv.c
 $CC -shared -o $dll/p1_sha.dll p1_sha.o $root/$ssl/libcrypto.a
 $CC -shared -o $dll/fast_tls_drv.dll fast_tls_drv.o $root/$ssl/libssl.a $root/$ssl/libcrypto.a /usr/$CHOST/lib/libgdi32.a /usr/$CHOST/lib/libwsock32.a
@@ -90,7 +87,7 @@ rm *o
 [ -d $root/$sql ] || curl https://sqlite.org/2015/$sql.tar.gz | tar -C $root -zxf -
 (cd $root/$sql; CFLAGS="-D_WIN32" ./configure --host=$CHOST; make; cp sqlite3.exe $dll)
 $CC -I$w -I$h -I$i -I$e -I$root/$sql -D_WIN32 -c sqlite3_drv.c
-$CC -shared -o $dll/sqlite3_drv.dll sqlite3_drv.o $root/$sql/sqlite3.o $dll/ei_md.lib
+$CC -shared -o $dll/sqlite3_drv.dll sqlite3_drv.o $root/$sql/sqlite3.o $l/ei_md.lib
 cd -
 
 cd $ejdeps/esip/c_src
@@ -103,7 +100,7 @@ cd $ejdeps/jiffy/c_src
 rm *o
 $CC -I$w -I$h -I$i -I$e -I. -c *c
 $CCX -I$w -I$h -I$i -I$e -I. -c double-conversion/*cc doubles.cc
-$CCX -shared -static-libgcc -static-libstdc++ -o $dll/jiffy.dll *o
+$CCX -shared -static-libgcc -static-libstdc++ -o $dll/jiffy.dll *o  
 cd -
 
 $ST $dll/*dll
