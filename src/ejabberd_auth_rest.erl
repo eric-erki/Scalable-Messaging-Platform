@@ -1,7 +1,7 @@
 %%%----------------------------------------------------------------------
 %%% File    : ejabberd_auth_rest.erl
 %%% Author  : Pablo Polvorin <pablo.polvorin@process-one.net>
-%%% Based on ejabberd_auth_internal
+%%% Based on ejabberd_auth_mnesia
 %%%
 %%%
 %%% ejabberd, Copyright (C) 2002-2016   ProcessOne
