@@ -56,7 +56,7 @@ start(Host) ->
             "extauth"),
     extauth:start(Host, Cmd),
     case check_cache_last_options(Host) of
-      cache -> ok = ejabberd_auth_internal:start(Host);
+      cache -> ok = ejabberd_auth_mnesia:start(Host);
       no_cache -> ok
     end.
 
@@ -92,7 +92,7 @@ check_password(User, Server, Password, _Digest,
 set_password(User, Server, Password) ->
     case extauth:set_password(User, Server, Password) of
       true ->
-	  set_password_internal(User, Server, Password), ok;
+	  set_password_mnesia(User, Server, Password), ok;
       _ -> {error, unknown_problem}
     end.
 
@@ -104,20 +104,20 @@ try_register(User, Server, Password) ->
     end.
 
 dirty_get_registered_users() ->
-    ejabberd_auth_internal:dirty_get_registered_users().
+    ejabberd_auth_mnesia:dirty_get_registered_users().
 
 get_vh_registered_users(Server) ->
-    ejabberd_auth_internal:get_vh_registered_users(Server).
+    ejabberd_auth_mnesia:get_vh_registered_users(Server).
 
 get_vh_registered_users(Server, Data) ->
-    ejabberd_auth_internal:get_vh_registered_users(Server,
+    ejabberd_auth_mnesia:get_vh_registered_users(Server,
 						   Data).
 
 get_vh_registered_users_number(Server) ->
-    ejabberd_auth_internal:get_vh_registered_users_number(Server).
+    ejabberd_auth_mnesia:get_vh_registered_users_number(Server).
 
 get_vh_registered_users_number(Server, Data) ->
-    ejabberd_auth_internal:get_vh_registered_users_number(Server,
+    ejabberd_auth_mnesia:get_vh_registered_users_number(Server,
 							  Data).
 
 %% The password can only be returned if cache is enabled, cached info exists and is fresh enough.
@@ -149,7 +149,7 @@ remove_user(User, Server) ->
 	  case get_cache_option(Server) of
 	    false -> false;
 	    {true, _CacheTime} ->
-		ejabberd_auth_internal:remove_user(User, Server)
+		ejabberd_auth_mnesia:remove_user(User, Server)
 	  end
     end.
 
@@ -160,7 +160,7 @@ remove_user(User, Server, Password) ->
 	  case get_cache_option(Server) of
 	    false -> false;
 	    {true, _CacheTime} ->
-		ejabberd_auth_internal:remove_user(User, Server,
+		ejabberd_auth_mnesia:remove_user(User, Server,
 						   Password)
 	  end
     end.
@@ -193,7 +193,7 @@ check_password_cache(User, Server, Password,
 		     CacheTime) ->
     case get_last_access(User, Server) of
       online ->
-	  check_password_internal(User, Server, Password);
+	  check_password_mnesia(User, Server, Password);
       never ->
 	  check_password_external_cache(User, Server, Password);
       mod_last_required ->
@@ -206,7 +206,7 @@ check_password_cache(User, Server, Password,
 	  case is_fresh_enough(TimeStamp, CacheTime) of
 	    %% If no need to refresh, check password against Mnesia
 	    true ->
-		case check_password_internal(User, Server, Password) of
+		case check_password_mnesia(User, Server, Password) of
 		  %% If password valid in Mnesia, accept it
 		  true -> true;
 		  %% Else (password nonvalid in Mnesia), check in extauth and cache result
@@ -219,13 +219,13 @@ check_password_cache(User, Server, Password,
 	  end
     end.
 
-get_password_internal(User, Server) ->
-    ejabberd_auth_internal:get_password(User, Server).
+get_password_mnesia(User, Server) ->
+    ejabberd_auth_mnesia:get_password(User, Server).
 
 %% @spec (User, Server, CacheTime) -> false | Password::string()
 get_password_cache(User, Server, CacheTime) ->
     case get_last_access(User, Server) of
-      online -> get_password_internal(User, Server);
+      online -> get_password_mnesia(User, Server);
       never -> false;
       mod_last_required ->
 	  ?ERROR_MSG("extauth is used, extauth_cache is enabled "
@@ -235,7 +235,7 @@ get_password_cache(User, Server, CacheTime) ->
 	  false;
       TimeStamp ->
 	  case is_fresh_enough(TimeStamp, CacheTime) of
-	    true -> get_password_internal(User, Server);
+	    true -> get_password_mnesia(User, Server);
 	    false -> false
 	  end
     end.
@@ -244,7 +244,7 @@ get_password_cache(User, Server, CacheTime) ->
 check_password_external_cache(User, Server, Password) ->
     case check_password_extauth(User, Server, Password) of
       true ->
-	  set_password_internal(User, Server, Password), true;
+	  set_password_mnesia(User, Server, Password), true;
       false -> false
     end.
 
@@ -252,21 +252,21 @@ check_password_external_cache(User, Server, Password) ->
 try_register_external_cache(User, Server, Password) ->
     case try_register_extauth(User, Server, Password) of
       {atomic, ok} = R ->
-	  set_password_internal(User, Server, Password), R;
+	  set_password_mnesia(User, Server, Password), R;
       _ -> {error, not_allowed}
     end.
 
 %% @spec (User, Server, Password) -> true | false
-check_password_internal(User, Server, Password) ->
-    ejabberd_auth_internal:check_password(User, Server,
+check_password_mnesia(User, Server, Password) ->
+    ejabberd_auth_mnesia:check_password(User, Server,
 					  Password).
 
 %% @spec (User, Server, Password) -> ok | {error, invalid_jid}
-set_password_internal(User, Server, Password) ->
+set_password_mnesia(User, Server, Password) ->
 %% @spec (TimeLast, CacheTime) -> true | false
 %%       TimeLast = online | never | integer()
 %%       CacheTime = integer() | false
-    ejabberd_auth_internal:set_password(User, Server,
+    ejabberd_auth_mnesia:set_password(User, Server,
 					Password).
 
 is_fresh_enough(TimeStampLast, CacheTime) ->

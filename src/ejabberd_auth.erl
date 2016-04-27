@@ -142,7 +142,7 @@ check_password(User, Server, Password, Digest,
 %%     {true, AuthModule} | false
 %% where
 %%   AuthModule = ejabberd_auth_anonymous | ejabberd_auth_external
-%%                 | ejabberd_auth_internal | ejabberd_auth_ldap
+%%                 | ejabberd_auth_mnesia | ejabberd_auth_ldap
 %%                 | ejabberd_auth_sql | ejabberd_auth_pam
 -spec check_password_with_authmodule(binary(), binary(), binary()) -> false |
                                                                       {true, atom()}.
@@ -447,37 +447,28 @@ auth_modules() ->
 %% Return the list of authenticated modules for a given host
 auth_modules(Server) ->
     LServer = jid:nameprep(Server),
-    Default = case gen_mod:default_db(LServer) of
-		  mnesia -> internal;
-		  DBType -> DBType
-	      end,
+    Default = gen_mod:default_db(LServer),
     Methods = ejabberd_config:get_option(
-                {auth_method, LServer},
-                fun(V) when is_list(V) ->
-                        true = lists:all(fun is_atom/1, V),
-                        V;
-                   (V) when is_atom(V) ->
-                        [V]
-                end, [Default]),
+                {auth_method, LServer}, opt_type(auth_method), [Default]),
     [jlib:binary_to_atom(<<"ejabberd_auth_",
                            (jlib:atom_to_binary(M))/binary>>)
      || M <- Methods].
 
 export(Server) ->
-    ejabberd_auth_internal:export(Server).
+    ejabberd_auth_mnesia:export(Server).
 
 import_info() ->
     [{<<"users">>, 3}].
 
 import_start(_LServer, mnesia) ->
-    ejabberd_auth_internal:init_db();
+    ejabberd_auth_mnesia:init_db();
 import_start(LServer, p1db) ->
     ejabberd_auth_p1db:init_db(LServer);
 import_start(_LServer, _) ->
     ok.
 
 import(Server, {sql, _}, mnesia, <<"users">>, Fields) ->
-    ejabberd_auth_internal:import(Server, Fields);
+    ejabberd_auth_mnesia:import(Server, Fields);
 import(Server, {sql, _}, p1db, <<"users">>, Fields) ->
     ejabberd_auth_p1db:import(Server, Fields);
 import(Server, {sql, _}, riak, <<"users">>, Fields) ->
@@ -527,10 +518,16 @@ create_users(UserPattern, PassPattern, Server, Total, DBType) ->
     catch file:close(Fd),
     ok.
 
+-spec v_auth_method(atom()) -> atom().
+
+v_auth_method(odbc) -> sql;
+v_auth_method(internal) -> mnesia;
+v_auth_method(A) when is_atom(A) -> A.
+
 opt_type(auth_method) ->
     fun (V) when is_list(V) ->
-	    true = lists:all(fun is_atom/1, V), V;
-	(V) when is_atom(V) -> [V]
+	    lists:map(fun v_auth_method/1, V);
+	(V) -> [v_auth_method(V)]
     end;
 opt_type(max_users) ->
     fun (X) when is_integer(X) -> X end;

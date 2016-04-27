@@ -921,7 +921,7 @@ transform_module_options(Opts) ->
          ({backend, mnesia}) ->
               ?WARNING_MSG("Option 'backend' is obsoleted, "
                            "use 'db_type' instead", []),
-              {db_type, internal};
+              {db_type, mnesia};
 	 ({backend, p1db}) ->
 	      ?WARNING_MSG("Option 'backend' is obsoleted, "
 			   "use 'db_type' instead", []),
