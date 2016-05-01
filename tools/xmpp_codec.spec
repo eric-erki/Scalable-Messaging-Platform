@@ -2211,7 +2211,7 @@
 
 -xml(mam_query,
      #elem{name = <<"query">>,
-           xmlns = [<<"urn:xmpp:mam:0">>, <<"urn:xmpp:mam:tmp">>],
+           xmlns = [<<"urn:xmpp:mam:0">>, <<"urn:xmpp:mam:1">>, <<"urn:xmpp:mam:tmp">>],
            result = {mam_query, '$xmlns', '$id', '$start', '$end', '$with',
 		     '$rsm', '$xdata'},
            attrs = [#attr{name = <<"queryid">>, label = '$id'},
@@ -2234,7 +2234,7 @@
 
 -xml(mam_result,
      #elem{name = <<"result">>,
-           xmlns = [<<"urn:xmpp:mam:0">>, <<"urn:xmpp:mam:tmp">>],
+           xmlns = [<<"urn:xmpp:mam:0">>, <<"urn:xmpp:mam:1">>, <<"urn:xmpp:mam:tmp">>],
            result = {mam_result, '$xmlns', '$queryid', '$id', '$_els'},
            attrs = [#attr{name = <<"queryid">>},
 		    #attr{name = <<"xmlns">>},
@@ -2262,7 +2262,7 @@
 
 -xml(mam_prefs,
      #elem{name = <<"prefs">>,
-           xmlns = [<<"urn:xmpp:mam:0">>, <<"urn:xmpp:mam:tmp">>],
+           xmlns = [<<"urn:xmpp:mam:0">>, <<"urn:xmpp:mam:1">>, <<"urn:xmpp:mam:tmp">>],
            result = {mam_prefs, '$xmlns', '$default', '$always', '$never'},
            attrs = [#attr{name = <<"default">>,
                           dec = {dec_enum, [[always, never, roster]]},
