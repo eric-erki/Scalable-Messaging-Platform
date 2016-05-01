@@ -58,6 +58,7 @@ AC_SUBST([PACKAGE_LICENCE], [${LICENCE:0:4},${LICENCE:4:2},${LICENCE:6:2},${LICE
 
 AC_PATH_TOOL(ERL, erl, , [${extra_erl_path}$PATH])
 AC_PATH_TOOL(ERLC, erlc, , [${extra_erl_path}$PATH])
+AC_PATH_TOOL(EPMD, epmd, , [${extra_erl_path}$PATH])
 
 AC_ERLANG_NEED_ERL
 AC_ERLANG_NEED_ERLC
