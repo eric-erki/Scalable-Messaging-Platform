@@ -8,6 +8,8 @@
 %%%-------------------------------------------------------------------
 -module(mod_vcard_xupdate_sql).
 
+-behaviour(mod_vcard_xupdate).
+
 %% API
 -export([init/2, import/3, add_xupdate/3, get_xupdate/2, remove_xupdate/2,
 	 export/1]).
