@@ -18,8 +18,8 @@
 -compile(export_all).
 
 init_per_suite(Config) ->
-    code:add_pathz(filename:join(test_dir(), "../include")),
     check_meck(),
+    code:add_pathz(filename:join(test_dir(), "../include")),
     Config.
 
 init_per_testcase(_TestCase, Config) ->
@@ -30,7 +30,7 @@ all() ->
     case is_elixir_available() of
 	true ->
 	    Dir = test_dir(),
-	    filelib:fold_files(Dir, ".*\.exs", false,
+	    filelib:fold_files(Dir, ".*test\.exs$", false,
 			       fun(Filename, Acc) -> [list_to_atom(filename:basename(Filename)) | Acc] end,
 			       []);
 	false ->
@@ -48,11 +48,11 @@ check_meck() ->
 
 is_elixir_available() ->
     case catch elixir:module_info() of
-	{'EXIT',{undef,_}} ->
+        {'EXIT',{undef,_}} ->
             ct:print("ejabberd has not been build with Elixir support, skipping Elixir tests."),
-	    false;
-	ModInfo when is_list(ModInfo) ->
-	    true
+            false;
+        ModInfo when is_list(ModInfo) ->
+            true
     end.
 
 undefined_function(?MODULE, Func, Args) ->
@@ -66,12 +66,16 @@ undefined_function(Module, Func, Args) ->
     error_handler:undefined_function(Module, Func,Args).
 
 run_elixir_test(Func) ->
-    'Elixir.ExUnit':start([]),
-    filelib:fold_files(test_dir(), ".*\\.exs\$", true,
-		       fun (File, N) ->
-			       'Elixir.Code':require_file(list_to_binary(File)),
-			       N+1
-		       end, 0),
+    %% Elixir tests can be tagged as follow to be ignored (place before test start)
+    %% @tag pending: true
+    'Elixir.ExUnit':start([{exclude, [{pending, true}]}, {formatters, ['Elixir.ExUnit.CLIFormatter', 'Elixir.ExUnit.CTFormatter']}]),
+
+    filelib:fold_files(test_dir(), ".*mock\.exs\$", true,
+                       fun (File, N) ->
+                               'Elixir.Code':load_file(list_to_binary(File)),
+                               N+1
+                       end, 0),
+
     'Elixir.Code':load_file(list_to_binary(filename:join(test_dir(), atom_to_list(Func)))),
     %% I did not use map syntax, so that this file can still be build under R16
     ResultMap = 'Elixir.ExUnit':run(),
@@ -80,8 +84,9 @@ run_elixir_test(Func) ->
             %% Zero failures
             ok;
         {ok, Failures} ->
-            ct:print("Elixir tests failed: ~.10B~nSee logs for details", [Failures]),
-            ct:fail(elixir_test_failure)
+            ct:print("Tests failed in module '~s': ~.10B failures.~nSee logs for details", [Func, Failures]),
+            ct:fail(elixir_test_failure),
+            error
     end.
 
 test_dir() ->
