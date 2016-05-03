@@ -90,9 +90,9 @@ get_modules_options(Host) ->
 start_modules(Host) ->
     Modules = get_modules_options(Host),
     lists:foreach(
-      fun({Module, Opts}) ->
-	      start_module(Host, Module, Opts)
-      end, Modules).
+	fun({Module, Opts}) ->
+	    start_module(Host, Module, Opts)
+	end, Modules).
 
 -spec start_module(binary(), atom()) -> any().
 

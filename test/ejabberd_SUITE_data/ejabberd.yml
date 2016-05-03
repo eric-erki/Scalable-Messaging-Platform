@@ -41,7 +41,7 @@ host_config:
         store_current_id: true
         use_cache: true
         db_type: sql
-      mod_mam: 
+      mod_mam:
         db_type: sql
       mod_vcard: 
         db_type: sql
@@ -98,7 +98,7 @@ Welcome to this XMPP server."
         store_current_id: true
         use_cache: true
         db_type: sql
-      mod_mam: 
+      mod_mam:
         db_type: sql
       mod_vcard: 
         db_type: sql
@@ -225,7 +225,7 @@ Welcome to this XMPP server."
         store_current_id: true
         use_cache: true
         db_type: sql
-      mod_mam: 
+      mod_mam:
         db_type: sql
       mod_vcard: 
         db_type: sql
@@ -333,7 +333,7 @@ Welcome to this XMPP server."
         versioning: true
         store_current_id: true
         db_type: internal
-      mod_mam: 
+      mod_mam:
         db_type: internal
       mod_vcard: 
         db_type: internal

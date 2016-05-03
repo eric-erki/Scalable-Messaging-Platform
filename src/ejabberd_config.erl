@@ -80,7 +80,7 @@ start() ->
                 end,
     State1 = set_option({node_start, global}, UnixTime, State),
     State2 = set_option({shared_key, global}, SharedKey, State1),
-    State3 = set_option({flash_hack, global}, ?FLASH_HACK, State2),
+    State3 = set_option({flash_hack, global}, false, State2),
     set_opts(State3).
 
 %% @doc Get the filename of the ejabberd configuration file.

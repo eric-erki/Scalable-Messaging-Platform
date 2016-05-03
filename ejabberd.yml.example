@@ -53,8 +53,8 @@ loglevel: 4
 ##  $M1D0   rotate on the first day of every month at midnight
 ##  $M5D6   rotate on every 5th day of the month at 6:00 hr
 ##
-log_rotate_size: 0
-log_rotate_date: "$D0"
+log_rotate_size: 10485760
+log_rotate_date: ""
 log_rotate_count: 1
 
 ##
@@ -616,15 +616,15 @@ modules:
       - "flat"
       - "hometree"
       - "pep" # pep requires mod_caps
-    ## mod_register:
+  ## mod_register:
     ##
     ## Protect In-Band account registrations with CAPTCHA.
     ##
-    ## captcha_protected: true
+    ##   captcha_protected: true
     ##
     ## Set the minimum informational entropy for passwords.
     ##
-    ## password_strength: 32
+    ##   password_strength: 32
     ##
     ## After successful registration, the user receives
     ## a message with this subject and body.
@@ -638,8 +638,8 @@ modules:
     ## When a user registers, send a notification to
     ## these XMPP accounts.
     ##
-    ## registration_watchers:
-    ##   - "admin1@example.org"
+    ##   registration_watchers:
+    ##     - "admin1@example.org"
     ##
     ## Only clients in the server machine can register accounts
     ##
@@ -647,7 +647,7 @@ modules:
     ##
     ## Local c2s or remote s2s users cannot register accounts
     ##
-    ## access_from: deny
+    ##   access_from: deny
     ##   access: register
   mod_roster: {}
   mod_shared_roster: {}
