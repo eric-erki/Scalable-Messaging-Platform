@@ -355,7 +355,7 @@ can_use_nick(LServer, Host, JID, Nick, sql) ->
 init([Host, Opts]) ->
     MyHost = gen_mod:get_opt_host(Host, Opts,
 				  <<"support.@HOST@">>),
-    init_db(gen_mod:db_type(Host, Opts), Host),
+    init_db(gen_mod:db_type(Host, Opts, ?MODULE), Host),
     update_support_online_table(),
     mnesia:create_table(support_online_room,
 			[{ram_copies, [node()]}, {local_content, true},
@@ -1738,7 +1738,7 @@ mod_opt_type(access_create) ->
     fun (A) when is_atom(A) -> A end;
 mod_opt_type(access_persistent) ->
     fun (A) when is_atom(A) -> A end;
-mod_opt_type(db_type) -> fun gen_mod:v_db/1;
+mod_opt_type(db_type) -> fun(T) -> ejabberd_config:v_db(?MODULE, T) end;
 mod_opt_type(default_room_options) ->
     fun (L) when is_list(L) -> L end;
 mod_opt_type(hibernate_timeout) ->

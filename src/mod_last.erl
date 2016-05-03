@@ -255,7 +255,7 @@ transform_options({node_start, {_, _, _} = Now}, Opts) ->
 transform_options(Opt, Opts) ->
     [Opt|Opts].
 
-mod_opt_type(db_type) -> fun gen_mod:v_db/1;
+mod_opt_type(db_type) -> fun(T) -> ejabberd_config:v_db(?MODULE, T) end;
 mod_opt_type(iqdisc) -> fun gen_iq_handler:check_type/1;
 mod_opt_type(p1db_group) ->
     fun (G) when is_atom(G) -> G end;

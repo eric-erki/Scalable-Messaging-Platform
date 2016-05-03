@@ -67,7 +67,7 @@
 start(Host, Opts) ->
     case init_host(Host) of
 	true ->
-            init_db(gen_mod:db_type(Host, Opts), Host),
+            init_db(gen_mod:db_type(Host, Opts, ?MODULE), Host),
             ejabberd_hooks:add(p1_push_from_message, Host,
                                ?MODULE, push_from_message, 50),
 	    ejabberd_hooks:add(p1_push_enable_offline, Host,
@@ -930,7 +930,7 @@ transform_module_options(Opts) ->
               Opt
       end, Opts).
 
-mod_opt_type(db_type) -> fun gen_mod:v_db/1;
+mod_opt_type(db_type) -> fun(T) -> ejabberd_config:v_db(?MODULE, T) end;
 mod_opt_type(default_service) ->
     fun (S) when is_binary(S) -> S end;
 mod_opt_type(default_services) ->

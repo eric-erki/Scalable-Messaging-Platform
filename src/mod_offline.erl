@@ -173,7 +173,7 @@ init([Host, Opts]) ->
     {ok,
      #state{host = Host,
             access_max_offline_messages = AccessMaxOfflineMsgs,
-            dbtype = gen_mod:db_type(Host, Opts)}}.
+            dbtype = gen_mod:db_type(Host, Opts, ?MODULE)}}.
 
 
 handle_call(stop, _From, State) ->
@@ -861,7 +861,7 @@ export(LServer) ->
 
 mod_opt_type(access_max_user_messages) ->
     fun (A) when is_atom(A) -> A end;
-mod_opt_type(db_type) -> fun gen_mod:v_db/1;
+mod_opt_type(db_type) -> fun(T) -> ejabberd_config:v_db(?MODULE, T) end;
 mod_opt_type(p1db_group) ->
     fun (G) when is_atom(G) -> G end;
 mod_opt_type(pool_size) ->
