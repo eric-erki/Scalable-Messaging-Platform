@@ -876,9 +876,9 @@ check_password_hash(User, Host, PasswordHash, HashMethod) ->
 			  {A, _} when is_tuple(A) -> scrammed;
 			  {_, <<"md5">>} -> get_md5(AccountPass);
 			  {_, <<"sha">>} -> get_sha(AccountPass);
-			  {_, _Method} ->
+                          {_, Method} ->
 			      ?ERROR_MSG("check_password_hash called "
-					 "with hash method", [_Method]),
+ 					 "with hash method: ~p", [Method]),
 			      undefined
 		      end,
     case AccountPassHash of
@@ -1158,8 +1158,7 @@ resource_num(User, Host, Num) ->
 	    lists:nth(Num, Resources);
 	false ->
 	    throw({bad_argument,
-		   lists:flatten(io_lib:format("Wrong resource number: ~p",
-					       [Num]))})
+                   lists:flatten(io_lib:format("Wrong resource number: ~p", [Num]))})
     end.
 
 kick_session(User, Server, Resource, ReasonText) ->
@@ -2147,14 +2146,13 @@ user_action(User, Server, Fun, OK) ->
 	    case catch Fun() of
 		OK -> ok;
 		{error, Error} -> throw(Error);
-		_Error ->
-		    ?ERROR_MSG("Command returned: ~p", [_Error]),
+                Error ->
+                    ?ERROR_MSG("Command returned: ~p", [Error]),
 		    1
 	    end;
 	false ->
 	    throw({not_found, "unknown_user"})
     end.
-
 
 %% Copied from ejabberd-2.0.0/src/acl.erl
 is_regexp_match(String, RegExp) ->
