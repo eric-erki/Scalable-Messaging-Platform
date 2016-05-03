@@ -218,7 +218,7 @@ store_offline_msg(Host, US, Msgs, Len, MaxOfflineMsgs) ->
     Mod = gen_mod:db_mod(Host, ?MODULE),
     case Mod:store_messages(Host, US, Msgs, Len, MaxOfflineMsgs) of
 	{atomic, discard} ->
-            discard_warn_sender(Msgs);
+	    discard_warn_sender(Msgs);
 	_ ->
 	    ok
     end.
@@ -390,7 +390,7 @@ handle_offline_fetch(#jid{luser = U, lserver = S, lresource = R}) ->
 	    Pid ! dont_ask_offline,
 	    lists:foreach(
 	      fun({Node, From, To, El}) ->
-			      NewEl = set_offline_tag(El, Node),
+		      NewEl = set_offline_tag(El, Node),
 		      Pid ! {route, From, To, NewEl}
 	      end, read_message_headers(U, S))
     end.
@@ -423,28 +423,28 @@ need_to_store(LServer, Packet) ->
        and (Type /= <<"headline">>) ->
 	    case has_offline_tag(Packet) of
 		false ->
-	    case check_store_hint(Packet) of
-		store ->
-		    true;
-		no_store ->
-		    false;
-		none ->
-		    case gen_mod:get_module_opt(
-			   LServer, ?MODULE, store_empty_body,
-			   fun(V) when is_boolean(V) -> V;
-			      (unless_chat_state) -> unless_chat_state
-			   end,
-			   unless_chat_state) of
-			false ->
-			    fxml:get_subtag(Packet, <<"body">>) /= false;
-			unless_chat_state ->
-			    not jlib:is_standalone_chat_state(Packet);
-			true ->
-			    true
-		    end
-	    end;
-       true ->
-	    false
+		    case check_store_hint(Packet) of
+			store ->
+			    true;
+			no_store ->
+			    false;
+			none ->
+			    case gen_mod:get_module_opt(
+				   LServer, ?MODULE, store_empty_body,
+				   fun(V) when is_boolean(V) -> V;
+				      (unless_chat_state) -> unless_chat_state
+				   end,
+				   unless_chat_state) of
+				false ->
+				    fxml:get_subtag(Packet, <<"body">>) /= false;
+				unless_chat_state ->
+				    not jlib:is_standalone_chat_state(Packet);
+				true ->
+				    true
+			    end
+		    end;
+		true ->
+		    false
 	    end;
        true ->
 	    false
@@ -461,8 +461,8 @@ store_packet(From, To, Packet) ->
 		    Expire = find_x_expire(TimeStamp, Els),
 		    Worker = mod_offline_sup:get_worker_for(To#jid.lserver, To#jid.luser),
 		    Worker !  #offline_msg{us = {LUser, LServer},
-			timestamp = TimeStamp, expire = Expire,
-			from = From, to = To, packet = Packet},
+				   timestamp = TimeStamp, expire = Expire,
+				   from = From, to = To, packet = Packet},
 		    stop;
 		_ -> ok
 	    end;
@@ -573,25 +573,25 @@ pop_offline_messages(Ls, User, Server) ->
     Mod = gen_mod:db_mod(LServer, ?MODULE),
     case Mod:pop_messages(LUser, LServer) of
 	{ok, Rs} ->
-	  TS = p1_time_compat:timestamp(),
-	  Ls ++
-	    lists:map(fun (R) ->
-			      offline_msg_to_route(LServer, R)
-		      end,
-		      lists:filter(
-			fun(#offline_msg{packet = Pkt} = R) ->
-				#xmlel{children = Els} = Pkt,
-				Expire = case R#offline_msg.expire of
-					     undefined ->
-						 find_x_expire(TS, Els);
-					     Exp ->
-						 Exp
-					 end,
-				case Expire of
-				    never -> true;
-				    TimeStamp -> TS < TimeStamp
-				end
-			end, Rs));
+	    TS = p1_time_compat:timestamp(),
+	    Ls ++
+		lists:map(fun (R) ->
+				  offline_msg_to_route(LServer, R)
+			  end,
+			  lists:filter(
+			    fun(#offline_msg{packet = Pkt} = R) ->
+				    #xmlel{children = Els} = Pkt,
+				    Expire = case R#offline_msg.expire of
+						 undefined ->
+						     find_x_expire(TS, Els);
+						 Exp ->
+						     Exp
+					     end,
+				    case Expire of
+					never -> true;
+					TimeStamp -> TS < TimeStamp
+				    end
+			    end, Rs));
 	_ ->
 	    Ls
     end.
@@ -640,7 +640,7 @@ get_offline_els(LUser, LServer) ->
     Hdrs = Mod:read_message_headers(LUser, LServer),
     lists:map(
       fun({_Seq, From, To, Packet}) ->
-              jlib:replace_from_to(From, To, Packet)
+	      jlib:replace_from_to(From, To, Packet)
       end, Hdrs).
 
 offline_msg_to_route(LServer, #offline_msg{} = R) ->
@@ -682,14 +682,14 @@ format_user_queue(Hdrs) ->
 			 _ ->
 			     <<"">>
 		     end,
-		      ?XE(<<"tr">>,
-			  [?XAE(<<"td">>, [{<<"class">>, <<"valign">>}],
-				[?INPUT(<<"checkbox">>, <<"selected">>, ID)]),
-			   ?XAC(<<"td">>, [{<<"class">>, <<"valign">>}], Time),
-			   ?XAC(<<"td">>, [{<<"class">>, <<"valign">>}], SFrom),
-			   ?XAC(<<"td">>, [{<<"class">>, <<"valign">>}], STo),
-			   ?XAE(<<"td">>, [{<<"class">>, <<"valign">>}],
-				[?XC(<<"pre">>, FPacket)])])
+	      ?XE(<<"tr">>,
+		  [?XAE(<<"td">>, [{<<"class">>, <<"valign">>}],
+			[?INPUT(<<"checkbox">>, <<"selected">>, ID)]),
+		   ?XAC(<<"td">>, [{<<"class">>, <<"valign">>}], Time),
+		   ?XAC(<<"td">>, [{<<"class">>, <<"valign">>}], SFrom),
+		   ?XAC(<<"td">>, [{<<"class">>, <<"valign">>}], STo),
+		   ?XAE(<<"td">>, [{<<"class">>, <<"valign">>}],
+			[?XC(<<"pre">>, FPacket)])])
       end, Hdrs).
 
 user_queue(User, Server, Query, Lang) ->
@@ -733,7 +733,7 @@ user_queue(User, Server, Query, Lang) ->
 user_queue_parse_query(LUser, LServer, Query) ->
     Mod = gen_mod:db_mod(LServer, ?MODULE),
     case lists:keysearch(<<"delete">>, 1, Query) of
-      {value, _} ->
+	{value, _} ->
 	    case lists:keyfind(<<"selected">>, 1, Query) of
 		{_, Seq} ->
 		    case catch binary_to_integer(Seq) of
@@ -742,7 +742,9 @@ user_queue_parse_query(LUser, LServer, Query) ->
 			    ok;
 			_ ->
 			    nothing
-		    end
+		    end;
+		false ->
+		    nothing
 	    end;
 	_ ->
 	    nothing

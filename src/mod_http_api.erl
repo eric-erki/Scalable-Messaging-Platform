@@ -55,12 +55,14 @@
 %%   modules:
 %%     mod_http_api:
 %%       admin_ip_access: admin_ip_access_rule
+%%...
 %%   access:
 %%     admin_ip_access_rule:
 %%       admin_ip_acl:
 %%         - command1
 %%         - command2
 %%         %% use `all` to give access to all commands
+%%...
 %%   acl:
 %%     admin_ip_acl:
 %%       ip:
@@ -154,7 +156,7 @@ check_permissions2(#request{auth = HTTPAuth, headers = Headers}, Call, _)
                         false
                 end;
             {oauth, Token, _} ->
-                case ejabberd_oauth:check_token(Call, Token) of
+                case oauth_check_token(Call, Token) of
                     {ok, User, Server} ->
                         {ok, {User, Server, {oauth, Token}, Admin}};
                     false ->
@@ -193,6 +195,11 @@ check_permissions2(#request{ip={IP, _Port}}, Call, _Policy) ->
 check_permissions2(_Request, _Call, _Policy) ->
     unauthorized_response().
 
+oauth_check_token(Scope, Token) when is_atom(Scope) ->
+    oauth_check_token(atom_to_binary(Scope, utf8), Token);
+oauth_check_token(Scope, Token) ->
+    ejabberd_oauth:check_token(Scope, Token).
+
 %% ------------------
 %% command processing
 %% ------------------
@@ -223,16 +230,16 @@ process([Call], #request{method = 'POST', data = Data, ip = IP} = Req) ->
 	    ?DEBUG("Bad Request: ~p", [_Err]),
 	    badrequest_response(<<"Invalid JSON input">>);
 	  _:_Error ->
-        ?DEBUG("Bad Request: ~p ~p", [_Error, erlang:get_stacktrace()]),
-        badrequest_response()
+            ?DEBUG("Bad Request: ~p ~p", [_Error, erlang:get_stacktrace()]),
+            badrequest_response()
     end;
 process([Call], #request{method = 'GET', q = Data, ip = IP} = Req) ->
     Version = get_api_version(Req),
     try
         Args = case Data of
-            [{nokey, <<>>}] -> [];
-            _ -> Data
-        end,
+                   [{nokey, <<>>}] -> [];
+                   _ -> Data
+               end,
         log(Call, Args, IP),
         case check_permissions(Req, Call) of
             {allowed, Cmd, Auth} ->
@@ -353,7 +360,6 @@ handle('bulk-roster-update', Auth, Args, Version) ->
     end;
 
 % generic ejabberd command handler
-
 handle(Call, Auth, Args, Version) when is_atom(Call), is_list(Args) ->
     case ejabberd_commands:get_command_format(Call, Auth, Version) of
         {ArgsSpec, _} when is_list(ArgsSpec) ->
@@ -407,17 +413,7 @@ handle(Call, Auth, Args, Version) when is_atom(Call), is_list(Args) ->
 handle2(Call, Auth, Args, Version) when is_atom(Call), is_list(Args) ->
     {ArgsF, _ResultF} = ejabberd_commands:get_command_format(Call, Auth, Version),
     ArgsFormatted = format_args(Args, ArgsF),
-    Access = case Auth of
-                 admin -> [];
-                 _ -> undefined
-             end,
-    case ejabberd_commands:execute_command(Access, Auth,
-					   Call, ArgsFormatted, Version) of
-	{error, Error} ->
-	    throw(Error);
-	Res ->
-	    format_command_result(Call, Auth, Res, Version)
-    end.
+    ejabberd_command(Auth, Call, ArgsFormatted, Version).
 
 get_elem_delete(A, L) ->
     case proplists:get_all_values(A, L) of
@@ -500,6 +496,18 @@ gen_param_error_msg(Msg, Args) ->
                   end, Args),
     {[{<<"error">>, iolist_to_binary(Msg)},
       {<<"accepted_arguments">>, [{A}]}]}.
+
+ejabberd_command(Auth, Cmd, Args, Version) ->
+    Access = case Auth of
+                 admin -> [];
+                 _ -> undefined
+             end,
+    case ejabberd_commands:execute_command(Access, Auth, Cmd, Args, Version) of
+        {error, Error} ->
+            throw(Error);
+        Res ->
+            format_command_result(Cmd, Auth, Res, Version)
+    end.
 
 format_command_result(Cmd, Auth, Result, Version) ->
     {_, ResultFormat} = ejabberd_commands:get_command_format(Cmd, Auth, Version),

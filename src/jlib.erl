@@ -218,20 +218,23 @@ make_jid({User, Server, Resource}) ->
 
 %% This is the reverse of make_jid/1
 -spec split_jid(jid()) -> {binary(), binary(), binary()} | error.
-
-split_jid(J) -> jid:split(J).
+split_jid(J) ->
+    jid:split(J).
 
 -spec string_to_jid(binary()) -> jid() | error.
 
-string_to_jid(S) -> jid:from_string(S).
+string_to_jid(S) ->
+    jid:from_string(S).
 
 -spec jid_to_string(jid() | ljid()) -> binary().
 
-jid_to_string(J) -> jid:to_string(J).
+jid_to_string(J) ->
+    jid:to_string(J).
 
 -spec is_nodename(binary()) -> boolean().
 
-is_nodename(Node) -> jid:is_nodename(Node).
+is_nodename(Node) ->
+    jid:is_nodename(Node).
 
 %tolower_c(C) when C >= $A, C =< $Z ->
 %    C + 32;
@@ -281,13 +284,13 @@ resourceprep(S) -> jid:resourceprep(S).
 
 -spec jid_tolower(jid() | ljid()) -> error | ljid().
 
-jid_tolower(J) -> jid:tolower(J).
+jid_tolower(J) ->
+    jid:tolower(J).
 
 -spec jid_remove_resource(jid()) -> jid();
                          (ljid()) -> ljid().
 
-jid_remove_resource(JID) ->
-    jid:remove_resource(JID).
+jid_remove_resource(J) -> jid:remove_resource(J).
 
 -spec jid_replace_resource(jid(), binary()) -> error | jid().
 

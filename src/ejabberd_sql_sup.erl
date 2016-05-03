@@ -1,7 +1,7 @@
 %%%----------------------------------------------------------------------
-%%% File    : ejabberd_odbc_sup.erl
+%%% File    : ejabberd_sql_sup.erl
 %%% Author  : Alexey Shchepin <alexey@process-one.net>
-%%% Purpose : ODBC connections supervisor
+%%% Purpose : SQL connections supervisor
 %%% Created : 22 Dec 2004 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%

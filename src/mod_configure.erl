@@ -565,28 +565,28 @@ get_local_items({_, Host},
 		[<<"all users">>, <<$@, Diap/binary>>], _Server,
 		_Lang) ->
     Users = ejabberd_auth:get_vh_registered_users(Host),
-	  SUsers = lists:sort([{S, U} || {U, S} <- Users]),
-	  case catch begin
-		       [S1, S2] = ejabberd_regexp:split(Diap, <<"-">>),
-		       N1 = jlib:binary_to_integer(S1),
-		       N2 = jlib:binary_to_integer(S2),
-		       Sub = lists:sublist(SUsers, N1, N2 - N1 + 1),
-		       lists:map(fun ({S, U}) ->
-					 #xmlel{name = <<"item">>,
-						attrs =
-						    [{<<"jid">>,
-						      <<U/binary, "@",
-							S/binary>>},
-						     {<<"name">>,
-						      <<U/binary, "@",
-							S/binary>>}],
-						children = []}
-				 end,
-				 Sub)
-		     end
-	      of
-	    {'EXIT', _Reason} -> ?ERR_NOT_ACCEPTABLE;
-	    Res -> {result, Res}
+    SUsers = lists:sort([{S, U} || {U, S} <- Users]),
+    case catch begin
+		   [S1, S2] = ejabberd_regexp:split(Diap, <<"-">>),
+		   N1 = jlib:binary_to_integer(S1),
+		   N2 = jlib:binary_to_integer(S2),
+		   Sub = lists:sublist(SUsers, N1, N2 - N1 + 1),
+		   lists:map(fun ({S, U}) ->
+				     #xmlel{name = <<"item">>,
+					    attrs =
+						[{<<"jid">>,
+						  <<U/binary, "@",
+						    S/binary>>},
+						 {<<"name">>,
+						  <<U/binary, "@",
+						    S/binary>>}],
+					    children = []}
+			     end,
+			     Sub)
+	       end
+    of
+	{'EXIT', _Reason} -> ?ERR_NOT_ACCEPTABLE;
+	Res -> {result, Res}
     end;
 get_local_items({_, Host}, [<<"outgoing s2s">>],
 		_Server, Lang) ->
