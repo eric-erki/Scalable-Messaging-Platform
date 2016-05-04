@@ -25,6 +25,8 @@
 
 -module(mod_gcm).
 
+-compile([{parse_transform, ejabberd_sql_pt}]).
+
 -behaviour(ejabberd_config).
 -author('alexey@process-one.net').
 
@@ -60,6 +62,7 @@
 -include("logger.hrl").
 -include("jlib.hrl").
 -include("mod_privacy.hrl").
+-include("ejabberd_sql_pt.hrl").
 
 -record(gcm_cache, {us, device_id, options}).
 
@@ -170,11 +173,10 @@ set_local_badge_p1db(JID, DeviceID, Count) ->
     end.
 
 set_local_badge_sql(#jid{luser =LUser, lserver=LServer}, DeviceID, Count) ->
-    Username = ejabberd_sql:escape(LUser),
-    SDeviceID = ejabberd_sql:escape(DeviceID),
-    case ejabberd_sql:sql_query(LServer,
-      [<<"UPDATE gcm_cache SET local_badge =">>, integer_to_list(Count), <<" WHERE"
-        " username='">>, Username, <<"' and ">>, <<"device_id='">>, SDeviceID, <<"';">>]) of
+    case ejabberd_sql:sql_query(
+           LServer,
+           ?SQL("UPDATE gcm_cache SET local_badge=%(Count)d"
+                " WHERE username=%(LUser)s and device_id=%(DeviceID)s")) of
         {updated, 1} ->
             ok;
         {updated, 0} ->
@@ -456,11 +458,11 @@ lookup_cache_p1db(JID) ->
 
 lookup_cache_sql(JID) ->
     #jid{luser = LUser, lserver = LServer} = JID,
-    Username = ejabberd_sql:escape(LUser),
     do_lookup_cache_sql(
       LServer,
-      [<<"select device_id, app_id, send_body, send_from, local_badge from gcm_cache "
-        "where username='">>, Username, <<"'">>]).
+      ?SQL("select @(device_id)s, @(app_id)s, @(send_body)s,"
+           " @(send_from)s, @(local_badge)s from gcm_cache "
+           "where username=%(LUser)s")).
 
 lookup_cache(JID, DeviceID) ->
     case gen_mod:db_type(JID#jid.lserver, ?MODULE) of
@@ -490,13 +492,11 @@ lookup_cache_p1db(JID, DeviceID) ->
 
 lookup_cache_sql(JID, DeviceID) ->
     #jid{luser = LUser, lserver = LServer} = JID,
-    Username = ejabberd_sql:escape(LUser),
-    SDeviceID = ejabberd_sql:escape(DeviceID),
     do_lookup_cache_sql(
       LServer,
-      [<<"select device_id, app_id, send_body, send_from, local_badge from gcm_cache "
-        "where username='">>, Username, <<"' and device_id='">>,
-       SDeviceID, <<"'">>]).
+      ?SQL("select @(device_id)s, @(app_id)s, @(send_body)s,"
+           " @(send_from)s, @(local_badge)s from gcm_cache "
+           "where username=%(LUser)s and device_id=%(DeviceID)s")).
 
 do_lookup_cache_mnesia(MatchSpec) ->
     case mnesia:dirty_match_object(MatchSpec) of
@@ -517,10 +517,9 @@ format_options(DeviceID, Options) ->
 
 do_lookup_cache_sql(LServer, Query) ->
     case ejabberd_sql:sql_query(LServer, Query) of
-        {selected, [<<"device_id">>, <<"app_id">>, <<"send_body">>, <<"send_from">>, <<"local_badge">>],
-         EntryList} ->
+        {selected, EntryList} ->
             lists:map(
-              fun([DeviceID, AppID, SSendBody, SSendFrom, LocalBadgeStr]) ->
+              fun({DeviceID, AppID, SSendBody, SSendFrom, LocalBadgeStr}) ->
                       SendBody =
                           case SSendBody of
                               <<"A">> -> all;
@@ -633,9 +632,6 @@ store_cache_p1db(JID, DeviceID, Options) ->
 
 store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom) ->
     #jid{luser = LUser, lserver = LServer} = JID,
-    Username = ejabberd_sql:escape(LUser),
-    SDeviceID = ejabberd_sql:escape(DeviceID),
-    SAppID = ejabberd_sql:escape(AppID),
     SSendBody =
         case SendBody of
             all -> <<"A">>;
@@ -652,28 +648,15 @@ store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom) ->
         end,
     F = fun() ->
                 %% We must keep the previous local_badge if it exists.
-                case ejabberd_sql:sql_query_t(
-                  [<<"select app_id, send_body, send_from from gcm_cache "
-                    "where username='">>, Username, <<"' and ">>,
-                   <<"device_id='">>, SDeviceID, <<"';">>]) of
-                        {selected, _Fields, [[AppID, SSendBody, SSendFrom]]} ->
-                            %% Nothing to change
-                            ok;
-                        {selected, _Fields, [[_AppId, _SSendBody, _SSendFrom]]} ->
-                            %% Something changed,  use the new values (but keep the previous local_badge)
-                            ejabberd_sql:sql_query_t(
-                              [<<"UPDATE gcm_cache SET app_id ='">>, SAppID, <<"', send_body='">>,
-                                SSendBody, <<"', send_from='">>, SSendFrom, <<"' WHERE"
-                                " username='">>, Username, <<"' and ">>, <<"device_id='">>, SDeviceID, <<"';">>]);
-
-                        {selected, _Fields, []} ->
-                            %% No previous entry, add the new one
-                            ejabberd_sql:sql_query_t(
-                              [<<"insert into gcm_cache(username, device_id, app_id, "
-                                "                            send_body, send_from) "
-                                "values ('">>, Username, <<"', '">>, SDeviceID, <<"', '">>,
-                               SAppID, <<"', '">>, SSendBody, <<"', '">>, SSendFrom, <<"');">>])
-                end
+                ?SQL_UPSERT_T(
+                   "gcm_cache",
+                   ["!username=%(LUser)s",
+                    "!device_id=%(DeviceID)s",
+                    "app_id=%(AppID)s",
+                    "send_body=%(SSendBody)s",
+                    "send_from=%(SSendFrom)s",
+                    "-local_badge=0"
+                   ])
         end,
         {atomic, _} = sql_queries:sql_transaction(LServer, F).
 
@@ -708,13 +691,11 @@ delete_cache_p1db(JID, DeviceID) ->
 
 delete_cache_sql(JID, DeviceID) ->
     #jid{luser = LUser, lserver = LServer} = JID,
-    Username = ejabberd_sql:escape(LUser),
-    SDeviceID = ejabberd_sql:escape(DeviceID),
     ejabberd_sql:sql_query(
       LServer,
-      [<<"delete from gcm_cache "
-        "where username='">>, Username, <<"' and ">>,
-       <<"device_id='">>, SDeviceID, <<"';">>]).
+      ?SQL("delete from gcm_cache"
+           " where username=%(LUser)s and"
+           " device_id=%(DeviceID)s")).
 
 delete_cache(JID) ->
     case gen_mod:db_type(JID#jid.lserver, ?MODULE) of
@@ -746,11 +727,10 @@ delete_cache_p1db(JID) ->
 
 delete_cache_sql(JID) ->
     #jid{luser = LUser, lserver = LServer} = JID,
-    Username = ejabberd_sql:escape(LUser),
     ejabberd_sql:sql_query(
       LServer,
-      [<<"delete from gcm_cache "
-        "where username='">>, Username, <<"';">>]).
+      ?SQL("delete from gcm_cache"
+           " where username=%(LUser)s")).
 
 
 remove_user(User, Server) ->
@@ -841,12 +821,9 @@ export(_Server) ->
                                  device_id = DeviceID,
                                  options = Options})
 	 when LServer == Host ->
-	      Username = ejabberd_sql:escape(LUser),
-              SDeviceID = ejabberd_sql:escape(DeviceID),
               AppID = proplists:get_value(appid, Options, "gcm.localhost"),
               SendBody = proplists:get_value(send_body, Options, none),
               SendFrom = proplists:get_value(send_from, Options, true),
-              SAppID = ejabberd_sql:escape(AppID),
               SSendBody =
                   case SendBody of
                       all -> "A";
@@ -861,13 +838,13 @@ export(_Server) ->
                       name -> "N";
                       _ -> "-"
                   end,
-              [["delete from gcm_cache "
-                "where username='", Username, "' and "
-                "device_id='", SDeviceID, "';"],
-               ["insert into gcm_cache(username, device_id, app_id, "
-                "                            send_body, send_from) "
-                "values ('", Username, "', '", SDeviceID, "', '",
-                SAppID, "', '", SSendBody, "', '", SSendFrom, "');"]];
+              [?SQL("delete from gcm_cache"
+                    " where username=%(LUser)s and"
+                    " device_id=%(DeviceID)s;"),
+               ?SQL("insert into gcm_cache(username, device_id, app_id, "
+                    "                            send_body, send_from) "
+                    "values (%(LUser)s, %(DeviceID)s, "
+                    "%(AppID)s, %(SSendBody)s, %(SSendFrom)s);")];
 	 (_Host, _R) ->
       	      []
       end

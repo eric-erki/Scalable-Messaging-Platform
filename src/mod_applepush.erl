@@ -25,6 +25,8 @@
 
 -module(mod_applepush).
 
+-compile([{parse_transform, ejabberd_sql_pt}]).
+
 -behaviour(ejabberd_config).
 -author('alexey@process-one.net').
 
@@ -71,6 +73,7 @@
 -include("logger.hrl").
 -include("jlib.hrl").
 -include("mod_privacy.hrl").
+-include("ejabberd_sql_pt.hrl").
 
 -record(applepush_cache, {us, device_id, options}).
 
@@ -220,12 +223,12 @@ set_local_badge_p1db(JID, DeviceID, Count) ->
 	    Err
     end.
 
-set_local_badge_sql(#jid{luser =LUser, lserver=LServer}, DeviceID, Count) ->
-    Username = ejabberd_sql:escape(LUser),
-    SDeviceID = erlang:integer_to_list(DeviceID, 16),
-    case ejabberd_sql:sql_query(LServer,
-      [<<"UPDATE applepush_cache SET local_badge =">>, integer_to_list(Count), <<" WHERE"
-        " username='">>, Username, <<"' and ">>, <<"device_id='">>, SDeviceID, <<"';">>]) of
+set_local_badge_sql(#jid{luser = LUser, lserver = LServer}, DeviceID, Count) ->
+    SDeviceID = jlib:integer_to_binary(DeviceID, 16),
+    case ejabberd_sql:sql_query(
+           LServer,
+           ?SQL("UPDATE applepush_cache SET local_badge=%(Count)d"
+                " WHERE username=%(LUser)s and device_id=%(SDeviceID)s")) of
         {updated, 1} ->
             ok;
         {updated, 0} ->
@@ -445,23 +448,29 @@ process_customization_iq(From, To, #iq{type = Type, sub_el = SubEl} = IQ) ->
 
 change_customizations(sql, User, Items) ->
     LServer = User#jid.lserver,
-    LUser = ejabberd_sql:escape(User#jid.luser),
+    LUser = User#jid.luser,
     F = fun() ->
                 lists:map(
                   fun({From, IsMute, IsDelete, Sound}) ->
                           SJID = jid:remove_resource(jid:tolower(jid:from_string(From))),
-                          LSender = ejabberd_sql:escape(jid:to_string(SJID)),
+                          LSender = jid:to_string(SJID),
 
-                          ejabberd_sql:sql_query_t([<<"DELETE FROM push_customizations WHERE username = '">>, LUser,
-                                                     <<"' AND match_jid = '">>, LSender, <<"';">>]),
+                          ejabberd_sql:sql_query_t(
+                            ?SQL("DELETE FROM push_customizations"
+                                 " WHERE username = %(LUser)s AND"
+                                 " match_jid = %(LSender)s")),
 
                           if not IsDelete andalso IsMute ->
-                                  ejabberd_sql:sql_query_t([<<"INSERT INTO push_customizations(username, match_jid, mute) VALUES ('">>,
-                                                                     LUser, <<"', '">>, LSender, <<"', true);">>]);
+                                  ejabberd_sql:sql_query_t(
+                                    ?SQL("INSERT INTO push_customizations("
+                                         "username, match_jid, mute) VALUES "
+                                         "(%(LUser)s, %(LSender)s, true)"));
                              IsDelete andalso Sound /= <<"">> ->
-                                  ejabberd_sql:sql_query_t([<<"INSERT INTO push_customizations(username, match_jid, mute, sound) VALUES ('">>,
-                                                             LUser, <<"', '">>, LSender, <<"', false, '">>,
-                                                             ejabberd_sql:escape(Sound) ,<<"');">>]);
+                                  ejabberd_sql:sql_query_t(
+                                    ?SQL("INSERT INTO push_customizations("
+                                         "username, match_jid, mute, sound) "
+                                         "VALUES (%(LUser)s, %(LSender)s,"
+                                         " false, %(Sound)s)"));
                              true ->
                                   ok
                           end
@@ -652,11 +661,11 @@ lookup_cache_p1db(JID) ->
 
 lookup_cache_sql(JID) ->
     #jid{luser = LUser, lserver = LServer} = JID,
-    Username = ejabberd_sql:escape(LUser),
     do_lookup_cache_sql(
       LServer,
-      [<<"select device_id, app_id, send_body, send_from, local_badge from applepush_cache "
-        "where username='">>, Username, <<"'">>]).
+      ?SQL("select @(device_id)s, @(app_id)s, @(send_body)s,"
+           " @(send_from)s, @(local_badge)s from applepush_cache "
+           "where username=%(LUser)s")).
 
 lookup_cache(JID, DeviceID) ->
     case gen_mod:db_type(JID#jid.lserver, ?MODULE) of
@@ -686,13 +695,12 @@ lookup_cache_p1db(JID, DeviceID) ->
 
 lookup_cache_sql(JID, DeviceID) ->
     #jid{luser = LUser, lserver = LServer} = JID,
-    Username = ejabberd_sql:escape(LUser),
-    SDeviceID = erlang:integer_to_list(DeviceID, 16),
+    SDeviceID = jlib:integer_to_binary(DeviceID, 16),
     do_lookup_cache_sql(
       LServer,
-      [<<"select device_id, app_id, send_body, send_from, local_badge from applepush_cache "
-        "where username='">>, Username, <<"' and device_id='">>,
-       SDeviceID, <<"'">>]).
+      ?SQL("select @(device_id)s, @(app_id)s, @(send_body)s,"
+           " @(send_from)s, @(local_badge)s from applepush_cache "
+           "where username=%(LUser)s and device_id=%(SDeviceID)s")).
 
 do_lookup_cache_mnesia(MatchSpec) ->
     case mnesia:dirty_match_object(MatchSpec) of
@@ -713,10 +721,9 @@ format_options(DeviceID, Options) ->
 
 do_lookup_cache_sql(LServer, Query) ->
     case ejabberd_sql:sql_query(LServer, Query) of
-        {selected, [<<"device_id">>, <<"app_id">>, <<"send_body">>, <<"send_from">>, <<"local_badge">>],
-         EntryList} ->
+        {selected, EntryList} ->
             lists:map(
-              fun([SDeviceID, AppID, SSendBody, SSendFrom, LocalBadgeStr]) ->
+              fun({SDeviceID, AppID, SSendBody, SSendFrom, LocalBadgeStr}) ->
                       DeviceID = jlib:binary_to_integer(SDeviceID, 16),
                       SendBody =
                           case SSendBody of
@@ -831,9 +838,7 @@ store_cache_p1db(JID, DeviceID, Options) ->
 
 store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom) ->
     #jid{luser = LUser, lserver = LServer} = JID,
-    Username = ejabberd_sql:escape(LUser),
-    SDeviceID = erlang:integer_to_list(DeviceID, 16),
-    SAppID = ejabberd_sql:escape(AppID),
+    SDeviceID = jlib:integer_to_binary(DeviceID, 16),
     SSendBody =
         case SendBody of
             all -> <<"A">>;
@@ -861,33 +866,20 @@ store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom) ->
                     MultipleAccs -> ok;
                     true ->
                         ejabberd_sql:sql_query_t(
-                          [<<"delete from applepush_cache ">>,
-                           <<"where username<>'">>, Username, <<"' and ">>,
-                           <<"device_id='">>, SDeviceID, <<"';">>])
+                          ?SQL("delete from applepush_cache "
+                               "where username<>%(LUser)s and "
+                               "device_id=%(SDeviceID)s"))
                 end,
                 %% We must keep the previous local_badge if it exists.
-                case ejabberd_sql:sql_query_t(
-                  [<<"select app_id, send_body, send_from from applepush_cache "
-                    "where username='">>, Username, <<"' and ">>,
-                   <<"device_id='">>, SDeviceID, <<"';">>]) of
-                        {selected, _Fields, [[AppID, SSendBody, SSendFrom]]} ->
-                            %% Nothing to change
-                            ok;
-                        {selected, _Fields, [[_AppId, _SSendBody, _SSendFrom]]} ->
-                            %% Something changed,  use the new values (but keep the previous local_badge)
-                            ejabberd_sql:sql_query_t(
-                              [<<"UPDATE applepush_cache SET app_id ='">>, SAppID, <<"', send_body='">>,
-                                SSendBody, <<"', send_from='">>, SSendFrom, <<"' WHERE"
-                                " username='">>, Username, <<"' and ">>, <<"device_id='">>, SDeviceID, <<"';">>]);
-
-                        {selected, _Fields, []} ->
-                            %% No previous entry, add the new one
-                            ejabberd_sql:sql_query_t(
-                              [<<"insert into applepush_cache(username, device_id, app_id, "
-                                "                            send_body, send_from) "
-                                "values ('">>, Username, <<"', '">>, SDeviceID, <<"', '">>,
-                               SAppID, <<"', '">>, SSendBody, <<"', '">>, SSendFrom, <<"');">>])
-                end
+                ?SQL_UPSERT_T(
+                   "applepush_cache",
+                   ["!username=%(LUser)s",
+                    "!device_id=%(SDeviceID)s",
+                    "app_id=%(AppID)s",
+                    "send_body=%(SSendBody)s",
+                    "send_from=%(SSendFrom)s",
+                    "-local_badge=0"
+                   ])
         end,
         {atomic, _} = sql_queries:sql_transaction(LServer, F).
 
@@ -915,13 +907,12 @@ delete_cache_p1db(JID, DeviceID) ->
 
 delete_cache_sql(JID, DeviceID) ->
     #jid{luser = LUser, lserver = LServer} = JID,
-    Username = ejabberd_sql:escape(LUser),
-    SDeviceID = erlang:integer_to_list(DeviceID, 16),
+    SDeviceID = jlib:integer_to_binary(DeviceID, 16),
     ejabberd_sql:sql_query(
       LServer,
-      [<<"delete from applepush_cache "
-        "where username='">>, Username, <<"' and ">>,
-       <<"device_id='">>, SDeviceID, <<"';">>]).
+      ?SQL("delete from applepush_cache"
+           " where username=%(LUser)s and"
+           " device_id=%(SDeviceID)s")).
 
 delete_cache(JID) ->
     case gen_mod:db_type(JID#jid.lserver, ?MODULE) of
@@ -955,11 +946,10 @@ delete_cache_p1db(JID) ->
 
 delete_cache_sql(JID) ->
     #jid{luser = LUser, lserver = LServer} = JID,
-    Username = ejabberd_sql:escape(LUser),
     ejabberd_sql:sql_query(
       LServer,
-      [<<"delete from applepush_cache "
-        "where username='">>, Username, <<"';">>]).
+      ?SQL("delete from applepush_cache"
+           " where username=%(LUser)s")).
 
 
 remove_user(User, Server) ->
@@ -1138,12 +1128,10 @@ export(_Server) ->
                                  device_id = DeviceID,
                                  options = Options})
 	 when LServer == Host ->
-	      Username = ejabberd_sql:escape(LUser),
-              SDeviceID = erlang:integer_to_list(DeviceID, 16),
+              SDeviceID = jlib:integer_to_binary(DeviceID, 16),
               AppID = proplists:get_value(appid, Options, "applepush.localhost"),
               SendBody = proplists:get_value(send_body, Options, none),
               SendFrom = proplists:get_value(send_from, Options, true),
-              SAppID = ejabberd_sql:escape(AppID),
               SSendBody =
                   case SendBody of
                       all -> "A";
@@ -1158,13 +1146,13 @@ export(_Server) ->
                       name -> "N";
                       _ -> "-"
                   end,
-              [["delete from applepush_cache "
-                "where username='", Username, "' and "
-                "device_id='", SDeviceID, "';"],
-               ["insert into applepush_cache(username, device_id, app_id, "
-                "                            send_body, send_from) "
-                "values ('", Username, "', '", SDeviceID, "', '",
-                SAppID, "', '", SSendBody, "', '", SSendFrom, "');"]];
+              [?SQL("delete from applepush_cache"
+                    " where username=%(LUser)s and"
+                    " device_id=%(SDeviceID)s;"),
+               ?SQL("insert into applepush_cache(username, device_id, app_id, "
+                    "                            send_body, send_from) "
+                    "values (%(LUser)s, %(SDeviceID)s, "
+                    "%(AppID)s, %(SSendBody)s, %(SSendFrom)s);")];
 	 (_Host, _R) ->
       	      []
       end

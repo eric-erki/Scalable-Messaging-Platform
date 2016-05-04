@@ -8,6 +8,8 @@
 %%%-------------------------------------------------------------------
 -module(ejabberd_sm_sql).
 
+-compile([{parse_transform, ejabberd_sql_pt}]).
+
 -behaviour(ejabberd_sm).
 
 %% API
@@ -26,18 +28,19 @@
 -include("ejabberd_sm.hrl").
 -include("logger.hrl").
 -include("jlib.hrl").
+-include("ejabberd_sql_pt.hrl").
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 -spec init() -> ok | {error, any()}.
 init() ->
-    Node = ejabberd_sql:escape(jlib:atom_to_binary(node())),
+    Node = jlib:atom_to_binary(node()),
     ?INFO_MSG("Cleaning SQL SM table...", []),
     lists:foldl(
       fun(Host, ok) ->
 	      case ejabberd_sql:sql_query(
-		     Host, [<<"delete from sm where node='">>, Node, <<"'">>]) of
+		     Host, ?SQL("delete from sm where node=%(Node)s")) of
 		  {updated, _} ->
 		      ok;
 		  Err ->
@@ -50,20 +53,19 @@ init() ->
 
 set_session(#session{sid = {Now, Pid}, usr = {U, LServer, R},
 		     priority = Priority, info = Info}) ->
-    Username = ejabberd_sql:escape(U),
-    Resource = ejabberd_sql:escape(R),
-    InfoS = ejabberd_sql:encode_term(Info),
+    InfoS = jlib:term_to_expr(Info),
     PrioS = enc_priority(Priority),
     TS = now_to_timestamp(Now),
     PidS = list_to_binary(erlang:pid_to_list(Pid)),
-    Node = ejabberd_sql:escape(jlib:atom_to_binary(node(Pid))),
-    case sql_queries:update(
-	   LServer,
-	   <<"sm">>,
-	   [<<"usec">>, <<"pid">>, <<"node">>, <<"username">>,
-	    <<"resource">>, <<"priority">>, <<"info">>],
-	   [TS, PidS, Node, Username, Resource, PrioS, InfoS],
-	   [<<"username='">>, Username, <<"' and resource='">>, Resource, <<"'">>]) of
+    Node = jlib:atom_to_binary(node(Pid)),
+    case ?SQL_UPSERT(LServer, "sm",
+                     ["usec=%(TS)d",
+                      "pid=%(PidS)s",
+                      "node=%(Node)s",
+                      "!username=%(U)s",
+                      "!resource=%(R)s",
+                      "priority=%(PrioS)s",
+                      "info=%(InfoS)s"]) of
 	ok ->
 	    ok;
 	Err ->
@@ -71,11 +73,10 @@ set_session(#session{sid = {Now, Pid}, usr = {U, LServer, R},
     end.
 
 delete_session({LUser, LServer, LResource}) ->
-    Username = ejabberd_sql:escape(LUser),
-    Resource = ejabberd_sql:escape(LResource),
     ejabberd_sql:sql_query(
-      LServer, [<<"delete from sm where username='">>,
-                Username, <<"' and resource='">>, Resource, <<"'">>]),
+      LServer,
+      ?SQL("delete from sm"
+           " where username=%(LUser)s and resource=%(LResource)s")),
     ok.
 
 get_sessions() ->
@@ -86,9 +87,10 @@ get_sessions() ->
 
 get_sessions(LServer) ->
     case ejabberd_sql:sql_query(
-	   LServer, [<<"select usec, pid, username, ">>,
-		     <<"resource, priority, info from sm">>]) of
-	{selected, _, Rows} ->
+	   LServer,
+           ?SQL("select @(usec)d, @(pid)s, @(username)s,"
+                " @(resource)s, @(priority)s, @(info)s from sm")) of
+	{selected, Rows} ->
 	    [row_to_session(LServer, Row) || Row <- Rows];
 	Err ->
 	    ?ERROR_MSG("failed to select from 'sm' table: ~p", [Err]),
@@ -96,12 +98,12 @@ get_sessions(LServer) ->
     end.
 
 get_sessions(LUser, LServer) ->
-    Username = ejabberd_sql:escape(LUser),
     case ejabberd_sql:sql_query(
-	   LServer, [<<"select usec, pid, username, ">>,
-		     <<"resource, priority, info from sm where ">>,
-		     <<"username='">>, Username, <<"'">>]) of
-	{selected, _, Rows} ->
+	   LServer,
+           ?SQL("select @(usec)d, @(pid)s, @(username)s,"
+                " @(resource)s, @(priority)s, @(info)s from sm"
+                " where username=%(LUser)s")) of
+	{selected, Rows} ->
 	    [row_to_session(LServer, Row) || Row <- Rows];
 	Err ->
 	    ?ERROR_MSG("failed to select from 'sm' table: ~p", [Err]),
@@ -109,16 +111,14 @@ get_sessions(LUser, LServer) ->
     end.
 
 get_session(LUser, LServer, LResource) ->
-    Username = ejabberd_sql:escape(LUser),
-    Resource = ejabberd_sql:escape(LResource),
     case ejabberd_sql:sql_query(
-	   LServer, [<<"select usec, pid, username, ">>,
-		     <<"resource, priority, info from sm where ">>,
-		     <<"username='">>, Username, <<"' and resource='">>,
-		     Resource, <<"'">>]) of
-	{selected, _, []} ->
+	   LServer,
+           ?SQL("select @(usec)d, @(pid)s, @(username)s,"
+                " @(resource)s, @(priority)s, @(info)s from sm"
+                " where username=%(LUser)s and resource=%(LResource)s")) of
+	{selected, []} ->
 	    {error, notfound};
-	{selected, _, [Row]} ->
+	{selected, [Row]} ->
 	    {ok, row_to_session(LServer, Row)};
 	Err ->
 	    ?ERROR_MSG("failed to select from 'sm' table: ~p", [Err]),
@@ -126,14 +126,15 @@ get_session(LUser, LServer, LResource) ->
     end.
 
 get_node_sessions(Node) ->
-    SNode = ejabberd_sql:escape(jlib:atom_to_binary(Node)),
+    SNode = jlib:atom_to_binary(Node),
     lists:flatmap(
       fun(Host) ->
               case ejabberd_sql:sql_query(
-                     Host, [<<"select usec, pid, username, ">>,
-                            <<"resource, priority, info from sm ">>,
-                            <<"where node='">>, SNode, <<"'">>]) of
-                  {selected, _, Rows} ->
+                     Host,
+                     ?SQL("select @(usec)d, @(pid)s, @(username)s,"
+                          " @(resource)s, @(priority)s, @(info)s from sm"
+                          " where node=%(SNode)s")) of
+                  {selected, Rows} ->
                       [row_to_session(Host, Row) || Row <- Rows];
 		  Err ->
                       ?ERROR_MSG("failed to select from 'sm' table: ~p", [Err]),
@@ -142,20 +143,21 @@ get_node_sessions(Node) ->
       end, ejabberd_sm:get_vh_by_backend(?MODULE)).
 
 delete_node(Node) ->
-    SNode = ejabberd_sql:escape(jlib:atom_to_binary(Node)),
+    SNode = jlib:atom_to_binary(Node),
     lists:foreach(
       fun(Host) ->
 	      ejabberd_sql:sql_query(
-                Host, [<<"delete from sm where node='">>, SNode, <<"'">>])
+                Host,
+                ?SQL("delete from sm where node=%(SNode)s"))
       end, ejabberd_sm:get_vh_by_backend(?MODULE)).
 
 get_sessions_number() ->
     lists:foldl(
       fun(Host, Acc) ->
               case ejabberd_sql:sql_query(
-                     Host, [<<"select count(*) from sm">>]) of
-                  {selected, _, [[Count]]} ->
-                      jlib:binary_to_integer(Count);
+                     Host, ?SQL("select @(count(*))d from sm")) of
+                  {selected, [{Count}]} ->
+                      Count;
 		  Err ->
                       ?ERROR_MSG("failed to select from 'sm' table: ~p", [Err]),
 		      0
@@ -166,10 +168,9 @@ get_sessions_number() ->
 %%% Internal functions
 %%%===================================================================
 now_to_timestamp({MSec, Sec, USec}) ->
-    jlib:integer_to_binary((MSec * 1000000 + Sec) * 1000000 + USec).
+    (MSec * 1000000 + Sec) * 1000000 + USec.
 
-timestamp_to_now(TS) ->
-    I = jlib:binary_to_integer(TS),
+timestamp_to_now(I) ->
     Head = I div 1000000,
     USec = I rem 1000000,
     MSec = Head div 1000000,
@@ -189,7 +190,7 @@ enc_priority(undefined) ->
 enc_priority(Int) when is_integer(Int) ->
     jlib:integer_to_binary(Int).
 
-row_to_session(LServer, [USec, PidS, User, Resource, PrioS, InfoS]) ->
+row_to_session(LServer, {USec, PidS, User, Resource, PrioS, InfoS}) ->
     Now = timestamp_to_now(USec),
     Pid = erlang:list_to_pid(binary_to_list(PidS)),
     Priority = dec_priority(PrioS),

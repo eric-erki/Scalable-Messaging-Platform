@@ -25,6 +25,8 @@
 
 -module(ejabberd_auth_p1db).
 
+-compile([{parse_transform, ejabberd_sql_pt}]).
+
 -behaviour(ejabberd_config).
 
 -author('alexey@process-one.net').
@@ -44,6 +46,7 @@
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
+-include("ejabberd_sql_pt.hrl").
 
 -define(SALT_LENGTH, 16).
 
@@ -338,13 +341,9 @@ export(_Server) ->
       fun(Host, {USKey, Password}) ->
               {LUser, LServer} = key2us(USKey),
               if LServer == Host ->
-                      Username = ejabberd_sql:escape(LUser),
-                      Pass = ejabberd_sql:escape(Password),
-                      [[<<"delete from users where username='">>,
-                        Username, <<"';">>],
-                       [<<"insert into users(username, password) "
-                          "values ('">>, Username, <<"', '">>,
-                        Pass, <<"');">>]];
+                      [?SQL("delete from users where username=%(LUser)s;"),
+                       ?SQL("insert into users(username, password) "
+                            "values (%(LUser)s, %(Password)s);")];
                  true ->
                       []
               end

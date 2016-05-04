@@ -25,6 +25,8 @@
 
 -module(ejabberd_push).
 
+-compile([{parse_transform, ejabberd_sql_pt}]).
+
 -author('alexey@process-one.net').
 
 -export([build_push_packet_from_message/12, utf8_cut/2]).
@@ -33,6 +35,7 @@
 -include("logger.hrl").
 -include("jlib.hrl").
 -include("mod_privacy.hrl").
+-include("ejabberd_sql_pt.hrl").
 
 build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom, BadgeCount, First, FirstPerUser, SilentPushesEnabled, Module) ->
     Body1 = fxml:get_path_s(Packet, [{elem, <<"body">>}, cdata]),
@@ -159,15 +162,17 @@ build_and_customize_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, Custo
     LServer = JID#jid.lserver,
     case gen_mod:db_type(LServer, Module) of
         sql ->
-            LUser = ejabberd_sql:escape(JID#jid.luser),
+            LUser = JID#jid.luser,
             SJID = jid:remove_resource(jid:tolower(jid:from_string(Sender))),
-            LSender = ejabberd_sql:escape(jid:to_string(SJID)),
-            case ejabberd_sql:sql_query(LServer,
-                                         [<<"SELECT mute, sound FROM push_customizations WHERE username = '">>, LUser,
-                                          <<"' AND match_jid = '">>, LSender, <<"';">>]) of
-                {selected, _, [[1, _]]} ->
+            LSender = jid:to_string(SJID),
+            case ejabberd_sql:sql_query(
+                   LServer,
+                   ?SQL("SELECT @(mute)b, @(sound)s FROM push_customizations"
+                        " WHERE username = %(LUser)s AND"
+                        " match_jid = %(LSender)s")) of
+                {selected, [{true, _}]} ->
                     skip;
-                {selected, _, [[_, S]]} when S /= null andalso Sound == true ->
+                {selected, [{_, S}]} when S /= null andalso Sound == true ->
                     build_push_packet(DeviceID, Msg, Unread, S, Sender, JID, CustomFields);
                 _ ->
                     build_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields)

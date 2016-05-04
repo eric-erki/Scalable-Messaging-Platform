@@ -8,12 +8,15 @@
 %%%-------------------------------------------------------------------
 -module(mod_carboncopy_sql).
 
+-compile([{parse_transform, ejabberd_sql_pt}]).
+
 -behaviour(mod_carboncopy).
 
 %% API
 -export([init/2, enable/4, disable/3, list/2]).
 
 -include("mod_carboncopy.hrl").
+-include("ejabberd_sql_pt.hrl").
 
 %%%===================================================================
 %%% API
@@ -22,15 +25,13 @@ init(_Host, _Opts) ->
     ok.
 
 enable(LUser, LServer, LResource, NS) ->
-    S = ejabberd_sql:escape(LServer),
-    U = ejabberd_sql:escape(LUser),
-    R = ejabberd_sql:escape(LResource),
-    case sql_queries:update(
-	   LServer, <<"carboncopy">>,
-	   [<<"server">>, <<"username">>, <<"resource">>, <<"version">>],
-	   [S, U, R, ejabberd_sql:escape(NS)],
-	   [<<"server='">>, S, <<"' and username='">>, U,
-	    <<"' and resource='">>, R, <<"'">>]) of
+    case ?SQL_UPSERT(
+            LServer,
+            "carboncopy",
+            ["!server=%(LServer)s",
+             "!username=%(LUser)s",
+             "!resource=%(LResource)s",
+             "version=%(NS)s"]) of
 	ok ->
 	    ok;
 	Err ->
@@ -39,11 +40,10 @@ enable(LUser, LServer, LResource, NS) ->
 
 disable(LUser, LServer, LResource) ->
     case ejabberd_sql:sql_query(
-	   LServer,
-	   [<<"DELETE FROM carboncopy WHERE Server='">>,
-	    ejabberd_sql:escape(LServer), <<"' AND Username='">>,
-	    ejabberd_sql:escape(LUser),
-	    <<"' AND Resource='">>, ejabberd_sql:escape(LResource), <<"'">>]) of
+           LServer,
+           ?SQL("DELETE FROM carboncopy WHERE"
+                " server=%(LServer)s AND username=%(LUser)s"
+                " AND resource=%(LResource)s")) of
         {updated, _} ->
             ok;
         {error, Err} ->
@@ -52,12 +52,11 @@ disable(LUser, LServer, LResource) ->
 
 list(LUser, LServer) ->
     case ejabberd_sql:sql_query(
-	   LServer,
-	   [<<"SELECT Resource, Version FROM carboncopy WHERE Server='">>,
-	    ejabberd_sql:escape(LServer), <<"' AND Username='">>,
-	    ejabberd_sql:escape(LUser), <<"'">>]) of
-        {selected, _, Values} ->
-            [{R, V} || [R, V] <- Values];
+           LServer,
+           ?SQL("SELECT @(resource)s, @(version)s FROM carboncopy"
+                " WHERE server=%(LServer)s AND username=%(LUser)s")) of
+        {selected, Values} ->
+            Values;
         _ ->
             []
     end.

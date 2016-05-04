@@ -1044,21 +1044,16 @@ load_history(_Host, _Room, false, Queue) -> Queue;
 load_history(Host, Room, true, Queue) ->
     ?INFO_MSG("Loading history for room ~s on host ~s",
 	      [Room, Host]),
-    case sql_queries:load_roomhistory(Host,
-				       ejabberd_sql:escape(Room))
-	of
-      {selected,
-       [<<"nick">>, <<"packet">>, <<"have_subject">>,
-	<<"timestamp">>, <<"size">>],
-       Items} ->
+    case sql_queries:load_roomhistory(Host, Room) of
+      {selected, Items} ->
 	  ?DEBUG("Found ~p messages on history for ~s",
 		 [length(Items), Room]),
 	  lists:foldl(fun (I, Q) ->
-			      [Nick, XML, HS, Ts, Size] = I,
+			      {Nick, XML, HS, Ts, Size} = I,
 			      Item = {Nick, fxml_stream:parse_element(XML),
-				      HS /= <<"0">>,
-				      calendar:gregorian_seconds_to_datetime(jlib:binary_to_integer(Ts)),
-				      jlib:binary_to_integer(Size)},
+				      HS,
+				      calendar:gregorian_seconds_to_datetime(Ts),
+				      Size},
 			      lqueue_in(Item, Q)
 		      end,
 		      Queue, Items);
@@ -1073,16 +1068,17 @@ persist_muc_history(#state{room = Room,
 	      [Room, Server]),
     Queries = lists:map(fun ({FromNick, Packet, HaveSubject,
 			      Timestamp, Size}) ->
-				sql_queries:add_roomhistory_sql(ejabberd_sql:escape(Room),
-								 ejabberd_sql:escape(FromNick),
-								 ejabberd_sql:escape(fxml:element_to_binary(Packet)),
-								 iolist_to_binary(atom_to_list(HaveSubject)),
-								 iolist_to_binary(integer_to_list(calendar:datetime_to_gregorian_seconds(Timestamp))),
-								 iolist_to_binary(integer_to_list(Size)))
+				sql_queries:add_roomhistory_sql(
+                                  Room,
+                                  FromNick,
+                                  fxml:element_to_binary(Packet),
+                                  HaveSubject,
+                                  calendar:datetime_to_gregorian_seconds(
+                                    Timestamp),
+                                  Size)
 			end,
 			lqueue_to_list(Q)),
-    sql_queries:clear_and_add_roomhistory(Server,
-					   ejabberd_sql:escape(Room), Queries),
+    sql_queries:clear_and_add_roomhistory(Server, Room, Queries),
     {ok, {persisted, length(Queries)}};
 %% en mod_muc, cuando se levantan los muc persistentes, si se crea, y el flag persist_history esta en true,
 %% se levantan los mensajes persistentes tb.
