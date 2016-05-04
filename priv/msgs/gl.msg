@@ -4,10 +4,14 @@
 {"Add User","Engadir usuario"}.
 {"April","Abril"}.
 {"August","Agosto"}.
-{"Backup","Gardar copia de seguridade"}.
+{"Backup","Copia de seguridade"}.
 {"Birthday","Aniversario"}.
 {"Change User Password","Cambiar contrasinal de usuario"}.
-{"Chatroom configuration modified","Configuración de la sala modificada"}.
+{"Chatroom configuration modified","Configuración da sala modificada"}.
+{"Chatroom is created","Creouse a sala"}.
+{"Chatroom is destroyed","Destruíuse a sala"}.
+{"Chatroom is started","Iniciouse a sala"}.
+{"Chatroom is stopped","Detívose a sala"}.
 {"City","Cidade"}.
 {"Configuration","Configuración"}.
 {"Country","País"}.
@@ -31,7 +35,7 @@
 {"Get User Statistics","Ver estatísticas de usuario"}.
 {"has been banned","foi bloqueado"}.
 {"has been kicked because of an affiliation change","foi expulsado debido a un cambio de afiliación"}.
-{"has been kicked because of a system shutdown","foi expulsado por mor dun sistema de peche"}.
+{"has been kicked because of a system shutdown","foi expulsado porque o sistema vaise a deter"}.
 {"has been kicked because the room has been changed to members-only","foi expulsado, porque a sala cambiouse a só-membros"}.
 {"has been kicked","foi expulsado"}.
 {" has set the subject to: "," puxo o asunto: "}.
@@ -40,7 +44,7 @@
 {"is now known as","cámbiase o nome a"}.
 {"Jabber ID","Jabber ID"}.
 {"January","Xaneiro"}.
-{"joins the room","entra en la sala"}.
+{"joins the room","entra na sala"}.
 {"July","Xullo"}.
 {"June","Xuño"}.
 {"leaves the room","sae da sala"}.
@@ -68,10 +72,12 @@
 {"Server ~b","Servidor ~b"}.
 {"Shut Down Service","Deter o servizo"}.
 {"Start Modules","Iniciar módulos"}.
-{"Stop Modules","Detener módulos"}.
+{"Stop Modules","Deter módulos"}.
 {"Sunday","Domingo"}.
 {"The CAPTCHA is valid.","O CAPTCHA é válido."}.
+{"This IP address is blacklisted in ~s","Esta dirección IP está na lista negra en ~s"}.
 {"Thursday","Xoves"}.
+{"Too many (~p) failed authentications from this IP address (~s). The address will be unblocked at ~s UTC","Demasiados (~p) fallou autenticaciones desde esta dirección IP (~s). A dirección será desbloqueada as ~s UTC"}.
 {"To ~s","A ~s"}.
 {"Tuesday","Martes"}.
 {"Wednesday","Mércores"}.
