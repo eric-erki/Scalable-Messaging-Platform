@@ -27,7 +27,8 @@
 -define(HYPERLOGLOGS,
         [daily_active_users,
          weekly_active_users,
-         monthly_active_users]).
+         monthly_active_users,
+         period_active_users]).
 
 -define(SUPPORTED_HOOKS,
         [offline_message_hook, resend_offline_messages_hook,
@@ -76,7 +77,8 @@
          {client_roster_time, gauge},
          {daily_active_users, gauge},
          {weekly_active_users, gauge},
-         {monthly_active_users, gauge}]).
+         {monthly_active_users, gauge},
+         {period_active_users, gauge}]).
 
 % Average computed probes
 -define(AVG_MONITORS,

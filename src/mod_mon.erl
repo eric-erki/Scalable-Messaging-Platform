@@ -249,7 +249,7 @@ code_change(_OldVsn, State, _Extra) ->
 get_commands_spec() ->
     [#ejabberd_commands{name = active_counters,
                         tags = [stats],
-                        desc = "Returns active users counter in time period (daily_active_users, weekly_active_users, monthly_active_users)",
+                        desc = "Returns active users counter in time period (daily_active_users, weekly_active_users, monthly_active_users, period_active_users)",
                         module = ?MODULE, function = active_counters_command,
                         args = [{host, binary}],
                         args_desc = ["Name of host which should return counters"],
@@ -258,11 +258,12 @@ get_commands_spec() ->
                         args_example = [<<"xmpp.example.org">>],
                         result_example = [{<<"daily_active_users">>, 100},
                                           {<<"weekly_active_users">>, 1000},
-                                          {<<"monthly_active_users">>, 10000}]
+                                          {<<"monthly_active_users">>, 10000},
+                                          {<<"period_active_users">>, 300}]
                        },
      #ejabberd_commands{name = flush_probe,
                         tags = [stats],
-                        desc = "Returns last value from probe and resets its historical data. Supported probes so far: daily_active_users, weekly_active_users, monthly_active_users",
+                        desc = "Returns last value from probe and resets its historical data if any.",
                         module = ?MODULE, function = flush_probe_command,
                         args = [{server, binary}, {probe_name, binary}],
                         result = {probe_value, integer}}].
