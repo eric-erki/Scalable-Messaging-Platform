@@ -522,16 +522,17 @@ pubsub_publish_item(ServerHost, _Node, _Publisher, _From, _ItemId, _Packet) ->
 init_log(_Host, false) ->
     undefined;
 init_log(Host, true) ->
-    case read_logs(Host) of
-        [] ->
-            L = ehyperloglog:new(16),
-            write_logs(Host, [{Key, L} || Key <- ?HYPERLOGLOGS]),
-            [put(Key, 0) || Key <- ?HYPERLOGLOGS],
-            L;
-        Logs ->
-            [put(Key, round(ehyperloglog:cardinality(Val))) || {Key, Val} <- Logs],
-            proplists:get_value(hd(?HYPERLOGLOGS), Logs)
-    end.
+    EmptyLog = ehyperloglog:new(16),
+    [put(Key, 0) || Key <- ?HYPERLOGLOGS],
+    Logs = lists:foldl(
+            fun({Key, Val}, Acc) ->
+                    put(Key, round(ehyperloglog:cardinality(Val))),
+                    lists:keyreplace(Key, 1, Acc, {Key, Val})
+            end,
+            [{Key, EmptyLog} || Key <- ?HYPERLOGLOGS],
+            read_logs(Host)),
+    write_logs(Host, Logs),
+    proplists:get_value(hd(?HYPERLOGLOGS), Logs).
 
 cluster_log(Host) ->
     {Logs, _} = ejabberd_cluster:multicall(?MODULE, value, [Host, log]),
