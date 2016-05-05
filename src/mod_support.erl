@@ -1246,7 +1246,7 @@ set_nick(LServer, Host, From, Nick, sql) ->
 				    _ -> true
 				end,
 			if Allow ->
-				sql_queries:update_t(
+				?SQL_UPSERT_T(
                                   "support_registered",
                                   ["!jid=%(JID)s",
                                    "!host=%(Host)s",
