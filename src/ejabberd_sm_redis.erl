@@ -22,48 +22,12 @@
 -include("logger.hrl").
 -include("jlib.hrl").
 
--define(PROCNAME, 'ejabberd_redis_client').
-
 %%%===================================================================
 %%% API
 %%%===================================================================
 -spec init() -> ok | {error, any()}.
 init() ->
-    Server = ejabberd_config:get_option(redis_server,
-					fun iolist_to_list/1,
-					"localhost"),
-    Port = ejabberd_config:get_option(redis_port,
-				      fun(P) when is_integer(P),
-						  P>0, P<65536 ->
-					      P
-				      end, 6379),
-    DB = ejabberd_config:get_option(redis_db,
-				    fun(I) when is_integer(I), I >= 0 ->
-					    I
-				    end, 0),
-    Pass = ejabberd_config:get_option(redis_password,
-				      fun iolist_to_list/1,
-				      ""),
-    ReconnTimeout = timer:seconds(
-		      ejabberd_config:get_option(
-			redis_reconnect_timeout,
-			fun(I) when is_integer(I), I>0 -> I end,
-			1)),
-    ConnTimeout = timer:seconds(
-		    ejabberd_config:get_option(
-		      redis_connect_timeout,
-		      fun(I) when is_integer(I), I>0 -> I end,
-		      1)),
-    case eredis:start_link(Server, Port, DB, Pass,
-			   ReconnTimeout, ConnTimeout) of
-	{ok, Client} ->
-	    register(?PROCNAME, Client),
-	    clean_table(),
-	    ok;
-	{error, _} = Err ->
-	    ?ERROR_MSG("failed to start redis client: ~p", [Err]),
-	    Err
-    end.
+    clean_table().
 
 -spec set_session(#session{}) -> ok.
 set_session(Session) ->
@@ -72,8 +36,8 @@ set_session(Session) ->
     USKey = us_to_key(Session#session.us),
     ServKey = server_to_key(element(2, Session#session.us)),
     USRKey = usr_to_key(Session#session.usr),
-    case eredis:qp(?PROCNAME, [["HSET", USKey, LResource, T],
-			       ["HSET", ServKey, USRKey, T]]) of
+    case ejabberd_redis:qp([["HSET", USKey, LResource, T],
+			    ["HSET", ServKey, USRKey, T]]) of
 	[{ok, _}, {ok, _}] ->
 	    ok;
 	Err ->
@@ -86,8 +50,8 @@ delete_session({LUser, LServer, LResource}) ->
     USKey = us_to_key({LUser, LServer}),
     ServKey = server_to_key(LServer),
     USRKey = usr_to_key({LUser, LServer, LResource}),
-    eredis:qp(?PROCNAME, [["HDEL", USKey, LResource],
-                          ["HDEL", ServKey, USRKey]]),
+    ejabberd_redis:qp([["HDEL", USKey, LResource],
+		       ["HDEL", ServKey, USRKey]]),
     ok.
 
 -spec get_sessions() -> [#session{}].
@@ -100,7 +64,7 @@ get_sessions() ->
 -spec get_sessions(binary()) -> [#session{}].
 get_sessions(LServer) ->
     ServKey = server_to_key(LServer),
-    case eredis:q(?PROCNAME, ["HGETALL", ServKey]) of
+    case ejabberd_redis:q(["HGETALL", ServKey]) of
 	{ok, Vals} ->
 	    decode_session_list(Vals);
 	Err ->
@@ -111,7 +75,7 @@ get_sessions(LServer) ->
 -spec get_sessions(binary(), binary()) -> [#session{}].
 get_sessions(LUser, LServer) ->
     USKey = us_to_key({LUser, LServer}),
-    case eredis:q(?PROCNAME, ["HGETALL", USKey]) of
+    case ejabberd_redis:q(["HGETALL", USKey]) of
 	{ok, Vals} when is_list(Vals) ->
 	    decode_session_list(Vals);
 	Err ->
@@ -123,7 +87,7 @@ get_sessions(LUser, LServer) ->
     {ok, #session{}} | {error, notfound}.
 get_session(LUser, LServer, LResource) ->
     USKey = us_to_key({LUser, LServer}),
-    case eredis:q(?PROCNAME, ["HGET", USKey, LResource]) of
+    case ejabberd_redis:q(["HGET", USKey, LResource]) of
 	{ok, Val} when is_binary(Val) ->
             {ok, binary_to_term(Val)};
 	{ok, undefined} ->
@@ -137,7 +101,7 @@ get_node_sessions(Node) ->
     lists:flatmap(
       fun(LServer) ->
 	      ServKey = server_to_key(LServer),
-	      case eredis:q(?PROCNAME, ["HVALS", ServKey]) of
+	      case ejabberd_redis:q(["HVALS", ServKey]) of
 		  {ok, []} ->
 		      [];
 		  {ok, Vals} ->
@@ -160,7 +124,7 @@ delete_node(Node) ->
     lists:foreach(
       fun(LServer) ->
 	      ServKey = server_to_key(LServer),
-	      case eredis:q(?PROCNAME, ["HVALS", ServKey]) of
+	      case ejabberd_redis:q(["HVALS", ServKey]) of
 		  {ok, []} ->
 		      ok;
 		  {ok, Vals} ->
@@ -182,7 +146,7 @@ delete_node(Node) ->
 				     USKey = us_to_key(S#session.us),
 				     ["HDEL", USKey, R]
 			     end, Vals1),
-		      Res = eredis:qp(?PROCNAME, [Q1|Q2]),
+		      Res = ejabberd_redis:qp([Q1|Q2]),
 		      case lists:filter(
 			     fun({ok, _}) -> false;
 				(_) -> true
@@ -203,7 +167,7 @@ get_sessions_number() ->
     lists:foldl(
       fun(LServer, Acc) ->
 	      ServKey = server_to_key(LServer),
-	      case eredis:q(?PROCNAME, ["HLEN", ServKey]) of
+	      case ejabberd_redis:q(["HLEN", ServKey]) of
 		  {ok, Count} ->
                       jlib:binary_to_integer(Count);
 		  _Err ->
