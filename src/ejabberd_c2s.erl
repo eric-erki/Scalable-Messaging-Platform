@@ -1020,7 +1020,11 @@ wait_for_bind({xmlstreamelement, El}, StateData) ->
 						[#xmlel{name = <<"jid">>,
 							children =
                                                         [{xmlcdata, jid:to_string(JID)}]}]}]},
-                            send_element(StateData3, jlib:iq_to_xml(Res)),
+			    try
+				send_element(StateData3, jlib:iq_to_xml(Res))
+			    catch exit:normal ->
+				close(self())
+			    end,
                             fsm_next_state(session_established, StateData3);
                         {error, Error} ->
                             Err = jlib:make_error_reply(El, Error),
