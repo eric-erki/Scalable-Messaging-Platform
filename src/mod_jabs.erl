@@ -323,7 +323,8 @@ sm_register_connection_hook(_SID, #jid{luser=User,lserver=Host}, _Info) ->
 user_send_packet(Packet, _C2SState, From, To) ->
     user_send_packet(From, To, Packet).
 user_send_packet(#jid{luser=User,lserver=Host}, _To, Packet) ->
-    gen_server:cast(process(Host), {inc, 1, User}),
+    Size = erlang:external_size(Packet),
+    gen_server:cast(process(Host), {inc, 1+(Size div 5120), User}),
     Packet.
 
 %%====================================================================

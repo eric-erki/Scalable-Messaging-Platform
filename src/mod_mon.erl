@@ -425,9 +425,6 @@ user_send_packet(#xmlel{name=Name, attrs=Attrs} = Packet,
     Type = fxml:get_attr_s(<<"type">>, Attrs),
     Hook = hookid(packet(<<"receive">>, Name, Type)), % user send = server receive
     cast(LServer, {inc, Hook}),
-    %possible jabs computation. see mod_jabs
-    %Size = erlang:external_size(Packet),
-    %gen_server:cast(mod_jabs:process(Host), {inc, 'XPS', 1+(Size div 6000)}),
     Packet.
 user_receive_packet(#xmlel{name=Name, attrs=Attrs} = Packet,
                     _C2SState, _JID, _From, #jid{lserver=LServer}) ->
