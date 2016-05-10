@@ -827,6 +827,7 @@ init_module_db_table(Modules) ->
     %% Dirty hack for mod_pubsub
     ets:insert(module_db, {mod_pubsub, mnesia}),
     ets:insert(module_db, {mod_pubsub, sql}),
+    ets:insert(module_db, {mod_pubsub, p1db}),
     lists:foreach(
       fun(M) ->
 	      case re:split(atom_to_list(M), "_", [{return, list}]) of
