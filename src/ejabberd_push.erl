@@ -58,8 +58,6 @@ build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom,
         Body == <<"">> andalso (not SilentPushesEnabled orelse Composing /= false) ->
             skip;
         true ->
-            BFrom = jid:remove_resource(From),
-            SFrom = jid:to_string(BFrom),
             IncludeBody =
                 case {Body, SendBody} of
                     {<<"">>, _} ->
@@ -81,7 +79,7 @@ build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom,
                                                                 fxml:get_tag_attr_s(<<"sound">>, E),
                                                                 fxml:get_tag_attr_s(<<"nick">>, E),
                                                                 case fxml:get_subtag(E, <<"body">>) of
-                                                                    false -> false;
+                                                                    false -> Body;
                                                                     V -> fxml:get_tag_cdata(V)
                                                                 end
                                                                }};
@@ -93,7 +91,7 @@ build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom,
                                              end, Packet#xmlel.children),
             {Mute, AltSound, AltNick, AltBody} = case Customizations of
                                                      [] ->
-                                                         {false, true, <<"">>, false};
+                                                         {Body, true, <<"">>, false};
                                                      [Vals|_] ->
                                                          Vals
                                                  end,
@@ -101,12 +99,16 @@ build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom,
                 true ->
                     skip;
                 _ ->
+		    {Body0, From0, Custom0}  = if IncludeBody ->
+							   process_muc_invitations(Packet, From, AltBody);
+						      true ->
+							   {AltBody, From, []}
+						   end,
+		    BFrom = jid:remove_resource(From0),
+		    SFrom = jid:to_string(BFrom),
                     Msg = if
                               IncludeBody ->
-                                  CBody = case AltBody of
-                                              false -> utf8_cut(Body, 512);
-                                              _ -> utf8_cut(AltBody, 512)
-                                          end,
+                                  CBody = utf8_cut(Body0, 512),
                                   case {AltNick, SendFrom} of
                                       {N, _} when N /= <<"">> ->
                                           prepend_sender(N, CBody);
@@ -149,12 +151,13 @@ build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom,
                                 {_, S} when S /= <<"">> -> S;
                                 _ -> true
                             end,
-                        case build_and_customize_push_packet(DeviceID, Msg, Badge, Sound, SFrom, To, CustomFields, Module) of
-                            skip ->
-                                skip;
-                            V ->
-                                {V, Body == <<"">>}
-                        end
+		    case build_and_customize_push_packet(DeviceID, Msg, Badge, Sound, SFrom, To,
+							 Custom0 ++ CustomFields, Module) of
+			skip ->
+			    skip;
+			V ->
+			    {V, Body == <<"">>}
+		    end
             end
     end.
 
@@ -229,6 +232,48 @@ build_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields) ->
                        build_custom(CustomFields)
                   }
            ]}.
+
+process_muc_invitations(Packet, Sender, Body) ->
+    {From, Reason, Password} =
+	case fxml:get_subtag_with_xmlns(Packet, <<"x">>, ?NS_MUC_USER) of
+	    false ->
+		{false, <<>>, <<>>};
+	    XEl ->
+		{From0, Reason0} =
+		    case fxml:get_subtag(XEl, <<"invite">>) of
+			false ->
+			    {false, <<>>};
+			XIEl ->
+			    From1 = fxml:get_tag_attr_s(<<"from">>, XIEl),
+			    Reason1 = fxml:get_path_s(XIEl, [{elem, <<"reason">>}, cdata]),
+			    Reason2 = re:replace(Reason1, <<"^\\s*(.*?)\\s*$">>, <<"\\1">>),
+			    {From1, iolist_to_binary(Reason2)}
+                       end,
+		Password0 = fxml:get_path_s(XEl, [{elem, <<"password">>}, cdata]),
+		{From0, Reason0, Password0}
+	end,
+    case From of
+	false ->
+	    {Body, Sender, []};
+	_ ->
+	    FromJid = case jid:from_string(From) of
+		       #jid{} = JID -> JID;
+		       _ -> Sender
+		   end,
+	    Room = jid:to_string(Sender),
+	    RoomName = Sender#jid.user,
+	    NewBody = case Reason of
+			  <<"">> ->
+			      <<"Invites you to room '", RoomName/binary, "'">>;
+			  _ ->
+			      <<"Invites you to room '", RoomName/binary, "' - ", Reason/binary>>
+			  end,
+	    Extras = case Password of
+			 <<"">> -> [{<<"muc_invite_room">>, Room}];
+			 _ -> [{<<"muc_invite_room">>, Room}, {<<"muc_invite_pass">>, Password}]
+		     end,
+	    {NewBody, FromJid, Extras}
+    end.
 
 build_custom([]) -> [];
 build_custom(Fields) ->
