@@ -47,11 +47,18 @@ remove_old_subscriptions(ServerHost) ->
 clear_sub_opts(_ServerHost, mnesia) ->
     mnesia:clear_table(pubsub_subscription);
 clear_sub_opts(ServerHost, odbc) ->
-    ejabberd_odbc:sql_query(ServerHost, [<<"delete from pubsub_subscription_opt">>]);
+    clear_sub_opts_sql(ServerHost);
 clear_sub_opts(ServerHost, sql) ->
-    ejabberd_sql:sql_query(ServerHost, [<<"delete from pubsub_subscription_opt">>]);
+    clear_sub_opts_sql(ServerHost);
 clear_sub_opts(_ServerHost, p1db) ->
     p1db:clear(pubsub_subscription).
+
+clear_sub_opts_sql(ServerHost) ->
+    Query = [<<"delete from pubsub_subscription_opt">>],
+    case catch apply(ejabberd_sql, sql_query, [ServerHost, Query]) of
+        {'EXIT', _} -> catch apply(ejabberd_odbc, sql_query, [ServerHost, Query]);
+        Result -> Result
+    end.
 
 get_nodes(Host) ->
     mod_pubsub:tree_action(Host, get_nodes, [Host]).
