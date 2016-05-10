@@ -91,7 +91,7 @@ build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom,
                                              end, Packet#xmlel.children),
             {Mute, AltSound, AltNick, AltBody} = case Customizations of
                                                      [] ->
-                                                         {Body, true, <<"">>, false};
+                                                         {false, true, <<"">>, Body};
                                                      [Vals|_] ->
                                                          Vals
                                                  end,
