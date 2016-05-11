@@ -301,6 +301,13 @@ utf8_cut(<<C, S/binary>>, Cur, Prev, Bytes) ->
 
 -include("mod_roster.hrl").
 
+first_roster_item([#roster{jid={User, Server, _}} = RI | _], User, Server) ->
+    RI;
+first_roster_item([_ | Tail], User, Server) ->
+    first_roster_item(Tail, User, Server);
+first_roster_item([], _, _) ->
+    false.
+
 get_roster_name(To, JID) ->
     User = To#jid.luser,
     Server = To#jid.lserver,
@@ -308,23 +315,13 @@ get_roster_name(To, JID) ->
                     roster_get, Server, [], [{User, Server}]),
     JUser = JID#jid.luser,
     JServer = JID#jid.lserver,
-    Item =
-        lists:foldl(
-          fun(_, Res = #roster{}) ->
-                  Res;
-             (I, false) ->
-                  case I#roster.jid of
-                      {JUser, JServer, _} ->
-                          I;
-                      _ ->
-                          false
-                  end
-          end, false, RosterItems),
-    case Item of
+    case first_roster_item(RosterItems, JUser, JServer) of
         false ->
             unescape(JID#jid.user);
-        #roster{} ->
-            Item#roster.name
+        #roster{name = <<>>} ->
+            unescape(JID#jid.user);
+        #roster{name = N} ->
+	    N
     end.
 
 unescape(<<"">>) -> <<"">>;
