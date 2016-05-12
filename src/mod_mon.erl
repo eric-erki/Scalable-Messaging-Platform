@@ -116,8 +116,12 @@ dump(Host) when is_binary(Host) ->
 init([Host, Opts]) ->
     % List enabled monitors, defaults all
     Monitors = gen_mod:get_opt(monitors, Opts,
-                               fun(L) when is_list(L) -> L end, [])
-               ++ ?DEFAULT_MONITORS,
+                               fun(L) when is_list(L) -> L end,
+                               ?DEFAULT_MONITORS),
+    % List enabled hooks, defaults all supported hooks
+    Hooks = gen_mod:get_opt(hooks, Opts,
+                               fun(L) when is_list(L) -> L end,
+                               ?SUPPORTED_HOOKS),
     % Active users counting uses hyperloglog structures
     ActiveCount = gen_mod:get_opt(active_count, Opts,
                                   fun(A) when is_atom(A) -> A end, true)
@@ -139,7 +143,7 @@ init([Host, Opts]) ->
     %                        str:tokens(Host, <<".">>))],
     [ejabberd_hooks:add(Hook, Component, ?MODULE, Hook, 20)
      || Component <- [Host], % Todo, Components for muc and pubsub
-        Hook <- ?SUPPORTED_HOOKS],
+        Hook <- Hooks],
     ejabberd_commands:register_commands(get_commands_spec()),
 
     % Start timers for cache and backends sync
