@@ -74,7 +74,7 @@ init_config(Config) ->
      {resource, <<"resource">>},
      {master_resource, <<"master_resource">>},
      {slave_resource, <<"slave_resource">>},
-     {password, <<"password">>}
+     {password, <<"password!@#$%^&*()'\"`~<>+-/;:_=[]{}|\\">>}
      |Config].
 
 process_config_tpl(Content, []) ->
