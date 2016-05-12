@@ -115,9 +115,12 @@ dump(Host) when is_binary(Host) ->
 
 init([Host, Opts]) ->
     % List enabled monitors, defaults all
-    Monitors = gen_mod:get_opt(monitors, Opts,
+    MonitorsBase = gen_mod:get_opt(monitors_base, Opts,
                                fun(L) when is_list(L) -> L end,
                                ?DEFAULT_MONITORS),
+    Monitors = gen_mod:get_opt(monitors, Opts,
+                               fun(L) when is_list(L) -> L end,
+                               []) ++ MonitorsBase,
     % List enabled hooks, defaults all supported hooks
     Hooks = gen_mod:get_opt(hooks, Opts,
                                fun(L) when is_list(L) -> L end,
