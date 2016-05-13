@@ -42,6 +42,7 @@
 -include("logger.hrl").
 -include("jlib.hrl").
 -include_lib("kernel/include/file.hrl").
+-include_lib("public_key/include/public_key.hrl").
 
 -record(state, {host = <<"">>             :: binary(),
 		socket                    :: ssl:sslsocket(),
@@ -589,15 +590,21 @@ connect(#state{socket = undefined, certfile_mtime = undefined} = State) ->
 	{ok, Socket} ->
 	    {noreply, resend_messages(State#state{socket = Socket})};
 	{error, Reason} ->
+	    CertExpired = has_cert_expired(CertFile),
 	    {Timeout, State2} =
-		case Reason of
-		    esslconnect ->
+		case CertExpired orelse Reason == esslconnect of
+		    true ->
 			MTime = get_mtime(CertFile),
 			case State#state.failure_script of
 			    undefined ->
 				ok;
 			    FailureScript ->
-				os:cmd(FailureScript ++ " " ++ Gateway)
+				os:cmd(FailureScript ++ " " ++ Gateway ++ " " ++
+					   if CertExpired ->
+						   "expired_cert";
+					      true ->
+						   "connection_refused"
+					   end)
 			end,
 			{?HANDSHAKE_TIMEOUT,
 			 State#state{certfile_mtime = MTime}};
@@ -630,6 +637,37 @@ connect(#state{socket = undefined, certfile_mtime = MTime} = State) ->
     end;
 connect(State) ->
     {noreply, State}.
+
+has_cert_expired(File) ->
+    case file:read_file(File) of
+	{ok, Data} ->
+	    case public_key:pem_decode(Data) of
+		[{'Certificate', Cert, not_encrypted} | _] ->
+		    case public_key:pkix_decode_cert(Cert, otp) of
+			#'OTPCertificate'{
+			   tbsCertificate = #'OTPTBSCertificate'{
+					       validity = #'Validity'{
+							     notAfter = After}}} ->
+			    case calendar:datetime_to_gregorian_seconds(calendar:universal_time()) >=
+				pubkey_cert:time_str_2_gregorian_sec(After) of
+				true ->
+				    ?ERROR_MSG("Push certificate expired", []),
+				    true;
+				_ ->
+				    false
+			    end;
+			_Cert ->
+			    ?INFO_MSG("Unable to parse push client cert ~p", [_Cert]),
+			    false
+		    end;
+		_Decoded ->
+		    ?INFO_MSG("Unable to decode push client cert ~p", [_Decoded]),
+		    false
+	    end;
+	_Err ->
+	    ?INFO_MSG("Unable to read push client cert ~p", [_Err]),
+	    false
+    end.
 
 get_mtime(File) ->
     case file:read_file_info(File) of
