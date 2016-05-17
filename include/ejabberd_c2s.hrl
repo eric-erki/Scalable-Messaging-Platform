@@ -63,7 +63,7 @@
 	 aux_fields = [] :: [{atom(), any()}],
          fsm_limit_opts = [] :: [{atom(), any()}],
          csi_state = active,
-         csi_queue = [],
+         csi_queue = [], % remove after 3.2.15
          mgmt_state = disabled :: mgmt_state(),
          mgmt_xmlns = <<"">> :: binary(),
          mgmt_queue :: ?TQUEUE,
