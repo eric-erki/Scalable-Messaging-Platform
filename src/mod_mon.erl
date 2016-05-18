@@ -151,14 +151,14 @@ init([Host, Opts]) ->
 
     % Start timers for cache and backends sync
     {ok, TSync} = timer:apply_interval(?HOUR, ?MODULE, sync_log, [Host]),
-    erlang:send_after(?MINUTE, self(), init_push_master),
+    {ok, TPush} = timer:apply_interval(?MINUTE, ?MODULE, push_metrics, [Host, Backends]),
 
     {ok, #state{host = Host,
                 active_count = ActiveCount,
                 backends = Backends,
                 monitors = Monitors,
                 log = Log,
-                timers = [TSync]}}.
+                timers = [TSync, TPush]}}.
 
 handle_call({get, log}, _From, State) ->
     {reply, State#state.log, State};
@@ -223,18 +223,6 @@ handle_cast({active, Item}, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info(init_push_master, State) ->
-    Host = State#state.host,
-    Hosts = [H || H <- ejabberd_config:get_myhosts(), gen_mod:is_loaded(H, ?MODULE)],
-    case Hosts of
-        [Host|_] ->
-            Backends = State#state.backends,
-            Timers = State#state.timers,
-            {ok, TPush} = timer:apply_interval(?MINUTE, ?MODULE, push_metrics, [Hosts, Backends]),
-            {noreply, State#state{timers = [TPush|Timers]}};
-        _ ->
-            {noreply, State}
-    end;
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -716,33 +704,16 @@ backend_port(Port, Default) when is_list(Port) ->
             Default
     end.
 
-% push_metrics must be called only by master vhost (1st listed vhost) and take care
-% to agregate values of all vhosts or not, depending on backend.
-push_metrics(Hosts, Backends) ->
-    AllProbes = [{Host, gen_server:call(gen_mod:get_module_proc(Host, ?PROCNAME), snapshot, ?CALL_TIMEOUT)}
-                 || Host <- Hosts],
-    case lists:member(statsd, Backends) of
-        true ->
-            [{MasterHost, MasterProbes}|Tail] = AllProbes,
-            KeepMaster = ?AVG_MONITORS++?SYS_MONITORS,
-            Merge = fun(Key, MasterValue, SlaveValue) ->
-                    case lists:member(Key, KeepMaster) of
-                        true -> MasterValue;
-                        false -> MasterValue+SlaveValue
-                    end
-            end,
-            Merged = lists:foldl(
-                    fun({_VHost, HostProbes}, Acc) ->
-                            dict:merge(Merge, Acc, dict:from_list(HostProbes))
-                    end, dict:from_list(MasterProbes), Tail),
-            push(MasterHost, dict:to_list(Merged), statsd);
-        false ->
+push_metrics(Host, Backends) ->
+    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
+    case catch gen_server:call(Proc, snapshot, ?CALL_TIMEOUT) of
+        {'EXIT', Reason} ->
+            ?WARNING_MSG("Can not push mon metrics~n~p", [Reason]),
+            {error, Reason};
+        Probes ->
+            [push(Host, Probes, Backend) || Backend <- Backends],
             ok
-    end,
-    [push(Host, Probes, Backend)
-     || {Host, Probes} <- AllProbes,
-        Backend <- Backends--[statsd]],
-    ok.
+    end.
 
 push(Host, Probes, mnesia) ->
     Table = gen_mod:get_module_proc(Host, mon),
