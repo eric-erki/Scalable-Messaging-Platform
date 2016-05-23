@@ -84,9 +84,11 @@ check_password(User, AuthzId, Server, Password) ->
         false;
     true ->
     case get_cache_option(Server) of
-          false -> check_password_extauth(User, AuthzId, Server, Password);
+	      false ->
+		  check_password_extauth(User, AuthzId, Server, Password);
       {true, CacheTime} ->
-    	  check_password_cache(User, AuthzId, Server, Password, CacheTime)
+		  check_password_cache(User, AuthzId, Server, Password,
+				       CacheTime)
         end
     end.
 

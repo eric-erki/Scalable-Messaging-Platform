@@ -101,11 +101,9 @@ check_password(User, AuthzId, Server, Password) ->
         LServer = jid:nameprep(Server),
     US = {LUser, LServer},
     case catch mnesia:dirty_read({passwd, US}) of
-      [#passwd{password = Password}]
-	  when is_binary(Password) ->
+	      [#passwd{password = Password}] when is_binary(Password) ->
 	  Password /= <<"">>;
-      [#passwd{password = Scram}]
-	  when is_record(Scram, scram) ->
+	      [#passwd{password = Scram}] when is_record(Scram, scram) ->
 	  is_password_scram_valid(Password, Scram);
       _ -> false
         end
@@ -128,8 +126,7 @@ check_password(User, AuthzId, Server, Password, Digest,
 	  if DigRes -> true;
 	     true -> (Passwd == Password) and (Password /= <<"">>)
 	  end;
-      [#passwd{password = Scram}]
-	  when is_record(Scram, scram) ->
+	      [#passwd{password = Scram}] when is_record(Scram, scram) ->
 	  Passwd = jlib:decode_base64(Scram#scram.storedkey),
 	  DigRes = if Digest /= <<"">> ->
 			  Digest == DigestGen(Passwd);
