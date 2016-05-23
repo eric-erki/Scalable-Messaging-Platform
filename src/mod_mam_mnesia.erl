@@ -27,6 +27,8 @@
 	((A < B andalso byte_size(A) == byte_size(B))
 	 orelse byte_size(A) < byte_size(B))).
 
+-define(TABLE_SIZE_LIMIT, 2000000000). % A bit less than 2 GiB.
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -87,11 +89,19 @@ extended_fields() ->
     [].
 
 store(Pkt, _, {LUser, LServer}, Type, Peer, Nick, _Dir) ->
+    case {mnesia:table_info(archive_msg, disc_only_copies),
+	  mnesia:table_info(archive_msg, memory)} of
+	{[_|_], TableSize} when TableSize > ?TABLE_SIZE_LIMIT ->
+	    ?ERROR_MSG("MAM archive of ~s@~s too large, won't store message",
+		       [LUser, LServer]),
+	    {error, overflow};
+	_ ->
     LPeer = {PUser, PServer, _} = jid:tolower(Peer),
     TS = p1_time_compat:timestamp(),
     ID = jlib:integer_to_binary(now_to_usec(TS)),
     F = fun() ->
-		mnesia:write(#archive_msg{us = {LUser, LServer},
+			mnesia:write(
+			  #archive_msg{us = {LUser, LServer},
 			id = ID,
 			timestamp = TS,
 			peer = LPeer,
@@ -107,6 +117,7 @@ store(Pkt, _, {LUser, LServer}, Type, Peer, Nick, _Dir) ->
 	    ?ERROR_MSG("Cannot add message to MAM archive of ~s@~s: ~s",
 		       [LUser, LServer, Err]),
 	    Err
+	    end
     end.
 
 write_prefs(_LUser, _LServer, Prefs, _ServerHost) ->
