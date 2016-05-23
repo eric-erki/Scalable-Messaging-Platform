@@ -449,6 +449,7 @@ try_register(User, Server, Password, SourceRaw, Lang) ->
 			    ErrText = <<"The password contains unacceptable characters">>,
 			    {error, ?ERRT_NOT_ACCEPTABLE(Lang, ErrText)};
 			false ->
+			    remove_timeout(Source),
 			    ErrText = <<"The password is too weak">>,
 			    {error, ?ERRT_NOT_ACCEPTABLE(Lang, ErrText)}
 		      end;
