@@ -220,17 +220,17 @@ extendedKeyUsage = OCSPSigning
 subjectAltName          = @alt_names
 
 [alt_names]
-otherName.1 = 1.3.6.1.5.5.7.8.5;UTF8:test_single@localhost
-otherName.2 = 1.3.6.1.5.5.7.8.5;UTF8:test_single@mnesia.localhost
-otherName.3 = 1.3.6.1.5.5.7.8.5;UTF8:test_single@mysql.localhost
-otherName.4 = 1.3.6.1.5.5.7.8.5;UTF8:test_single@pgsql.localhost
-otherName.5 = 1.3.6.1.5.5.7.8.5;UTF8:test_single@sqlite.localhost
-otherName.6 = 1.3.6.1.5.5.7.8.5;UTF8:test_single@extauth.localhost
-otherName.7 = 1.3.6.1.5.5.7.8.5;UTF8:test_single@ldap.localhost
-otherName.8 = 1.3.6.1.5.5.7.8.5;UTF8:test_single@p1db.localhost
-otherName.9 = 1.3.6.1.5.5.7.8.5;UTF8:test_single@riak.localhost
-otherName.10 = 1.3.6.1.5.5.7.8.5;UTF8:test_single@redis.localhost
-otherName.11 = 1.3.6.1.5.5.7.8.5;UTF8:test_single@mssql.localhost
+otherName.1 = 1.3.6.1.5.5.7.8.5;UTF8:"test_single!#$%^*()`~+-;_=[]{}|\\@localhost"
+otherName.2 = 1.3.6.1.5.5.7.8.5;UTF8:"test_single!#$%^*()`~+-;_=[]{}|\\@mnesia.localhost"
+otherName.3 = 1.3.6.1.5.5.7.8.5;UTF8:"test_single!#$%^*()`~+-;_=[]{}|\\@mysql.localhost"
+otherName.4 = 1.3.6.1.5.5.7.8.5;UTF8:"test_single!#$%^*()`~+-;_=[]{}|\\@pgsql.localhost"
+otherName.5 = 1.3.6.1.5.5.7.8.5;UTF8:"test_single!#$%^*()`~+-;_=[]{}|\\@sqlite.localhost"
+otherName.6 = 1.3.6.1.5.5.7.8.5;UTF8:"test_single!#$%^*()`~+-;_=[]{}|\\@extauth.localhost"
+otherName.7 = 1.3.6.1.5.5.7.8.5;UTF8:"test_single!#$%^*()`~+-;_=[]{}|\\@ldap.localhost"
+otherName.8 = 1.3.6.1.5.5.7.8.5;UTF8:"test_single!#$%^*()`~+-;_=[]{}|\\@p1db.localhost"
+otherName.9 = 1.3.6.1.5.5.7.8.5;UTF8:"test_single!#$%^*()`~+-;_=[]{}|\\@riak.localhost"
+otherName.10 = 1.3.6.1.5.5.7.8.5;UTF8:"test_single!#$%^*()`~+-;_=[]{}|\\@redis.localhost"
+otherName.11 = 1.3.6.1.5.5.7.8.5;UTF8:"test_single!#$%^*()`~+-;_=[]{}|\\@mssql.localhost"
 
 [ v3_ca ]
 crlDistributionPoints = URI:http://localhost:5280/data/crl.der

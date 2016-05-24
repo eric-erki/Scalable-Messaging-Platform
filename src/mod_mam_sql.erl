@@ -96,14 +96,16 @@ write_prefs(LUser, _LServer, #archive_prefs{default = Default,
 					   never = Never,
 					   always = Always},
 	    ServerHost) ->
-    SUser = ejabberd_sql:escape(LUser),
     SDefault = erlang:atom_to_binary(Default, utf8),
-    SAlways = ejabberd_sql:encode_term(Always),
-    SNever = ejabberd_sql:encode_term(Never),
-    case update(ServerHost, <<"archive_prefs">>,
-		[<<"username">>, <<"def">>, <<"always">>, <<"never">>],
-		[SUser, SDefault, SAlways, SNever],
-		[<<"username='">>, SUser, <<"'">>]) of
+    SAlways = jlib:term_to_expr(Always),
+    SNever = jlib:term_to_expr(Never),
+    case ?SQL_UPSERT(
+            ServerHost,
+            "archive_prefs",
+            ["!username=%(LUser)s",
+             "def=%(SDefault)s",
+             "always=%(SAlways)s",
+             "never=%(SNever)s"]) of
 	{updated, _} ->
 	    ok;
 	Err ->
@@ -113,10 +115,9 @@ write_prefs(LUser, _LServer, #archive_prefs{default = Default,
 get_prefs(LUser, LServer) ->
     case ejabberd_sql:sql_query(
 	   LServer,
-	   [<<"select def, always, never from archive_prefs ">>,
-	    <<"where username='">>,
-	    ejabberd_sql:escape(LUser), <<"';">>]) of
-	{selected, _, [[SDefault, SAlways, SNever]]} ->
+	   ?SQL("select @(def)s, @(always)s, @(never)s from archive_prefs"
+                " where username=%(LUser)s")) of
+	{selected, [{SDefault, SAlways, SNever}]} ->
 	    Default = erlang:binary_to_existing_atom(SDefault, utf8),
 	    Always = ejabberd_sql:decode_term(SAlways),
 	    Never = ejabberd_sql:decode_term(SNever),
@@ -215,6 +216,12 @@ make_sql_query(User, LServer, Start, End, With, RSM) ->
     ODBCType = ejabberd_config:get_option(
 		 {sql_type, LServer},
 		 ejabberd_sql:opt_type(sql_type)),
+    Escape =
+        case ODBCType of
+            mssql -> fun ejabberd_sql:standard_escape/1;
+            sqlite -> fun ejabberd_sql:standard_escape/1;
+            _ -> fun ejabberd_sql:escape/1
+        end,
     LimitClause = if is_integer(Max), Max >= 0, ODBCType /= mssql ->
 			  [<<" limit ">>, jlib:integer_to_binary(Max+1)];
 		     true ->
@@ -230,14 +237,14 @@ make_sql_query(User, LServer, Start, End, With, RSM) ->
 			 [];
 		     {text, Txt} ->
 			 [<<" and match (txt) against ('">>,
-			  ejabberd_sql:escape(Txt), <<"')">>];
+			  Escape(Txt), <<"')">>];
 		     {_, _, <<>>} ->
 			 [<<" and bare_peer='">>,
-			  ejabberd_sql:escape(jid:to_string(With)),
+			  Escape(jid:to_string(With)),
 			  <<"'">>];
 		     {_, _, _} ->
 			 [<<" and peer='">>,
-			  ejabberd_sql:escape(jid:to_string(With)),
+			  Escape(jid:to_string(With)),
 			  <<"'">>];
 		     none ->
 			 []
@@ -269,7 +276,7 @@ make_sql_query(User, LServer, Start, End, With, RSM) ->
 		    _ ->
 			[]
 		end,
-    SUser = ejabberd_sql:escape(User),
+    SUser = Escape(User),
 
     Query = [<<"SELECT ">>, TopClause, <<" timestamp, xml, peer, kind, nick"
 	      " FROM archive WHERE username='">>,
