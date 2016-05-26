@@ -960,6 +960,10 @@ info(Host) when is_binary(Host) ->
                    lists:member(Key, [c2s_receive, c2s_send, s2s_receive, s2s_send])].
 
 
+mod_opt_type(hooks) ->
+    fun (List) when is_list(List) -> List end;
+mod_opt_type(monitors_base) ->
+    fun (List) when is_list(List) -> List end;
 mod_opt_type(active_count) ->
     fun (A) when is_atom(A) -> A end;
 mod_opt_type(backends) ->
