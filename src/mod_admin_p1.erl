@@ -62,6 +62,7 @@
 	 purge_mam/2,
 	 get_commands_spec/0,
 	% certificates
+	 get_apns_config/1, get_gcm_config/1,
 	 setup_apns/3, setup_gcm/3]).
 
 -include("ejabberd.hrl").
@@ -295,6 +296,20 @@ get_commands_spec() ->
 			     module = ?MODULE, function = purge_mam,
 			     args = [{server, binary}, {days, integer}],
 			     result = {res, integer}},
+     #ejabberd_commands{name = get_apns_config,
+			tags = [config],
+			desc = "Fetch the Apple Push Notification Service configuration",
+			module = ?MODULE, function = get_apns_config,
+			args = [{host, binary}],
+			result = {res, {list,
+			    {value, {tuple, [{name, atom}, {value, string}]}}}}},
+     #ejabberd_commands{name = get_gcm_config,
+			tags = [config],
+			desc = "Fetch the Google Cloud Messaging service configuration",
+			module = ?MODULE, function = get_gcm_config,
+			args = [{host, binary}],
+			result = {res, {list,
+			    {value, {tuple, [{name, atom}, {value, string}]}}}}},
      #ejabberd_commands{name = setup_apns,
 			tags = [config],
 			desc = "Setup the Apple Push Notification Service",
@@ -1156,6 +1171,23 @@ purge_mam(_Host, _Days, _Backend) ->
 %% Apple Push Service
 %% -----------------------------
 
+% badarg [{erlang,tuple_to_list,[[{production,<<"subject= /
+get_apns_config(Host) ->
+    case push_spec(Host, mod_applepush, mod_applepush_service, certfile) of
+	undefined ->
+	    [{production, <<>>}, {sandbox, <<>>}];
+	{_, [{_, _, ProdFile}, {_, _, DevFile}]} ->
+	    ProdCert = case file:read_file(ProdFile) of
+		{ok, ProdData} -> ProdData;
+		_ -> <<>>
+	    end,
+	    DevCert = case file:read_file(DevFile) of
+		{ok, DevData} -> DevData;
+		_ -> <<>>
+	    end,
+	    [{production, ProdCert}, {sandbox, DevCert}]
+    end.
+
 setup_apns(Host, ProductionCertData, SandboxCertData) ->
     case push_spec(Host, mod_applepush, mod_applepush_service, certfile) of
 	undefined ->
@@ -1245,6 +1277,14 @@ write_cert(CertData, Ext) ->
 %% -----------------------------
 %% Google Push Service
 %% -----------------------------
+
+get_gcm_config(Host) ->
+    case push_spec(Host, mod_gcm, mod_gcm_service, apikey) of
+	undefined ->
+	    [{apikey, <<>>}, {appid, <<>>}];
+	{_, [{AppId, _, ApiKey}]} ->
+	    [{apikey, ApiKey}, {appid, AppId}]
+    end.
 
 setup_gcm(Host, ApiKey, AppId) ->
     case push_spec(Host, mod_gcm, mod_gcm_service, apikey) of
