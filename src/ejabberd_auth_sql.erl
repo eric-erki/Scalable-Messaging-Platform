@@ -85,7 +85,7 @@ check_password(User, Server, Password) ->
                                        serverkey = ServerKey,
                                        salt = Salt,
                                        iterationcount = IterationCount},
-                            is_password_scram_valid(Password, Scram);
+                            is_password_scram_valid_stored(Password, Scram, LUser, LServer);
                         {selected, []} ->
                             false; %% Account does not exist
                         {error, _Error} ->
@@ -408,6 +408,15 @@ password_to_scram(Password, IterationCount) ->
 	   serverkey = jlib:encode_base64(ServerKey),
 	   salt = jlib:encode_base64(Salt),
 	   iterationcount = IterationCount}.
+
+is_password_scram_valid_stored(Pass, {scram,Pass,<<>>,<<>>,0}, LUser, LServer) ->
+    ?INFO_MSG("Apparently, SQL auth method and scram password formatting are "
+	"enabled, but the password of user '~s' in the 'users' table is not "
+	"scrammed. You may want to execute this command: "
+	"ejabberdctl convert_to_scram ~s", [LUser, LServer]),
+    false;
+is_password_scram_valid_stored(Password, Scram, _, _) ->
+    is_password_scram_valid(Password, Scram).
 
 is_password_scram_valid(Password, Scram) ->
     IterationCount = Scram#scram.iterationcount,
