@@ -195,9 +195,7 @@ handle_call({reset, Probe}, _From, State) ->
 handle_call(dump, _From, State) ->
     {reply, get(), State};
 handle_call(snapshot, _From, State) ->
-    run_monitors(State#state.host, State#state.monitors),
-    [compute_average(Probe) || Probe <- ?AVG_MONITORS],
-    Probes = [{Key, Val} || {Key, Val} <- get(), is_integer(Val)],
+    Probes = compute_probes(State#state.host, State#state.monitors),
     [put(Key, 0) || {Key, Val} <- Probes,
                     Val =/= 0,
                     not proplists:is_defined(Key, ?NO_COUNTER_PROBES)],
@@ -641,16 +639,26 @@ logfilename(Host) when is_binary(Host) ->
 %% high level monitors
 %%====================================================================
 
-run_monitors(Host, Monitors) ->
-    Probes = [{Key, Val} || {Key, Val} <- get(), is_integer(Val)],
-    lists:foreach(
-        fun({I, M, F, A}) -> put(I, apply(M, F, A));
-           ({I, M, F, A, Fun}) -> put(I, Fun(apply(M, F, A)));
-           ({I, F, A}) -> put(I, apply(?MODULE, F, [Host, A]));
-           ({I, F}) when is_atom(F) -> put(I, apply(?MODULE, F, [Host]));
-           ({I, Spec}) when is_list(Spec) -> put(I, eval_monitors(Probes, Spec, 0));
-           (_) -> ok
-        end, Monitors).
+compute_probes(Host, Monitors) ->
+    Probes = lists:foldl(
+            fun({Key, {Val, Count}}, Acc) when is_integer(Val), is_integer(Count) ->
+                    Avg = Val div Count,
+                    put(Key, Avg), %% to force reset of average count
+                    [{Key, Avg}|Acc];
+                ({Key, Val}, Acc) when is_integer(Val) ->
+                    [{Key, Val}|Acc];
+                (_, Acc) ->
+                    Acc
+            end, [], get()),
+    Computed = lists:foldl(
+            fun({I, M, F, A}, Acc) -> acc_monitor(I, apply(M, F, A), Acc);
+                ({I, M, F, A, Fun}, Acc) -> acc_monitor(I, Fun(apply(M, F, A)), Acc);
+                ({I, F, A}, Acc) -> acc_monitor(I, apply(?MODULE, F, [Host, A]), Acc);
+                ({I, F}, Acc) when is_atom(F) -> acc_monitor(I, apply(?MODULE, F, [Host]), Acc);
+                ({I, Spec}, Acc) when is_list(Spec) -> acc_monitor(I, eval_monitors(Probes, Spec, 0), Acc);
+                (_, Acc) -> Acc
+            end, [], Monitors),
+    Probes ++ Computed.
 
 eval_monitors(_, [], Acc) ->
     Acc;
@@ -670,11 +678,9 @@ compute_monitor(Probes, {'-', Probe}, Acc) ->
         Val -> Acc-Val
     end.
 
-compute_average(Probe) ->
-    case get(Probe) of
-        {Value, Count} -> put(Probe, Value div Count);
-        _ -> ok
-    end.
+acc_monitor(Probe, Value, Acc) ->
+    put(Probe, Value),
+    [{Probe, Value}|Acc].
 
 %%====================================================================
 %% Cache sync

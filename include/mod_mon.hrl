@@ -81,10 +81,6 @@
          {monthly_active_users, gauge},
          {period_active_users, gauge}]).
 
-% Average computed probes
--define(AVG_MONITORS,
-        [backend_api_response_time]).
-
 % Generic default monitors to aglomerate common values
 -define(DEFAULT_MONITORS,
         [{c2s_receive, [message_receive_packet,chat_receive_packet,groupchat_receive_packet,
