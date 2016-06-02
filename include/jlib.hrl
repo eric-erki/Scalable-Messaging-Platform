@@ -299,6 +299,9 @@
 -define(SERR_SYSTEM_SHUTDOWN,
 	?STREAM_ERROR(<<"system-shutdown">>, <<"">>)).
 
+-define(SERR_NODE_SHUTDOWN,
+	?STREAM_ERROR(<<"node-reconfiguration">>, <<"">>)).
+
 -define(SERR_UNSUPPORTED_ENCODING,
 	?STREAM_ERROR(<<"unsupported-encoding">>, <<"">>)).
 
