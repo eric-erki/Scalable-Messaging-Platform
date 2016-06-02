@@ -48,6 +48,7 @@
 -export([active_counters_command/1, flush_probe_command/2]).
 %% monitors
 -export([process_queues/2, internal_queues/2, health_check/2, jabs_count/1]).
+-export([cpu_usage/1]).
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
@@ -874,6 +875,11 @@ jabs_count(Host) ->
         undefined -> 0;
         {Count, _} -> Count
     end.
+
+cpu_usage(_Host) ->
+    Threads = erlang:system_info(schedulers),
+    {_, Runtime} = erlang:statistics(runtime),
+    Runtime div (?MINUTE * Threads).
 
 %%====================================================================
 %% Health check helpers

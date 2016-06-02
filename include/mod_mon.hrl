@@ -59,6 +59,7 @@
          {jabs, gauge},
          {sessions, gauge},
          {memory, gauge},
+         {cpu, gauge},
          {processes, gauge},
          {backend_api_response_time, gauge},
          {message_queues, gauge},
@@ -115,6 +116,7 @@
          {jabs, jabs_count},
          {sessions, mnesia, table_info, [session, size]},
          {memory, erlang, memory, [total]},
+         {cpu, cpu_usage},
          {processes, erlang, system_info, [process_count]},
          {health, health_check, all}
         ]).
