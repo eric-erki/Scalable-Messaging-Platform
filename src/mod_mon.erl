@@ -650,15 +650,17 @@ compute_average(Probe) ->
 init_backend(_Host, {statsd, EndPoint}) ->
     case application:load(statsderl) of
         ok ->
+            % only first instance is able to configure endpoint
+            % as a consequence: only one endpoint per ejabberd node
             {Ip, Port} = backend_ip_port(EndPoint, {127,0,0,1}, 2003),
             application:set_env(statsderl, base_key, ""),
             application:set_env(statsderl, hostname, Ip),
-            application:set_env(statsderl, port, Port),
-            application:start(statsderl),
-            statsd;
+            application:set_env(statsderl, port, Port);
         _ ->
-            none
-    end;
+            ok
+    end,
+    application:start(statsderl),
+    statsd;
 init_backend(Host, statsd) ->
     init_backend(Host, {statsd, <<"127.0.0.1:2003">>});
 init_backend(Host, mnesia) ->
