@@ -41,7 +41,8 @@
 
 %% module API
 -export([start_link/2, start/2, stop/1]).
--export([value/2, reset/2, set/3, dump/1, info/1]).
+-export([value/2, dump/1, declare/3, info/1]).
+-export([reset/2, set/3, inc/3, dec/3, sum/3]).
 %% sync commands
 -export([flush_log/3, sync_log/1, push_metrics/2]).
 %% administration commands
@@ -102,6 +103,18 @@ set(Host, Probe, Value) when is_binary(Host), is_atom(Probe) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     gen_server:cast(Proc, {set, Probe, Value}).
 
+inc(Host, Probe, Value) when is_binary(Host), is_atom(Probe) ->
+    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
+    gen_server:cast(Proc, {inc, Probe, Value}).
+
+dec(Host, Probe, Value) when is_binary(Host), is_atom(Probe) ->
+    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
+    gen_server:cast(Proc, {dec, Probe, Value}).
+
+sum(Host, Probe, Value) when is_binary(Host), is_atom(Probe) ->
+    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
+    gen_server:cast(Proc, {sum, Probe, Value}).
+
 reset(Host, Probe) when is_binary(Host), is_atom(Probe) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     gen_server:call(Proc, {reset, Probe}).
@@ -109,6 +122,10 @@ reset(Host, Probe) when is_binary(Host), is_atom(Probe) ->
 dump(Host) when is_binary(Host) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     gen_server:call(Proc, dump, ?CALL_TIMEOUT).
+
+declare(Host, Probe, Type) when is_binary(Host), is_atom(Probe) ->
+    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
+    gen_server:call(Proc, {declare, Probe, Type}, ?CALL_TIMEOUT).
 
 %%====================================================================
 %% gen_server callbacks
@@ -185,6 +202,21 @@ handle_call(snapshot, _From, State) ->
                     Val =/= 0,
                     not proplists:is_defined(Key, ?NO_COUNTER_PROBES)],
     {reply, Probes, State};
+handle_call({declare, Probe, Type}, _From, State) ->
+    Result = case Type of
+        gauge ->
+            put(Probe, 0),
+            ok; % don't handle gauge yet, need NO_COUNTER_PROBES changes
+        counter ->
+            put(Probe, 0),
+            ok;
+        average ->
+            put(Probe, {0, 0}),
+            ok;
+        _ ->
+            error
+    end,
+    {reply, Result, State};
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State}.
 
