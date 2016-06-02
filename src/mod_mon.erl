@@ -647,11 +647,11 @@ compute_average(Probe) ->
 %% Cache sync
 %%====================================================================
 
-init_backend(Host, {statsd, EndPoint}) ->
+init_backend(_Host, {statsd, EndPoint}) ->
     case application:load(statsderl) of
         ok ->
             {Ip, Port} = backend_ip_port(EndPoint, {127,0,0,1}, 2003),
-            application:set_env(statsderl, base_key, binary_to_list(Host)),
+            application:set_env(statsderl, base_key, ""),
             application:set_env(statsderl, hostname, Ip),
             application:set_env(statsderl, port, Port),
             application:start(statsderl),
@@ -735,13 +735,13 @@ push(Host, Probes, mnesia) ->
                         ok
                 end
         end, Probes);
-push(_Host, Probes, statsd) ->
+push(Host, Probes, statsd) ->
     % Librato metrics are name first with service name (to group the metrics from a service),
     % then type of service (xmpp, etc) and then nodename and name of the data itself
     % example => process-one.net.xmpp.xmpp-1.chat_receive_packet
     [_, NodeId] = str:tokens(jlib:atom_to_binary(node()), <<"@">>),
     [Node | _] = str:tokens(NodeId, <<".">>),
-    BaseId = <<"xmpp.", Node/binary, ".">>,
+    BaseId = <<Host/binary, ".xmpp.", Node/binary, ".">>,
     lists:foreach(
         fun({Key, Val}) ->
                 Id = <<BaseId/binary, (jlib:atom_to_binary(Key))/binary>>,
