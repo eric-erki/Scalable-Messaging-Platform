@@ -678,6 +678,13 @@ compute_monitor(Probes, {'-', Probe}, Acc) ->
         Val -> Acc-Val
     end.
 
+acc_monitor(dynamic, Values, Acc) when is_list(Values) ->
+    lists:foldl(
+        fun({Probe, Value}, Res) ->
+                acc_monitor(Probe, Value, Res);
+            (_, Res) ->
+                Res
+        end, Acc, Values);
 acc_monitor(Probe, Value, Acc) ->
     put(Probe, Value),
     [{Probe, Value}|Acc].
