@@ -145,7 +145,8 @@ init([Host, Opts]) ->
                                ?SUPPORTED_HOOKS),
     % Active users counting uses hyperloglog structures
     ActiveCount = gen_mod:get_opt(active_count, Opts,
-                                  fun(A) when is_atom(A) -> A end, true)
+                                  fun(B) when is_boolean(B) -> B end,
+                                  true)
                   and not ejabberd_auth_anonymous:allow_anonymous(Host),
     Log = init_log(Host, ActiveCount),
 
@@ -1018,12 +1019,12 @@ mod_opt_type(hooks) ->
 mod_opt_type(monitors_base) ->
     fun (List) when is_list(List) -> List end;
 mod_opt_type(active_count) ->
-    fun (A) when is_atom(A) -> A end;
+    fun (B) when is_boolean(B) -> B end;
 mod_opt_type(backends) ->
     fun (List) when is_list(List) -> List end;
 mod_opt_type(monitors) ->
     fun (L) when is_list(L) -> L end;
-mod_opt_type(_) -> [active_count, backends, monitors].
+mod_opt_type(_) -> [hooks, monitors_base, active_count, backends, monitors].
 
 opt_type(health) -> fun (V) when is_list(V) -> V end;
 opt_type(_) -> [health].
