@@ -1519,9 +1519,15 @@ handle_info({route, From, To,
 	    Attrs2 = jlib:replace_from_to_attrs(jid:to_string(From),
 						jid:to_string(To), NewAttrs),
 	    FixedPacket = #xmlel{name = Name, attrs = Attrs2, children = Els},
-	    NewState2 = send_or_enqueue_packet(NewState, From, To, FixedPacket),
-	    ejabberd_hooks:run(c2s_loop_debug, [{route, From, To, Packet}]),
-	    fsm_next_state(StateName, NewState2);
+            try
+                NewState2 = send_or_enqueue_packet(NewState, From, To, FixedPacket),
+                ejabberd_hooks:run(c2s_loop_debug, [{route, From, To, Packet}]),
+                fsm_next_state(StateName, NewState2)
+            catch exit:normal ->
+                    (?GEN_FSM):send_event(self(), closed),
+                    self() ! {route, From, To, Packet},
+                    fsm_next_state(StateName, NewState)
+            end;
        true ->
 	    ejabberd_hooks:run(c2s_loop_debug, [{route, From, To, Packet}]),
 	    fsm_next_state(StateName, NewState)
