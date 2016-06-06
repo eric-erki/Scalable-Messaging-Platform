@@ -48,7 +48,7 @@
 %% administration commands
 -export([active_counters_command/1, flush_probe_command/2]).
 %% monitors
--export([process_queues/2, internal_queues/2, health_check/2, jabs_count/1]).
+-export([process_queues/2, internal_queues/2, health_check/1, jabs_count/1]).
 -export([cpu_usage/1]).
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -139,6 +139,7 @@ init([Host, Opts]) ->
     Monitors = gen_mod:get_opt(monitors, Opts,
                                fun(L) when is_list(L) -> L end,
                                []) ++ MonitorsBase,
+
     % List enabled hooks, defaults all supported hooks
     Hooks = gen_mod:get_opt(hooks, Opts,
                                fun(L) when is_list(L) -> L end,
@@ -167,6 +168,10 @@ init([Host, Opts]) ->
      || Component <- [Host], % Todo, Components for muc and pubsub
         Hook <- Hooks],
     ejabberd_commands:register_commands(get_commands_spec()),
+
+    % Store probes specs
+    ets:new(mon_probes, [named_table, public]),
+    [ets:insert(mon_probes, {Probe, gauge}) || Probe<-?GAUGES],
 
     % Start timers for cache and backends sync
     {ok, TSync} = timer:apply_interval(?HOUR, ?MODULE, sync_log, [Host]),
@@ -197,20 +202,17 @@ handle_call(dump, _From, State) ->
     {reply, get(), State};
 handle_call(snapshot, _From, State) ->
     Probes = compute_probes(State#state.host, State#state.monitors),
-    [put(Key, 0) || {Key, Val} <- Probes,
-                    Val =/= 0,
-                    not proplists:is_defined(Key, ?NO_COUNTER_PROBES)],
+    [put(Key, 0) || {Key, Type, Val} <- Probes,
+                    Val =/= 0, Type == counter],
     {reply, Probes, State};
 handle_call({declare, Probe, Type}, _From, State) ->
     Result = case Type of
         gauge ->
-            put(Probe, 0),
-            ok; % don't handle gauge yet, need NO_COUNTER_PROBES changes
-        counter ->
+            ets:insert(mon_probes, {Probe, gauge}),
             put(Probe, 0),
             ok;
-        average ->
-            put(Probe, {0, 0}),
+        counter ->
+            put(Probe, 0),
             ok;
         _ ->
             error
@@ -645,9 +647,9 @@ compute_probes(Host, Monitors) ->
             fun({Key, {Val, Count}}, Acc) when is_integer(Val), is_integer(Count) ->
                     Avg = Val div Count,
                     put(Key, Avg), %% to force reset of average count
-                    [{Key, Avg}|Acc];
+                    [{Key, probe_type(Key), Avg}|Acc];
                 ({Key, Val}, Acc) when is_integer(Val) ->
-                    [{Key, Val}|Acc];
+                    [{Key, probe_type(Key), Val}|Acc];
                 (_, Acc) ->
                     Acc
             end, [], get()),
@@ -660,6 +662,12 @@ compute_probes(Host, Monitors) ->
                 (_, Acc) -> Acc
             end, [], Monitors),
     Probes ++ Computed.
+
+probe_type(Probe) ->
+    case catch ets:lookup(mon_probes, Probe) of
+        [{Probe, Type}] -> Type;
+        _ -> counter
+    end.
 
 eval_monitors(_, [], Acc) ->
     Acc;
@@ -687,8 +695,7 @@ acc_monitor(dynamic, Values, Acc) when is_list(Values) ->
                 Res
         end, Acc, Values);
 acc_monitor(Probe, Value, Acc) ->
-    put(Probe, Value),
-    [{Probe, Value}|Acc].
+    [{Probe, gauge, Value}|Acc].
 
 %%====================================================================
 %% Cache sync
@@ -768,20 +775,15 @@ push(Host, Probes, mnesia) ->
     Table = gen_mod:get_module_proc(Host, mon),
     Cache = [{Key, Val} || {mon, Key, Val} <- ets:tab2list(Table)],
     lists:foreach(
-        fun({Key, Val}) ->
-                case proplists:get_value(Key, ?NO_COUNTER_PROBES) of
-                    undefined ->
-                        case proplists:get_value(Key, Cache) of
-                            undefined -> mnesia:dirty_write(Table, #mon{probe = Key, value = Val});
-                            Old -> [mnesia:dirty_write(Table, #mon{probe = Key, value = Old+Val}) || Val > 0]
-                        end;
-                    gauge ->
-                        case proplists:get_value(Key, Cache) of
-                            Val -> ok;
-                            _ -> mnesia:dirty_write(Table, #mon{probe = Key, value = Val})
-                        end;
-                    _ ->
-                        ok
+        fun({Key, counter, Val}) ->
+                case proplists:get_value(Key, Cache) of
+                    undefined -> mnesia:dirty_write(Table, #mon{probe = Key, value = Val});
+                    Old -> [mnesia:dirty_write(Table, #mon{probe = Key, value = Old+Val}) || Val > 0]
+                end;
+           ({Key, gauge, Val}) ->
+                case proplists:get_value(Key, Cache) of
+                    Val -> ok;
+                    _ -> mnesia:dirty_write(Table, #mon{probe = Key, value = Val})
                 end
         end, Probes);
 push(Host, Probes, statsd) ->
@@ -792,12 +794,11 @@ push(Host, Probes, statsd) ->
     [Node | _] = str:tokens(NodeId, <<".">>),
     BaseId = <<Host/binary, ".xmpp.", Node/binary, ".">>,
     lists:foreach(
-        fun({Key, Val}) ->
+        fun({Key, Type, Val}) ->
                 Id = <<BaseId/binary, (jlib:atom_to_binary(Key))/binary>>,
-                case proplists:get_value(Key, ?NO_COUNTER_PROBES) of
-                    undefined -> statsderl:increment(Id, Val, 1);
-                    gauge -> statsderl:gauge(Id, Val, 1);
-                    _ -> ok
+                case Type of
+                    counter -> statsderl:increment(Id, Val, 1);
+                    gauge -> statsderl:gauge(Id, Val, 1)
                 end
         end, Probes);
 push(Host, Probes, grapherl) ->
@@ -815,14 +816,14 @@ push(Host, Probes, grapherl) ->
             Ip = get_env(grapherl, {backend_ip, Host}, {127,0,0,1}),
             Port = get_env(grapherl, {backend_port, Host}, 11111),
             lists:foreach(
-                fun({Key, Val}) ->
-                        Type = case proplists:get_value(Key, ?NO_COUNTER_PROBES) of
-                            gauge -> <<"g">>;
-                            _ -> <<"c">>
+                fun({Key, Type, Val}) ->
+                        CType = case Type of
+                            counter -> <<"c">>;
+                            gauge -> <<"g">>
                         end,
                         BVal = integer_to_binary(Val),
                         Data = <<BaseId/binary, (jlib:atom_to_binary(Key))/binary,
-                                 ":", Type/binary, "/", TS/binary, ":", BVal/binary>>,
+                                 ":", CType/binary, "/", TS/binary, ":", BVal/binary>>,
                         gen_udp:send(Socket, Ip, Port, Data)
                 end, Probes),
             gen_udp:close(Socket);
@@ -880,7 +881,7 @@ workers(_Host, Sup) ->
 % Note: health_check must be called last from monitors list
 %       as it uses values as they are pushed and also some other
 %       monitors values
-health_check(Host, all) ->
+health_check(Host) ->
     spawn(mod_mon_client, start, [Host]),
     HealthCfg = ejabberd_config:get_option({health, Host},
                                fun(V) when is_list(V) -> V end,
