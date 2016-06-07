@@ -1080,7 +1080,8 @@ open_session(StateData) ->
     end.
 
 session_established({xmlstreamelement, #xmlel{name = Name} = El}, StateData)
-  when ?IS_STREAM_MGMT_TAG(Name) ->
+  when ?IS_STREAM_MGMT_TAG(Name),
+       not StateData#state.ack_enabled ->
     fsm_next_state(session_established, dispatch_stream_mgmt(El, StateData));
 session_established({xmlstreamelement,
 		     #xmlel{name = <<"active">>,
