@@ -37,7 +37,7 @@
 
 %% module API
 -export([start_link/2, start/2, stop/1]).
--export([value/1, reset/1]).
+-export([value/1, reset/1, add/2]).
 %% administration commands
 -export([jabs_count_command/1, jabs_since_command/1, jabs_reset_command/1]).
 %% gen_server callbacks
@@ -93,6 +93,9 @@ value(Host) ->
 
 reset(Host) ->
     gen_server:cast(process(Host), reset).
+
+add(Host, Count) ->
+    gen_server:cast(process(Host), {inc, Count}).
 
 %%====================================================================
 %% callbacks
