@@ -1945,7 +1945,7 @@ get_agent_nick_and_avatar(AgentLJID) ->
                 [#xmlel{name = <<"vCard">>}=El|_] ->
                     {fxml:get_path_s(El, [{elem, <<"NICKNAME">>}, cdata]),
                      binary:replace(fxml:get_path_s(El, [{elem, <<"PHOTO">>}, {elem, <<"BINVAL">>}, cdata]),
-                                    [<<" ">>, <<"\n">>], <<"">>, {global})};
+                                    [<<" ">>, <<"\n">>], <<"">>, [global])};
                 _ ->
                     {<<"">>, <<"">>}
             end,
