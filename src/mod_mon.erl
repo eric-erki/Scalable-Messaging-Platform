@@ -348,12 +348,6 @@ get(Key) ->
         Val -> Val
     end.
 
-get_env(App, Key, Default) ->
-    case application:get_env(App, Key) of
-        {ok, Value} -> Value;
-        _ -> Default
-    end.
-
 %%====================================================================
 %% database api
 %%====================================================================
@@ -702,21 +696,20 @@ acc_monitor(Probe, Value, Acc) ->
 %%====================================================================
 
 init_backend(_Host, {statsd, EndPoint}) ->
-    case application:load(statsderl) of
-        ok ->
-            % only first instance is able to configure endpoint
-            % as a consequence: only one endpoint per ejabberd node
-            {Ip, Port} = backend_ip_port(EndPoint, {127,0,0,1}, 2003),
-            application:set_env(statsderl, base_key, ""),
-            application:set_env(statsderl, hostname, Ip),
-            application:set_env(statsderl, port, Port);
-        _ ->
-            ok
-    end,
-    application:start(statsderl),
-    statsd;
-init_backend(Host, statsd) ->
-    init_backend(Host, {statsd, <<"127.0.0.1:2003">>});
+    {Ip, Port} = backend_ip_port(EndPoint, {127,0,0,1}, 2003),
+    {statsd, Ip, Port};
+init_backend(_Host, statsd) ->
+    {statsd, {127,0,0,1}, 2003};
+init_backend(_Host, {influxdb, EndPoint}) ->
+    {Ip, Port} = backend_ip_port(EndPoint, {127,0,0,1}, 4444),
+    {influxdb, Ip, Port};
+init_backend(_Host, influxdb) ->
+    {influxdb, {127,0,0,1}, 4444};
+init_backend(_Host, {grapherl, EndPoint}) ->
+    {Ip, Port} = backend_ip_port(EndPoint, {127,0,0,1}, 11111),
+    {grapherl, Ip, Port};
+init_backend(_Host, grapherl) ->
+    {grapherl, {127,0,0,1}, 11111};
 init_backend(Host, mnesia) ->
     Table = gen_mod:get_module_proc(Host, mon),
     mnesia:create_table(Table,
@@ -725,13 +718,6 @@ init_backend(Host, mnesia) ->
                          {record_name, mon},
                          {attributes, record_info(fields, mon)}]),
     mnesia;
-init_backend(Host, {grapherl, EndPoint}) ->
-    {Ip, Port} = backend_ip_port(EndPoint, {127,0,0,1}, 11111),
-    application:set_env(grapherl, {backend_ip, Host}, Ip),
-    application:set_env(grapherl, {backend_port, Host}, Port),
-    grapherl;
-init_backend(Host, grapherl) ->
-    init_backend(Host, {grapherl, <<"127.0.0.1:11111">>});
 init_backend(_, _) ->
     none.
 
@@ -767,11 +753,15 @@ push_metrics(Host, Backends) ->
             ?WARNING_MSG("Can not push mon metrics~n~p", [Reason]),
             {error, Reason};
         Probes ->
-            [push(Host, Probes, Backend) || Backend <- Backends],
+            [_, NodeId] = str:tokens(jlib:atom_to_binary(node()), <<"@">>),
+            [Node | _] = str:tokens(NodeId, <<".">>),
+            DateTime = erlang:universaltime(),
+            UnixTime = calendar:datetime_to_gregorian_seconds(DateTime) - 62167219200,
+            [push(Host, Node, Probes, UnixTime, Backend) || Backend <- Backends],
             ok
     end.
 
-push(Host, Probes, mnesia) ->
+push(Host, _Node, Probes, _Time, mnesia) ->
     Table = gen_mod:get_module_proc(Host, mon),
     Cache = [{Key, Val} || {mon, Key, Val} <- ets:tab2list(Table)],
     lists:foreach(
@@ -786,52 +776,46 @@ push(Host, Probes, mnesia) ->
                     _ -> mnesia:dirty_write(Table, #mon{probe = Key, value = Val})
                 end
         end, Probes);
-push(Host, Probes, statsd) ->
-    % Librato metrics are name first with service name (to group the metrics from a service),
-    % then type of service (xmpp, etc) and then nodename and name of the data itself
-    % example => process-one.net.xmpp.xmpp-1.chat_receive_packet
-    [_, NodeId] = str:tokens(jlib:atom_to_binary(node()), <<"@">>),
-    [Node | _] = str:tokens(NodeId, <<".">>),
+push(Host, Node, Probes, _Time, {statsd, Ip, Port}) ->
+    % probe example => process-one.net.xmpp.xmpp-1.chat_receive_packet:value|g
     BaseId = <<Host/binary, ".xmpp.", Node/binary, ".">>,
-    lists:foreach(
-        fun({Key, Type, Val}) ->
-                Id = <<BaseId/binary, (jlib:atom_to_binary(Key))/binary>>,
-                case Type of
-                    counter -> statsderl:increment(Id, Val, 1);
-                    gauge -> statsderl:gauge(Id, Val, 1)
-                end
-        end, Probes);
-push(Host, Probes, grapherl) ->
-    % grapherl metrics are name first with service name, then nodename
-    % and name of the data itself, followed by type timestamp and value
-    % example => process-one.net/xmpp-1.chat_receive_packet:g/timestamp:value
-    [_, NodeId] = str:tokens(jlib:atom_to_binary(node()), <<"@">>),
-    [Node | _] = str:tokens(NodeId, <<".">>),
+    push_udp(Ip, Port, Probes, fun(Key, Val, Type) ->
+            <<BaseId/binary, Key/binary, ":", Val/binary, "|", Type>>
+        end);
+push(Host, Node, Probes, Time, {influxdb, Ip, Port}) ->
+    % probe example => chat_receive_packet,host=process-one.net,node=xmpp-1 value timestamp
+    Tags = <<"host=", Host/binary, ",node=", Node/binary>>,
+    TS = <<(integer_to_binary(Time))/binary, "000000000">>,
+    push_udp(Ip, Port, Probes, fun(Key, Val, _Type) ->
+            <<Key/binary, ",", Tags/binary, " value=", Val/binary, " ", TS/binary>>
+        end);
+push(Host, Node, Probes, Time, {grapherl, Ip, Port}) ->
+    % probe example => process-one.net/xmpp-1.chat_receive_packet:g/timestamp:value
     BaseId = <<Host/binary, "/", Node/binary, ".">>,
-    DateTime = erlang:universaltime(),
-    UnixTime = calendar:datetime_to_gregorian_seconds(DateTime) - 62167219200,
-    TS = integer_to_binary(UnixTime),
+    TS = integer_to_binary(Time),
+    push_udp(Ip, Port, Probes, fun(Key, Val, Type) ->
+            <<BaseId/binary, Key/binary, ":", Type, "/", TS/binary, ":", Val/binary>>
+        end);
+push(_Host, _Node, _Probes, _Time, _Backend) ->
+    ok.
+
+push_udp(Ip, Port, Probes, Format) ->
     case gen_udp:open(0) of
         {ok, Socket} ->
-            Ip = get_env(grapherl, {backend_ip, Host}, {127,0,0,1}),
-            Port = get_env(grapherl, {backend_port, Host}, 11111),
             lists:foreach(
                 fun({Key, Type, Val}) ->
-                        CType = case Type of
-                            counter -> <<"c">>;
-                            gauge -> <<"g">>
-                        end,
+                        BKey = jlib:atom_to_binary(Key),
                         BVal = integer_to_binary(Val),
-                        Data = <<BaseId/binary, (jlib:atom_to_binary(Key))/binary,
-                                 ":", CType/binary, "/", TS/binary, ":", BVal/binary>>,
+                        Data = Format(BKey, BVal, type_to_char(Type)),
                         gen_udp:send(Socket, Ip, Port, Data)
                 end, Probes),
             gen_udp:close(Socket);
         Error ->
-            ?WARNING_MSG("can not open udp socket to grapherl: ~p", [Error])
-    end;
-push(_Host, _Probes, none) ->
-    ok.
+            ?WARNING_MSG("can not open udp socket to ~p port ~p: ~p", [Ip, Port, Error])
+    end.
+
+type_to_char(counter) -> $c;
+type_to_char(gauge) -> $g.
 
 %%====================================================================
 %% Monitors helpers
