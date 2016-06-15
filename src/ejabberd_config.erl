@@ -37,7 +37,7 @@
          transform_options/1, collect_options/1, default_db/2,
          convert_to_yaml/1, convert_to_yaml/2, v_db/2,
          add_host/1, env_binary_to_list/2, opt_type/1,
-         may_hide_data/1]).
+         may_hide_data/1, get_plain_terms_file/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").

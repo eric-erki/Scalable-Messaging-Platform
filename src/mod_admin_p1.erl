@@ -1195,11 +1195,10 @@ setup_apns(Host, ProductionCertData, SandboxCertData) ->
 	    ProductionCert = write_cert(ProductionCertData),
 	    SandboxCert = write_cert(SandboxCertData, <<"_dev">>),
 	    Config = applepush_cfg(Host, ProductionCert, SandboxCert),
-	    BaseDir = filename:dirname(os:getenv("EJABBERD_CONFIG_PATH")),
-	    ConfigFile = filename:append(BaseDir, <<"applepush.yml">>),
-	    file:write_file(ConfigFile, fast_yaml:encode([Config])),
-	    start_appended_modules(Config),
-	    0;
+	    case update_extra_config("applepush.yml", Host, Config) of
+		ok -> 0;
+		_ -> 1
+	    end;
 	%{Prod, [{ProdId, Prod, ProdFile}, {DevId, Dev, DevFile}]} ->
 	    % TODO maybe avoid restart if only cert payload changed
 	    % so we just write files
@@ -1216,35 +1215,33 @@ applepush_cfg(Host, ProductionCert, SandboxCert) ->
 	undefined -> undefined;
 	AppId -> <<AppId/binary, "_dev">>
     end,
-    {append_host_config, [
-	    {Host, [{modules, [
-		{mod_applepush, [
-			{db_type, sql},
-			{iqdisc, 50},
-			{default_service, <<"apnsprod.", Host/binary>>},
-			{push_services,
-			    [{ProductionAppId, <<"apnsprod.", Host/binary>>}
-				|| ProductionAppId =/= undefined] ++
-			    [{SandboxAppId, <<"apnsdev.", Host/binary>>}
-				|| SandboxAppId =/= undefined]
-			    }
-			]},
-		{mod_applepush_service, [
-			{hosts,
-			    [{<<"apnsprod.", Host/binary>>, [
-					{certfile, ProductionCert},
-					{gateway, <<"gateway.push.apple.com">>},
-					{port, 2195}]}
-				|| ProductionAppId =/= undefined] ++
-			    [{<<"apnsdev.", Host/binary>>, [
-					{certfile, SandboxCert},
-					{gateway, <<"gateway.sandbox.push.apple.com">>},
-					{port, 2195}]}
-				|| SandboxAppId =/= undefined]
-			    }
-			]}
-		]}]}
-	    ]}.
+    [{modules, [
+	{mod_applepush, [
+		{db_type, sql},
+		{iqdisc, 50},
+		{default_service, <<"apnsprod.", Host/binary>>},
+		{push_services,
+		    [{ProductionAppId, <<"apnsprod.", Host/binary>>}
+			|| ProductionAppId =/= undefined] ++
+		    [{SandboxAppId, <<"apnsdev.", Host/binary>>}
+			|| SandboxAppId =/= undefined]
+		    }
+		]},
+	{mod_applepush_service, [
+		{hosts,
+		    [{<<"apnsprod.", Host/binary>>, [
+				{certfile, ProductionCert},
+				{gateway, <<"gateway.push.apple.com">>},
+				{port, 2195}]}
+			|| ProductionAppId =/= undefined] ++
+		    [{<<"apnsdev.", Host/binary>>, [
+				{certfile, SandboxCert},
+				{gateway, <<"gateway.sandbox.push.apple.com">>},
+				{port, 2195}]}
+			|| SandboxAppId =/= undefined]
+		    }
+		]}
+	]}].
 
 appid_from_cert({error, _}) ->
     undefined;
@@ -1291,11 +1288,10 @@ setup_gcm(Host, ApiKey, AppId) ->
 	undefined ->
 	    % if mod_gcm not started, generate config, start gcm
 	    Config = gcm_cfg(Host, ApiKey, AppId),
-	    BaseDir = filename:dirname(os:getenv("EJABBERD_CONFIG_PATH")),
-	    ConfigFile = filename:append(BaseDir, <<"gcm.yml">>),
-	    file:write_file(ConfigFile, fast_yaml:encode([Config])),
-	    start_appended_modules(Config),
-	    0;
+	    case update_extra_config("gcm.yml", Host, Config) of
+		ok -> 0;
+		_ -> 1
+	    end;
 	%{Service, [{AppId, Service, ApiKey}]} ->
 	    % TODO can we avoid restart ?
 	    % 0;
@@ -1306,33 +1302,27 @@ setup_gcm(Host, ApiKey, AppId) ->
     end.
 
 gcm_cfg(Host, ApiKey, AppId) ->
-    {append_host_config, [
-	    {Host, [{modules, [
-		{mod_gcm, [
-			{db_type, sql},
-			{iqdisc, 50},
-			{default_service, <<"gcm.", Host/binary>>},
-			{push_services, [{AppId, <<"gcm.", Host/binary>>}]}
-			]},
-		{mod_gcm_service, [
-			{hosts, [
-				{<<"gcm.", Host/binary>>, [
-					{gateway, <<"https://android.googleapis.com/gcm/send">>},
-					{apikey, ApiKey}]}
-				]}
-			]}
-		]}]}
-	    ]}.
+    [{modules, [
+	{mod_gcm, [
+		{db_type, sql},
+		{iqdisc, 50},
+		{default_service, <<"gcm.", Host/binary>>},
+		{push_services, [{AppId, <<"gcm.", Host/binary>>}
+				    || AppId =/= <<>>]}
+		]},
+	{mod_gcm_service, [
+		{hosts,
+		    [{<<"gcm.", Host/binary>>, [
+				{gateway, <<"https://android.googleapis.com/gcm/send">>},
+				{apikey, ApiKey}]}
+				    || ApiKey =/= <<>>]
+		    }
+		]}
+	]}].
 
 %% -----------------------------
 %% Internal function pattern
 %% -----------------------------
-
-start_appended_modules({append_host_config, Appends}) ->
-    [start_appended_modules(Host, proplists:get_value(modules, Append, []))
-     || {Host, Append} <- Appends].
-start_appended_modules(Host, Modules) ->
-    [gen_mod:start_module(Host, Mod, Opts) || {Mod, Opts} <- Modules].
 
 push_spec(Host, Mod, SrvMod, Key) ->
     case proplists:get_value(Host, module_options(Mod)) of
@@ -1347,6 +1337,32 @@ push_spec(Host, Mod, SrvMod, Key) ->
 		Defined -> Defined
 	    end,
 	    {DefaultService, O3}
+    end.
+
+update_extra_config(ConfigFile, Host, Config) ->
+    BaseDir = filename:dirname(os:getenv("EJABBERD_CONFIG_PATH")),
+    File = filename:append(BaseDir, ConfigFile),
+    FullConfig = case catch ejabberd_config:get_plain_terms_file(File) of
+	[{append_host_config, Current}] ->
+	    lists:keystore(Host, 1, Current, {Host, Config});
+	_ ->
+	    [{Host, Config}]
+    end,
+    case catch fast_yaml:encode([{append_host_config, FullConfig}]) of
+	{'EXIT', R1} ->
+	    ?ERROR_MSG("Can not encode config: ~p", [R1]),
+	    {error, R1};
+	Yml ->
+	    case file:write_file(File, Yml) of
+		{error, R2} ->
+		    ?ERROR_MSG("Can not write config: ~p", [R2]),
+		    {error, R2};
+		ok ->
+		    Modules = proplists:get_value(modules, Config, []),
+		    [gen_mod:start_module(Host, Mod, Opts)
+			|| {Mod, Opts} <- Modules],
+		    ok
+	    end
     end.
 
 user_action(User, Server, Fun, OK) ->
