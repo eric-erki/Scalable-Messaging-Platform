@@ -478,7 +478,8 @@ privacy_iq_get(Acc, #jid{lserver=LServer}, _To, _Iq, _) ->
     cast(LServer, {inc, privacy_iq_get}),
     Acc.
 
-api_call(LServer, _Method, _Path) ->
+api_call(_Module, _Function, _Arguments) ->
+    [LServer|_] = ejabberd_config:get_myhosts(),
     cast(LServer, {inc, api_call}).
 backend_api_call(LServer, _Method, _Path) ->
     cast(LServer, {inc, backend_api_call}).
