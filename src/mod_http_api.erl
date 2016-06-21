@@ -347,7 +347,6 @@ do_bulk_roster_update(Args) ->
     end.
 
 handle(Host, 'bulk-roster-update', Auth, Args, Version) ->
-    mod_jabs:add(Host, 1),
     Allowed = case Auth of
 		  admin -> true;
 		  _ -> ejabberd_commands:command_execution_allowed('bulk-roster-update',
@@ -355,6 +354,7 @@ handle(Host, 'bulk-roster-update', Auth, Args, Version) ->
 	      end,
     case Allowed of
 	true ->
+	    mod_jabs:add(Host, 1),
 	    do_bulk_roster_update(Args);
 	_ ->
 		    {401, <<"not_allowed">>}
@@ -362,7 +362,6 @@ handle(Host, 'bulk-roster-update', Auth, Args, Version) ->
 
 % generic ejabberd command handler
 handle(Host, Call, Auth, Args, Version) when is_atom(Call), is_list(Args) ->
-    mod_jabs:add(Host, 1), %% TODO add command cost or 1
     case ejabberd_commands:get_command_format(Call, Auth, Version) of
         {ArgsSpec, _} when is_list(ArgsSpec) ->
 	    try
@@ -375,7 +374,9 @@ handle(Host, Call, Auth, Args, Version) when is_atom(Call), is_list(Args) ->
                                                   {Key, Value}
                                           end
                                   end, ArgsSpec),
-		handle2(Call, Auth, ArgsM, Version)
+		Result = handle2(Call, Auth, ArgsM, Version),
+		mod_jabs:add(Host, 1), %% TODO add #ejabberd_command.weight if defined, or 1
+		Result
 	    catch throw:not_found ->
 		    {404, <<"not_found">>};
 		  throw:{not_found, Why} when is_atom(Why) ->
