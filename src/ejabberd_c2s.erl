@@ -3479,9 +3479,9 @@ stream_mgmt_enabled(#state{mgmt_state = disabled}) ->
 stream_mgmt_enabled(_StateData) ->
     true.
 
-dispatch_stream_mgmt(El, StateData)
-  when StateData#state.mgmt_state == active;
-       StateData#state.mgmt_state == pending ->
+dispatch_stream_mgmt(El, #state{mgmt_state = MgmtState} = StateData)
+    when MgmtState == active;
+	 MgmtState == pending ->
     perform_stream_mgmt(El, StateData);
 dispatch_stream_mgmt(El, StateData) ->
     negotiate_stream_mgmt(El, StateData).
@@ -3666,9 +3666,9 @@ check_h_attribute(#state{mgmt_stanzas_out = NumStanzasOut} = StateData, H) ->
 	   [jid:to_string(StateData#state.jid), H, NumStanzasOut]),
     mgmt_queue_drop(StateData, H).
 
-update_num_stanzas_in(StateData, El)
-    when StateData#state.mgmt_state == active;
-	 StateData#state.mgmt_state == pending ->
+update_num_stanzas_in(#state{mgmt_state = MgmtState} = StateData, El)
+    when MgmtState == active;
+	 MgmtState == pending ->
     NewNum = case {is_stanza(El), StateData#state.mgmt_stanzas_in} of
 		 {true, 4294967295} -> 0;
 		 {true, Num} -> Num + 1;
@@ -3714,10 +3714,10 @@ check_queue_length(#state{mgmt_queue = Queue,
 	false -> StateData
     end.
 
-handle_unacked_stanzas(StateData, F)
-  when StateData#state.mgmt_state == active;
-	 StateData#state.mgmt_state == pending;
-	 StateData#state.mgmt_state == timeout ->
+handle_unacked_stanzas(#state{mgmt_state = MgmtState} = StateData, F)
+    when MgmtState == active;
+	 MgmtState == pending;
+	 MgmtState == timeout ->
     Queue = StateData#state.mgmt_queue,
     case queue:len(Queue) of
 	0 ->
@@ -3737,10 +3737,10 @@ handle_unacked_stanzas(StateData, F)
 handle_unacked_stanzas(_StateData, _F) ->
     ok.
 
-handle_unacked_stanzas(StateData)
-  when StateData#state.mgmt_state == active;
-	 StateData#state.mgmt_state == pending;
-	 StateData#state.mgmt_state == timeout ->
+handle_unacked_stanzas(#state{mgmt_state = MgmtState} = StateData)
+    when MgmtState == active;
+	 MgmtState == pending;
+	 MgmtState == timeout ->
     ResendOnTimeout =
 	case StateData#state.mgmt_resend of
 	    Resend when is_boolean(Resend) ->
