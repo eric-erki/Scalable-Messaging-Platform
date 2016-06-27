@@ -208,7 +208,7 @@ handle_call(snapshot, _From, State) ->
 handle_call({declare, Probe, Type}, _From, State) ->
     Result = case Type of
         gauge ->
-            ets:insert(mon_probes, {Probe, gauge}),
+            declare_gauge(Probe),
             put(Probe, 0),
             ok;
         counter ->
@@ -240,9 +240,11 @@ handle_cast({dec, Probe, Value}, State) ->
 handle_cast({set, log, Value}, State) ->
     {noreply, State#state{log = Value}};
 handle_cast({set, Probe, Value}, State) ->
+    declare_gauge(Probe),
     put(Probe, Value),
     {noreply, State};
 handle_cast({sum, Probe, Value}, State) ->
+    declare_gauge(Probe),
     case get(Probe) of
         {Old, Count} -> put(Probe, {Old+Value, Count+1});
         _ -> put(Probe, {Value, 1})
@@ -319,6 +321,12 @@ packet(Main, _Name, Type) -> <<Type/binary, "_", Main/binary, "_packet">>.
 
 concat(Pre, <<>>) -> Pre;
 concat(Pre, Post) -> <<Pre/binary, "_", Post/binary>>.
+
+declare_gauge(Probe) ->
+    case lists:member(Probe, ?GAUGES) of
+        false -> ets:insert(mon_probes, {Probe, gauge});
+        true -> ok
+    end.
 
 %serverhost(Host) ->
 %    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
