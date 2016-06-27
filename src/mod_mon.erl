@@ -41,7 +41,7 @@
 
 %% module API
 -export([start_link/2, start/2, stop/1]).
--export([value/2, dump/1, declare/3, info/1]).
+-export([value/2, dump/1, declare/3, drop/2, info/1]).
 -export([reset/2, set/3, inc/3, dec/3, sum/3]).
 %% sync commands
 -export([flush_log/3, sync_log/1, push_metrics/2]).
@@ -126,6 +126,10 @@ dump(Host) when is_binary(Host) ->
 declare(Host, Probe, Type) when is_binary(Host), is_atom(Probe) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     gen_server:call(Proc, {declare, Probe, Type}, ?CALL_TIMEOUT).
+
+drop(Host, Probe) when is_binary(Host), is_atom(Probe) ->
+    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
+    gen_server:call(Proc, {drop, Probe}, ?CALL_TIMEOUT).
 
 %%====================================================================
 %% gen_server callbacks
@@ -220,6 +224,8 @@ handle_call({declare, Probe, Type}, _From, State) ->
             error
     end,
     {reply, Result, State};
+handle_call({drop, Probe}, _From, State) ->
+    {reply, erase(Probe), State};
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State}.
 
