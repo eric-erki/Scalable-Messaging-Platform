@@ -201,8 +201,10 @@ handle_call({reset, Probe}, _From, State) ->
 handle_call(dump, _From, State) ->
     {reply, get(), State};
 handle_call(snapshot, _From, State) ->
-    Probes = compute_probes(State#state.host, State#state.monitors),
-    [put(Key, 0) || {Key, Type, Val} <- Probes,
+    Host = State#state.host,
+    Probes = compute_probes(Host, State#state.monitors),
+    ExtProbes = ejabberd_hooks:run_fold(mon_monitors, [], [Host]),
+    [put(Key, 0) || {Key, Type, Val} <- Probes ++ ExtProbes,
                     Val =/= 0, Type == counter],
     {reply, Probes, State};
 handle_call({declare, Probe, Type}, _From, State) ->
