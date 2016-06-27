@@ -144,7 +144,7 @@ get_commands_spec() ->
 		        args = [{name, binary}, {service, binary}],
 			result = {options, {list,
 						 {option, {tuple,
-								[{name, string},
+								[{name, atom},
 								 {value, string}
 								]}}
 						}}},
@@ -831,7 +831,13 @@ get_room_options(Pid) ->
 get_options(Config) ->
     Fields = record_info(fields, config),
     [config | Values] = tuple_to_list(Config),
-    lists:zip(Fields, Values).
+    VS = lists:map(fun(Val) when is_binary(Val) ->
+			   Val;
+		      (Val) ->
+			   iolist_to_binary(io_lib:format("~p", [Val]))
+		   end, Values),
+    %FS = lists:map(fun(V) -> atom_to_binary(V, utf8) end, Fields),
+    lists:zip(Fields, VS).
 
 %%----------------------------
 %% Get Room Affiliations
