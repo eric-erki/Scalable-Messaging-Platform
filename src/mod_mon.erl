@@ -210,7 +210,7 @@ handle_call(snapshot, _From, State) ->
     ExtProbes = ejabberd_hooks:run_fold(mon_monitors, Host, [], [Host]),
     [put(Key, 0) || {Key, Type, Val} <- Probes ++ ExtProbes,
                     Val =/= 0, Type == counter],
-    {reply, Probes, State};
+    {reply, Probes++ExtProbes, State};
 handle_call({declare, Probe, Type}, _From, State) ->
     Result = case Type of
         gauge ->
