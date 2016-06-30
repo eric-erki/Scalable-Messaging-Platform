@@ -690,12 +690,12 @@ compute_monitor(Probes, Probe, Acc) when is_atom(Probe) ->
 compute_monitor(Probes, {'+', Probe}, Acc) ->
     case lists:keyfind(Probe, 1, Probes) of
         {Probe, _Type, Val} -> Acc+Val;
-        _ -> Acc;
+        _ -> Acc
     end;
 compute_monitor(Probes, {'-', Probe}, Acc) ->
     case lists:keyfind(Probe, 1, Probes) of
         {Probe, _Type, Val} -> Acc-Val;
-        _ -> Acc;
+        _ -> Acc
     end.
 
 acc_monitor(dynamic, Values, Acc) when is_list(Values) ->
