@@ -48,7 +48,7 @@
 	 broadcast/4, transform_listen_option/2,
 	 socket_type/0, is_remote_socket/1]).
 
--export([init/1, wait_for_stream/2, wait_for_stream/3,
+-export([init/1, wakeup/2, wait_for_stream/2, wait_for_stream/3,
 	 wait_for_auth/2, wait_for_auth/3,
 	 wait_for_feature_request/2, wait_for_feature_request/3,
 	 wait_for_bind/2, wait_for_bind/3,
@@ -86,6 +86,8 @@
 -define(C2S_OPEN_TIMEOUT, 60000).
 -define(C2S_HIBERNATE_TIMEOUT, ejabberd_config:get_option(c2s_hibernate, fun(X) when is_integer(X); X == hibernate-> X end, 90000)).
 
+%% Define jabs increment while hibernated (1 jabs every every X minutes)
+-define(C2S_HIBERNATED_ACTIVITY, 15).
 
 -define(STREAM_HEADER,
 	<<"<?xml version='1.0'?><stream:stream "
@@ -417,6 +419,14 @@ init([StateName, StateData, _FSMLimitOpts]) ->
        true ->
 	    {ok, StateName, StateData#state{socket_monitor = MRef}}
     end.
+
+wakeup(StateData, TimeStamp) ->
+    Diff = timer:now_diff(os:timestamp(), TimeStamp) div 1000,
+    case (?C2S_HIBERNATE_TIMEOUT + Diff) div (?C2S_HIBERNATED_ACTIVITY * 60000) of
+	Count when Count > 0 -> mod_jabs:add(StateData#state.server, Count);
+	_ -> ok
+    end,
+    ?GEN_FSM:enter_loop(?MODULE, [], session_established, StateData).
 
 %% Return list of all available resources of contacts,
 get_subscribed(FsmRef) ->
@@ -1107,8 +1117,8 @@ session_established({xmlstreamelement, El}, StateData) ->
 %% We hibernate the process to reduce memory consumption after a
 %% configurable activity timeout
 session_established(timeout, StateData) ->
-    proc_lib:hibernate(?GEN_FSM, enter_loop,
-		       [?MODULE, [], session_established, StateData]),
+    Now = os:timestamp(),
+    proc_lib:hibernate(?MODULE, wakeup, [StateData, Now]),
     fsm_next_state(session_established, StateData);
 session_established({xmlstreamend, _Name}, StateData) ->
     fsm_stop(StateData);
