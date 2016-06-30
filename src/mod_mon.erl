@@ -174,7 +174,7 @@ init([Host, Opts]) ->
     ejabberd_commands:register_commands(get_commands_spec()),
 
     % Store probes specs
-    ets:new(mon_probes, [named_table, public]),
+    catch ets:new(mon_probes, [named_table, public]),
     [ets:insert(mon_probes, {Probe, gauge}) || Probe<-?GAUGES],
 
     % Start timers for cache and backends sync
