@@ -807,7 +807,8 @@ server_info() ->
     JabsSince = MegaSecs*1000000+Secs,
     DefaultActive = [{<<"daily_active_users">>, 0},
 		     {<<"weekly_active_users">>, 0},
-		     {<<"monthly_active_users">>, 0}],
+		     {<<"monthly_active_users">>, 0},
+		     {<<"period_active_users">>, 0}],
     [FirstActive | OtherActive] =
 	[lists:sort(ejabberd_command(active_counters, [Host], DefaultActive))
 		|| Host <- Hosts],
