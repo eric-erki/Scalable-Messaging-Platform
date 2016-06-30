@@ -820,11 +820,15 @@ push_udp(Ip, Port, Probes, Format) ->
     case gen_udp:open(0) of
         {ok, Socket} ->
             lists:foreach(
-                fun({Key, Type, Val}) ->
+                fun({Key, Type, Val}) when is_integer(Val) ->
                         BKey = jlib:atom_to_binary(Key),
                         BVal = integer_to_binary(Val),
                         Data = Format(BKey, BVal, type_to_char(Type)),
-                        gen_udp:send(Socket, Ip, Port, Data)
+                        gen_udp:send(Socket, Ip, Port, Data);
+                   ({health, _Type, _Val}) ->
+                        ok;
+                   ({Key, _Type, Val}) ->
+                        ?WARNING_MSG("can not push metrics ~p with value ~p", [Key, Val])
                 end, Probes),
             gen_udp:close(Socket);
         Error ->
@@ -832,7 +836,10 @@ push_udp(Ip, Port, Probes, Format) ->
     end.
 
 type_to_char(counter) -> $c;
-type_to_char(gauge) -> $g.
+type_to_char(gauge) -> $g;
+type_to_char(Type) ->
+    ?WARNING_MSG("invalid probe type ~p, assuming counter", [Type]),
+    $c.
 
 %%====================================================================
 %% Monitors helpers
