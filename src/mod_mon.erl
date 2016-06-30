@@ -688,14 +688,14 @@ eval_monitors(Probes, [Action|Tail], Acc) ->
 compute_monitor(Probes, Probe, Acc) when is_atom(Probe) ->
     compute_monitor(Probes, {'+', Probe}, Acc);
 compute_monitor(Probes, {'+', Probe}, Acc) ->
-    case proplists:get_value(Probe, Probes) of
-        undefined -> Acc;
-        Val -> Acc+Val
+    case lists:keyfind(Probe, 1, Probes) of
+        {Probe, _Type, Val} -> Acc+Val;
+        _ -> Acc;
     end;
 compute_monitor(Probes, {'-', Probe}, Acc) ->
-    case proplists:get_value(Probe, Probes) of
-        undefined -> Acc;
-        Val -> Acc-Val
+    case lists:keyfind(Probe, 1, Probes) of
+        {Probe, _Type, Val} -> Acc-Val;
+        _ -> Acc;
     end.
 
 acc_monitor(dynamic, Values, Acc) when is_list(Values) ->
