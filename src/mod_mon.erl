@@ -934,7 +934,10 @@ jabs_count(Host) ->
 cpu_usage(_Host) ->
     Threads = erlang:system_info(schedulers),
     {_, Runtime} = erlang:statistics(runtime),
-    Runtime div (?MINUTE * Threads).
+    % we assume cpu_usage is called only by push_metrics event
+    % every minute, and we get this runtime delta for reference
+    % ?MINUTE div 100
+    Runtime div (600 * Threads).
 
 %%====================================================================
 %% Health check helpers
