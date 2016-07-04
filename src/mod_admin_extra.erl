@@ -1103,13 +1103,9 @@ kick_sessions(User, Server, Reason) ->
       get_resources(User, Server)).
 
 get_presence(U, S) ->
-    case ejabberd_auth:is_user_exists(U, S) of
-      true ->
-	  {Resource, Show, Status} = get_presence2(U, S),
-	  FullJID = jid:to_string({U, S, Resource}),
-	  {FullJID, Show, Status};
-      false -> throw({not_found, <<"unknown_user">>})
-    end.
+    {Resource, Show, Status} = get_presence2(U, S),
+    FullJID = jid:to_string({U, S, Resource}),
+    {FullJID, Show, Status}.
 
 get_resources(User, Server) ->
     lists:map(
