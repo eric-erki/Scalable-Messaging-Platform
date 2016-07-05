@@ -158,7 +158,7 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info(backup, State) ->
-    write_db(State),
+    spawn(fun() -> write_db(State) end),
     {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
