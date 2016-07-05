@@ -12,6 +12,7 @@
 -compile(export_all).
 
 -include("suite.hrl").
+-include_lib("kernel/include/file.hrl").
 
 %%%===================================================================
 %%% API
@@ -54,6 +55,7 @@ init_config(Config) ->
                                                    ]),
     ConfigPath = filename:join([CWD, "ejabberd.yml"]),
     ok = file:write_file(ConfigPath, CfgContent),
+    setup_ejabberd_lib_path(Config),
     ok = application:load(sasl),
     ok = application:load(mnesia),
     ok = application:load(ejabberd),
@@ -74,8 +76,41 @@ init_config(Config) ->
      {resource, <<"resource!@#$%^&*()'\"`~<>+-/;:_=[]{}|\\">>},
      {master_resource, <<"master_resource!@#$%^&*()'\"`~<>+-/;:_=[]{}|\\">>},
      {slave_resource, <<"slave_resource!@#$%^&*()'\"`~<>+-/;:_=[]{}|\\">>},
-     {password, <<"password!@#$%^&*()'\"`~<>+-/;:_=[]{}|\\">>}
+     {password, <<"password!@#$%^&*()'\"`~<>+-/;:_=[]{}|\\">>},
+     {backends, get_config_backends()}
      |Config].
+
+find_top_dir(Dir) ->
+    case file:read_file_info(filename:join([Dir, ebin])) of
+	{ok, #file_info{type = directory}} ->
+	    Dir;
+	_ ->
+	    find_top_dir(filename:dirname(Dir))
+    end.
+
+setup_ejabberd_lib_path(Config) ->
+    case code:lib_dir(ejabberd) of
+	{error, _} ->
+	    DataDir = proplists:get_value(data_dir, Config),
+	    {ok, CWD} = file:get_cwd(),
+	    NewEjPath = filename:join([CWD, "ejabberd-0.0.1"]),
+	    TopDir = find_top_dir(DataDir),
+	    ok = file:make_symlink(TopDir, NewEjPath),
+	    code:replace_path(ejabberd, NewEjPath);
+	_ ->
+	    ok
+    end.
+
+%% Read environment variable CT_DB=riak,mysql to limit the backends to test.
+%% You can thus limit the backend you want to test with:
+%%  CT_BACKENDS=riak,mysql rebar ct suites=ejabberd
+get_config_backends() ->
+    case os:getenv("CT_BACKENDS") of
+        false  -> all;
+        String ->
+            Backends0 = string:tokens(String, ","),
+            lists:map(fun(Backend) -> string:strip(Backend, both, $ ) end, Backends0)
+    end.
 
 process_config_tpl(Content, []) ->
     Content;

@@ -54,7 +54,7 @@ terminate(Host, ServerHost) ->
     node_flat:terminate(Host, ServerHost).
 
 options() ->
-    node_flat:options().
+    [{node_type, collection} | node_flat:options()].
 
 features() ->
     node_flat:features().

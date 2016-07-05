@@ -41,13 +41,14 @@
 
 %% module API
 -export([start_link/2, start/2, stop/1]).
--export([value/2, reset/2, set/3, dump/1, info/1]).
+-export([value/2, dump/1, declare/3, drop/2, info/1]).
+-export([reset/2, set/3, inc/3, dec/3, sum/3]).
 %% sync commands
 -export([flush_log/3, sync_log/1, push_metrics/2]).
 %% administration commands
 -export([active_counters_command/1, flush_probe_command/2]).
 %% monitors
--export([process_queues/2, internal_queues/2, health_check/2, jabs_count/1]).
+-export([process_queues/2, internal_queues/2, health_check/1, jabs_count/1]).
 -export([cpu_usage/1]).
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -102,6 +103,18 @@ set(Host, Probe, Value) when is_binary(Host), is_atom(Probe) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     gen_server:cast(Proc, {set, Probe, Value}).
 
+inc(Host, Probe, Value) when is_binary(Host), is_atom(Probe) ->
+    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
+    gen_server:cast(Proc, {inc, Probe, Value}).
+
+dec(Host, Probe, Value) when is_binary(Host), is_atom(Probe) ->
+    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
+    gen_server:cast(Proc, {dec, Probe, Value}).
+
+sum(Host, Probe, Value) when is_binary(Host), is_atom(Probe) ->
+    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
+    gen_server:cast(Proc, {sum, Probe, Value}).
+
 reset(Host, Probe) when is_binary(Host), is_atom(Probe) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     gen_server:call(Proc, {reset, Probe}).
@@ -109,6 +122,14 @@ reset(Host, Probe) when is_binary(Host), is_atom(Probe) ->
 dump(Host) when is_binary(Host) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     gen_server:call(Proc, dump, ?CALL_TIMEOUT).
+
+declare(Host, Probe, Type) when is_binary(Host), is_atom(Probe) ->
+    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
+    gen_server:call(Proc, {declare, Probe, Type}, ?CALL_TIMEOUT).
+
+drop(Host, Probe) when is_binary(Host), is_atom(Probe) ->
+    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
+    gen_server:call(Proc, {drop, Probe}, ?CALL_TIMEOUT).
 
 %%====================================================================
 %% gen_server callbacks
@@ -122,13 +143,15 @@ init([Host, Opts]) ->
     Monitors = gen_mod:get_opt(monitors, Opts,
                                fun(L) when is_list(L) -> L end,
                                []) ++ MonitorsBase,
+
     % List enabled hooks, defaults all supported hooks
     Hooks = gen_mod:get_opt(hooks, Opts,
                                fun(L) when is_list(L) -> L end,
                                ?SUPPORTED_HOOKS),
     % Active users counting uses hyperloglog structures
     ActiveCount = gen_mod:get_opt(active_count, Opts,
-                                  fun(A) when is_atom(A) -> A end, true)
+                                  fun(B) when is_boolean(B) -> B end,
+                                  true)
                   and not ejabberd_auth_anonymous:allow_anonymous(Host),
     Log = init_log(Host, ActiveCount),
 
@@ -149,6 +172,10 @@ init([Host, Opts]) ->
      || Component <- [Host], % Todo, Components for muc and pubsub
         Hook <- Hooks],
     ejabberd_commands:register_commands(get_commands_spec()),
+
+    % Store probes specs
+    catch ets:new(mon_probes, [named_table, public]),
+    [ets:insert(mon_probes, {Probe, gauge}) || Probe<-?GAUGES],
 
     % Start timers for cache and backends sync
     {ok, TSync} = timer:apply_interval(?HOUR, ?MODULE, sync_log, [Host]),
@@ -178,13 +205,27 @@ handle_call({reset, Probe}, _From, State) ->
 handle_call(dump, _From, State) ->
     {reply, get(), State};
 handle_call(snapshot, _From, State) ->
-    run_monitors(State#state.host, State#state.monitors),
-    [compute_average(Probe) || Probe <- ?AVG_MONITORS],
-    Probes = [{Key, Val} || {Key, Val} <- get(), is_integer(Val)],
-    [put(Key, 0) || {Key, Val} <- Probes,
-                    Val =/= 0,
-                    not proplists:is_defined(Key, ?NO_COUNTER_PROBES)],
-    {reply, Probes, State};
+    Host = State#state.host,
+    Probes = compute_probes(Host, State#state.monitors),
+    ExtProbes = ejabberd_hooks:run_fold(mon_monitors, Host, [], [Host]),
+    [put(Key, 0) || {Key, Type, Val} <- Probes ++ ExtProbes,
+                    Val =/= 0, Type == counter],
+    {reply, Probes++ExtProbes, State};
+handle_call({declare, Probe, Type}, _From, State) ->
+    Result = case Type of
+        gauge ->
+            declare_gauge(Probe),
+            put(Probe, 0),
+            ok;
+        counter ->
+            put(Probe, 0),
+            ok;
+        _ ->
+            error
+    end,
+    {reply, Result, State};
+handle_call({drop, Probe}, _From, State) ->
+    {reply, erase(Probe), State};
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State}.
 
@@ -207,9 +248,11 @@ handle_cast({dec, Probe, Value}, State) ->
 handle_cast({set, log, Value}, State) ->
     {noreply, State#state{log = Value}};
 handle_cast({set, Probe, Value}, State) ->
+    declare_gauge(Probe),
     put(Probe, Value),
     {noreply, State};
 handle_cast({sum, Probe, Value}, State) ->
+    declare_gauge(Probe),
     case get(Probe) of
         {Old, Count} -> put(Probe, {Old+Value, Count+1});
         _ -> put(Probe, {Value, 1})
@@ -287,6 +330,12 @@ packet(Main, _Name, Type) -> <<Type/binary, "_", Main/binary, "_packet">>.
 concat(Pre, <<>>) -> Pre;
 concat(Pre, Post) -> <<Pre/binary, "_", Post/binary>>.
 
+declare_gauge(Probe) ->
+    case lists:member(Probe, ?GAUGES) of
+        false -> ets:insert(mon_probes, {Probe, gauge});
+        true -> ok
+    end.
+
 %serverhost(Host) ->
 %    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
 %    case whereis(Proc) of
@@ -313,12 +362,6 @@ get(Key) ->
     case erlang:get(Key) of
         undefined -> 0;
         Val -> Val
-    end.
-
-get_env(App, Key, Default) ->
-    case application:get_env(App, Key) of
-        {ok, Value} -> Value;
-        _ -> Default
     end.
 
 %%====================================================================
@@ -451,7 +494,8 @@ privacy_iq_get(Acc, #jid{lserver=LServer}, _To, _Iq, _) ->
     cast(LServer, {inc, privacy_iq_get}),
     Acc.
 
-api_call(LServer, _Method, _Path) ->
+api_call(_Module, _Function, _Arguments) ->
+    [LServer|_] = ejabberd_config:get_myhosts(),
     cast(LServer, {inc, api_call}).
 backend_api_call(LServer, _Method, _Path) ->
     cast(LServer, {inc, backend_api_call}).
@@ -609,16 +653,32 @@ logfilename(Host) when is_binary(Host) ->
 %% high level monitors
 %%====================================================================
 
-run_monitors(Host, Monitors) ->
-    Probes = [{Key, Val} || {Key, Val} <- get(), is_integer(Val)],
-    lists:foreach(
-        fun({I, M, F, A}) -> put(I, apply(M, F, A));
-           ({I, M, F, A, Fun}) -> put(I, Fun(apply(M, F, A)));
-           ({I, F, A}) -> put(I, apply(?MODULE, F, [Host, A]));
-           ({I, F}) when is_atom(F) -> put(I, apply(?MODULE, F, [Host]));
-           ({I, Spec}) when is_list(Spec) -> put(I, eval_monitors(Probes, Spec, 0));
-           (_) -> ok
-        end, Monitors).
+compute_probes(Host, Monitors) ->
+    Probes = lists:foldl(
+            fun({Key, {Val, Count}}, Acc) when is_integer(Val), is_integer(Count) ->
+                    Avg = Val div Count,
+                    put(Key, Avg), %% to force reset of average count
+                    [{Key, probe_type(Key), Avg}|Acc];
+                ({Key, Val}, Acc) when is_integer(Val) ->
+                    [{Key, probe_type(Key), Val}|Acc];
+                (_, Acc) ->
+                    Acc
+            end, [], get()),
+    Computed = lists:foldl(
+            fun({I, M, F, A}, Acc) -> acc_monitor(I, apply(M, F, A), Acc);
+                ({I, M, F, A, Fun}, Acc) -> acc_monitor(I, Fun(apply(M, F, A)), Acc);
+                ({I, F, A}, Acc) -> acc_monitor(I, apply(?MODULE, F, [Host, A]), Acc);
+                ({I, F}, Acc) when is_atom(F) -> acc_monitor(I, apply(?MODULE, F, [Host]), Acc);
+                ({I, Spec}, Acc) when is_list(Spec) -> acc_monitor(I, eval_monitors(Probes, Spec, 0), Acc);
+                (_, Acc) -> Acc
+            end, [], Monitors),
+    Probes ++ Computed.
+
+probe_type(Probe) ->
+    case catch ets:lookup(mon_probes, Probe) of
+        [{Probe, Type}] -> Type;
+        _ -> counter
+    end.
 
 eval_monitors(_, [], Acc) ->
     Acc;
@@ -628,42 +688,45 @@ eval_monitors(Probes, [Action|Tail], Acc) ->
 compute_monitor(Probes, Probe, Acc) when is_atom(Probe) ->
     compute_monitor(Probes, {'+', Probe}, Acc);
 compute_monitor(Probes, {'+', Probe}, Acc) ->
-    case proplists:get_value(Probe, Probes) of
-        undefined -> Acc;
-        Val -> Acc+Val
+    case lists:keyfind(Probe, 1, Probes) of
+        {Probe, _Type, Val} -> Acc+Val;
+        _ -> Acc
     end;
 compute_monitor(Probes, {'-', Probe}, Acc) ->
-    case proplists:get_value(Probe, Probes) of
-        undefined -> Acc;
-        Val -> Acc-Val
+    case lists:keyfind(Probe, 1, Probes) of
+        {Probe, _Type, Val} -> Acc-Val;
+        _ -> Acc
     end.
 
-compute_average(Probe) ->
-    case get(Probe) of
-        {Value, Count} -> put(Probe, Value div Count);
-        _ -> ok
-    end.
+acc_monitor(dynamic, Values, Acc) when is_list(Values) ->
+    lists:foldl(
+        fun({Probe, Value}, Res) ->
+                acc_monitor(Probe, Value, Res);
+            (_, Res) ->
+                Res
+        end, Acc, Values);
+acc_monitor(Probe, Value, Acc) ->
+    [{Probe, gauge, Value}|Acc].
 
 %%====================================================================
 %% Cache sync
 %%====================================================================
 
 init_backend(_Host, {statsd, EndPoint}) ->
-    case application:load(statsderl) of
-        ok ->
-            % only first instance is able to configure endpoint
-            % as a consequence: only one endpoint per ejabberd node
-            {Ip, Port} = backend_ip_port(EndPoint, {127,0,0,1}, 2003),
-            application:set_env(statsderl, base_key, ""),
-            application:set_env(statsderl, hostname, Ip),
-            application:set_env(statsderl, port, Port);
-        _ ->
-            ok
-    end,
-    application:start(statsderl),
-    statsd;
-init_backend(Host, statsd) ->
-    init_backend(Host, {statsd, <<"127.0.0.1:2003">>});
+    {Ip, Port} = backend_ip_port(EndPoint, {127,0,0,1}, 2003),
+    {statsd, Ip, Port};
+init_backend(_Host, statsd) ->
+    {statsd, {127,0,0,1}, 2003};
+init_backend(_Host, {influxdb, EndPoint}) ->
+    {Ip, Port} = backend_ip_port(EndPoint, {127,0,0,1}, 4444),
+    {influxdb, Ip, Port};
+init_backend(_Host, influxdb) ->
+    {influxdb, {127,0,0,1}, 4444};
+init_backend(_Host, {grapherl, EndPoint}) ->
+    {Ip, Port} = backend_ip_port(EndPoint, {127,0,0,1}, 11111),
+    {grapherl, Ip, Port};
+init_backend(_Host, grapherl) ->
+    {grapherl, {127,0,0,1}, 11111};
 init_backend(Host, mnesia) ->
     Table = gen_mod:get_module_proc(Host, mon),
     mnesia:create_table(Table,
@@ -672,13 +735,6 @@ init_backend(Host, mnesia) ->
                          {record_name, mon},
                          {attributes, record_info(fields, mon)}]),
     mnesia;
-init_backend(Host, {grapherl, EndPoint}) ->
-    {Ip, Port} = backend_ip_port(EndPoint, {127,0,0,1}, 11111),
-    application:set_env(grapherl, {backend_ip, Host}, Ip),
-    application:set_env(grapherl, {backend_port, Host}, Port),
-    grapherl;
-init_backend(Host, grapherl) ->
-    init_backend(Host, {grapherl, <<"127.0.0.1:11111">>});
 init_backend(_, _) ->
     none.
 
@@ -714,77 +770,76 @@ push_metrics(Host, Backends) ->
             ?WARNING_MSG("Can not push mon metrics~n~p", [Reason]),
             {error, Reason};
         Probes ->
-            [push(Host, Probes, Backend) || Backend <- Backends],
+            [_, NodeId] = str:tokens(jlib:atom_to_binary(node()), <<"@">>),
+            [Node | _] = str:tokens(NodeId, <<".">>),
+            DateTime = erlang:universaltime(),
+            UnixTime = calendar:datetime_to_gregorian_seconds(DateTime) - 62167219200,
+            [push(Host, Node, Probes, UnixTime, Backend) || Backend <- Backends],
             ok
     end.
 
-push(Host, Probes, mnesia) ->
+push(Host, _Node, Probes, _Time, mnesia) ->
     Table = gen_mod:get_module_proc(Host, mon),
     Cache = [{Key, Val} || {mon, Key, Val} <- ets:tab2list(Table)],
     lists:foreach(
-        fun({Key, Val}) ->
-                case proplists:get_value(Key, ?NO_COUNTER_PROBES) of
-                    undefined ->
-                        case proplists:get_value(Key, Cache) of
-                            undefined -> mnesia:dirty_write(Table, #mon{probe = Key, value = Val});
-                            Old -> [mnesia:dirty_write(Table, #mon{probe = Key, value = Old+Val}) || Val > 0]
-                        end;
-                    gauge ->
-                        case proplists:get_value(Key, Cache) of
-                            Val -> ok;
-                            _ -> mnesia:dirty_write(Table, #mon{probe = Key, value = Val})
-                        end;
-                    _ ->
-                        ok
+        fun({Key, counter, Val}) ->
+                case proplists:get_value(Key, Cache) of
+                    undefined -> mnesia:dirty_write(Table, #mon{probe = Key, value = Val});
+                    Old -> [mnesia:dirty_write(Table, #mon{probe = Key, value = Old+Val}) || Val > 0]
+                end;
+           ({Key, gauge, Val}) ->
+                case proplists:get_value(Key, Cache) of
+                    Val -> ok;
+                    _ -> mnesia:dirty_write(Table, #mon{probe = Key, value = Val})
                 end
         end, Probes);
-push(Host, Probes, statsd) ->
-    % Librato metrics are name first with service name (to group the metrics from a service),
-    % then type of service (xmpp, etc) and then nodename and name of the data itself
-    % example => process-one.net.xmpp.xmpp-1.chat_receive_packet
-    [_, NodeId] = str:tokens(jlib:atom_to_binary(node()), <<"@">>),
-    [Node | _] = str:tokens(NodeId, <<".">>),
+push(Host, Node, Probes, _Time, {statsd, Ip, Port}) ->
+    % probe example => process-one.net.xmpp.xmpp-1.chat_receive_packet:value|g
     BaseId = <<Host/binary, ".xmpp.", Node/binary, ".">>,
-    lists:foreach(
-        fun({Key, Val}) ->
-                Id = <<BaseId/binary, (jlib:atom_to_binary(Key))/binary>>,
-                case proplists:get_value(Key, ?NO_COUNTER_PROBES) of
-                    undefined -> statsderl:increment(Id, Val, 1);
-                    gauge -> statsderl:gauge(Id, Val, 1);
-                    _ -> ok
-                end
-        end, Probes);
-push(Host, Probes, grapherl) ->
-    % grapherl metrics are name first with service name, then nodename
-    % and name of the data itself, followed by type timestamp and value
-    % example => process-one.net/xmpp-1.chat_receive_packet:g/timestamp:value
-    [_, NodeId] = str:tokens(jlib:atom_to_binary(node()), <<"@">>),
-    [Node | _] = str:tokens(NodeId, <<".">>),
+    push_udp(Ip, Port, Probes, fun(Key, Val, Type) ->
+            <<BaseId/binary, Key/binary, ":", Val/binary, "|", Type>>
+        end);
+push(Host, Node, Probes, Time, {influxdb, Ip, Port}) ->
+    % probe example => chat_receive_packet,host=process-one.net,node=xmpp-1 value timestamp
+    Tags = <<"host=", Host/binary, ",node=", Node/binary>>,
+    TS = <<(integer_to_binary(Time))/binary, "000000000">>,
+    push_udp(Ip, Port, Probes, fun(Key, Val, _Type) ->
+            <<Key/binary, ",", Tags/binary, " value=", Val/binary, " ", TS/binary>>
+        end);
+push(Host, Node, Probes, Time, {grapherl, Ip, Port}) ->
+    % probe example => process-one.net/xmpp-1.chat_receive_packet:g/timestamp:value
     BaseId = <<Host/binary, "/", Node/binary, ".">>,
-    DateTime = erlang:universaltime(),
-    UnixTime = calendar:datetime_to_gregorian_seconds(DateTime) - 62167219200,
-    TS = integer_to_binary(UnixTime),
+    TS = integer_to_binary(Time),
+    push_udp(Ip, Port, Probes, fun(Key, Val, Type) ->
+            <<BaseId/binary, Key/binary, ":", Type, "/", TS/binary, ":", Val/binary>>
+        end);
+push(_Host, _Node, _Probes, _Time, _Backend) ->
+    ok.
+
+push_udp(Ip, Port, Probes, Format) ->
     case gen_udp:open(0) of
         {ok, Socket} ->
-            Ip = get_env(grapherl, {backend_ip, Host}, {127,0,0,1}),
-            Port = get_env(grapherl, {backend_port, Host}, 11111),
             lists:foreach(
-                fun({Key, Val}) ->
-                        Type = case proplists:get_value(Key, ?NO_COUNTER_PROBES) of
-                            gauge -> <<"g">>;
-                            _ -> <<"c">>
-                        end,
+                fun({Key, Type, Val}) when is_integer(Val) ->
+                        BKey = jlib:atom_to_binary(Key),
                         BVal = integer_to_binary(Val),
-                        Data = <<BaseId/binary, (jlib:atom_to_binary(Key))/binary,
-                                 ":", Type/binary, "/", TS/binary, ":", BVal/binary>>,
-                        gen_udp:send(Socket, Ip, Port, Data)
+                        Data = Format(BKey, BVal, type_to_char(Type)),
+                        gen_udp:send(Socket, Ip, Port, Data);
+                   ({health, _Type, _Val}) ->
+                        ok;
+                   ({Key, _Type, Val}) ->
+                        ?WARNING_MSG("can not push metrics ~p with value ~p", [Key, Val])
                 end, Probes),
             gen_udp:close(Socket);
         Error ->
-            ?WARNING_MSG("can not open udp socket to grapherl: ~p", [Error])
-    end;
-push(_Host, _Probes, none) ->
-    ok.
+            ?WARNING_MSG("can not open udp socket to ~p port ~p: ~p", [Ip, Port, Error])
+    end.
+
+type_to_char(counter) -> $c;
+type_to_char(gauge) -> $g;
+type_to_char(Type) ->
+    ?WARNING_MSG("invalid probe type ~p, assuming counter", [Type]),
+    $c.
 
 %%====================================================================
 %% Monitors helpers
@@ -834,7 +889,7 @@ workers(_Host, Sup) ->
 % Note: health_check must be called last from monitors list
 %       as it uses values as they are pushed and also some other
 %       monitors values
-health_check(Host, all) ->
+health_check(Host) ->
     spawn(mod_mon_client, start, [Host]),
     HealthCfg = ejabberd_config:get_option({health, Host},
                                fun(V) when is_list(V) -> V end,
@@ -879,7 +934,10 @@ jabs_count(Host) ->
 cpu_usage(_Host) ->
     Threads = erlang:system_info(schedulers),
     {_, Runtime} = erlang:statistics(runtime),
-    Runtime div (?MINUTE * Threads).
+    % we assume cpu_usage is called only by push_metrics event
+    % every minute, and we get this runtime delta for reference
+    % ?MINUTE div 100
+    Runtime div (600 * Threads).
 
 %%====================================================================
 %% Health check helpers
@@ -973,12 +1031,12 @@ mod_opt_type(hooks) ->
 mod_opt_type(monitors_base) ->
     fun (List) when is_list(List) -> List end;
 mod_opt_type(active_count) ->
-    fun (A) when is_atom(A) -> A end;
+    fun (B) when is_boolean(B) -> B end;
 mod_opt_type(backends) ->
     fun (List) when is_list(List) -> List end;
 mod_opt_type(monitors) ->
     fun (L) when is_list(L) -> L end;
-mod_opt_type(_) -> [active_count, backends, monitors].
+mod_opt_type(_) -> [hooks, monitors_base, active_count, backends, monitors].
 
 opt_type(health) -> fun (V) when is_list(V) -> V end;
 opt_type(_) -> [health].

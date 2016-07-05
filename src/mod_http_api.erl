@@ -209,7 +209,7 @@ oauth_check_token(Scope, Token) ->
 process(_, #request{method = 'POST', data = <<>>}) ->
     ?DEBUG("Bad Request: no data", []),
     badrequest_response(<<"Missing POST data">>);
-process([Call], #request{method = 'POST', data = Data, ip = IP} = Req) ->
+process([Call], #request{method = 'POST', data = Data, ip = IP, host = Host} = Req) ->
     Version = get_api_version(Req),
     try
         Args = case jiffy:decode(Data) of
@@ -220,7 +220,7 @@ process([Call], #request{method = 'POST', data = Data, ip = IP} = Req) ->
         log(Call, Args, IP),
         case check_permissions(Req, Call) of
             {allowed, Cmd, Auth} ->
-                {Code, Result} = handle(Cmd, Auth, Args, Version),
+                {Code, Result} = handle(Host, Cmd, Auth, Args, Version),
                 json_response(Code, jiffy:encode(Result));
             %% Warning: check_permission direcly formats 401 reply if not authorized
             ErrorResponse ->
@@ -233,7 +233,7 @@ process([Call], #request{method = 'POST', data = Data, ip = IP} = Req) ->
             ?DEBUG("Bad Request: ~p ~p", [_Error, erlang:get_stacktrace()]),
             badrequest_response()
     end;
-process([Call], #request{method = 'GET', q = Data, ip = IP} = Req) ->
+process([Call], #request{method = 'GET', q = Data, ip = IP, host = Host} = Req) ->
     Version = get_api_version(Req),
     try
         Args = case Data of
@@ -243,7 +243,7 @@ process([Call], #request{method = 'GET', q = Data, ip = IP} = Req) ->
         log(Call, Args, IP),
         case check_permissions(Req, Call) of
             {allowed, Cmd, Auth} ->
-                {Code, Result} = handle(Cmd, Auth, Args, Version),
+                {Code, Result} = handle(Host, Cmd, Auth, Args, Version),
                 json_response(Code, jiffy:encode(Result));
             %% Warning: check_permission direcly formats 401 reply if not authorized
             ErrorResponse ->
@@ -346,7 +346,7 @@ do_bulk_roster_update(Args) ->
 	    {500, {[{<<"result">>, <<"failure">>},{<<"errors">>, Err}]}}
     end.
 
-handle('bulk-roster-update', Auth, Args, Version) ->
+handle(Host, 'bulk-roster-update', Auth, Args, Version) ->
     Allowed = case Auth of
 		  admin -> true;
 		  _ -> ejabberd_commands:command_execution_allowed('bulk-roster-update',
@@ -354,13 +354,14 @@ handle('bulk-roster-update', Auth, Args, Version) ->
 	      end,
     case Allowed of
 	true ->
+	    mod_jabs:add(Host, 1),
 	    do_bulk_roster_update(Args);
 	_ ->
 		    {401, <<"not_allowed">>}
     end;
 
 % generic ejabberd command handler
-handle(Call, Auth, Args, Version) when is_atom(Call), is_list(Args) ->
+handle(Host, Call, Auth, Args, Version) when is_atom(Call), is_list(Args) ->
     case ejabberd_commands:get_command_format(Call, Auth, Version) of
         {ArgsSpec, _} when is_list(ArgsSpec) ->
 	    try
@@ -373,7 +374,9 @@ handle(Call, Auth, Args, Version) when is_atom(Call), is_list(Args) ->
                                                   {Key, Value}
                                           end
                                   end, ArgsSpec),
-		handle2(Call, Auth, ArgsM, Version)
+		Result = handle2(Call, Auth, ArgsM, Version),
+		mod_jabs:add(Host, 1), %% TODO add #ejabberd_command.weight if defined, or 1
+		Result
 	    catch throw:not_found ->
 		    {404, <<"not_found">>};
 		  throw:{not_found, Why} when is_atom(Why) ->

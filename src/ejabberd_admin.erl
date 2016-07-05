@@ -220,10 +220,6 @@ get_commands_spec() ->
 			module = ejabberd_piefxis, function = export_host,
 			args = [{dir, string}, {host, string}], result = {res, rescode}},
 
-     #ejabberd_commands{name = export_sql, tags = [mnesia, sql],
-                        desc = "Export virtual host information from Mnesia tables to a SQL file.",
-                        module = ejd2sql, function = export,
-                        args = [{host, string}, {file, string}], result = {res, rescode}},
      #ejabberd_commands{name = delete_mnesia, tags = [mnesia, sql],
                         desc = "Export all tables as SQL queries to a file",
                         module = ejd2sql, function = delete,
@@ -258,6 +254,11 @@ get_commands_spec() ->
 			module = ?MODULE, function = backup_p1db,
 			args = [{dir, string}], result = {res, restuple}},
 
+     #ejabberd_commands{name = export2sql, tags = [mnesia],
+			desc = "Export virtual host information from Mnesia tables to SQL files",
+			module = ejd2sql, function = export,
+			args = [{host, string}, {file, string}],
+			result = {res, rescode}},
      #ejabberd_commands{name = set_master, tags = [mnesia],
 			desc = "Set master node of the clustered Mnesia tables",
 			longdesc = "If you provide as nodename \"self\", this "

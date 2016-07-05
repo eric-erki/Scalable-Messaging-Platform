@@ -1103,13 +1103,9 @@ kick_sessions(User, Server, Reason) ->
       get_resources(User, Server)).
 
 get_presence(U, S) ->
-    case ejabberd_auth:is_user_exists(U, S) of
-      true ->
-	  {Resource, Show, Status} = get_presence2(U, S),
-	  FullJID = jid:to_string({U, S, Resource}),
-	  {FullJID, Show, Status};
-      false -> throw({not_found, <<"unknown_user">>})
-    end.
+    {Resource, Show, Status} = get_presence2(U, S),
+    FullJID = jid:to_string({U, S, Resource}),
+    {FullJID, Show, Status}.
 
 get_resources(User, Server) ->
     lists:map(
@@ -1636,7 +1632,8 @@ subscribe_roster({Name, Server, Group, Nick}, [{Name, Server, _, _} | Roster]) -
     subscribe_roster({Name, Server, Group, Nick}, Roster);
 %% Subscribe Name2 to Name1
 subscribe_roster({Name1, Server1, Group1, Nick1}, [{Name2, Server2, Group2, Nick2} | Roster]) ->
-    subscribe(Name1, Server1, Name2, Server2, Nick2, Group2, <<"both">>, []),
+    subscribe(Name1, Server1, list_to_binary(Name2), list_to_binary(Server2),
+	list_to_binary(Nick2), list_to_binary(Group2), <<"both">>, []),
     subscribe_roster({Name1, Server1, Group1, Nick1}, Roster).
 
 push_alltoall(S, G) ->

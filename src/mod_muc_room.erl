@@ -327,6 +327,8 @@ normal_state({route, From, <<"">>,
 				     none ->
 					 NSD = set_affiliation(IJID, member,
 							       StateData),
+					 send_affiliation(IJID, member,
+							  StateData),
 					 store_room(NSD),
 					 {next_state, normal_state, NSD};
 				     _ -> {next_state, normal_state, StateData}
@@ -2086,8 +2088,8 @@ add_new_user(From, Nick,
     Collision = nick_collision(From, Nick, StateData),
     IsSubscribeRequest = Name /= <<"presence">>,
     case {(ServiceAffiliation == owner orelse
-	     (Affiliation == admin orelse Affiliation == owner)
-	       andalso NUsers < MaxAdminUsers
+	     ((Affiliation == admin orelse Affiliation == owner)
+	       andalso NUsers < MaxAdminUsers)
 	       orelse NUsers < MaxUsers)
 	    andalso NConferences < MaxConferences,
 	  Collision,
@@ -2808,6 +2810,51 @@ send_nick_changing(JID, OldNick, StateData,
 		  end,
 		  (?DICT):to_list(StateData#state.users)).
 
+maybe_send_affiliation(JID, Affiliation, StateData) ->
+    LJID = jid:tolower(JID),
+    IsOccupant = case LJID of
+		   {LUser, LServer, <<"">>} ->
+		       not (?DICT):is_empty(
+			     (?DICT):filter(fun({U, S, _}, _) ->
+						    U == LUser andalso
+						      S == LServer
+					    end, StateData#state.users));
+		   {_LUser, _LServer, _LResource} ->
+		       (?DICT):is_key(LJID, StateData#state.users)
+		 end,
+    case IsOccupant of
+      true ->
+	  ok; % The new affiliation is published via presence.
+      false ->
+	  send_affiliation(LJID, Affiliation, StateData)
+    end.
+
+send_affiliation(LJID, Affiliation, StateData) ->
+    ItemAttrs = [{<<"jid">>, jid:to_string(LJID)},
+		 {<<"affiliation">>, affiliation_to_list(Affiliation)},
+		 {<<"role">>, <<"none">>}],
+    Message = #xmlel{name = <<"message">>,
+		     attrs = [{<<"id">>, randoms:get_string()}],
+		     children =
+			 [#xmlel{name = <<"x">>,
+				 attrs = [{<<"xmlns">>, ?NS_MUC_USER}],
+				 children =
+				     [#xmlel{name = <<"item">>,
+					     attrs = ItemAttrs}]}]},
+    Recipients = case (StateData#state.config)#config.anonymous of
+		   true ->
+		       (?DICT):filter(fun(_, #user{role = moderator}) ->
+					      true;
+					 (_, _) ->
+					      false
+				      end, StateData#state.users);
+		   false ->
+		       StateData#state.users
+		 end,
+    send_multiple(StateData#state.jid,
+		  StateData#state.server_host,
+		  Recipients, Message).
+
 status_els(IsInitialPresence, JID, #user{jid = JID}, StateData) ->
     Status = case IsInitialPresence of
 	       true ->
@@ -3080,7 +3127,7 @@ process_item_change(UJID) ->
         process_item_change(E, SD, UJID)
     end.
 
-process_item_change(E, SD, _UJID) ->
+process_item_change(E, SD, UJID) ->
     case catch case E of
         {JID, affiliation, owner, _} when JID#jid.luser == <<"">> ->
             %% If the provided JID does not have username,
@@ -3088,7 +3135,7 @@ process_item_change(E, SD, _UJID) ->
             SD;
         {JID, role, none, Reason} ->
             catch
-                send_kickban_presence(JID,
+                send_kickban_presence(UJID, JID,
                     Reason,
                     <<"307">>,
                     SD),
@@ -3097,25 +3144,28 @@ process_item_change(E, SD, _UJID) ->
             case (SD#state.config)#config.members_only of
                 true ->
                     catch
-                        send_kickban_presence(JID,
+                        send_kickban_presence(UJID, JID,
                             Reason,
                             <<"321">>,
                             none,
                             SD),
+                    maybe_send_affiliation(JID, none, SD),
                     SD1 = set_affiliation(JID, none, SD),
                     set_role(JID, none, SD1);
                 _ ->
                     SD1 = set_affiliation(JID, none, SD),
                     send_update_presence(JID, SD1, SD),
+                    maybe_send_affiliation(JID, none, SD1),
                     SD1
             end;
         {JID, affiliation, outcast, Reason} ->
             catch
-                send_kickban_presence(JID,
+                send_kickban_presence(UJID, JID,
                     Reason,
                     <<"301">>,
                     outcast,
                     SD),
+            maybe_send_affiliation(JID, outcast, SD),
             SD1 = set_affiliation(JID,
                 outcast,
                 set_role(JID, none, SD),
@@ -3126,11 +3176,13 @@ process_item_change(E, SD, _UJID) ->
             SD1 = set_affiliation(JID, A, SD, Reason),
             SD2 = set_role(JID, moderator, SD1),
             send_update_presence(JID, Reason, SD2, SD),
+            maybe_send_affiliation(JID, A, SD2),
             SD2;
         {JID, affiliation, member, Reason} ->
             SD1 = set_affiliation(JID, member, SD, Reason),
             SD2 = set_role(JID, participant, SD1),
             send_update_presence(JID, Reason, SD2, SD),
+            maybe_send_affiliation(JID, member, SD2),
             SD2;
         {JID, role, Role, Reason} ->
             SD1 = set_role(JID, Role, SD),
@@ -3140,6 +3192,7 @@ process_item_change(E, SD, _UJID) ->
         {JID, affiliation, A, _Reason} ->
             SD1 = set_affiliation(JID, A, SD),
             send_update_presence(JID, SD1, SD),
+            maybe_send_affiliation(JID, A, SD1),
             SD1
     end
     of
@@ -3436,12 +3489,12 @@ can_change_ra(_FAffiliation, _FRole, _TAffiliation,
 	      _TRole, role, _Value, _ServiceAf) ->
     false.
 
-send_kickban_presence(JID, Reason, Code, StateData) ->
+send_kickban_presence(UJID, JID, Reason, Code, StateData) ->
     NewAffiliation = get_affiliation(JID, StateData),
-    send_kickban_presence(JID, Reason, Code, NewAffiliation,
+    send_kickban_presence(UJID, JID, Reason, Code, NewAffiliation,
 			  StateData).
 
-send_kickban_presence(JID, Reason, Code, NewAffiliation,
+send_kickban_presence(UJID, JID, Reason, Code, NewAffiliation,
 		      StateData) ->
     LJID = jid:tolower(JID),
     LJIDs = case LJID of
@@ -3464,19 +3517,20 @@ send_kickban_presence(JID, Reason, Code, NewAffiliation,
 								  StateData#state.users),
 			  add_to_log(kickban, {Nick, Reason, Code}, StateData),
 			  tab_remove_online_user(J, StateData),
-			  send_kickban_presence1(J, Reason, Code,
+			  send_kickban_presence1(UJID, J, Reason, Code,
 						 NewAffiliation, StateData)
 		  end,
 		  LJIDs),
     LJIDs.
 
-send_kickban_presence1(UJID, Reason, Code, Affiliation,
+send_kickban_presence1(MJID, UJID, Reason, Code, Affiliation,
 		       StateData) ->
     {ok, #user{jid = RealJID, nick = Nick}} =
 	(?DICT):find(jid:tolower(UJID),
 		     StateData#state.users),
     SAffiliation = affiliation_to_list(Affiliation),
     BannedJIDString = jid:to_string(RealJID),
+    ActorNick = get_actor_nick(MJID, StateData),
     lists:foreach(fun ({_LJID, Info}) ->
 			  JidAttrList = case Info#user.role == moderator orelse
 					       (StateData#state.config)#config.anonymous
@@ -3497,6 +3551,12 @@ send_kickban_presence1(UJID, Reason, Code, Affiliation,
 						  children =
 						      [{xmlcdata, Reason}]}]
 				    end,
+			  ItemElsActor = case MJID of
+					   <<"">> -> [];
+					   _ -> [#xmlel{name = <<"actor">>,
+						attrs =
+						    [{<<"nick">>, ActorNick}]}]
+				    end,
 			  Packet = #xmlel{name = <<"presence">>,
 					  attrs =
 					      [{<<"type">>, <<"unavailable">>}],
@@ -3511,7 +3571,7 @@ send_kickban_presence1(UJID, Reason, Code, Affiliation,
 								  attrs =
 								      ItemAttrs,
 								  children =
-								      ItemEls},
+								       ItemElsActor ++  ItemEls},
 							   #xmlel{name =
 								      <<"status">>,
 								  attrs =
@@ -3533,6 +3593,14 @@ send_kickban_presence1(UJID, Reason, Code, Affiliation,
 			  end
 		  end,
 		  (?DICT):to_list(StateData#state.users)).
+
+get_actor_nick(<<"">>, _StateData) ->
+    <<"">>;
+get_actor_nick(MJID, StateData) ->
+    case (?DICT):find(jid:tolower(MJID), StateData#state.users) of
+	{ok, #user{nick = ActorNick}} -> ActorNick;
+	_ -> <<"">>
+    end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Owner stuff
@@ -4374,7 +4442,7 @@ remove_nonmembers(StateData) ->
 			Affiliation = get_affiliation(JID, SD),
 			case Affiliation of
 			  none ->
-			      catch send_kickban_presence(JID, <<"">>,
+			      catch send_kickban_presence(<<"">>, JID, <<"">>,
 							  <<"322">>, SD),
 			      set_role(JID, none, SD);
 			  _ -> SD

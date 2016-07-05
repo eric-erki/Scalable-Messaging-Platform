@@ -50,40 +50,10 @@
 %%disco_sm_features, disco_sm_identity, disco_sm_items
 %%roster_get, roster_get_jid_info, roster_get_subscription_lists, roster_process_item
 
-% By default all probes are type counter. The ones listed above use another type:
--define(NO_COUNTER_PROBES,
-        [{muc_rooms, gauge},
-         {muc_users, gauge},
-         {pubsub_nodes, gauge},
-         {pubsub_users, gauge},
-         {jabs, gauge},
-         {sessions, gauge},
-         {memory, gauge},
-         {cpu, gauge},
-         {processes, gauge},
-         {backend_api_response_time, gauge},
-         {message_queues, gauge},
-         {iq_message_queues, gauge},
-         {sm_message_queues, gauge},
-         {c2s_message_queues, gauge},
-         {sql_message_queues, gauge},
-         {offline_message_queues, gauge},
-         {iq_internal_queues, gauge},
-         {sm_internal_queues, gauge},
-         {c2s_internal_queues, gauge},
-         {sql_internal_queues, gauge},
-         {offline_internal_queues, gauge},
-         {client_conn_time, gauge},
-         {client_auth_time, gauge},
-         {client_roster_time, gauge},
-         {daily_active_users, gauge},
-         {weekly_active_users, gauge},
-         {monthly_active_users, gauge},
-         {period_active_users, gauge}]).
-
-% Average computed probes
--define(AVG_MONITORS,
-        [backend_api_response_time]).
+% By default all probes are type counter. The ones listed above are gauges:
+-define(GAUGES, ?HYPERLOGLOGS ++
+        [client_conn_time, client_auth_time, client_roster_time,
+         backend_api_response_time]).
 
 % Generic default monitors to aglomerate common values
 -define(DEFAULT_MONITORS,
@@ -118,5 +88,5 @@
          {memory, erlang, memory, [total]},
          {cpu, cpu_usage},
          {processes, erlang, system_info, [process_count]},
-         {health, health_check, all}
+         {health, health_check}
         ]).
