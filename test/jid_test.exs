@@ -28,7 +28,6 @@ defmodule JidTest do
 
   setup_all do
     :stringprep.start
-    :jid.start
   end
 
   test "create a jid from a binary" do
