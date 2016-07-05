@@ -816,15 +816,16 @@ push(Host, Node, Probes, Time, {grapherl, Ip, Port}) ->
 push(_Host, _Node, _Probes, _Time, _Backend) ->
     ok.
 
-push_udp(Ip, Port, Probes, Format) ->
-    case gen_udp:open(0) of
+push_udp({A,B,C,D}=Ip, Port, Probes, Format) ->
+    Header = [(Port bsr 8) band 255, Port band 255, A, B, C, D],
+    case gen_udp:open(0, [{active, false}]) of
         {ok, Socket} ->
             lists:foreach(
                 fun({Key, Type, Val}) when is_integer(Val) ->
                         BKey = jlib:atom_to_binary(Key),
                         BVal = integer_to_binary(Val),
                         Data = Format(BKey, BVal, type_to_char(Type)),
-                        gen_udp:send(Socket, Ip, Port, Data);
+                        erlang:port_command(Socket, [Header, Data]);
                    ({health, _Type, _Val}) ->
                         ok;
                    ({Key, _Type, Val}) ->
