@@ -55,7 +55,7 @@
     set_local_badge/3]).
 
 -export([get_tokens_by_jid/1, mod_opt_type/1,
-	 opt_type/1]).
+	 depends/2, opt_type/1]).
 
 
 -include("ejabberd.hrl").
@@ -906,6 +906,9 @@ transform_module_options(Opts) ->
          (Opt) ->
               Opt
       end, Opts).
+
+depends(_Host, _Opts) ->
+    [].
 
 mod_opt_type(db_type) ->
     fun(DB) when DB == p1db;

@@ -35,7 +35,7 @@
 
 -export([init/1, handle_call/3, handle_cast/2,
 	 handle_info/2, terminate/2, code_change/3,
-	 mod_opt_type/1]).
+	 depends/2, mod_opt_type/1]).
 
 
 -include("ejabberd.hrl").
@@ -828,6 +828,9 @@ parse_feedback_buf(Buf, State) ->
 
 iolist_to_string(S) ->
     binary_to_list(iolist_to_binary(S)).
+
+depends(_Host, _Opts) ->
+    [{mod_applepush, hard}].
 
 mod_opt_type(certfile) -> fun iolist_to_string/1;
 mod_opt_type(failure_script) -> fun iolist_to_string/1;

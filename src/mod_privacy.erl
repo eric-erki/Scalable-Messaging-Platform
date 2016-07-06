@@ -37,7 +37,8 @@
 	 process_iq_set/4, process_iq_get/5, get_user_list/3,
 	 check_packet/6, remove_user/2, is_list_needdb/1, updated_list/3,
          item_to_xml/1, get_user_lists/2, import/5, import_start/2,
-	 import_stop/2, set_privacy_list/1, mod_opt_type/1, opt_type/1]).
+	 import_stop/2, set_privacy_list/1, mod_opt_type/1, opt_type/1,
+	 depends/2]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -683,6 +684,9 @@ import_next(DBType, US) ->
 export(LServer) ->
     Mod = gen_mod:db_mod(LServer, ?MODULE),
     Mod:export(LServer).
+
+depends(_Host, _Opts) ->
+    [].
 
 mod_opt_type(db_type) -> fun(T) -> ejabberd_config:v_db(?MODULE, T) end;
 mod_opt_type(iqdisc) -> fun gen_iq_handler:check_type/1;

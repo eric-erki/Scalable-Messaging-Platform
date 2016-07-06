@@ -35,7 +35,7 @@
 
 -export([init/1, handle_call/3, handle_cast/2,
 	 handle_info/2, terminate/2, code_change/3,
-	 mod_opt_type/1]).
+	 depends/2, mod_opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("jlib.hrl").
@@ -505,6 +505,9 @@ exp_backoff(#state{prev_attempts = Attempts}) ->
 
 iolist_to_string(S) ->
     binary_to_list(iolist_to_binary(S)).
+
+depends(_Host, _Opts) ->
+    [{mod_webhook, hard}].
 
 mod_opt_type(apikey) -> fun iolist_to_string/1;
 mod_opt_type(gateway) -> fun iolist_to_string/1;

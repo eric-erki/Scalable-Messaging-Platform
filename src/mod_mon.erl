@@ -68,7 +68,8 @@
 	 backend_api_response_time/4, backend_api_timeout/3,
 	 backend_api_error/3, backend_api_badauth/3,
 	 pubsub_create_node/5, pubsub_delete_node/4,
-	 pubsub_publish_item/6, mod_opt_type/1, opt_type/1]).
+	 pubsub_publish_item/6, mod_opt_type/1, opt_type/1,
+	 depends/2]).
          %pubsub_broadcast_stanza/4, get_commands_spec/0 ]).
 
 % dictionary command overrided for better control
@@ -884,6 +885,8 @@ info(Host) when is_binary(Host) ->
     [{Key, Val} || {Key, Val} <- Probes,
                    lists:member(Key, [c2s_receive, c2s_send, s2s_receive, s2s_send])].
 
+depends(_Host, _Opts) ->
+    [].
 
 mod_opt_type(hooks) ->
     fun (List) when is_list(List) -> List end;

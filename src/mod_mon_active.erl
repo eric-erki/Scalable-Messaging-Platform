@@ -51,7 +51,7 @@
 -export([active_command/1, flush_active_command/2]).
 
 -export([sm_register_connection_hook/3]).
--export([mod_opt_type/1, opt_type/1]).
+-export([depends/2, mod_opt_type/1, opt_type/1]).
 
 -record(state, {host, log, pool=[], file, timers=[]}).
 
@@ -324,6 +324,9 @@ read_logs(_) ->
 %%====================================================================
 %% Module configuration
 %%====================================================================
+
+depends(_Host, _Opts) ->
+    [{mod_mon, hard}].
 
 mod_opt_type(pool) ->
     fun (List) when is_list(List) -> List end;

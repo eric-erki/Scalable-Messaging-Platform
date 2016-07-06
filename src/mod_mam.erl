@@ -33,7 +33,7 @@
 -behaviour(gen_mod).
 
 %% API
--export([start/2, stop/1]).
+-export([start/2, stop/1, depends/2]).
 
 -export([user_send_packet/4, user_receive_packet/5,
 	 process_iq_v0_2/3, process_iq_v0_3/3, disco_sm_features/5,
@@ -182,6 +182,9 @@ stop(Host) ->
     end,
     ejabberd_commands:unregister_commands(get_commands_spec()),
     ok.
+
+depends(_Host, _Opts) ->
+    [].
 
 remove_user(User, Server) ->
     LUser = jid:nodeprep(User),

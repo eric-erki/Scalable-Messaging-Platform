@@ -30,7 +30,7 @@
 -behaviour(gen_mod).
 
 -export([start/2, stop/1, process_iq/3,
-	 mod_opt_type/1]).
+	 depends/2, mod_opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -417,6 +417,9 @@ uuidv4(R1, R2, R3, R4) ->
 % @doc Returns the 32, 16, 16, 8, 8, 48 parts of a binary UUID.
 get_parts(<<TL:32, TM:16, THV:16, CSR:8, CSL:8, N:48>>) ->
     [TL, TM, THV, CSR, CSL, N].
+
+depends(_Host, _Opts) ->
+    [].
 
 mod_opt_type(access_key_id) -> fun iolist_to_binary/1;
 mod_opt_type(bucket_name) -> fun iolist_to_binary/1;

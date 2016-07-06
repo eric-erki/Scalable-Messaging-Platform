@@ -74,7 +74,7 @@
 
 -export([init/1, handle_call/3, handle_cast/2,
 	 handle_info/2, terminate/2, code_change/3,
-	 mod_opt_type/1, opt_type/1]).
+	 mod_opt_type/1, opt_type/1, depends/2]).
 
 -deprecated({get_queue_length,2}).
 
@@ -129,6 +129,9 @@ stop(Host) ->
 
 status(Host) ->
     mod_offline_sup:status(Host).
+
+depends(_Host, _Opts) ->
+    [].
 
 %%====================================================================
 %% gen_server callbacks

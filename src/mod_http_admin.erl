@@ -52,7 +52,7 @@
 
 -behaviour(gen_mod).
 
--export([start/2, stop/1, process/2, mod_opt_type/1]).
+-export([start/2, stop/1, process/2, depends/2, mod_opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("jlib.hrl").
@@ -523,6 +523,9 @@ json_response(Code, Body) when is_integer(Code) ->
 log(Call, Args, {Addr, Port}) ->
     AddrS = jlib:ip_to_list({Addr, Port}),
     ?INFO_MSG("Admin call ~s ~p from ~s:~p", [Call, Args, AddrS, Port]).
+
+depends(_Host, _Opts) ->
+    [].
 
 mod_opt_type(access) -> fun acl:access_rules_validator/1;
 mod_opt_type(_) -> [access].

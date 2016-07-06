@@ -80,7 +80,7 @@
 %% API and gen_server callbacks
 -export([start_link/2, start/2, stop/1, init/1,
     handle_call/3, handle_cast/2, handle_info/2,
-    terminate/2, code_change/3]).
+    terminate/2, code_change/3, depends/2]).
 
 -export([send_loop/1, mod_opt_type/1]).
 
@@ -353,6 +353,18 @@ init_send_pool(ServerHost) ->
 		    spawn_link(fun() -> send_loop(State) end))
 	end, lists:seq(1, send_pool_size())),
     State.
+
+depends(ServerHost, Opts) ->
+    Host = gen_mod:get_opt_host(ServerHost, Opts, <<"pubsub.@HOST@">>),
+    Plugins = gen_mod:get_opt(plugins, Opts,
+			      fun(A) when is_list(A) -> A end, [?STDNODE]),
+    lists:flatmap(
+      fun(Name) ->
+	      Plugin = plugin(ServerHost, Name),
+	      try apply(Plugin, depends, [Host, ServerHost, Opts])
+	      catch _:undef -> []
+	      end
+      end, Plugins).
 
 %% @doc Call the init/1 function for each plugin declared in the config file.
 %% The default plugin module is implicit.

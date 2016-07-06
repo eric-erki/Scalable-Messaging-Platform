@@ -53,7 +53,7 @@
 	 dec_val/2]).
 
 -export([get_tokens_by_jid/1, mod_opt_type/1,
-	 opt_type/1]).
+	 depends/2, opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -848,6 +848,9 @@ transform_module_options(Opts) ->
          (Opt) ->
               Opt
       end, Opts).
+
+depends(_Host, _Opts) ->
+    [].
 
 mod_opt_type(db_type) -> fun(T) -> ejabberd_config:v_db(?MODULE, T) end;
 mod_opt_type(default_service) ->

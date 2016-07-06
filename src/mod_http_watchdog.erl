@@ -42,7 +42,7 @@
 
 -behaviour(gen_mod).
 
--export([start/2, stop/1, mod_opt_type/1]).
+-export([start/2, stop/1, depends/2, mod_opt_type/1]).
 
 -include("ejabberd.hrl").
 
@@ -173,6 +173,9 @@ get_ip_port() ->
 start(_, _) -> ok.
 
 stop(_) -> ok.
+
+depends(_Host, _Opts) ->
+    [].
 
 mod_opt_type(test_domain) -> fun iolist_to_binary/1;
 mod_opt_type(test_pass) -> fun iolist_to_binary/1;

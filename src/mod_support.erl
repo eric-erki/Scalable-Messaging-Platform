@@ -53,7 +53,7 @@
 
 -export([init/1, handle_call/3, handle_cast/2,
 	 handle_info/2, terminate/2, code_change/3,
-	 mod_opt_type/1, opt_type/1]).
+	 depends/2, mod_opt_type/1, opt_type/1]).
 
 -export([register_support_channel/3, register_support_agent/3]).
 
@@ -1703,6 +1703,9 @@ register_support_agent(Jid, Channel, Host) ->
                                          {set_affiliation, jid:from_string(Jid), member}),
             {ok, <<"">>}
     end.
+
+depends(_Host, _Opts) ->
+    [].
 
 mod_opt_type(access) ->
     fun (A) when is_atom(A) -> A end;

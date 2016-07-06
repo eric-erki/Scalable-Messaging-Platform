@@ -30,7 +30,7 @@
 
 -export([start/2, stop/1, offline_packet/3,
 	 user_available/1, set_presence/4, user_unavailable/4,
-	 mod_opt_type/1]).
+	 depends/2, mod_opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -147,5 +147,8 @@ v_fun(L) when is_list(L) ->
 	is_binary(URL) ->
 	    {binary_to_list(URL), AuthToken}
     end.
+
+depends(_Host, _Opts) ->
+    [].
 
 mod_opt_type(_) -> [].

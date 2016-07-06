@@ -47,7 +47,7 @@
 %% handled ejabberd hooks
 -export([sm_register_connection_hook/3, user_send_packet/3, user_send_packet/4]).
 
--export([mod_opt_type/1, opt_type/1]).
+-export([depends/2, mod_opt_type/1, opt_type/1]).
 
 -callback init(binary(), gen_mod:opts()) -> any().
 -callback read(binary()) -> {ok, #jabs{}} | {error, any()}.
@@ -266,6 +266,9 @@ user_send_packet(#jid{luser=User,lserver=Host}, _To, Packet) ->
     Size = erlang:external_size(Packet),
     gen_server:cast(process(Host), {inc, 1+(Size div 5120), User}),
     Packet.
+
+depends(_Host, _Opts) ->
+    [].
 
 mod_opt_type(db_type) -> fun(T) -> ejabberd_config:v_db(?MODULE, T) end;
 mod_opt_type(ignore) ->

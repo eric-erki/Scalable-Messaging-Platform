@@ -37,7 +37,8 @@
 -export([start/2, init/3, stop/1, get_sm_features/5,
 	 process_local_iq/3, process_sm_iq/3, string2lower/1,
          remove_user/2, export/1, import_info/0, import/5, import_start/2,
-	 mod_opt_type/1, opt_type/1, set_vcard/3, make_vcard_search/4]).
+	 mod_opt_type/1, opt_type/1, set_vcard/3, make_vcard_search/4,
+	 depends/2]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -607,6 +608,9 @@ import(LServer, {sql, _}, DBType, Tab, L) ->
 export(LServer) ->
     Mod = gen_mod:db_mod(LServer, ?MODULE),
     Mod:export(LServer).
+
+depends(_Host, _Opts) ->
+    [].
 
 mod_opt_type(allow_return_all) ->
     fun (B) when is_boolean(B) -> B end;
