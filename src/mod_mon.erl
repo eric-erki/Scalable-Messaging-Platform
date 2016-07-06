@@ -171,6 +171,7 @@ init([Host, Opts]) ->
     [ejabberd_hooks:add(Hook, Component, ?MODULE, Hook, 20)
      || Component <- [Host], % Todo, Components for muc and pubsub
         Hook <- Hooks],
+    ejabberd_hooks:add(api_call, ?MODULE, api_call, 20),
     ejabberd_commands:register_commands(get_commands_spec()),
 
     % Store probes specs
@@ -275,6 +276,7 @@ terminate(_Reason, State) ->
     [timer:cancel(T) || T <- State#state.timers],
     [ejabberd_hooks:delete(Hook, Host, ?MODULE, Hook, 20)
      || Hook <- ?SUPPORTED_HOOKS],
+    ejabberd_hooks:delete(api_call, ?MODULE, api_call, 20),
     sync_log(Host),
     ejabberd_commands:unregister_commands(get_commands_spec()).
 
