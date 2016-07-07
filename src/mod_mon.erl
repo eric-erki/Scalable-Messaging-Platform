@@ -28,7 +28,9 @@
 -behaviour(ejabberd_config).
 -author('christophe.romain@process-one.net').
 -behaviour(gen_mod).
--behaviour(gen_server).
+
+-define(GEN_SERVER, p1_server).
+-behaviour(?GEN_SERVER).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -50,7 +52,7 @@
 %% monitors
 -export([process_queues/2, internal_queues/2, health_check/1, jabs_count/1]).
 -export([cpu_usage/1]).
-%% gen_server callbacks
+%% server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -export([offline_message_hook/3,
@@ -81,7 +83,8 @@
 
 start_link(Host, Opts) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:start_link({local, Proc}, ?MODULE, [Host, Opts], []).
+    ?GEN_SERVER:start_link({local, Proc}, ?MODULE, [Host, Opts],
+                           [{max_queue, 5000}]).
 
 start(Host, Opts) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
@@ -91,48 +94,48 @@ start(Host, Opts) ->
 
 stop(Host) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:call(Proc, stop),
+    catch ?GEN_SERVER:call(Proc, stop),
     supervisor:terminate_child(ejabberd_sup, Proc),
     supervisor:delete_child(ejabberd_sup, Proc).
 
 value(Host, Probe) when is_binary(Host), is_atom(Probe) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:call(Proc, {get, Probe}, ?CALL_TIMEOUT).
+    ?GEN_SERVER:call(Proc, {get, Probe}, ?CALL_TIMEOUT).
 
 set(Host, Probe, Value) when is_binary(Host), is_atom(Probe) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:cast(Proc, {set, Probe, Value}).
+    ?GEN_SERVER:cast(Proc, {set, Probe, Value}).
 
 inc(Host, Probe, Value) when is_binary(Host), is_atom(Probe) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:cast(Proc, {inc, Probe, Value}).
+    ?GEN_SERVER:cast(Proc, {inc, Probe, Value}).
 
 dec(Host, Probe, Value) when is_binary(Host), is_atom(Probe) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:cast(Proc, {dec, Probe, Value}).
+    ?GEN_SERVER:cast(Proc, {dec, Probe, Value}).
 
 sum(Host, Probe, Value) when is_binary(Host), is_atom(Probe) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:cast(Proc, {sum, Probe, Value}).
+    ?GEN_SERVER:cast(Proc, {sum, Probe, Value}).
 
 reset(Host, Probe) when is_binary(Host), is_atom(Probe) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:call(Proc, {reset, Probe}).
+    ?GEN_SERVER:call(Proc, {reset, Probe}).
 
 dump(Host) when is_binary(Host) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:call(Proc, dump, ?CALL_TIMEOUT).
+    ?GEN_SERVER:call(Proc, dump, ?CALL_TIMEOUT).
 
 declare(Host, Probe, Type) when is_binary(Host), is_atom(Probe) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:call(Proc, {declare, Probe, Type}, ?CALL_TIMEOUT).
+    ?GEN_SERVER:call(Proc, {declare, Probe, Type}, ?CALL_TIMEOUT).
 
 drop(Host, Probe) when is_binary(Host), is_atom(Probe) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:call(Proc, {drop, Probe}, ?CALL_TIMEOUT).
+    ?GEN_SERVER:call(Proc, {drop, Probe}, ?CALL_TIMEOUT).
 
 %%====================================================================
-%% gen_server callbacks
+%% server callbacks
 %%====================================================================
 
 init([Host, Opts]) ->
@@ -352,10 +355,10 @@ declare_gauge(Probe) ->
 
 cast(Host, Msg) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:cast(Proc, Msg).
+    ?GEN_SERVER:cast(Proc, Msg).
 %    case serverhost(Host) of
 %        {undefined, _} -> error;
-%        {Proc, _Host} -> gen_server:cast(Proc, Msg)
+%        {Proc, _Host} -> ?GEN_SERVER:cast(Proc, Msg)
 %    end.
 
 %put(Key, Val) already uses erlang:put(Key, Val)
@@ -767,7 +770,7 @@ backend_port(Port, Default) when is_list(Port) ->
 
 push_metrics(Host, Backends) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    case catch gen_server:call(Proc, snapshot, ?CALL_TIMEOUT) of
+    case catch ?GEN_SERVER:call(Proc, snapshot, ?CALL_TIMEOUT) of
         {'EXIT', Reason} ->
             ?WARNING_MSG("Can not push mon metrics~n~p", [Reason]),
             {error, Reason};
