@@ -42,7 +42,6 @@ defmodule ModHttpApiMockTest do
 
 	setup_all do
 		try do
-      :jid.start
       :mnesia.start
 			:stringprep.start
       :ejabberd_config.start([@domain], [])

@@ -28,7 +28,9 @@
 -behaviour(ejabberd_config).
 -author('christophe.romain@process-one.net').
 -behaviour(gen_mod).
--behaviour(gen_server).
+
+-define(GEN_SERVER, p1_server).
+-behaviour(?GEN_SERVER).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -50,7 +52,7 @@
 %% monitors
 -export([process_queues/2, internal_queues/2, health_check/1, jabs_count/1]).
 -export([cpu_usage/1]).
-%% gen_server callbacks
+%% server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -export([offline_message_hook/3,
@@ -81,7 +83,8 @@
 
 start_link(Host, Opts) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:start_link({local, Proc}, ?MODULE, [Host, Opts], []).
+    ?GEN_SERVER:start_link({local, Proc}, ?MODULE, [Host, Opts],
+                           [{max_queue, 5000}]).
 
 start(Host, Opts) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
@@ -91,48 +94,48 @@ start(Host, Opts) ->
 
 stop(Host) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:call(Proc, stop),
+    catch ?GEN_SERVER:call(Proc, stop),
     supervisor:terminate_child(ejabberd_sup, Proc),
     supervisor:delete_child(ejabberd_sup, Proc).
 
 value(Host, Probe) when is_binary(Host), is_atom(Probe) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:call(Proc, {get, Probe}, ?CALL_TIMEOUT).
+    ?GEN_SERVER:call(Proc, {get, Probe}, ?CALL_TIMEOUT).
 
 set(Host, Probe, Value) when is_binary(Host), is_atom(Probe) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:cast(Proc, {set, Probe, Value}).
+    ?GEN_SERVER:cast(Proc, {set, Probe, Value}).
 
 inc(Host, Probe, Value) when is_binary(Host), is_atom(Probe) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:cast(Proc, {inc, Probe, Value}).
+    ?GEN_SERVER:cast(Proc, {inc, Probe, Value}).
 
 dec(Host, Probe, Value) when is_binary(Host), is_atom(Probe) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:cast(Proc, {dec, Probe, Value}).
+    ?GEN_SERVER:cast(Proc, {dec, Probe, Value}).
 
 sum(Host, Probe, Value) when is_binary(Host), is_atom(Probe) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:cast(Proc, {sum, Probe, Value}).
+    ?GEN_SERVER:cast(Proc, {sum, Probe, Value}).
 
 reset(Host, Probe) when is_binary(Host), is_atom(Probe) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:call(Proc, {reset, Probe}).
+    ?GEN_SERVER:call(Proc, {reset, Probe}).
 
 dump(Host) when is_binary(Host) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:call(Proc, dump, ?CALL_TIMEOUT).
+    ?GEN_SERVER:call(Proc, dump, ?CALL_TIMEOUT).
 
 declare(Host, Probe, Type) when is_binary(Host), is_atom(Probe) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:call(Proc, {declare, Probe, Type}, ?CALL_TIMEOUT).
+    ?GEN_SERVER:call(Proc, {declare, Probe, Type}, ?CALL_TIMEOUT).
 
 drop(Host, Probe) when is_binary(Host), is_atom(Probe) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:call(Proc, {drop, Probe}, ?CALL_TIMEOUT).
+    ?GEN_SERVER:call(Proc, {drop, Probe}, ?CALL_TIMEOUT).
 
 %%====================================================================
-%% gen_server callbacks
+%% server callbacks
 %%====================================================================
 
 init([Host, Opts]) ->
@@ -171,6 +174,7 @@ init([Host, Opts]) ->
     [ejabberd_hooks:add(Hook, Component, ?MODULE, Hook, 20)
      || Component <- [Host], % Todo, Components for muc and pubsub
         Hook <- Hooks],
+    ejabberd_hooks:add(api_call, ?MODULE, api_call, 20),
     ejabberd_commands:register_commands(get_commands_spec()),
 
     % Store probes specs
@@ -275,6 +279,7 @@ terminate(_Reason, State) ->
     [timer:cancel(T) || T <- State#state.timers],
     [ejabberd_hooks:delete(Hook, Host, ?MODULE, Hook, 20)
      || Hook <- ?SUPPORTED_HOOKS],
+    ejabberd_hooks:delete(api_call, ?MODULE, api_call, 20),
     sync_log(Host),
     ejabberd_commands:unregister_commands(get_commands_spec()).
 
@@ -350,10 +355,10 @@ declare_gauge(Probe) ->
 
 cast(Host, Msg) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    gen_server:cast(Proc, Msg).
+    ?GEN_SERVER:cast(Proc, Msg).
 %    case serverhost(Host) of
 %        {undefined, _} -> error;
-%        {Proc, _Host} -> gen_server:cast(Proc, Msg)
+%        {Proc, _Host} -> ?GEN_SERVER:cast(Proc, Msg)
 %    end.
 
 %put(Key, Val) already uses erlang:put(Key, Val)
@@ -765,7 +770,7 @@ backend_port(Port, Default) when is_list(Port) ->
 
 push_metrics(Host, Backends) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    case catch gen_server:call(Proc, snapshot, ?CALL_TIMEOUT) of
+    case catch ?GEN_SERVER:call(Proc, snapshot, ?CALL_TIMEOUT) of
         {'EXIT', Reason} ->
             ?WARNING_MSG("Can not push mon metrics~n~p", [Reason]),
             {error, Reason};
@@ -816,15 +821,16 @@ push(Host, Node, Probes, Time, {grapherl, Ip, Port}) ->
 push(_Host, _Node, _Probes, _Time, _Backend) ->
     ok.
 
-push_udp(Ip, Port, Probes, Format) ->
-    case gen_udp:open(0) of
+push_udp({A,B,C,D}=Ip, Port, Probes, Format) ->
+    Header = [(Port bsr 8) band 255, Port band 255, A, B, C, D],
+    case gen_udp:open(0, [{active, false}]) of
         {ok, Socket} ->
             lists:foreach(
                 fun({Key, Type, Val}) when is_integer(Val) ->
                         BKey = jlib:atom_to_binary(Key),
                         BVal = integer_to_binary(Val),
                         Data = Format(BKey, BVal, type_to_char(Type)),
-                        gen_udp:send(Socket, Ip, Port, Data);
+                        erlang:port_command(Socket, [Header, Data]);
                    ({health, _Type, _Val}) ->
                         ok;
                    ({Key, _Type, Val}) ->
