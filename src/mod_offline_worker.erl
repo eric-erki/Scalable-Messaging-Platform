@@ -84,7 +84,16 @@ handle_info(#offline_msg{us = UserServer} = Msg, State) ->
                                            UserServer, Host),
     mod_offline:store_offline_msg(Host, UserServer, Msgs, Len, MaxOfflineMsgs),
     {noreply, State};
-
+handle_info({execute, F}, State) ->
+    try
+        F()
+    catch
+        Class:Reason ->
+            ST = erlang:get_stacktrace(),
+            ?ERROR_MSG("Internal error while executing ~p: ~p",
+                       [F, {Class, Reason, ST}])
+    end,
+    {noreply, State};
 handle_info(_Info, State) ->
     ?ERROR_MSG("got unexpected info: ~p", [_Info]),
     {noreply, State}.

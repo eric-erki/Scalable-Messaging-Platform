@@ -2350,23 +2350,38 @@ process_privacy_iq(From, To,
     NewStateData.
 
 resend_offline_messages(#state{ask_offline = true} = StateData) ->
-    case ejabberd_hooks:run_fold(resend_offline_messages_hook,
-				 StateData#state.server, [],
-				 [StateData#state.user, StateData#state.server])
-    of
-	Rs -> %%when is_list(Rs) ->
-	    lists:foreach(
-	      fun ({route, From, To, #xmlel{} = Packet}) ->
-		      case privacy_check_packet(StateData,
-						From, To, Packet, in)
-		      of
-			  allow ->
-			      ejabberd_router:route(From, To, Packet);
-			  deny ->
-			      ok
-		      end
-	      end,
-	      Rs)
+    F = fun() ->
+                case ejabberd_hooks:run_fold(
+                       resend_offline_messages_hook,
+                       StateData#state.server, [],
+                       [StateData#state.user, StateData#state.server])
+                    of
+                    Rs -> %%when is_list(Rs) ->
+                        lists:foreach(
+                          fun ({route, From, To, #xmlel{} = Packet}) ->
+                                  case privacy_check_packet(StateData,
+                                                            From, To, Packet, in)
+                                      of
+                                      allow ->
+                                          ejabberd_router:route(From, To, Packet);
+                                      deny ->
+                                          ok
+                                  end
+                          end,
+                          Rs)
+                end
+        end,
+    case ejabberd_config:get_option(
+           async_offline_resend,
+           fun(B) when is_boolean(B) -> B end, false) of
+        false ->
+            F();
+        true ->
+            JID = StateData#state.jid,
+            Worker = mod_offline_sup:get_worker_for(
+                       JID#jid.lserver, JID#jid.luser),
+            Worker ! {execute, F},
+            ok
     end;
 resend_offline_messages(_StateData) ->
     ok.
@@ -4034,9 +4049,11 @@ opt_type(listen) -> fun (V) -> V end;
 opt_type(max_fsm_queue) ->
     fun (I) when is_integer(I), I > 0 -> I end;
 opt_type(redirect_host) -> fun iolist_to_binary/1;
+opt_type(async_offline_resend) ->
+    fun (B) when is_boolean(B) -> B end;
 opt_type(_) ->
     [c2s_tls_verify, domain_certfile, flash_hack, listen,
-     max_fsm_queue, redirect_host].
+     max_fsm_queue, redirect_host, async_offline_resend].
 
 %%%%%% ADDED FOR FACTORIZATION
 accept_auth(StateData, Props) ->
