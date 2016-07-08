@@ -34,6 +34,7 @@
 -include("ejabberd.hrl").
 -include("jlib.hrl").
 -include("ejabberd_commands.hrl").
+-include("mod_jabs.hrl").
 
 %% module API
 -export([start_link/2, start/2, stop/1]).
@@ -46,10 +47,13 @@
 %% handled ejabberd hooks
 -export([sm_register_connection_hook/3, user_send_packet/3, user_send_packet/4]).
 
--export([enc_key/1, dec_key/1, enc_val/2, dec_val/2,
-	 mod_opt_type/1, opt_type/1]).
+-export([mod_opt_type/1, opt_type/1]).
 
--record(jabs, {host, counter, stamp, timer, ignore=[]}).
+-callback init(binary(), gen_mod:opts()) -> any().
+-callback read(binary()) -> {ok, #jabs{}} | {error, any()}.
+-callback write(#jabs{}) -> ok | {error, any()}.
+-callback match(binary()) -> [{node(), #jabs{}}].
+-callback clean(binary()) -> ok.
 
 -define(PROCNAME, ?MODULE).
 -define(CALL_TIMEOUT, 4000).
@@ -102,7 +106,8 @@ add(Host, Count) ->
 %%====================================================================
 
 init([Host, Opts]) ->
-    init_db(gen_mod:db_type(Host, Opts, ?MODULE), Host),
+    Mod = gen_mod:db_mod(Host, Opts, ?MODULE),
+    Mod:init(Host, Opts),
     ejabberd_commands:register_commands(commands(Host)),
     Ignore = gen_mod:get_opt(ignore, Opts,
                              fun(L) when is_list(L) -> L end, []),
@@ -187,92 +192,24 @@ reset_jabs(#jabs{} = R) ->
 %%====================================================================
 %% database functions
 %%====================================================================
-
-init_db(mnesia, _Host) ->
-    mnesia:create_table(jabs, [{disc_copies, [node()]},
-                               {local_content, true},
-                               {attributes, record_info(fields, jabs)}]);
-init_db(p1db, Host) ->
-    Group = gen_mod:get_module_opt(Host, ?MODULE, p1db_group, fun(G) when is_atom(G) -> G end, 
-                        ejabberd_config:get_option(
-                            {p1db_group, Host}, fun(G) when is_atom(G) -> G end)),
-    [Key|Values] = record_info(fields, jabs),
-    p1db:open_table(pubsub_state,
-                        [{group, Group}, {nosync, true},
-                         {schema, [{keys, [Key]},
-                                   {vals, Values},
-                                   {enc_key, fun ?MODULE:enc_key/1},
-                                   {dec_key, fun ?MODULE:dec_key/1},
-                                   {enc_val, fun ?MODULE:enc_val/2},
-                                   {dec_val, fun ?MODULE:dec_val/2}]}]);
-init_db(_, _) ->
-    ok.
-
 read_db(Host) when is_binary(Host) ->
-    read_db(Host, gen_mod:db_type(Host, ?MODULE)).
-
-read_db(Host, mnesia) ->
-    case catch mnesia:dirty_read(jabs, {Host, node()}) of
-        [#jabs{}=Jabs] -> Jabs#jabs{host = Host};
-        _ -> reset_jabs(#jabs{host = Host})
-    end;
-read_db(Host, p1db) ->
-    Key = enc_key({Host, node()}),
-    case p1db:get(jabs, Key) of
-        {ok, Val, _VClock} -> (p1db_to_jabs(Key, Val))#jabs{host = Host};
-        _ -> reset_jabs(#jabs{host = Host})
-    end;
-read_db(Host, _) ->
-    reset_jabs(#jabs{host = Host}).
+    Mod = gen_mod:db_mod(Host, ?MODULE),
+    case Mod:read(Host) of
+	{ok, Jabs} -> Jabs;
+	_ -> reset_jabs(#jabs{host = Host})
+    end.
 
 write_db(Jabs) when is_record(Jabs, jabs) ->
-    write_db(Jabs, gen_mod:db_type(Jabs#jabs.host, ?MODULE)).
-
-write_db(Jabs, mnesia) ->
-    Key = {Jabs#jabs.host, node()},
-    ejabberd_cluster:multicall(mnesia, dirty_write, [Jabs#jabs{host=Key}]);
-write_db(Jabs, p1db) ->
-    Key = enc_key({Jabs#jabs.host, node()}),
-    p1db:insert(jabs, Key, jabs_to_p1db(Jabs));
-write_db(_, _) ->
-    ok.
+    Mod = gen_mod:db_mod(Jabs#jabs.host, ?MODULE),
+    Mod:write(Jabs).
 
 match_db(Host) when is_binary(Host) ->
-    match_db(Host, gen_mod:db_type(Host, ?MODULE)).
-
-match_db(Host, mnesia) ->
-    Record = #jabs{host = {Host, '_'}, _ = '_'},
-    lists:map(fun(Jabs) ->
-                {Host, Node} = Jabs#jabs.host,
-                {Node, Jabs#jabs{host = Host}}
-        end, mnesia:dirty_match_object(Record));
-match_db(Host, p1db) ->
-    case p1db:get_by_prefix(jabs, enc_key(Host)) of
-        {ok, L} ->
-            lists:map(fun(Jabs) ->
-                        {Host, Node} = Jabs#jabs.host,
-                        {Node, Jabs#jabs{host = Host}}
-                end, [p1db_to_jabs(Key, Val) || {Key, Val, _} <- L]);
-        _ ->
-            []
-    end;
-match_db(_, _) ->
-    [].
+    Mod = gen_mod:db_mod(Host, ?MODULE),
+    Mod:match(Host).
 
 clean_db(Host) when is_binary(Host) ->
-    clean_db(Host, gen_mod:db_type(Host, ?MODULE)).
-
-clean_db(Host, mnesia) ->
-    Record = #jabs{host = {Host, '_'}, _ = '_'},
-    ejabberd_cluster:multicall(mnesia, dirty_delete_object, [Record]),
-    ok;
-clean_db(Host, p1db) ->
-    case p1db:get_by_prefix(jabs, enc_key(Host)) of
-        {ok, L} -> [p1db:delete(jabs, Key) || {Key, _, _} <- L], ok;
-        _ -> ok
-    end;
-clean_db(_, _) ->
-    ok.
+    Mod = gen_mod:db_mod(Host, ?MODULE),
+    Mod:clean(Host).
 
 %%====================================================================
 %% ejabberd commands
@@ -329,51 +266,6 @@ user_send_packet(#jid{luser=User,lserver=Host}, _To, Packet) ->
     Size = erlang:external_size(Packet),
     gen_server:cast(process(Host), {inc, 1+(Size div 5120), User}),
     Packet.
-
-%%====================================================================
-%% p1db helpers
-%%====================================================================
-
-jabs_to_p1db(Jabs) when is_record(Jabs, jabs) ->
-    term_to_binary([
-            {counter, Jabs#jabs.counter},
-            {stamp, Jabs#jabs.stamp},
-            {timer, Jabs#jabs.timer},
-            {ignore, Jabs#jabs.ignore}]).
-p1db_to_jabs(Key, Val) when is_binary(Key) ->
-    p1db_to_jabs(dec_key(Key), Val);
-p1db_to_jabs({Host, Node}, Val) ->
-    lists:foldl(
-        fun ({counter, C}, J) -> J#jabs{counter=C};
-            ({stamp, S}, J) -> J#jabs{stamp=S};
-            ({timer, T}, J) -> J#jabs{timer=T};
-            ({ignore, I}, J) -> J#jabs{ignore=I};
-            (_, J) -> J
-        end, #jabs{host={Host, Node}}, binary_to_term(Val)).
-
-enc_key({Host, Node}) ->
-    N = jlib:atom_to_binary(Node),
-    <<Host/binary, 0, N/binary>>;
-enc_key(Host) ->
-    <<Host/binary, 0>>.
-dec_key(Key) ->
-    SLen = str:chr(Key, 0) - 1,
-    <<Host:SLen/binary, 0, N/binary>> = Key,
-    {Host, jlib:binary_to_atom(N)}.
-
-enc_val(_, [Counter, Stamp, Timer, Ignore]) ->
-    jabs_to_p1db(#jabs{
-            counter=Counter,
-            stamp=Stamp,
-            timer=Timer,
-            ignore=Ignore}).
-dec_val(Key, Bin) ->
-    J = p1db_to_jabs(Key, Bin),
-    [J#jabs.counter,
-     J#jabs.stamp,
-     J#jabs.timer,
-     J#jabs.ignore].
-
 
 mod_opt_type(db_type) -> fun(T) -> ejabberd_config:v_db(?MODULE, T) end;
 mod_opt_type(ignore) ->
