@@ -429,7 +429,7 @@ allow_host(FromHost, ToHost, _IsBounce = false) ->
 allow_host1(MyHost, VHost) ->
     Rule = ejabberd_config:get_option(
 	     {host_access, MyHost},
-	     fun(A) when is_atom(A) -> A end,
+	     fun(A) -> A end,
 	     all),
     JID = jid:make(<<"">>, VHost, <<"">>),
     acl:match_rule(MyHost, Rule, JID) == allow.
@@ -557,8 +557,7 @@ opt_type(domain_balancing) ->
     end;
 opt_type(domain_balancing_component_number) ->
     fun (N) when is_integer(N), N > 1 -> N end;
-opt_type(host_access) ->
-    fun (A) when is_atom(A) -> A end;
+opt_type(host_access) -> fun acl:access_rules_validator/1;
 opt_type(_) ->
     [domain_balancing, domain_balancing_component_number,
      host_access].

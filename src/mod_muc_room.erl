@@ -1726,12 +1726,12 @@ get_user_activity(JID, StateData) ->
 	  MessageShaper =
 	      shaper:new(gen_mod:get_module_opt(StateData#state.server_host,
 						mod_muc, user_message_shaper,
-                                                fun(A) when is_atom(A) -> A end,
+                                                fun(A) -> A end,
 						none)),
 	  PresenceShaper =
 	      shaper:new(gen_mod:get_module_opt(StateData#state.server_host,
 						mod_muc, user_presence_shaper,
-                                                fun(A) when is_atom(A) -> A end,
+                                                fun(A) -> A end,
 						none)),
 	  #activity{message_shaper = MessageShaper,
 		    presence_shaper = PresenceShaper}

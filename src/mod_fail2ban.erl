@@ -167,7 +167,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 is_whitelisted(Host, Addr) ->
     Access = gen_mod:get_module_opt(Host, ?MODULE, access,
-				    fun(A) when is_atom(A) -> A end,
+				    fun(A) -> A end,
 				    none),
     acl:match_rule(Host, Access, Addr) == allow.
 
@@ -186,8 +186,7 @@ format_date({{Year, Month, Day}, {Hour, Minute, Second}}) ->
     io_lib:format("~2..0w:~2..0w:~2..0w ~2..0w.~2..0w.~4..0w",
 		  [Hour, Minute, Second, Day, Month, Year]).
 
-mod_opt_type(access) ->
-    fun (A) when is_atom(A) -> A end;
+mod_opt_type(access) -> fun acl:access_rules_validator/1;
 mod_opt_type(c2s_auth_ban_lifetime) ->
     fun (T) when is_integer(T), T > 0 -> T end;
 mod_opt_type(c2s_max_auth_failures) ->

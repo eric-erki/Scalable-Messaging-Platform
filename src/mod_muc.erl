@@ -217,14 +217,14 @@ init([Host, Opts]) ->
     mnesia:subscribe(system),
     ejabberd_cluster:subscribe(),
     Access = gen_mod:get_opt(access, Opts,
-                             fun(A) when is_atom(A) -> A end, all),
+                             fun acl:access_rules_validator/1, all),
     AccessCreate = gen_mod:get_opt(access_create, Opts,
-                                   fun(A) when is_atom(A) -> A end, all),
+                                   fun acl:access_rules_validator/1, all),
     AccessAdmin = gen_mod:get_opt(access_admin, Opts,
-                                  fun(A) when is_atom(A) -> A end,
+                                  fun acl:access_rules_validator/1,
                                   none),
     AccessPersistent = gen_mod:get_opt(access_persistent, Opts,
-				       fun(A) when is_atom(A) -> A end,
+				       fun acl:access_rules_validator/1,
                                        all),
     HistorySize = gen_mod:get_opt(history_size, Opts,
                                   fun(I) when is_integer(I), I>=0 -> I end,
@@ -285,7 +285,7 @@ init([Host, Opts]) ->
 		  end
 	  end, DefRoomOpts1),
     RoomShaper = gen_mod:get_opt(room_shaper, Opts,
-                                 fun(A) when is_atom(A) -> A end,
+                                 fun acl:shaper_rules_validator/1,
                                  none),
     ejabberd_router:register_route(MyHost, Host),
     load_permanent_rooms(MyHost, Host,
@@ -1088,14 +1088,10 @@ export(LServer) ->
     Mod = gen_mod:db_mod(LServer, ?MODULE),
     Mod:export(LServer).
 
-mod_opt_type(access) ->
-    fun (A) when is_atom(A) -> A end;
-mod_opt_type(access_admin) ->
-    fun (A) when is_atom(A) -> A end;
-mod_opt_type(access_create) ->
-    fun (A) when is_atom(A) -> A end;
-mod_opt_type(access_persistent) ->
-    fun (A) when is_atom(A) -> A end;
+mod_opt_type(access) -> fun acl:access_rules_validator/1;
+mod_opt_type(access_admin) -> fun acl:access_rules_validator/1;
+mod_opt_type(access_create) -> fun acl:access_rules_validator/1;
+mod_opt_type(access_persistent) -> fun acl:access_rules_validator/1;
 mod_opt_type(db_type) -> fun(T) -> ejabberd_config:v_db(?MODULE, T) end;
 mod_opt_type(default_room_options) ->
     fun (L) when is_list(L) -> L end;
@@ -1134,12 +1130,9 @@ mod_opt_type(p1db_group) ->
     fun (G) when is_atom(G) -> G end;
 mod_opt_type(persist_history) ->
     fun (B) when is_boolean(B) -> B end;
-mod_opt_type(room_shaper) ->
-    fun (A) when is_atom(A) -> A end;
-mod_opt_type(user_message_shaper) ->
-    fun (A) when is_atom(A) -> A end;
-mod_opt_type(user_presence_shaper) ->
-    fun (A) when is_atom(A) -> A end;
+mod_opt_type(room_shaper) -> fun acl:shaper_rules_validator/1;
+mod_opt_type(user_message_shaper) -> fun acl:shaper_rules_validator/1;
+mod_opt_type(user_presence_shaper) -> fun acl:shaper_rules_validator/1;
 mod_opt_type(preload_rooms) ->
     fun (B) when is_boolean(B) -> B end;
 mod_opt_type(_) ->

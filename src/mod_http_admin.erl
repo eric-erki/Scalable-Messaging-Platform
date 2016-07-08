@@ -110,7 +110,7 @@ check_permissions(#request{auth={SJID, Pass}}, Command) ->
     case jid:from_string(SJID) of
 	#jid{user = User, server = Server} = JID ->
 	    Access = gen_mod:get_module_opt(Server, ?MODULE, access,
-						 mod_opt_type(access),
+						 fun(A) -> A end,
 						 none),
 	    case ejabberd_auth:check_password(User, Server, Pass) of
 		true ->
@@ -138,7 +138,7 @@ check_permissions(#request{auth={SJID, Pass}}, Command) ->
     end;
 check_permissions(#request{ip={IP, _Port}}, Command) ->
     Access = gen_mod:get_module_opt(global, ?MODULE, access,
-				    mod_opt_type(access),
+				    fun(A) -> A end,
 				    none),
     Res = acl:match_rule(global, Access, IP),
     case Res of
@@ -524,6 +524,5 @@ log(Call, Args, {Addr, Port}) ->
     AddrS = jlib:ip_to_list({Addr, Port}),
     ?INFO_MSG("Admin call ~s ~p from ~s:~p", [Call, Args, AddrS, Port]).
 
-mod_opt_type(access) ->
-    fun(Access) when is_atom(Access) -> Access end;
+mod_opt_type(access) -> fun acl:access_rules_validator/1;
 mod_opt_type(_) -> [access].

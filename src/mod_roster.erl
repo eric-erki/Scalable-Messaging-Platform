@@ -411,7 +411,7 @@ get_roster_by_jid_t(LUser, LServer, LJID) ->
 
 try_process_iq_set(From, To, #iq{sub_el = SubEl, lang = Lang} = IQ) ->
     #jid{server = Server} = From,
-    Access = gen_mod:get_module_opt(Server, ?MODULE, access, fun(A) when is_atom(A) -> A end, all),
+    Access = gen_mod:get_module_opt(Server, ?MODULE, access, fun(A) -> A end, all),
     case acl:match_rule(Server, Access, From) of
 	deny ->
 	    Txt = <<"Denied by ACL">>,
@@ -1384,7 +1384,7 @@ create_rosters(UserPattern, Server, Total, DBType) ->
     ok.
 
 mod_opt_type(access) ->
-    fun (A) when is_atom(A) -> A end;
+    fun acl:access_rules_validator/1;
 mod_opt_type(cache_life_time) ->
     fun (I) when is_integer(I), I > 0 -> I end;
 mod_opt_type(cache_size) ->

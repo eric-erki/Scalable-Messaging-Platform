@@ -63,7 +63,7 @@ start_link(MyName, [Host, Opts]) ->
 init([Host, Opts]) ->
     AccessMaxOfflineMsgs =
 	gen_mod:get_opt(access_max_user_messages, Opts,
-                        fun(A) when is_atom(A) -> A end,
+                        fun acl:access_rules_validator/1,
 			max_user_offline_messages),
     {ok,
      #state{host = Host,
@@ -109,7 +109,6 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
 
-mod_opt_type(access_max_user_messages) ->
-    fun (A) when is_atom(A) -> A end;
+mod_opt_type(access_max_user_messages) -> fun acl:access_rules_validator/1;
 mod_opt_type(db_type) -> fun(T) -> ejabberd_config:v_db(mod_offline, T) end;
 mod_opt_type(_) -> [access_max_user_messages, db_type].

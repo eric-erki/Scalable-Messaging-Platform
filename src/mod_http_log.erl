@@ -131,7 +131,7 @@ get_auth_admin(Auth) ->
             AccessRule =
                 gen_mod:get_module_opt(
                   ?MYNAME, ?MODULE, access,
-                  fun(A) when is_atom(A) -> A end, none),
+                  fun(A) -> A end, none),
             case jid:from_string(SJID) of
                 error -> {unauthorized, <<"badformed-jid">>};
                 #jid{user = <<"">>, server = User} ->
@@ -203,6 +203,5 @@ loop(SockMod, Socket) ->
     end.
 
 
-mod_opt_type(access) ->
-    fun (A) when is_atom(A) -> A end;
+mod_opt_type(access) -> fun acl:access_rules_validator/1;
 mod_opt_type(_) -> [access].

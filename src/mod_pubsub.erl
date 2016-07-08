@@ -248,7 +248,7 @@ init([ServerHost, Opts]) ->
     Host = gen_mod:get_opt_host(ServerHost, Opts, <<"pubsub.@HOST@">>),
     ejabberd_router:register_route(Host, ServerHost),
     Access = gen_mod:get_opt(access_createnode, Opts,
-	    fun(A) when is_atom(A) -> A end, all),
+	    fun acl:access_rules_validator/1, all),
     PepOffline = gen_mod:get_opt(ignore_pep_from_offline, Opts,
 	    fun(A) when is_boolean(A) -> A end, true),
     IQDisc = gen_mod:get_opt(iqdisc, Opts,
@@ -4471,8 +4471,7 @@ purge_offline(Host, LJID, Node) ->
 	    Error
     end.
 
-mod_opt_type(access_createnode) ->
-    fun (A) when is_atom(A) -> A end;
+mod_opt_type(access_createnode) -> fun acl:access_rules_validator/1;
 mod_opt_type(db_type) -> fun(T) -> ejabberd_config:v_db(?MODULE, T) end;
 mod_opt_type(host) -> fun iolist_to_binary/1;
 mod_opt_type(ignore_pep_from_offline) ->

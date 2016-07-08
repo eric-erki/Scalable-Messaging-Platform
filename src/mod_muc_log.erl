@@ -177,7 +177,7 @@ init([Host, Opts]) ->
                               fun iolist_to_binary/1,
                               false),
     AccessLog = gen_mod:get_opt(access_log, Opts,
-                                fun(A) when is_atom(A) -> A end,
+                                fun acl:access_rules_validator/1,
                                 muc_admin),
     Timezone = gen_mod:get_opt(timezone, Opts,
                                fun(local) -> local;
@@ -1260,8 +1260,7 @@ has_no_permanent_store_hint(Packet) ->
     fxml:get_subtag_with_xmlns(Packet, <<"no-permanent-storage">>, ?NS_HINTS)
       =/= false.
 
-mod_opt_type(access_log) ->
-    fun (A) when is_atom(A) -> A end;
+mod_opt_type(access_log) -> fun acl:access_rules_validator/1;
 mod_opt_type(cssfile) -> fun iolist_to_binary/1;
 mod_opt_type(dirname) ->
     fun (room_jid) -> room_jid;

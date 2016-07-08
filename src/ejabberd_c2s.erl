@@ -702,7 +702,9 @@ wait_for_auth({xmlstreamelement, El}, StateData) ->
 	    S = StateData#state.server,
 	    JID = jid:make(U, S, R),
 	    case JID /= error andalso
-		acl:match_rule(S, StateData#state.access, JID) == allow
+		acl:access_matches(StateData#state.access,
+				   #{usr => jid:split(JID), ip => StateData#state.ip},
+				   StateData#state.server) == allow
 	    of
 		true ->
 		    DGen = fun (PW) ->
@@ -1060,10 +1062,12 @@ wait_for_bind(stop_or_detach, _From, StateData) ->
 
 open_session(StateData) ->
     U = StateData#state.user,
-    S = StateData#state.server,
     JID = StateData#state.jid,
     Lang = StateData#state.lang,
-    case acl:match_rule(S, StateData#state.access, JID) of
+    IP = StateData#state.ip,
+    case acl:access_matches(StateData#state.access,
+			    #{usr => jid:split(JID), ip => IP},
+			    StateData#state.server) of
         allow ->
             ?INFO_MSG("(~w) Opened session for ~s",
                       [StateData#state.socket, jid:to_string(JID)]),
@@ -1812,7 +1816,9 @@ terminate(_Reason, StateName, StateData) ->
 %%%----------------------------------------------------------------------
 
 change_shaper(StateData, JID) ->
-    Shaper = acl:match_rule(StateData#state.server, StateData#state.shaper, JID),
+    Shaper = acl:access_matches(StateData#state.shaper,
+				#{usr => jid:split(JID), ip => StateData#state.ip},
+				StateData#state.server),
     (StateData#state.sockmod):change_shaper(StateData#state.socket, Shaper).
 
 -spec send_text(c2s_state(), iodata()) -> any().
@@ -2168,7 +2174,7 @@ try_roster_subscribe(Type, User, Server, From, To, Packet, StateData) ->
     JID1 = jid:make(User, Server, <<"">>),
     Access = gen_mod:get_module_opt(
 	       Server, mod_roster, access,
-	       fun(A) when is_atom(A) -> A end, all),
+	       fun(A) -> A end, all),
     case acl:match_rule(Server, Access, JID1) of
 	deny ->
 	    %% Silently drop this (un)subscription request
