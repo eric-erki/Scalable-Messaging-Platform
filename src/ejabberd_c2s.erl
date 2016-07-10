@@ -3723,7 +3723,7 @@ handle_unacked_stanzas(#state{mgmt_state = MgmtState} = StateData, F)
 	0 ->
 	    ok;
 	N ->
-	    ?INFO_MSG("~B stanzas were not acknowledged by ~s",
+	  ?DEBUG("~B stanza(s) were not acknowledged by ~s",
 		      [N, jid:to_string(StateData#state.jid)]),
 	    lists:foreach(
 	      fun({_, Time, #xmlel{attrs = Attrs} = El}) ->
