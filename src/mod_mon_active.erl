@@ -44,7 +44,7 @@
 %% module API
 -export([start_link/2, start/2, stop/1]).
 -export([values/1, reset/2, insert/2]).
--export([get_log/1, add_log/2, del_log/2]).
+-export([get_log/1, add_log/2, del_log/2, sync_log/1]).
 %% server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 %% administration commands
@@ -99,6 +99,20 @@ del_log(Host, PName) when is_binary(Host), is_atom(PName) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     ?GEN_SERVER:cast(Proc, {del_log, PName}).
 
+sync_log(Host) when is_binary(Host) ->
+    Cluster = ejabberd_cluster:get_nodes()--[node()],
+    SLog = case ejabberd_cluster:multicall(Cluster, ?MODULE, get_log, [Host]) of
+               {[], _BadNodes} ->
+                   undefined;
+               {Logs, _BadNodes} ->
+                   lists:foldl(
+                     fun(RLog, Acc) -> log_merge(RLog, Acc) end,
+                     log_new(), Logs)
+           end,
+    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
+    ?GEN_SERVER:cast(Proc, {sync_log, SLog}).
+
+
 %%====================================================================
 %% server callbacks
 %%====================================================================
@@ -128,7 +142,7 @@ init([Host, Opts]) ->
         Logs = L1++L2,
         [mod_mon:set(Host, PName, log_card(PLog)) || {PName, PLog} <- Logs],
         ok = write_logs(File, Logs),
-        {ok, T} = timer:send_interval(?HOUR, self(), sync_logs),
+        {ok, T} = timer:apply_interval(?HOUR, ?MODULE, sync_log, [Host]),
         ejabberd_hooks:add(sm_register_connection_hook, Host,
                            ?MODULE, sm_register_connection_hook, 20),
         ejabberd_commands:register_commands(get_commands_spec()),
@@ -164,15 +178,18 @@ handle_cast({del_log, PName}, State) ->
     Logs = lists:keydelete(PName, 1, read_logs(File)),
     write_logs(File, Logs),
     {noreply, State#state{pool = proplists:get_keys(Logs)}};
+handle_cast({sync_log, ClusterLog}, State) ->
+    Host = State#state.host,
+    File = State#state.file,
+    Log = case ClusterLog of
+              undefined -> State#state.log;
+              _ -> log_merge(State#state.log, ClusterLog)
+          end,
+    merge_logs(Host, File, Log),
+    {noreply, State};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info(sync_logs, State) ->
-    Host = State#state.host,
-    File = State#state.file,
-    Log = State#state.log,
-    spawn(fun() -> sync_logs(Host, File, Log) end),
-    {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -264,14 +281,6 @@ log_merge(LogA, LogB) -> ehyperloglog:merge(LogA, LogB).
 %log_card(Log) -> round(hyper:card(Log)).
 %log_insert(Log, Item) -> hyper:insert(Item, Log).
 %log_merge(LogA, LogB) -> hyper:union(LogA, LogB).
-
-sync_logs(Host, File, Log) ->
-    Cluster = ejabberd_cluster:get_nodes()--[node()],
-    {Logs, _BadNodes} = ejabberd_cluster:multicall(Cluster, ?MODULE, get_log, [Host]),
-    ClusterLog = lists:foldl(
-                   fun(RLog, Acc) -> log_merge(RLog, Acc) end,
-                   Log, Logs),
-    merge_logs(Host, File, ClusterLog).
 
 flush_log(Host, File, Log, Flush)  ->
     {Card, Logs} = lists:foldr(
