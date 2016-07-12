@@ -277,9 +277,15 @@ get_commands_spec() ->
                         result = {probe_value, integer}}].
 
 flush_probe_command(Host, Probe) ->
-    case reset(Host, jlib:binary_to_atom(Probe)) of
-        N when is_integer(N) -> N;
-        _ -> 0
+    case lists:reverse(str:tokens(Probe, <<"_">>)) of
+        [<<"users">>,<<"active">> | _] ->
+            % add temporary hack for active probe backward compatibility
+            mod_mon_active:flush_active_command(Host, Probe);
+        _ ->
+            case reset(Host, jlib:binary_to_atom(Probe)) of
+                N when is_integer(N) -> N;
+                _ -> 0
+            end
     end.
 
 %%====================================================================
