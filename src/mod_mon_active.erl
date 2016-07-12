@@ -129,7 +129,7 @@ init([Host, Opts]) ->
         [mod_mon:set(Host, PName, log_card(PLog)) || {PName, PLog} <- Logs],
         ok = write_logs(File, Logs),
         {ok, T} = timer:send_interval(?HOUR, self(), sync_logs),
-        ejabberd_hooks:add(Host, sm_register_connection_hook,
+        ejabberd_hooks:add(sm_register_connection_hook, Host,
                            ?MODULE, sm_register_connection_hook, 20),
         ejabberd_commands:register_commands(get_commands_spec()),
         {ok, #state{host = Host, log = NLog, pool = Pool, file = File, timers = [T]}}
@@ -179,7 +179,7 @@ handle_info(_Info, State) ->
 terminate(_Reason, State) ->
     Host = State#state.host,
     [timer:cancel(T) || T <- State#state.timers],
-    ejabberd_hooks:delete(Host, sm_register_connection_hook,
+    ejabberd_hooks:delete(sm_register_connection_hook, Host,
                           ?MODULE, sm_register_connection_hook, 20),
     ejabberd_commands:unregister_commands(get_commands_spec()),
     merge_logs(Host, State#state.file, State#state.log),
