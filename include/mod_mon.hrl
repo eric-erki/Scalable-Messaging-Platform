@@ -24,12 +24,6 @@
 -define(WEEK, 604800000).
 -define(MONTH, 2592000000).
 
--define(HYPERLOGLOGS,
-        [daily_active_users,
-         weekly_active_users,
-         monthly_active_users,
-         period_active_users]).
-
 -define(SUPPORTED_HOOKS,
         [offline_message_hook, resend_offline_messages_hook,
          sm_register_connection_hook, sm_remove_connection_hook,
@@ -51,9 +45,8 @@
 %%roster_get, roster_get_jid_info, roster_get_subscription_lists, roster_process_item
 
 % By default all probes are type counter. The ones listed above are gauges:
--define(GAUGES, ?HYPERLOGLOGS ++
-        [client_conn_time, client_auth_time, client_roster_time,
-         backend_api_response_time]).
+-define(GAUGES, [client_conn_time, client_auth_time, client_roster_time,
+                 backend_api_response_time]).
 
 % Generic default monitors to aglomerate common values
 -define(DEFAULT_MONITORS,

@@ -46,9 +46,9 @@
 -export([value/2, dump/1, declare/3, drop/2, info/1]).
 -export([reset/2, set/3, inc/3, dec/3, sum/3]).
 %% sync commands
--export([flush_log/3, sync_log/1, push_metrics/2]).
+-export([push_metrics/2]).
 %% administration commands
--export([active_counters_command/1, flush_probe_command/2]).
+-export([flush_probe_command/2]).
 %% monitors
 -export([process_queues/2, internal_queues/2, health_check/1, jabs_count/1]).
 -export([cpu_usage/1]).
@@ -75,7 +75,7 @@
 -compile({no_auto_import, [get/1]}).
 
 -record(mon, {probe, value}).
--record(state, {host, active_count, backends, monitors, log, timers=[]}).
+-record(state, {host, backends, monitors, timers=[]}).
 
 %%====================================================================
 %% API
@@ -151,12 +151,6 @@ init([Host, Opts]) ->
     Hooks = gen_mod:get_opt(hooks, Opts,
                                fun(L) when is_list(L) -> L end,
                                ?SUPPORTED_HOOKS),
-    % Active users counting uses hyperloglog structures
-    ActiveCount = gen_mod:get_opt(active_count, Opts,
-                                  fun(B) when is_boolean(B) -> B end,
-                                  true)
-                  and not ejabberd_auth_anonymous:allow_anonymous(Host),
-    Log = init_log(Host, ActiveCount),
 
     % Statistics backends
     BackendsSpec = gen_mod:get_opt(backends, Opts,
@@ -181,19 +175,14 @@ init([Host, Opts]) ->
     catch ets:new(mon_probes, [named_table, public]),
     [ets:insert(mon_probes, {Probe, gauge}) || Probe<-?GAUGES],
 
-    % Start timers for cache and backends sync
-    {ok, TSync} = timer:apply_interval(?HOUR, ?MODULE, sync_log, [Host]),
-    {ok, TPush} = timer:apply_interval(?MINUTE, ?MODULE, push_metrics, [Host, Backends]),
+    % Start timer for backends sync
+    {ok, T} = timer:apply_interval(?MINUTE, ?MODULE, push_metrics, [Host, Backends]),
 
     {ok, #state{host = Host,
-                active_count = ActiveCount,
                 backends = Backends,
                 monitors = Monitors,
-                log = Log,
-                timers = [TSync, TPush]}}.
+                timers = [T]}}.
 
-handle_call({get, log}, _From, State) ->
-    {reply, State#state.log, State};
 handle_call({get, Probe}, _From, State) ->
     Ret = case get(Probe) of
         {Sum, Count} -> Sum div Count;
@@ -202,9 +191,7 @@ handle_call({get, Probe}, _From, State) ->
     {reply, Ret, State};
 handle_call({reset, Probe}, _From, State) ->
     OldVal = get(Probe),
-    IsLog = State#state.active_count andalso lists:member(Probe, ?HYPERLOGLOGS),
     [put(Probe, 0) || OldVal =/= 0],
-    [flush_log(State#state.host, Probe) || IsLog],
     {reply, OldVal, State};
 handle_call(dump, _From, State) ->
     {reply, get(), State};
@@ -249,8 +236,6 @@ handle_cast({dec, Probe, Value}, State) ->
     Old = get(Probe),
     put(Probe, Old-Value),
     {noreply, State};
-handle_cast({set, log, Value}, State) ->
-    {noreply, State#state{log = Value}};
 handle_cast({set, Probe, Value}, State) ->
     declare_gauge(Probe),
     put(Probe, Value),
@@ -262,12 +247,6 @@ handle_cast({sum, Probe, Value}, State) ->
         _ -> put(Probe, {Value, 1})
     end,
     {noreply, State};
-handle_cast({active, Item}, State) ->
-    Log = case State#state.active_count of
-        true -> ehyperloglog:update(Item, State#state.log);
-        false -> State#state.log
-    end,
-    {noreply, State#state{log = Log}};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -280,7 +259,6 @@ terminate(_Reason, State) ->
     [ejabberd_hooks:delete(Hook, Host, ?MODULE, Hook, 20)
      || Hook <- ?SUPPORTED_HOOKS],
     ejabberd_hooks:delete(api_call, ?MODULE, api_call, 20),
-    sync_log(Host),
     ejabberd_commands:unregister_commands(get_commands_spec()).
 
 code_change(_OldVsn, State, _Extra) ->
@@ -291,31 +269,12 @@ code_change(_OldVsn, State, _Extra) ->
 %%====================================================================
 
 get_commands_spec() ->
-    [#ejabberd_commands{name = active_counters,
-                        tags = [stats],
-                        desc = "Returns active users counter in time period (daily_active_users, weekly_active_users, monthly_active_users, period_active_users)",
-                        module = ?MODULE, function = active_counters_command,
-                        args = [{host, binary}],
-                        args_desc = ["Name of host which should return counters"],
-                        result = {counters, {list, {counter, {tuple, [{name, string}, {value, integer}]}}}},
-                        result_desc = "List of counter names with value",
-                        args_example = [<<"xmpp.example.org">>],
-                        result_example = [{<<"daily_active_users">>, 100},
-                                          {<<"weekly_active_users">>, 1000},
-                                          {<<"monthly_active_users">>, 10000},
-                                          {<<"period_active_users">>, 300}]
-                       },
-     #ejabberd_commands{name = flush_probe,
+    [#ejabberd_commands{name = flush_probe,
                         tags = [stats],
                         desc = "Returns last value from probe and resets its historical data if any.",
                         module = ?MODULE, function = flush_probe_command,
                         args = [{server, binary}, {probe_name, binary}],
                         result = {probe_value, integer}}].
-
-active_counters_command(Host) ->
-    [{jlib:atom_to_binary(Key), Val}
-     || {Key, Val} <- dump(Host),
-        lists:member(Key, ?HYPERLOGLOGS)].
 
 flush_probe_command(Host, Probe) ->
     case reset(Host, jlib:binary_to_atom(Probe)) of
@@ -435,14 +394,13 @@ resend_offline_messages_hook(Ls, _User, Server) ->
     cast(jid:nameprep(Server), {inc, resend_offline_messages}),
     Ls.
 
-sm_register_connection_hook(_SID, #jid{luser=LUser,lserver=LServer}, Info) ->
+sm_register_connection_hook(_SID, #jid{lserver=LServer}, Info) ->
     Post = case proplists:get_value(conn, Info) of
         undefined -> <<>>;
         Atom -> jlib:atom_to_binary(Atom)
     end,
     Hook = hookid(concat(<<"sm_register_connection">>, Post)),
-    cast(LServer, {inc, Hook}),
-    cast(LServer, {active, LUser}).
+    cast(LServer, {inc, Hook}).
 sm_remove_connection_hook(_SID, #jid{lserver=LServer}, Info) ->
     Post = case proplists:get_value(conn, Info) of
         undefined -> <<>>;
@@ -542,117 +500,6 @@ pubsub_publish_item(ServerHost, _Node, _Publisher, _From, _ItemId, _Packet) ->
     cast(ServerHost, {inc, pubsub_publish_item}).
 %pubsub_broadcast_stanza(Host, Node, Count, _Stanza) ->
 %    cast(Host, {inc, {pubsub_broadcast_stanza, Node, Count}}).
-
-%%====================================================================
-%% active user feature
-%%====================================================================
-
-% HyperLogLog notes:
-% Let σ ≈ 1.04/√m represent the standard error; the estimates provided by HYPERLOGLOG
-% are expected to be within σ, 2σ, 3σ of the exact count in respectively 65%, 95%, 99%
-% of all the cases.
-%
-% bits / memory / registers / σ 2σ 3σ
-% 10   1309  1024 ±3.25% ±6.50% ±9.75%
-% 11   2845  2048 ±2.30% ±4.60% ±6.90%
-% 12   6173  4096 ±1.62% ±3.26% ±4.89%
-% 13  13341  8192 ±1.15% ±2.30% ±3.45%
-% 14  28701 16384 ±0.81% ±1.62% ±2.43%
-% 15  62469 32768 ±0.57% ±1.14% ±1.71%
-% 16 131101 65536 ±0.40% ±0.81% ±1.23%   <=== we take this one
-
-init_log(_Host, false) ->
-    undefined;
-init_log(Host, true) ->
-    EmptyLog = ehyperloglog:new(16),
-    [put(Key, 0) || Key <- ?HYPERLOGLOGS],
-    Logs = lists:foldl(
-            fun({Key, Val}, Acc) ->
-                    put(Key, round(ehyperloglog:cardinality(Val))),
-                    lists:keyreplace(Key, 1, Acc, {Key, Val})
-            end,
-            [{Key, EmptyLog} || Key <- ?HYPERLOGLOGS],
-            read_logs(Host)),
-    write_logs(Host, Logs),
-    proplists:get_value(hd(?HYPERLOGLOGS), Logs).
-
-cluster_log(Host) ->
-    {Logs, _} = ejabberd_cluster:multicall(?MODULE, value, [Host, log]),
-    lists:foldl(fun
-            ({hll,_,_}=L1, L2) -> ehyperloglog:merge(L2, L1);
-            (_, Acc) -> Acc
-        end, ehyperloglog:new(16), Logs).
-
-sync_log(Host) when is_binary(Host) ->
-    % this process can safely run on its own, thanks to put/get hyperloglogs not using dictionary
-    % it should be called at regular interval to keep logs consistency
-    spawn(fun() ->
-                ClusterLog = cluster_log(Host),
-                set(Host, log, ClusterLog),
-                write_logs(Host, [{Key, merge_log(Host, Key, Val, ClusterLog)}
-                                  || {Key, Val} <- read_logs(Host)])
-        end).
-
-flush_log(Host, Probe) ->
-    % this process can safely run on its own, thanks to put/get hyperloglogs not using dictionary
-    % it may be called at regular interval with timers or external cron
-    spawn(fun() ->
-                ClusterLog = cluster_log(Host),
-                ejabberd_cluster:multicall(?MODULE, flush_log, [Host, Probe, ClusterLog])
-        end).
-flush_log(Host, Probe, _ClusterLog) when is_binary(Host), is_atom(Probe) ->
-    set(Host, log, ehyperloglog:new(16)),
-    UpdatedLogs = lists:foldr(
-            fun({Key, Val}, Acc) ->
-                    NewLog = case Key of
-                        Probe -> reset_log(Host, Key);
-                        _ -> Val
-                    end,
-                    [{Key, NewLog}|Acc]
-            end,
-            [], read_logs(Host)),
-    write_logs(Host, UpdatedLogs).
-
-merge_log(Host, Probe, Log, ClusterLog) ->
-    Merge = ehyperloglog:merge(ClusterLog, Log),
-    set(Host, Probe, round(ehyperloglog:cardinality(Merge))),
-    Merge.
-
-reset_log(Host, Probe) ->
-    set(Host, Probe, 0),
-    ehyperloglog:new(16).
-
-write_logs(Host, Logs) when is_list(Logs) ->
-    File = logfilename(Host),
-    filelib:ensure_dir(File),
-    file:write_file(File, term_to_binary(Logs)).
-
-read_logs(Host) ->
-    File = logfilename(Host),
-    case file:read_file(File) of
-        {ok, Bin} ->
-            case catch binary_to_term(Bin) of
-                List when is_list(List) ->
-                    % prevent any garbage loading
-                    lists:foldr(
-                        fun ({Key, Val}, Acc) ->
-                                case lists:member(Key, ?HYPERLOGLOGS) of
-                                    true -> [{Key, Val}|Acc];
-                                    false -> Acc
-                                end;
-                            (_, Acc) ->
-                                Acc
-                        end, [], List);
-                _ ->
-                    []
-            end;
-        _ ->
-            []
-    end.
-
-logfilename(Host) when is_binary(Host) ->
-    Name = binary:replace(Host, <<".">>, <<"_">>, [global]),
-    filename:join([mnesia:system_info(directory), "hyperloglog", <<Name/binary, ".bin">>]).
 
 %%====================================================================
 %% high level monitors
