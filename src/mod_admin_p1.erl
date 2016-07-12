@@ -805,10 +805,7 @@ server_info() ->
 		    end
 	    end, {0, os:timestamp()}, Hosts),
     JabsSince = MegaSecs*1000000+Secs,
-    DefaultActive = [{<<"daily_active_users">>, 0},
-		     {<<"weekly_active_users">>, 0},
-		     {<<"monthly_active_users">>, 0},
-		     {<<"period_active_users">>, 0}],
+    DefaultActive = [{<<"active_users">>, 0}],
     [FirstActive | OtherActive] =
 	[lists:sort(ejabberd_command(active_counters, [Host], DefaultActive))
 		|| Host <- Hosts],
@@ -1407,6 +1404,7 @@ ejabberd_command(Cmd, Args, Default) ->
     case catch ejabberd_commands:execute_command(Cmd, Args) of
 	{'EXIT', _} -> Default;
 	{error, _} -> Default;
+	unknown_command -> Default;
 	Result -> Result
     end.
 
