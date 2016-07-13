@@ -805,19 +805,21 @@ server_info() ->
 		    end
 	    end, {0, os:timestamp()}, Hosts),
     JabsSince = MegaSecs*1000000+Secs,
-    DefaultActive = [{<<"active_users">>, 0}],
-    [FirstActive | OtherActive] =
-	[lists:sort(ejabberd_command(active_counters, [Host], DefaultActive))
-		|| Host <- Hosts],
-    ActiveAll = lists:foldl(
-	fun(Counters, Acc) ->
-	    lists:zipwith(
-		fun({Key, A}, {Key, B}) -> {Key, A+B} end,
-		Acc, lists:sort(Counters))
-	end, FirstActive, OtherActive),
+    [AH | AT] = [lists:sort(ejabberd_command(active_counters, [Host], []))
+                 || Host <- Hosts],
+    Active = lists:foldl(
+            fun(AL, Acc1) ->
+                    lists:foldl(
+                        fun({K, V1}, Acc2) ->
+                                case lists:keyfind(K, 1, Acc2) of
+                                    {K, V2} -> lists:keyreplace(K, 1, Acc2, {K, V1+V2});
+                                    false -> [{K, V1}|Acc2]
+                                end
+                        end, Acc1, AL)
+            end, AH, AT),
     lists:flatten([
 	[{online, Sessions} | lists:zip(Nodes--LocalFailed, LocalSessions)],
-	[{jlib:binary_to_atom(Key), Val} || {Key, Val} <- ActiveAll],
+	[{jlib:binary_to_atom(Key), Val} || {Key, Val} <- Active],
 	{jabs, Jabs},
 	{jabs_since, JabsSince},
 	{memory, Memory},
