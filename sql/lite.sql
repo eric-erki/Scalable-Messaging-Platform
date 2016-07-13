@@ -296,6 +296,17 @@ CREATE TABLE gcm_cache (
 );
 CREATE UNIQUE INDEX i_gcm_cache_username_device_id ON gcm_cache (username, device_id);
 
+CREATE TABLE webhook_cache (
+   username text NOT NULL,
+   device_id text NOT NULL,
+   app_id text NOT NULL,
+   send_body char(1) NOT NULL,
+   send_from char(1) NOT NULL,
+   local_badge integer,
+   created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX i_webhook_cache_username_device_id ON webhook_cache (username, device_id);
+
 CREATE TABLE room_history (
     room text NOT NULL,
     nick text NOT NULL,

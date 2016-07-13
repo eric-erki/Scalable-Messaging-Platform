@@ -310,6 +310,18 @@ CREATE TABLE gcm_cache (
 
 CREATE UNIQUE INDEX i_gcm_cache_username_device_id ON gcm_cache USING btree (username, device_id);
 
+CREATE TABLE webhook_cache (
+    username text NOT NULL,
+    device_id text NOT NULL,
+    app_id text NOT NULL,
+    send_body character(1) NOT NULL,
+    send_from character(1) NOT NULL,
+    local_badge integer,
+    created_at TIMESTAMP NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX i_webhook_cache_username_device_id ON webhook_cache USING btree (username, device_id);
+
 CREATE TABLE push_customizations (
     username text NOT NULL,
     match_jid text NOT NULL,

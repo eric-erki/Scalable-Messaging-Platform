@@ -62,8 +62,8 @@
 	 purge_mam/2,
 	 get_commands_spec/0,
 	% certificates
-	 get_apns_config/1, get_gcm_config/1,
-	 setup_apns/3, setup_gcm/3]).
+	 get_apns_config/1, get_gcm_config/1, get_webhook_config/1,
+	 setup_apns/3, setup_gcm/3, setup_webhook/3]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -310,6 +310,13 @@ get_commands_spec() ->
 			args = [{host, binary}],
 			result = {res, {list,
 			    {value, {tuple, [{name, atom}, {value, string}]}}}}},
+     #ejabberd_commands{name = get_webhook_config,
+			tags = [config],
+			desc = "Fetch the webhook push service configuration",
+			module = ?MODULE, function = get_webhook_config,
+			args = [{host, binary}],
+			result = {res, {list,
+			    {value, {tuple, [{name, atom}, {value, string}]}}}}},                           
      #ejabberd_commands{name = setup_apns,
 			tags = [config],
 			desc = "Setup the Apple Push Notification Service",
@@ -321,6 +328,13 @@ get_commands_spec() ->
 			desc = "Setup the Google Cloud Messaging service",
 			module = ?MODULE, function = setup_gcm,
 			args = [{host, binary}, {apikey, binary}, {appid, binary}],
+			result = {res, integer}},
+      #ejabberd_commands{name = setup_webhook,
+			tags = [config],
+			desc = "Setup the Web Hook based Push API service",
+			module = ?MODULE, function = setup_webhook,
+                        %% apikey is optional
+			args = [{host, binary}, {gateway, binary}, {appid, binary}],
 			result = {res, integer}}
     ].
 
@@ -1316,6 +1330,60 @@ gcm_cfg(Host, ApiKey, AppId) ->
 				{gateway, <<"https://android.googleapis.com/gcm/send">>},
 				{apikey, ApiKey}]}
 				    || ApiKey =/= <<>>]
+		    }
+		]}
+	]}].
+
+%% -----------------------------
+%% Webhook Push Service
+%% -----------------------------
+
+get_webhook_config(Host) ->
+    case push_spec(Host, mod_webhook, mod_webhook_service, apikey) of
+	undefined ->
+	    [{apikey, <<>>}, {appid, <<>>}];
+	{_, [{AppId, _, ApiKey}]} ->
+	    lists:merge([{apikey, ApiKey}, {appid, AppId}],
+                        get_webhook_gateway(Host, AppId))
+    end.
+
+get_webhook_gateway(Host, AppId) ->
+    case push_spec(Host, mod_webhook, mod_webhook_service, gateway) of
+	{_, [{AppId, _, Gateway}]} ->
+	    [{gateway, Gateway}];
+        _ ->
+            []
+    end.
+
+setup_webhook(Host, Gateway, AppId) ->
+    case push_spec(Host, mod_webhook, mod_webhook_service, gateway) of
+	undefined ->
+	    % if mod_webhook not started, generate config, start gcm
+	    Config = webhook_cfg(Host, Gateway, AppId),
+	    case update_extra_config("webhook.yml", Host, Config) of
+		ok -> 0;
+		_ -> 1
+	    end;
+	_ ->
+	    % if webhook configuration changed, stop it first and config from scratch
+	    [gen_mod:stop_module(Host, Mod) || Mod <- [mod_webhook, mod_webhook_service]],
+	    setup_webhook(Host, Gateway, AppId)
+    end.
+
+webhook_cfg(Host, Gateway, AppId) ->
+    [{modules, [
+	{mod_webhook, [
+		{db_type, sql},
+		{iqdisc, 50},
+		{default_service, <<"webhook.", Host/binary>>},
+		{push_services, [{AppId, <<"webhook.", Host/binary>>}
+				    || AppId =/= <<>>]}
+		]},
+	{mod_webhook_service, [
+		{hosts,
+		    [{<<"webhook.", Host/binary>>, [
+				{gateway, Gateway}]}
+				    || Gateway =/= <<>>]
 		    }
 		]}
 	]}].

@@ -363,6 +363,17 @@ CREATE TABLE `gcm_cache` (
    UNIQUE KEY `i_gcm_cache_username_device_id` (`username`,`device_id`)
 ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
+CREATE TABLE `webhook_cache` (
+   `username` varchar(191) NOT NULL,
+   `device_id` varchar(191) NOT NULL,
+   `app_id` varchar(191) NOT NULL,
+   `send_body` char(1) NOT NULL,
+   `send_from` char(1) NOT NULL,
+   `local_badge` integer,
+   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+   UNIQUE KEY `i_webhook_cache_username_device_id` (`username`,`device_id`)
+) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
 CREATE TABLE push_customizations (
     username varchar(191) NOT NULL,
     match_jid varchar(191) NOT NULL,

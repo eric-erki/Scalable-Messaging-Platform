@@ -167,6 +167,7 @@
 -define(NS_P1_PUSH_CUSTOMIZE, <<"p1:push:customize">>).
 -define(NS_P1_PUSH_APPLEPUSH, <<"p1:push:applepush">>).
 -define(NS_P1_PUSH_GCM, <<"p1:push:gcm">>).
+-define(NS_P1_PUSH_WEBHOOK, <<"p1:push:webhook">>).
 -define(NS_P1_PUSHED, <<"p1:pushed">>).
 -define(NS_P1_ATTACHMENT, <<"http://process-one.net/attachement">>).
 -define(NS_P1_HISTORY, <<"p1:archive">>).
