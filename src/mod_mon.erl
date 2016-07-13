@@ -39,7 +39,7 @@
 -include("mod_mon.hrl").
 
 -define(PROCNAME, ?MODULE).
--define(CALL_TIMEOUT, 4000).
+-define(CALL_TIMEOUT, 5000).
 
 %% module API
 -export([start_link/2, start/2, stop/1]).
@@ -89,7 +89,7 @@ start_link(Host, Opts) ->
 start(Host, Opts) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     ChildSpec = {Proc, {?MODULE, start_link, [Host, Opts]},
-                 temporary, 1000, worker, [?MODULE]},
+                 transient, 5000, worker, [?MODULE]},
     supervisor:start_child(ejabberd_sup, ChildSpec).
 
 stop(Host) ->

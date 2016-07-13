@@ -56,7 +56,7 @@
 -callback clean(binary()) -> ok.
 
 -define(PROCNAME, ?MODULE).
--define(CALL_TIMEOUT, 4000).
+-define(CALL_TIMEOUT, 5000).
 -define(SUPPORTED_HOOKS, [sm_register_connection_hook, user_send_packet]).
 
 %%====================================================================
@@ -68,7 +68,7 @@ start_link(Host, Opts) ->
 
 start(Host, Opts) ->
     ChildSpec = {process(Host), {?MODULE, start_link, [Host, Opts]},
-                 temporary, 1000, worker, [?MODULE]},
+                 transient, 5000, worker, [?MODULE]},
     supervisor:start_child(ejabberd_sup, ChildSpec).
 
 stop(Host) ->
