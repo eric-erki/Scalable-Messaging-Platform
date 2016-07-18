@@ -39,16 +39,16 @@
 
 build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom, BadgeCount, First, FirstPerUser, SilentPushesEnabled, Module) ->
     Packet2 =
-        case xml:get_subtag_with_xmlns(
+        case fxml:get_subtag_with_xmlns(
                Packet, <<"event">>, ?NS_PUBSUB_EVENT) of
             #xmlel{} = EventEl ->
-                case xml:get_subtag(EventEl, <<"items">>) of
+                case fxml:get_subtag(EventEl, <<"items">>) of
                     #xmlel{} = ItemsEl ->
-                        case xml:get_tag_attr_s(<<"node">>, ItemsEl) of
+                        case fxml:get_tag_attr_s(<<"node">>, ItemsEl) of
                             ?NS_MUCSUB_NODES_MESSAGES ->
-                                case xml:get_subtag(ItemsEl, <<"item">>) of
+                                case fxml:get_subtag(ItemsEl, <<"item">>) of
                                     #xmlel{} = ItemEl ->
-                                        case xml:get_subtag(ItemEl, <<"message">>) of
+                                        case fxml:get_subtag(ItemEl, <<"message">>) of
                                             #xmlel{} = MessageEl ->
                                                 MessageEl;
                                             false ->
