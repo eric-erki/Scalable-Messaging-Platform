@@ -1443,20 +1443,13 @@ user_action(User, Server, Fun, OK) ->
       false -> 404
     end.
 
-session_info(#session{info = Info, sid = {Sid, Pid}}) ->
-    Node = node(Pid),
+session_info(#session{priority = Priority, sid = {Sid, Pid}}) ->
     {_User, Resource, Show, _Status} = ejabberd_c2s:get_presence(Pid),
-    {IP, Port} = proplists:get_value(ip, Info),
-    IpString = jlib:ip_to_list({IP, Port}), %% this just convert IP
-    PortString = integer_to_binary(Port),
-    ConnMod = proplists:get_value(conn, Info),
     ConnDateTime = calendar:now_to_local_time(Sid),
     [{resource, Resource},
      {presence, Show},
-     {since, jlib:timestamp_to_iso(ConnDateTime)},
-     {node, jlib:atom_to_binary(Node)},
-     {ip, <<IpString/binary, ":", PortString/binary>>},
-     {conn, jlib:atom_to_binary(ConnMod)}].
+     {priority, integer_to_binary(Priority)},
+     {since, jlib:timestamp_to_iso(ConnDateTime)}].
 
 last_info(U, S) ->
     case catch mod_last:get_last_info(U, S) of
