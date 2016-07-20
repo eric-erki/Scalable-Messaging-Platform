@@ -51,6 +51,20 @@ ProcessVars = fun(_F, [], Acc) ->
 			 true ->
                               F(F, Tail, Acc)
 		      end;
+                 (F, [{Type, Ver, Value, ElseValue} | Tail], Acc) when
+                        Type == if_version_above orelse
+                        Type == if_version_below ->
+		      SysVer = erlang:system_info(otp_release),
+		      Include = if Type == if_version_above ->
+					SysVer > Ver;
+				   true ->
+					SysVer < Ver
+				end,
+		      if Include ->
+                              F(F, Tail, ProcessSingleVar(F, Value, Acc));
+			 true ->
+                              F(F, Tail, ProcessSingleVar(F, ElseValue, Acc))
+		      end;
                  (F, [{Type, Var, Value} | Tail], Acc) when
                         Type == if_var_true orelse
                         Type == if_var_false ->
@@ -167,7 +181,7 @@ Conf5 = case lists:keytake(floating_deps, 1, Conf4) of
                 Conf4
         end,
 
-%io:format("ejabberd configuration:~n  ~p~n", [Conf5]),
+%io:format("ejabberd configuration:~n  ~p~n", [Conf6]),
 
 Conf5.
 
