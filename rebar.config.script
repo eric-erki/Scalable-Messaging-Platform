@@ -7,6 +7,20 @@
 %%% Created :  1 May 2013 by Evgeniy Khramtsov <ekhramtsov@process-one.net>
 %%%-------------------------------------------------------------------
 
+ModCfg0 = fun(F, Cfg, [Key|Tail], Op, Default) ->
+                 {OldVal,PartCfg} = case lists:keytake(Key, 1, Cfg) of
+                                        {value, {_, V1}, V2} -> {V1, V2};
+                                        false -> {if Tail == [] -> Default; true -> [] end, Cfg}
+                                    end,
+                 case Tail of
+                     [] ->
+                         [{Key, Op(OldVal)} | PartCfg];
+                     _ ->
+                         [{Key, F(F, OldVal, Tail, Op, Default)} | PartCfg]
+                 end
+         end,
+ModCfg = fun(Cfg, Keys, Op, Default) -> ModCfg0(ModCfg0, Cfg, Keys, Op, Default) end,
+
 Cfg = case file:consult(filename:join(filename:dirname(SCRIPT), "vars.config")) of
           {ok, Terms} ->
               Terms;
@@ -14,15 +28,36 @@ Cfg = case file:consult(filename:join(filename:dirname(SCRIPT), "vars.config")) 
               []
       end,
 
+ProcessSingleVar = fun(F, Var, Tail) ->
+			   case F(F, [Var], []) of
+			       [] -> Tail;
+			       [Val] -> [Val | Tail]
+			   end
+		   end,
+
 ProcessVars = fun(_F, [], Acc) ->
                       lists:reverse(Acc);
+                 (F, [{Type, Ver, Value} | Tail], Acc) when
+                        Type == if_version_above orelse
+                        Type == if_version_below ->
+		      SysVer = erlang:system_info(otp_release),
+		      Include = if Type == if_version_above ->
+					SysVer > Ver;
+				   true ->
+					SysVer < Ver
+				end,
+		      if Include ->
+                              F(F, Tail, ProcessSingleVar(F, Value, Acc));
+			 true ->
+                              F(F, Tail, Acc)
+		      end;
                  (F, [{Type, Var, Value} | Tail], Acc) when
                         Type == if_var_true orelse
                         Type == if_var_false ->
                       Flag = Type == if_var_true,
                       case proplists:get_bool(Var, Cfg) of
                           V when V == Flag ->
-                              F(F, Tail, [Value | Acc]);
+                              F(F, Tail, ProcessSingleVar(F, Value, Acc));
                           _ ->
                               F(F, Tail, Acc)
                       end;
@@ -31,7 +66,7 @@ ProcessVars = fun(_F, [], Acc) ->
                         Type == if_var_no_match ->
                       case proplists:get_value(Var, Cfg) of
                           V when V == Match ->
-                              F(F, Tail, [Value | Acc]);
+                              F(F, Tail, ProcessSingleVar(F, Value, Acc));
                           _ ->
                               F(F, Tail, Acc)
                       end;
