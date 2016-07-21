@@ -75,10 +75,10 @@ stop() ->
     application:stop(lhttpc).
 
 request(Method, URL, Hdrs, Body, Opts) ->
-    TimeOut = proplists:get_value(timeout, Opts, infinity),
-    SockOpt = proplists:get_value(socket_options, Opts, []),
-    Options = [{connect_options, SockOpt}
-	       | proplists:delete(timeout, Opts)],
+    {[TO, SO], Rest} = proplists:split(Opts, [timeout, socket_options]),
+    TimeOut = proplists:get_value(timeout, TO, infinity),
+    SockOpt = proplists:get_value(socket_options, SO, []),
+    Options = [{connect_options, SockOpt} | Rest],
     Result = lhttpc:request(URL, Method, Hdrs, Body, TimeOut, Options),
     ?DEBUG("HTTP request -> response:~n"
 	   "** Method = ~p~n"
