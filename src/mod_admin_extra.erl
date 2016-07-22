@@ -73,7 +73,7 @@
 	 srg_get_members/2, srg_user_add/4, srg_user_del/4,
 
 	 % Send message
-	 send_message/5, send_stanza/3, send_stanza_c2s/4,
+	 send_message/5, send_message_with_push_fields/6, send_stanza/3, send_stanza_c2s/4,
 
 	 % Privacy list
 	 privacy_set/3,
@@ -752,6 +752,14 @@ get_commands_spec() ->
 			module = ?MODULE, function = send_message,
 			args = [{type, binary}, {from, binary}, {to, binary},
 				{subject, binary}, {body, binary}],
+			result = {res, rescode}},
+     #ejabberd_commands{name = send_message_with_push_fields, tags = [stanza],
+			desc = "Send a message to a local or remote "
+			"bare of full JID that includes push extra attributes",
+			module = ?MODULE, function = send_message_with_push_fields,
+			args = [{type, binary}, {from, binary}, {to, binary},
+				{subject, binary}, {body, binary},
+				{extras, {list, {fields, {tuple, [{name, binary}, {value, binary}]}}}}],
 			result = {res, rescode}},
      #ejabberd_commands{name = send_stanza_c2s, tags = [stanza],
 			desc = "Send a stanza as if sent from a c2s session",
@@ -1917,7 +1925,16 @@ srg_user_del(User, Host, Group, GroupHost) ->
 %% @doc Send a message to a Jabber account.
 %% @spec (Type::binary(), From::binary(), To::binary(), Subject::binary(), Body::binary()) -> ok
 send_message(Type, From, To, Subject, Body) ->
-    Packet = build_packet(Type, Subject, Body),
+    Packet = build_packet(Type, Subject, Body, []),
+    send_packet_all_resources(From, To, Packet).
+
+send_message_with_push_fields(Type, From, To, Subject, Body, Extras) ->
+    XmlExtras = [#xmlel{name = <<"x">>,
+			attrs = [{<<"key">>, Key},
+				 {<<"value">>, Value},
+				 {<<"xmlns">>, ?NS_P1_PUSH_CUSTOM}]
+		       } || {Key, Value} <- Extras],
+    Packet = build_packet(Type, Subject, Body, XmlExtras),
     send_packet_all_resources(From, To, Packet).
 
 %% @doc Send a packet to a Jabber account.
@@ -1957,9 +1974,9 @@ send_packet_all_resources(FromJID, ToU, ToS, ToR, Packet) ->
     ToJID = jid:make(ToU, ToS, ToR),
     ejabberd_router:route(FromJID, ToJID, Packet).
 
-build_packet(Type, Subject, Body) ->
-    Tail = if Subject == <<"">>; Type == <<"chat">> -> [];
-	      true -> [{xmlel, <<"subject">>, [], [{xmlcdata, Subject}]}]
+build_packet(Type, Subject, Body, Extras) ->
+    Tail = if Subject == <<"">>; Type == <<"chat">> -> Extras;
+	      true -> [{xmlel, <<"subject">>, [], [{xmlcdata, Subject}]} | Extras]
 	   end,
     {xmlel, <<"message">>,
      [{<<"type">>, Type}, {<<"id">>, randoms:get_string()}],
