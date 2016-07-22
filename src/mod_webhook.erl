@@ -50,8 +50,7 @@
 	 enc_key/1,
 	 dec_key/1,
 	 enc_val/2,
-	 dec_val/2,
-         set_local_badge/3]).
+	 dec_val/2]).
 
 -export([get_tokens_by_jid/1, mod_opt_type/1,
 	 opt_type/1]).
@@ -128,56 +127,6 @@ stop(Host) ->
 			  ?MODULE, receive_offline_packet, 35),
     gen_iq_handler:remove_iq_handler(ejabberd_local, Host, ?NS_P1_PUSH).
 
-set_local_badge(JID, DeviceID, Count) ->
-    case gen_mod:db_type(JID#jid.lserver, ?MODULE) of
-        mnesia ->
-            set_local_badge_mnesia(JID, DeviceID, Count);
-	p1db ->
-	    set_local_badge_p1db(JID, DeviceID, Count);
-        sql ->
-            set_local_badge_sql(JID, DeviceID, Count)
-    end.
-
-set_local_badge_mnesia(JID, DeviceID, Count) ->
-    #jid{luser = LUser, lserver = LServer} = JID,
-    LUS = {LUser, LServer},
-    case mnesia:dirty_match_object({webhook_cache, LUS, DeviceID, '_'}) of
-        [] ->
-            {error, device_not_found};
-        [#webhook_cache{options=Opts}=Record] ->
-            %% The table is of type bag. If we just dirty_write, it will insert a new item, not update the existing one.
-            %% This dirty_delete + dirty_write aren't atomic so entries could be lost in the middle.. but this is what
-            %% store_cache_mnesia() uses
-            mnesia:dirty_delete_object(Record),
-            mnesia:dirty_write(Record#webhook_cache{options = lists:keystore(local_badge, 1, Opts, {local_badge, Count})})
-    end.
-
-set_local_badge_p1db(JID, DeviceID, Count) ->
-    #jid{luser = LUser, lserver = LServer} = JID,
-    Key = usd2key(LUser, LServer, DeviceID),
-    case p1db:get(webhook_cache, Key) of
-	{ok, Val, _VClock} ->
-	    Opts = p1db_to_opts(Val),
-	    NewOpts = lists:keystore(local_badge, 1, Opts, {local_badge, Count}),
-	    NewVal = opts_to_p1db(NewOpts),
-	    p1db:insert(webhook_cache, Key, NewVal);
-	{error, notfound} ->
-	    {error, device_not_found};
-	{error, _} = Err ->
-	    Err
-    end.
-
-set_local_badge_sql(#jid{luser =LUser, lserver=LServer}, DeviceID, Count) ->
-    case ejabberd_sql:sql_query(
-           LServer,
-           ?SQL("UPDATE webhook_cache SET local_badge=%(Count)d"
-                " WHERE username=%(LUser)s and device_id=%(DeviceID)s")) of
-        {updated, 1} ->
-            ok;
-        {updated, 0} ->
-            {error, device_not_found}  %%same contract than set_local_badge_mnesia
-    end.
-
 push_from_message(Val, From, To, Packet, Notification, AppID, SendBody, SendFrom, Badge, First, FirstFromUser) ->
     Type = fxml:get_path_s(Notification, [{elem, <<"type">>}, cdata]),
     case Type of
@@ -188,6 +137,9 @@ push_from_message(Val, From, To, Packet, Notification, AppID, SendBody, SendFrom
                                   silent_push_enabled,
                                   mod_opt_type(silent_push_enabled),
                                   false),
+            %% we call this function to know if this packet must be skipped; we don't care
+            %% about the returned push packet because we just build a forward stanza containing
+            %% the original message (mod_webhook only).
             case ejabberd_push:build_push_packet_from_message(From, To, Packet, DeviceID, AppID,
                                                               SendBody, SendFrom, Badge,
                                                               First, FirstFromUser,
@@ -195,8 +147,9 @@ push_from_message(Val, From, To, Packet, Notification, AppID, SendBody, SendFrom
 							      ?MODULE) of
                 skip ->
                     {stop, skipped};
-                {V, Silent} ->
-                    route_push_notification(To#jid.lserver, To, AppID, V),
+                {_, Silent} ->
+                    FWDPacket = build_forward_packet(From, To, Packet, DeviceID),
+                    route_push_notification(To#jid.lserver, To, AppID, FWDPacket),
                     {stop, if Silent -> sent_silent; true -> sent end}
             end;
         _ ->
@@ -260,8 +213,9 @@ do_send_offline_packet_notification(From, To, Packet, ID, AppID, SendBody, SendF
                                                       SilentPushEnabled, ?MODULE) of
         skip ->
             ok;
-        {V, _Silent} ->
-            route_push_notification(To#jid.lserver, To, AppID, V)
+        {_, _Silent} ->
+            FWDPacket = build_forward_packet(From, To, Packet, ID),      
+            route_push_notification(To#jid.lserver, To, AppID, FWDPacket)
     end.
 
 send_offline_packet_notification(From, To, Packet, DeviceID, BadgeCount) ->
@@ -347,11 +301,12 @@ process_sm_iq(From, To, #iq{type = Type, sub_el = SubEl} = IQ) ->
 	    IQ#iq{type = error, sub_el = [SubEl, ?ERR_NOT_ALLOWED]}
     end.
 
-device_reset_badge(Host, To, DeviceID, AppID, Badge) ->
-    ?INFO_MSG("Sending reset badge (~p) push to ~p ~p", [Badge, To, DeviceID]),
+%% badge is useless on this module, so we set it always to 0
+device_reset_badge(Host, To, DeviceID, AppID, _Badge) ->
+    ?INFO_MSG("Sending reset badge (~p) push to ~p ~p", [0, To, DeviceID]),
     PushService = get_push_service(Host, To, AppID),
     ServiceJID = jid:make(<<"">>, PushService, <<"">>),
-    LBadge = jlib:integer_to_binary(Badge),
+    LBadge = jlib:integer_to_binary(0),
     Packet1 =
         #xmlel{name = <<"message">>, attrs = [],
                children =
@@ -582,12 +537,10 @@ store_cache_mnesia(JID, DeviceID, Options) ->
                     %% As the record don't match anyway, write the new one
                     mnesia:dirty_delete_object(OldRecord),
                     mnesia:dirty_write(R);
-                {local_badge, Count} ->
-                    %% Use the new record, but copy the previous local_badge value
-                    %% We keep that as local_badge isn't provide in the enable notification
-                    %% call.
+                {local_badge, _} ->
                     mnesia:dirty_delete_object(OldRecord),
-                    mnesia:dirty_write(R#webhook_cache{options = [{local_badge, Count} | Options]})
+                    %% badge is useless on this module, so we set it always to 0
+                    mnesia:dirty_write(R#webhook_cache{options = [{local_badge, 0} | Options]})
             end
        %% Other cases are error. If there is more than one entry for the same UserServer and same DeviceID,
        %% it is an error.
@@ -611,11 +564,9 @@ store_cache_p1db(JID, DeviceID, Options) ->
 		    %% There was no local_badge set in previous record.
                     %% As the record don't match anyway, write the new one
 		    p1db:insert(webhook_cache, Key, Val);
-		{local_badge, Count} ->
-		    %% Use the new record, but copy the previous local_badge value
-                    %% We keep that as local_badge isn't provide in the enable notification
-                    %% call.
-		    NewVal = opts_to_p1db([{local_badge, Count} | Options]),
+		{local_badge, _} ->
+                    %% badge is useless on this module, so we set it always to 0      
+		    NewVal = opts_to_p1db([{local_badge, 0} | Options]),
 		    p1db:insert(webhook_cache, Key, NewVal)
 	    end;
 	{error, _} = Err ->
@@ -639,7 +590,6 @@ store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom) ->
             _ -> <<"-">>
         end,
     F = fun() ->
-                %% We must keep the previous local_badge if it exists.
                 ?SQL_UPSERT_T(
                    "webhook_cache",
                    ["!username=%(LUser)s",
@@ -647,7 +597,7 @@ store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom) ->
                     "app_id=%(AppID)s",
                     "send_body=%(SSendBody)s",
                     "send_from=%(SSendFrom)s",
-                    "-local_badge=0"
+                    "local_badge=0" %% badge is useless on this module, so we set it always to 0
                    ])
         end,
         {atomic, _} = sql_queries:sql_transaction(LServer, F).
@@ -918,3 +868,19 @@ mod_opt_type(_) ->
 opt_type(p1db_group) ->
     fun (G) when is_atom(G) -> G end;
 opt_type(_) -> [p1db_group].
+
+build_forward_packet(From, To, Packet, DeviceID) ->
+    SFrom = jid:to_string(From),
+    STo = jid:to_string(To),
+    #xmlel{name = <<"message">>,
+	   attrs = [],
+	   children = [
+                #xmlel{name = <<"push">>,
+                       attrs = [{<<"from">>,SFrom},
+                                {<<"to">>,STo}],
+                       children = [{xmlcdata, DeviceID}]},
+		#xmlel{name = <<"forwarded">>,
+		       attrs = [{<<"xmlns">>, ?NS_FORWARD}],
+		       children = [Packet]}
+	   ]}.
+

@@ -46,7 +46,6 @@
 -define(MODE_ACCEPT, accept).
 -define(MODE_ENQUEUE, enqueue).
 -define(MODE_ACTIVE, active).
--define(URL_ENC(URL), binary_to_list(ejabberd_http:url_encode(URL))).
 
 -record(state, {host = <<"">>            :: binary(),
 		gateway = ""             :: string(),
@@ -72,7 +71,6 @@ start_link(Host, ServerHost, Opts) ->
 start(Host, Opts) ->
     ejabberd:start_app(ssl),
     ejabberd:start_app(inets),
-    ejabberd:start_app(jiffy),
     MyHosts = case catch gen_mod:get_opt(
                            hosts, Opts,
                            fun(L) when is_list(L) ->
@@ -206,62 +204,43 @@ do_route(From, To, Packet, State) ->
 		       {noreply, State}
 		 end;
 	     #xmlel{name = <<"message">>, children = Els} ->
-		 case fxml:remove_cdata(Els) of
-		   [#xmlel{name = <<"push">>}] ->
-		       NewState = handle_message(From, To, Packet, State),
-		       {noreply, NewState};
-		   [#xmlel{name = <<"disable">>}] -> {noreply, State};
-		   _ -> {noreply, State}
-		 end;
+                case fxml:get_path_s(Packet, [{elem, <<"forwarded">>}]) of
+                    #xmlel{name = <<"forwarded">>} ->
+                        NewState = handle_message(From, To, Packet, State),
+                        {noreply, NewState};
+                    _ ->
+                        case fxml:remove_cdata(Els) of
+                            [#xmlel{name = <<"disable">>}] -> {noreply, State};
+                            _ -> {noreply, State}
+                        end
+                end;
 	     _ -> {noreply, State}
 	   end
-    end.
-
-get_custom_fields(Packet) ->
-    case fxml:get_subtag(fxml:get_subtag(Packet, <<"push">>),
-			<<"custom">>)
-	of
-      false -> [];
-      #xmlel{name = <<"custom">>, attrs = [],
-	     children = Children} ->
-	  [{fxml:get_tag_attr_s(<<"name">>, C),
-	    fxml:get_tag_cdata(C)}
-	   || C <- fxml:remove_cdata(Children)]
     end.
 
 handle_message(From, To, Packet,
 	       #state{mode = ?MODE_ENQUEUE} = State) ->
     queue_message(From, To, Packet, State);
 handle_message(From, To, Packet, State) ->
-    DeviceID = fxml:get_path_s(Packet,
-			      [{elem, <<"push">>}, {elem, <<"id">>}, cdata]),
-    Msg = fxml:get_path_s(Packet,
-			 [{elem, <<"push">>}, {elem, <<"msg">>}, cdata]),
-    Badge = fxml:get_path_s(Packet,
-			   [{elem, <<"push">>}, {elem, <<"badge">>}, cdata]),
-    Sound = fxml:get_path_s(Packet,
-			   [{elem, <<"push">>}, {elem, <<"sound">>}, cdata]),
-    Sender = fxml:get_path_s(Packet,
-			    [{elem, <<"push">>}, {elem, <<"from">>}, cdata]),
-    Receiver = fxml:get_path_s(Packet,
-			      [{elem, <<"push">>}, {elem, <<"to">>}, cdata]),
-    CustomFields = get_custom_fields(Packet),
-    Payload = make_payload(State, Msg, Badge, Sound, Sender,
-			   CustomFields),
+    DeviceID = get_token(Packet),
     case size(DeviceID) of
       0 -> State;
       _ ->
+          Sender = get_sender(Packet),
+          Receiver = get_receiver(Packet),    
+          Message = unwrap_message(Packet),
+          Payload = fxml:element_to_binary(Message),
           Baseurl = build_endpoint(State#state.gateway, DeviceID),
-	  Notification = jiffy:encode(Payload),
-          Headers = prepare_headers(Notification,State),
-	  ?DEBUG("(~p) sending notification for ~s~n~p~npayload"
-		 ":~n~p~nSender: ~s~nReceiver: ~s~nDevice "
-		 "ID: ~s~n",
-		 [State#state.host, DeviceID, Notification, Payload,
-		  Sender, Receiver, DeviceID]),
+          Headers = prepare_headers(Payload,State),
+	  ?DEBUG("(~p) sending notification for ~s~npayload"
+		 ":~n~p~nSender: ~p~nReceiver: ~p~nDevice "
+		 "ID: ~s~n"
+                 "URL: ~p~n",
+		 [State#state.host, DeviceID, Payload,
+		  Sender, Receiver, DeviceID,Baseurl]),
 	  try httpc:request(post,
-			    {?URL_ENC(Baseurl), Headers,
-			     "application/json", Notification},
+			    {binary_to_list(Baseurl), Headers,
+			     "application/xml", Payload},
 			    [{timeout, ?HTTP_TIMEOUT},
 			     {connect_timeout, ?HTTP_CONNECT_TIMEOUT}],
 			    [{body_format, binary}])
@@ -269,7 +248,7 @@ handle_message(From, To, Packet, State) ->
 	    {ok, {{_, 200, _}, _Headers, _RespBody}} ->
                 State;
 	    {ok, {{_, 400, _}, _, RespBody}} ->
-		?ERROR_MSG("(~p) Invalid JSON request: ~p",
+		?ERROR_MSG("(~p) Invalid XML request: ~p",
 			   [State#state.host, RespBody]),
 		bounce_message(From, To, Packet),
 		State;
@@ -282,7 +261,7 @@ handle_message(From, To, Packet, State) ->
 		State;
             {ok, {{_, 404, _}, RespHeaders, _RespBody}} ->
                 process_message_result([{<<"error">>,<<"InvalidRegistration">>}],
-		       From, To, Packet, Notification, RespHeaders, DeviceID, State);
+		       From, To, Packet, Payload, RespHeaders, DeviceID, State);
 	    {ok,
 	     {{_, StatusCode, ReasonPhrase}, Headers, RespBody}} ->
 		?INFO_MSG("(~p) Remote web push API returned an error: ~p - ~p "
@@ -319,20 +298,19 @@ handle_message(From, To, Packet, State) ->
 
 build_endpoint(Base, Token) ->
     BaseBin = iolist_to_binary(Base),
-    case lists:last(Base) == $/ of
+    UrlBin = case lists:last(Base) == $/ of
         true ->
             <<BaseBin/binary,Token/binary>>;
-            %%lists:flatten([Base, binary_to_list(Token)]);
         false ->
-            %%lists:flatten([Base,"/",binary_to_list(Token)])
             <<BaseBin/binary,"/",Token/binary>>
-    end.
+    end,
+    ejabberd_http:url_encode(UrlBin).
 
 log_webhook_error(State, ErrType, Request) ->
     log_webhook_error(State, ErrType, Request, <<"">>).
 log_webhook_error(#state{gateway=G, apikey=A, host=H}, ErrType, Request, ExtraInfo) ->
     ?ERROR_MSG("(~p) Error response received from remote web push API gateway ~p (apikey: ~p) "
-	       "with code: ~p. Original JSON request was: ~p~s",
+	       "with code: ~p. Original request was: ~p~s",
 	       [H, G, A, ErrType, Request, ExtraInfo]).
 
 process_message_result([{<<"error">>,
@@ -396,39 +374,6 @@ update_device_id(JID, OldDeviceID, CanonicalID, State) ->
 						  {<<"oldid">>, OldDeviceID},
 						  {<<"id">>, CanonicalID}],
 					     children = []}]}).
-
-make_payload(State, Msg, Badge, Sound, Sender,
-	     CustomFields) ->
-    SoundPayload = case Sound of
-		     <<"true">> -> State#state.soundfile;
-                     <<"false">> -> <<"">>;
-		     _ -> Sound
-		   end,
-    AppsPayloadList = [{alert, iolist_to_binary(Msg)},
-		       {badge, jlib:binary_to_integer(Badge)},
-		       {sound, iolist_to_binary(SoundPayload)}],
-    PayloadList2 = if Sender /= <<"">> ->
-			  CustomFields ++ [{from_jid, iolist_to_binary(Sender)}];
-		      true -> CustomFields
-		   end,
-    FinalPayload = lists:flatten([{aps,
-				   {AppsPayloadList}}]
-				 ++ PayloadList2),
-    FinalPayloadLen = length(FinalPayload),
-    if FinalPayloadLen > (?MAX_PAYLOAD_SIZE) ->
-	   Delta = FinalPayloadLen - (?MAX_PAYLOAD_SIZE),
-	   MsgLen = size(Msg),
-	   if MsgLen /= 0 ->
-		  CutMsg = if MsgLen > Delta ->
-				   ejabberd_push:utf8_cut(Msg, MsgLen - Delta);
-			      true -> <<"">>
-			   end,
-		  make_payload(State, CutMsg, Badge, Sound, Sender,
-			       CustomFields);
-	      true -> {[{aps, {AppsPayloadList}}]}
-	   end;
-       true -> {FinalPayload}
-    end.
 
 bounce_message(From, To, Packet) ->
     bounce_message(From, To, Packet,
@@ -571,3 +516,29 @@ mod_opt_type(hosts) ->
 mod_opt_type(sound_file) -> fun iolist_to_binary/1;
 mod_opt_type(_) ->
     [apikey, gateway, host, hosts, sound_file].
+
+get_token(FwdMessagePacket) ->
+    fxml:get_path_s(FwdMessagePacket,
+		    [{elem, <<"push">>}, cdata]).
+
+unwrap_message(FwdMessagePacket) ->
+    case fxml:get_subtag(FwdMessagePacket, <<"forwarded">>) of
+	#xmlel{name = <<"forwarded">>} = Fwd ->
+	    fxml:get_subtag(Fwd, <<"message">>);
+	_ -> undefined
+    end.
+
+get_sender(FwdMessagePacket) ->
+    case fxml:get_subtag(FwdMessagePacket, <<"push">>) of
+	#xmlel{name = <<"push">>, attrs = Attrs} ->
+	    fxml:get_attr_s(<<"from">>, Attrs);
+	_ -> undefined
+    end.
+
+get_receiver(FwdMessagePacket) ->
+    case fxml:get_subtag(FwdMessagePacket, <<"push">>) of
+	#xmlel{name = <<"push">>, attrs = Attrs} ->
+	    fxml:get_attr_s(<<"to">>, Attrs);
+	_ -> undefined
+    end.
+
