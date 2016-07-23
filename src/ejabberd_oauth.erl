@@ -66,7 +66,7 @@
 %%   * Using the command line and oauth_issue_token command, the token is generated in behalf of ejabberd' sysadmin
 %%    (as it has access to ejabberd command line).
 
--define(EXPIRE, 3600).
+-define(EXPIRE, 31536000).
 
 start() ->
     DBMod = get_db_backend(),
@@ -371,12 +371,10 @@ process(_Handlers,
               ?LABEL(<<"ttl">>, [?CT(<<"Token TTL">>), ?CT(<<": ">>)]),
               ?XAE(<<"select">>, [{<<"name">>, <<"ttl">>}],
                    [
-                   ?XAC(<<"option">>, [{<<"selected">>, <<"selected">>},
-                                       {<<"value">>, jlib:integer_to_binary(expire())}],<<"Default (", (integer_to_binary(expire()))/binary, " seconds)">>),
                    ?XAC(<<"option">>, [{<<"value">>, <<"3600">>}],<<"1 Hour">>),
                    ?XAC(<<"option">>, [{<<"value">>, <<"86400">>}],<<"1 Day">>),
                    ?XAC(<<"option">>, [{<<"value">>, <<"2592000">>}],<<"1 Month">>),
-                   ?XAC(<<"option">>, [{<<"value">>, <<"31536000">>}],<<"1 Year">>),
+                   ?XAC(<<"option">>, [{<<"selected">>, <<"selected">>},{<<"value">>, <<"31536000">>}],<<"1 Year">>),
                    ?XAC(<<"option">>, [{<<"value">>, <<"315360000">>}],<<"10 Years">>)]),
               ?BR,
               ?INPUTT(<<"submit">>, <<"">>, <<"Accept">>)
