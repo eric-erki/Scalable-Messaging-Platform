@@ -40,10 +40,12 @@
          args = []               :: [aterm()] | '_' | '$1' | '$2',
          policy = restricted     :: open | restricted | admin | user
                                   | '_' | '$3' | '$4',
+         access_rules = []       :: [atom()],
          result = {res, rescode} :: rterm() | '_' | '$2',
          args_desc = none        :: none | [string()] | '_',
          result_desc = none      :: none | string() | '_',
          args_example = none     :: none | [any()] | '_',
          result_example = none   :: any()}).
+
 
 -type ejabberd_commands() :: #ejabberd_commands{}.
