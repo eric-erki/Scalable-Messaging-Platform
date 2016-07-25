@@ -181,7 +181,7 @@ defmodule EjabberdCommandsMockTest do
 
 
 	test "API command with user policy" do
-		mock_commands_config
+		mock_commands_config [:user, :admin]
 
 		# Register a command test(user, domain) -> {:versionN, user, domain}
 		# with policy=user and versions 1 & 3
@@ -315,7 +315,7 @@ defmodule EjabberdCommandsMockTest do
 
 
 	test "API command with admin policy" do
-		mock_commands_config
+		mock_commands_config [:admin]
 
 		# Register a command test(user, domain) -> {user, domain}
 		# with policy=admin
@@ -394,7 +394,7 @@ defmodule EjabberdCommandsMockTest do
 	end
 
   test "Commands can perform extra check on access" do
-    mock_commands_config
+    mock_commands_config [:admin, :open]
 
 		command_name = :test
 		function = :test_command
@@ -410,8 +410,8 @@ defmodule EjabberdCommandsMockTest do
 			end)
 		assert :ok == :ejabberd_commands.register_commands [command]
 
-    :acl.add(:global, :basic_acl_1, {:user, @user})
-    :acl.add_access(:global, :basic_rule_1, [{:allow, [{:acl, :basic_acl_1}]}])
+#    :acl.add(:global, :basic_acl_1, {:user, @user, @host})
+#    :acl.add_access(:global, :basic_rule_1, [{:allow, [{:acl, :basic_acl_1}]}])
 
     assert {@user, @domain} ==
 			:ejabberd_commands.execute_command(:undefined,
@@ -433,7 +433,7 @@ defmodule EjabberdCommandsMockTest do
 
 	# Mock a config where only @admin user is allowed to call commands
 	# as admin
-	def mock_commands_config do
+	def mock_commands_config(commands \\ []) do
 		EjabberdAuthMock.init
 		EjabberdAuthMock.create_user @user, @domain, @userpass
 		EjabberdAuthMock.create_user @admin, @domain, @adminpass
@@ -442,11 +442,12 @@ defmodule EjabberdCommandsMockTest do
 		:meck.expect(:ejabberd_config, :get_option,
 			fn(:commands_admin_access, _, _) -> :commands_admin_access
 			  (:oauth_access, _, _) -> :all
+        (:commands, _, _) -> [{:add_commands, commands}]
 				(_, _, default) -> default
 			end)
 		:meck.expect(:ejabberd_config, :get_myhosts,
 			fn() -> [@domain]	end)
-		:meck.new :acl #, [:passthrough]
+		:meck.new :acl
 		:meck.expect(:acl, :match_rule,
 			fn(@domain, :commands_admin_access, user) ->
 				case :jlib.make_jid(@admin, @domain, "") do
