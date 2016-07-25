@@ -133,8 +133,7 @@ check_permissions(Request, Command) ->
             {ok, CommandPolicy, Scope} = ejabberd_commands:get_command_policy_and_scope(Call),
             check_permissions2(Request, Call, CommandPolicy, Scope);
         _ ->
-            %% TODO Should this be a 404 or 400 instead of 401 ?
-            unauthorized_response()
+            json_error(404, 40, <<"Endpoint not found.">>)
     end.
 
 check_permissions2(#request{auth = HTTPAuth, headers = Headers}, Call, _, ScopeList)
@@ -396,6 +395,8 @@ handle(Host, Call, Auth, Args, Version) when is_atom(Call), is_list(Args) ->
 		    {401, iolist_to_binary(Msg)};
                   throw:{error, account_unprivileged} ->
         {403, 31, <<"Command need to be run with admin priviledge.">>};
+      throw:{error, access_rules_unauthorized} ->
+        {403, 32, <<"AccessRules: Account associated to token does not have the right to perform the operation.">>};
 		  throw:{invalid_parameter, Msg} ->
 		    {400, gen_param_error_msg(Msg, ArgsSpec)};
 		  throw:{error, Why} when is_atom(Why) ->

@@ -446,7 +446,7 @@ command_execution_allowed(Name, Auth1, Version) ->
 %% @doc Execute a command.
 %% Can return the following exceptions:
 %% command_unknown | account_unprivileged | invalid_account_data |
-%% no_auth_provided
+%% no_auth_provided | access_rules_unauthorized
 execute_command(Name, Arguments) ->
     execute_command(Name, Arguments, ?DEFAULT_VERSION).
 
@@ -518,7 +518,7 @@ execute_command(AccessCommands1, Auth1, Name, Arguments, Version, CallerInfo) ->
            end,
     TokenJID = oauth_token_user(Auth1),
     Command = get_command_definition(Name, Version),
-    AccessCommands = get_access_commands(AccessCommands1, Version),
+    AccessCommands = get_all_access_commands(AccessCommands1),
     case check_access_commands(AccessCommands, Auth, Name, Command, Arguments, CallerInfo) of
         ok -> execute_check_policy(Auth, TokenJID, Command, Arguments)
     end.
@@ -543,15 +543,22 @@ execute_check_policy(
   {User, Server, _, _}, JID, #ejabberd_commands{policy = user} = Command, Arguments) ->
     execute_check_access(JID, Command, [User, Server | Arguments]).
 
-execute_check_access(_FromJID, #ejabberd_commands{access_rules = []} = Command, Arguments) ->
+execute_check_access(_FromJID, #ejabberd_commands{access = []} = Command, Arguments) ->
     do_execute_command(Command, Arguments);
-execute_check_access(FromJID, #ejabberd_commands{access_rules = Rules} = Command, Arguments) ->
+execute_check_access(FromJID, #ejabberd_commands{access = AccessRefs} = Command, Arguments) ->
     %% TODO Review: Do we have smarter / better way to check rule on other Host than global ?
-    case acl:any_rules_allowed(global, Rules, FromJID) of
+    Host = global,
+    Rules = lists:map(fun({Mod, AccessName, Default}) ->
+                              gen_mod:get_module_opt(Host, Mod,
+                                                     AccessName, fun(A) -> A end, Default);
+                         (Default) ->
+                              Default
+                      end, AccessRefs),
+    case acl:any_rules_allowed(Host, Rules, FromJID) of
         true ->
             do_execute_command(Command, Arguments);
         false ->
-            {error, access_rules_unauthorized}
+            throw({error, access_rules_unauthorized})
     end.
 
 do_execute_command(Command, Arguments) ->
@@ -752,6 +759,10 @@ tag_arguments(ArgsDefs, Args) ->
       Args).
 
 
+%% Get commands for all version
+get_all_access_commands(AccessCommands) ->
+    get_access_commands(AccessCommands, ?DEFAULT_VERSION).
+
 get_access_commands(undefined, Version) ->
     Cmds = get_commands(Version),
     [{?POLICY_ACCESS, Cmds, []}];
@@ -774,26 +785,28 @@ get_commands(Version) ->
     Cmds =
         lists:foldl(
           fun([{add_commands, L}], Acc) ->
-                  Cmds = case L of
-                             open -> OpenCmds;
-                             restricted -> RestrictedCmds;
-                             admin -> AdminCmds;
-                             user -> UserCmds;
-                             _ when is_list(L) -> L
-                         end,
+                  Cmds = expand_commands(L, OpenCmds, UserCmds, AdminCmds, RestrictedCmds),
                   lists:usort(Cmds ++ Acc);
              ([{remove_commands, L}], Acc) ->
-                  Cmds = case L of
+                  Cmds = expand_commands(L, OpenCmds, UserCmds, AdminCmds, RestrictedCmds),
+                  Acc -- Cmds;
+             (_, Acc) -> Acc
+          end, [], Opts),
+    Cmds.
+
+expand_commands(L, OpenCmds, UserCmds, AdminCmds, RestrictedCmds) when is_list(L) ->
+    lists:foldl(fun(El, Acc) ->
+                        expand_commands(El, OpenCmds, UserCmds, AdminCmds, RestrictedCmds) ++ Acc
+                end, [], L);
+expand_commands(El, OpenCmds, UserCmds, AdminCmds, RestrictedCmds) ->
+    case El of
                              open -> OpenCmds;
                              restricted -> RestrictedCmds;
                              admin -> AdminCmds;
                              user -> UserCmds;
-                             _ when is_list(L) -> L
-                         end,
-                  Acc -- Cmds;
-             (_, Acc) -> Acc
-          end, AdminCmds ++ UserCmds, Opts),
-    Cmds.
+        _ -> [El]
+    end.
+
 
 oauth_token_user(noauth) ->
     undefined;
