@@ -69,7 +69,7 @@ get_auth(Auth) ->
 	  case jid:from_string(SJID) of
 	    error -> undefined;
 	    #jid{user = U, server = S} ->
-		case ejabberd_auth:check_password(U, S, P) of
+		case ejabberd_auth:check_password(U, <<"">>, S, P) of
 		  true -> {U, S};
 		  false -> undefined
 		end

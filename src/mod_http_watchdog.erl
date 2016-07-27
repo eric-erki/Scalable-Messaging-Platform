@@ -98,7 +98,7 @@ check_auth(ClientDomain) ->
                                        fun iolist_to_binary/1,
                                        <<"">>)
 				     || Domain <- ?MYHOSTS]),
-    case ejabberd_auth:check_password(ClientUser,
+    case ejabberd_auth:check_password(ClientUser, <<"">>,
 				      ClientDomain, ClientPass)
 	of
       true -> ok;

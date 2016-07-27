@@ -112,7 +112,7 @@ check_permissions(#request{auth={SJID, Pass}}, Command) ->
 	    Access = gen_mod:get_module_opt(Server, ?MODULE, access,
 						 fun(A) -> A end,
 						 none),
-	    case ejabberd_auth:check_password(User, Server, Pass) of
+	    case ejabberd_auth:check_password(User, <<"">>, Server, Pass) of
 		true ->
 		    Res = acl:match_rule(Server, Access, JID),
 		    case Res of
