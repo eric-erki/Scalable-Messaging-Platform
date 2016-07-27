@@ -71,7 +71,7 @@ mech_step(State, ClientIn) ->
 		    case ejabberd_auth:try_register(
 			   U, S, base64:encode(crypto:rand_bytes(20))) of
 			{atomic, Res} when Res == exists; Res == ok ->
-                            {ok, [{username, U},
+                            {ok, [{username, U}, {authzid, U},
                                   {auth_module, ejabberd_auth_pkix}]};
 			_ ->
                             {error, <<"not-authorized">>, U}
