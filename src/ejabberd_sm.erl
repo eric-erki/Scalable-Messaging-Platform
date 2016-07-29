@@ -308,7 +308,11 @@ get_session_pid(User, Server, Resource) ->
     LResource = jid:resourceprep(Resource),
     Mod = get_sm_backend(LServer),
     case Mod:get_session(LUser, LServer, LResource) of
-        {ok, #session{sid = {_, Pid}}} -> Pid;
+        {ok, #session{sid = {_, Pid}} = Session} ->
+            case is_online(Session) of
+                true -> Pid;
+                false -> none
+            end;
         {error, notfound} -> none
     end.
 
@@ -328,11 +332,11 @@ get_offline_info(Time, User, Server, Resource) ->
     LServer = jid:nameprep(Server),
     LResource = jid:resourceprep(Resource),
     Mod = get_sm_backend(LServer),
-    case Mod:get_sessions(LUser, LServer, LResource) of
-	[#session{sid = {Time, _}, info = Info}] ->
+    case Mod:get_session(LUser, LServer, LResource) of
+	{ok, #session{sid = {Time, _}, info = Info}} ->
 	    case proplists:get_bool(offline, Info) of
 		true ->
-	    Info;
+                    Info;
 		false ->
 		    none
 	    end;
