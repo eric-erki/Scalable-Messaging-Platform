@@ -87,7 +87,7 @@ start_link(Host, Opts) ->
 start(Host, Opts) ->
     Proc = get_proc_name(Host),
     ChildSpec = {Proc, {?MODULE, start_link, [Host, Opts]},
-		 temporary, 1000, worker, [?MODULE]},
+		 transient, 1000, worker, [?MODULE]},
     supervisor:start_child(ejabberd_sup, ChildSpec).
 
 stop(Host) ->
