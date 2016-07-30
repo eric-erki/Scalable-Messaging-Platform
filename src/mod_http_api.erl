@@ -530,8 +530,10 @@ format_command_result(Cmd, Auth, Result, Version) ->
 	    {200, 0};
 	{{_, rescode}, _} ->
 	    {200, 1};
-	{{_, restuple}, {V1, Text1}} when V1 == true; V1 == ok ->
-	    {200, iolist_to_binary(Text1)};
+        {{_, restuple}, {V, Text}} when V == true; V == ok ->
+            {200, iolist_to_binary(Text)};
+        {{_, restuple}, {V, Text}} when V == conflict ->
+            {409, iolist_to_binary(Text)};
 	{{_, restuple}, {_, Text2}} ->
 	    {500, iolist_to_binary(Text2)};
 	{{_, {list, _}}, _V} ->
