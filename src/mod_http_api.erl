@@ -159,14 +159,15 @@ check_permissions2(#request{auth = HTTPAuth, headers = Headers}, Call, _, ScopeL
                 case oauth_check_token(ScopeList, Token) of
                     {ok, user, {User, Server}} ->
                         {ok, {User, Server, {oauth, Token}, Admin}};
-                    false ->
-                        false
+                    {false, Reason} ->
+                        {false, Reason}
                 end;
             _ ->
                 false
         end,
     case Auth of
         {ok, A} -> {allowed, Call, A};
+        {false, no_matching_scope} -> outofscope_response();
         _ -> unauthorized_response()
     end;
 check_permissions2(_Request, Call, open, _Scope) ->
@@ -186,7 +187,7 @@ check_permissions2(#request{ip={IP, _Port}}, Call, _Policy, _Scope) ->
         Commands when is_list(Commands) ->
             case lists:member(Call, Commands) of
                 true -> {allowed, Call, admin};
-                _ -> unauthorized_response()
+                _ -> outofscope_response()
             end;
         E ->
 	    ?DEBUG("Unauthorized: ~p", [E]),
@@ -577,6 +578,7 @@ format_result(Tuple, {Name, {tuple, Def}}) ->
 format_result(404, {_Name, _}) ->
     "not_found".
 
+
 format_error_result(conflict, Code, Msg) ->
     {409, Code, iolist_to_binary(Msg)};
 format_error_result(_ErrorAtom, Code, Msg) ->
@@ -584,6 +586,9 @@ format_error_result(_ErrorAtom, Code, Msg) ->
 
 unauthorized_response() ->
     json_error(401, 10, <<"Oauth Token is invalid or expired.">>).
+
+outofscope_response() ->
+    json_error(401, 11, <<"Token does not grant usage to command required scope.">>).
 
 badrequest_response() ->
     badrequest_response(<<"Bad Request">>).
