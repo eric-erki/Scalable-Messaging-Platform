@@ -803,7 +803,7 @@ get_commands_spec() ->
                         policy = user,
 			module = mod_offline, function = count_offline_messages,
 			args = [],
-			result = {res, integer}}
+			result = {value, integer}}
     ].
 
 %%%
