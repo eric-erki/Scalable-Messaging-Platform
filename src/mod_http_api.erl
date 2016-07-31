@@ -211,11 +211,7 @@ process(_, #request{method = 'POST', data = <<>>}) ->
 process([Call], #request{method = 'POST', data = Data, ip = IP, host = Host} = Req) ->
     Version = get_api_version(Req),
     try
-        Args = case jiffy:decode(Data) of
-            List when is_list(List) -> List;
-            {List} when is_list(List) -> List;
-            Other -> [Other]
-        end,
+        Args = extract_args(Data),
         log(Call, Args, IP),
         case check_permissions(Req, Call) of
             {allowed, Cmd, Auth} ->
@@ -225,7 +221,11 @@ process([Call], #request{method = 'POST', data = Data, ip = IP, host = Host} = R
             ErrorResponse ->
                 ErrorResponse
         end
-    catch _:{error,{_,invalid_json}} = _Err ->
+    catch
+        %% TODO We need to refactor to remove redundant error return formatting
+        throw:{error, unknown_command} ->
+            {404, 40, <<"Command not found.">>};
+        _:{error,{_,invalid_json}} = _Err ->
 	    ?DEBUG("Bad Request: ~p", [_Err]),
 	    badrequest_response(<<"Invalid JSON input">>);
 	  _:_Error ->
@@ -248,7 +248,12 @@ process([Call], #request{method = 'GET', q = Data, ip = IP, host = Host} = Req) 
             ErrorResponse ->
                 ErrorResponse
         end
-    catch _:_Error ->
+    catch
+        %% TODO We need to refactor to remove redundant error return formatting
+        throw:{error, unknown_command} ->
+            {404, 40, <<"Command not found.">>};
+        _:_Error ->
+
         ?DEBUG("Bad Request: ~p ~p", [_Error, erlang:get_stacktrace()]),
         badrequest_response()
     end;
@@ -257,6 +262,15 @@ process([], #request{method = 'OPTIONS', data = <<>>}) ->
 process(_Path, Request) ->
     ?DEBUG("Bad Request: no handler ~p", [Request]),
     badrequest_response().
+
+%% Be tolerant to make API more easily usable from command-line pipe.
+extract_args(<<"\n">>) -> [];
+extract_args(Data) ->
+    case jiffy:decode(Data) of
+        List when is_list(List) -> List;
+        {List} when is_list(List) -> List;
+        Other -> [Other]
+    end.
 
 % get API version N from last "vN" element in URL path
 get_api_version(#request{path = Path}) ->
