@@ -251,7 +251,7 @@ process([Call], #request{method = 'GET', q = Data, ip = IP, host = Host} = Req) 
     catch
         %% TODO We need to refactor to remove redundant error return formatting
         throw:{error, unknown_command} ->
-            json_format({404, 40, <<"Command not found.">>});
+            json_format({404, 44, <<"Command not found.">>});
         _:_Error ->
 
         ?DEBUG("Bad Request: ~p ~p", [_Error, erlang:get_stacktrace()]),
@@ -261,7 +261,7 @@ process([], #request{method = 'OPTIONS', data = <<>>}) ->
     {200, ?OPTIONS_HEADER, []};
 process(_Path, Request) ->
     ?DEBUG("Bad Request: no handler ~p", [Request]),
-    badrequest_response().
+    json_error(400, 40, <<"Missing command name.">>).
 
 %% Be tolerant to make API more easily usable from command-line pipe.
 extract_args(<<"\n">>) -> [];
