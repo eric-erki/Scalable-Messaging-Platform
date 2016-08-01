@@ -230,5 +230,5 @@ opt_type(_) -> [loglevel, modules, net_ticktime].
 start_elixir_application() ->
   case application:ensure_started(elixir) of
     ok -> ok;
-    {error, Msg} -> ?ERROR_MSG("Elixir application not started.", [])
+    {error, _Msg} -> ?ERROR_MSG("Elixir application not started.", [])
   end.
