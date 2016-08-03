@@ -129,6 +129,9 @@ stop(_Host) ->
 
 check_permissions(Request, Command) ->
     case catch binary_to_existing_atom(Command, utf8) of
+	Call when Call == 'bulk-roster-update' ->
+            check_permissions2(Request, Call, admin,
+			       [atom_to_binary(Call, utf8), <<"ejabberd:admin">>]);
         Call when is_atom(Call) ->
             {ok, CommandPolicy, Scope} = ejabberd_commands:get_command_policy_and_scope(Call),
             check_permissions2(Request, Call, CommandPolicy, Scope);
@@ -344,65 +347,75 @@ do_bulk_roster_update(Args) ->
 	    {500, {[{<<"result">>, <<"failure">>},{<<"errors">>, Err}]}}
     end.
 
+report_command_errors(Fun, ArgsSpec) ->
+    try
+	Fun()
+    catch throw:not_found ->
+	    {404, <<"not_found">>};
+	  throw:{not_found, Why} when is_atom(Why) ->
+	    {404, jlib:atom_to_binary(Why)};
+	  throw:{not_found, Msg} ->
+	    {404, iolist_to_binary(Msg)};
+	  throw:not_allowed ->
+	    {401, <<"not_allowed">>};
+	  throw:{not_allowed, Why} when is_atom(Why) ->
+	    {401, jlib:atom_to_binary(Why)};
+	  throw:{not_allowed, Msg} ->
+	    {401, iolist_to_binary(Msg)};
+	  throw:{error, account_unprivileged} ->
+	    {401, iolist_to_binary(<<"Unauthorized: Account Unpriviledged">>)};
+	  throw:{invalid_parameter, Msg} ->
+	    {400, gen_param_error_msg(Msg, ArgsSpec)};
+	  throw:{error, Why} when is_atom(Why) ->
+	    {400, {[{<<"error">>, jlib:atom_to_binary(Why)}]}};
+	  throw:{error, Msg} ->
+	    {400, {[{<<"error">>, iolist_to_binary(Msg)}]}};
+	  throw:Error when is_atom(Error) ->
+	    {400, {[{<<"error">>, jlib:atom_to_binary(Error)}]}};
+	  throw:Msg when is_list(Msg); is_binary(Msg) ->
+	    {400, {[{<<"error">>, iolist_to_binary(Msg)}]}};
+	  _Error ->
+	    ?ERROR_MSG("REST API Error: ~p ~p", [_Error, erlang:get_stacktrace()]),
+	    {500, <<"internal_error">>}
+    end.
+
+
 handle(Host, 'bulk-roster-update', Auth, Args, Version) ->
-    Allowed = case Auth of
-		  admin -> true;
-		  _ -> ejabberd_commands:command_execution_allowed('bulk-roster-update',
-								   Auth, Version)
-	      end,
-    case Allowed of
-	true ->
-	    mod_jabs:add(Host, 1),
-	    do_bulk_roster_update(Args);
-	_ ->
-		    {401, <<"not_allowed">>}
-    end;
+    Exec = fun() ->
+		   Allowed = case Auth of
+				 admin -> true;
+				 _ -> ejabberd_commands:command_execution_allowed('bulk-roster-update',
+										  Auth, Version)
+			     end,
+		   case Allowed of
+		       true ->
+			   mod_jabs:add(Host, 1),
+			   do_bulk_roster_update(Args);
+		       _ ->
+			   {401, <<"not_allowed">>}
+		   end
+	   end,
+    report_command_errors(Exec, []);
 
 % generic ejabberd command handler
 handle(Host, Call, Auth, Args, Version) when is_atom(Call), is_list(Args) ->
     case ejabberd_commands:get_command_format(Call, Auth, Version) of
         {ArgsSpec, _} when is_list(ArgsSpec) ->
-	    try
-                ArgsM = lists:map(fun({Key, _Type}) ->
-                                          KeyB = jlib:atom_to_binary(Key),
-                                          case proplists:get_value(KeyB, Args) of
-                                              undefined ->
-                                                  throw({invalid_parameter, <<"Missing argument '", KeyB/binary, "'">>});
-                                              Value ->
-                                                  {Key, Value}
-                                          end
-                                  end, ArgsSpec),
-		Result = handle2(Call, Auth, ArgsM, Version),
-		mod_jabs:add(Host, 1), %% TODO add #ejabberd_command.weight if defined, or 1
-		Result
-	    catch throw:not_found ->
-		    {404, <<"not_found">>};
-		  throw:{not_found, Why} when is_atom(Why) ->
-		    {404, jlib:atom_to_binary(Why)};
-		  throw:{not_found, Msg} ->
-		    {404, iolist_to_binary(Msg)};
-		  throw:not_allowed ->
-		    {401, <<"not_allowed">>};
-		  throw:{not_allowed, Why} when is_atom(Why) ->
-		    {401, jlib:atom_to_binary(Why)};
-		  throw:{not_allowed, Msg} ->
-		    {401, iolist_to_binary(Msg)};
-                  throw:{error, account_unprivileged} ->
-                    {401, iolist_to_binary(<<"Unauthorized: Account Unpriviledged">>)};
-		  throw:{invalid_parameter, Msg} ->
-		    {400, gen_param_error_msg(Msg, ArgsSpec)};
-		  throw:{error, Why} when is_atom(Why) ->
-		    {400, {[{<<"error">>, jlib:atom_to_binary(Why)}]}};
-		  throw:{error, Msg} ->
-		    {400, {[{<<"error">>, iolist_to_binary(Msg)}]}};
-                  throw:Error when is_atom(Error) ->
-		    {400, {[{<<"error">>, jlib:atom_to_binary(Error)}]}};
-                  throw:Msg when is_list(Msg); is_binary(Msg) ->
-                    {400, {[{<<"error">>, iolist_to_binary(Msg)}]}};
-                  _Error ->
-                    ?ERROR_MSG("REST API Error: ~p ~p", [_Error, erlang:get_stacktrace()]),
-                    {500, <<"internal_error">>}
-	    end;
+	    Exec = fun() ->
+			   ArgsM = lists:map(fun({Key, _Type}) ->
+						     KeyB = jlib:atom_to_binary(Key),
+						     case proplists:get_value(KeyB, Args) of
+							 undefined ->
+							     throw({invalid_parameter, <<"Missing argument '", KeyB/binary, "'">>});
+							 Value ->
+							     {Key, Value}
+						     end
+					     end, ArgsSpec),
+			   Result = handle2(Call, Auth, ArgsM, Version),
+			   mod_jabs:add(Host, 1), %% TODO add #ejabberd_command.weight if defined, or 1
+			   Result
+		   end,
+	    report_command_errors(Exec, ArgsSpec);
         {error, Msg} ->
 	    ?ERROR_MSG("REST API Error: ~p", [Msg]),
             {400, {[{<<"error">>, iolist_to_binary(Msg)}]}};

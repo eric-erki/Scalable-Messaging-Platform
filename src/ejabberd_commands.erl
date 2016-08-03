@@ -393,6 +393,8 @@ get_command_definition(Name) ->
 -spec get_command_definition(atom(), integer()) -> ejabberd_commands().
 
 %% @doc Get the definition record of a command in a given API version.
+get_command_definition(#ejabberd_commands{} = Command, _Version) ->
+    Command;
 get_command_definition(Name, Version) ->
     case lists:reverse(
 	   lists:sort(
