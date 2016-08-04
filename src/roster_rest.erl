@@ -25,7 +25,9 @@
 -behaviour(ejabberd_config).
 
 -export([start/2, stop/1, get_user_roster/2,
-	 get_jid_info/3, opt_type/1]).
+	 get_jid_info/3, opt_type/1,
+         roster_subscribe/4, remove_user/2, update_roster/4,
+         del_roster/3, create_roster/1]).
 
 
 -include("jlib.hrl").
@@ -52,6 +54,83 @@ get_user_roster(Server, User) ->
         {ok, 200, JSon} -> json_to_rosteritems(Server, User, JSon);
         {ok, Code, JSon} -> {error, {Code, JSon}};
         {error, Reason} -> {error, Reason}
+    end.
+
+roster_subscribe(_LUser, LServer, _LJID, Item) ->
+    ItemJson = rosteritem_to_json(Item),
+    Content = {[{<<"op">>,<<"subscribe">>},{<<"subscribe">>,ItemJson}]},
+    case rest:post(LServer, path(LServer), [], Content) of
+        {ok, 200, _Body} ->
+            ok;
+        {ok, Code, Body} ->
+            ?ERROR_MSG("roster_subscribe error. Code: ~p - Body: ~p", [Code, Body]),
+            {error, build_error_msg(Code,Body)};
+        {error, Error} ->
+            ?ERROR_MSG("roster_subscribe error: ~p", [Error]),
+            {error, Error}
+    end.
+
+remove_user(LUser, LServer) ->
+    Content = {[{<<"op">>,<<"remove_roster">>},
+                {<<"remove_roster">>,
+                  {[{<<"username">>, LUser}]}
+              }]},
+    case rest:post(LServer, path(LServer), [], Content) of
+        {ok, 204, _Body} ->
+            ok;
+        {ok, Code, Body} ->
+            ?ERROR_MSG("remove_roster error. Code: ~p - Body: ~p", [Code, Body]),
+            {error, build_error_msg(Code,Body)};
+        {error, Error} ->
+            ?ERROR_MSG("remove_roster error: ~p", [Error]),
+            {error, Error}
+    end.
+
+update_roster(_LUser, LServer, _LJID, Item) ->
+    ItemJson = rosteritem_to_json(Item),
+    Content = {[{<<"op">>,<<"update_roster_item">>},{<<"update_roster_item">>,ItemJson}]},
+    case rest:post(LServer, path(LServer), [], Content) of
+        {ok, 200, _Body} ->
+            ok;
+        {ok, Code, Body} ->
+            ?ERROR_MSG("update_roster error. Code: ~p - Body: ~p", [Code, Body]),
+            {error, build_error_msg(Code,Body)};
+        {error, Error} ->
+            ?ERROR_MSG("update_roster error: ~p", [Error]),
+            {error, Error}
+    end.
+
+del_roster(LUser, LServer, LJID) ->
+    SJID = jid:to_string(LJID),
+    Content = {[{<<"op">>,<<"remove_roster_item">>},
+                {<<"remove_roster_item">>,
+                  {[{<<"username">>,LUser},
+                    {<<"jid">>, SJID}]}
+              }]},
+    case rest:post(LServer, path(LServer), [], Content) of
+        {ok, 204, _Body} ->
+            ok;
+        {ok, Code, Body} ->
+            ?ERROR_MSG("del_roster error. Code: ~p - Body: ~p", [Code, Body]),
+            {error, build_error_msg(Code,Body)};
+        {error, Error} ->
+            ?ERROR_MSG("del_roster error: ~p", [Error]),
+            {error, Error}
+    end.
+
+create_roster(Item) ->
+    {_LUser, LServer} = Item#roster.us,
+    ItemJson = rosteritem_to_json(Item),
+    Content = {[{<<"op">>,<<"create_roster_item">>},{<<"create_roster_item">>, ItemJson}]},
+    case rest:post(LServer, path(LServer), [], Content) of
+        {ok, 201, _Body} ->
+            ok;
+        {ok, Code, Body} ->
+            ?ERROR_MSG("create_roster error. Code: ~p - Body: ~p", [Code, Body]),
+            {error, build_error_msg(Code,Body)};
+        {error, Error} ->
+            ?ERROR_MSG("create_roster error: ~p", [Error]),
+            {error, Error}
     end.
 
 json_to_rosteritems(LServer, LUser, {[{<<"roster">>, Roster}]}) ->
@@ -126,7 +205,21 @@ fields_to_roster(LServer, LUser, Item,
     fields_to_roster(LServer, LUser, Item, Rest).
     %throw({unknown_field, {Field, Value}}).
 
-
+rosteritem_to_json(
+  #roster{us = {LUser, _LServer},
+          jid = JID, name = Name, subscription = Subscription,
+          ask = Ask, askmessage = AskMessage,
+          groups = Groups}) ->
+    SJID = jid:to_string(jid:tolower(JID)),
+    SSubscription = jlib:atom_to_binary(Subscription),
+    SAsk = jlib:atom_to_binary(Ask),
+    {[{<<"username">>, LUser},
+      {<<"jid">>, SJID},
+      {<<"nick">>, Name},
+      {<<"subscription">>, SSubscription},
+      {<<"ask">>, SAsk},
+      {<<"askmessage">>, AskMessage},
+      {<<"groups">>, Groups}]}.
 %%%----------------------------------------------------------------------
 %%% HTTP helpers
 %%%----------------------------------------------------------------------
@@ -139,3 +232,13 @@ path(Server) ->
 opt_type(ext_api_path_roster) ->
     fun (X) -> iolist_to_binary(X) end;
 opt_type(_) -> [ext_api_path_roster].
+
+build_error_msg(Code, []) ->
+    integer_to_binary(Code);
+build_error_msg(Code, Body) when is_binary(Body) ->
+    CodeBin = integer_to_binary(Code),
+    <<CodeBin/binary,":",Body/binary>>;
+build_error_msg(Code, Body) when is_list(Body) ->
+    CodeBin = integer_to_binary(Code),
+    BodyBin = list_to_binary(Body),
+    <<CodeBin/binary,":",BodyBin/binary>>.

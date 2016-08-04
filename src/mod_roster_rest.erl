@@ -52,8 +52,11 @@ get_roster_by_jid(LUser, LServer, LJID) ->
 get_only_items(LUser, LServer) ->
     get_roster(LUser, LServer).
 
-roster_subscribe(_LUser, _LServer, _LJID, _Item) ->
-    error.
+roster_subscribe(LUser, LServer, LJID, Item) ->
+    case roster_rest:roster_subscribe(LUser, LServer, LJID, Item) of
+        ok -> {atomic, ok};
+        {error, Reason} -> {aborted, Reason}
+    end.
 
 transaction(_LServer, F) ->
     {atomic, F()}.
@@ -61,14 +64,23 @@ transaction(_LServer, F) ->
 get_roster_by_jid_with_groups(LUser, LServer, LJID) ->
     get_roster_by_jid(LUser, LServer, LJID).
 
-remove_user(_LUser, _LServer) ->
-    error.
+remove_user(LUser, LServer) ->
+    case roster_rest:remove_user(LUser, LServer) of
+        ok -> {atomic, ok};
+        {error, Reason} ->  {aborted, Reason}
+    end.
 
-update_roster(_LUser, _LServer, _LJID, _Item) ->
-    error.
+update_roster(LUser, LServer, LJID, Item) ->
+    case roster_rest:update_roster(LUser, LServer, LJID, Item) of
+        ok -> {atomic, ok};
+        {error, Reason} ->  {aborted, Reason}
+    end.
 
-del_roster(_LUser, _LServer, _LJID) ->
-    error.
+del_roster(LUser, LServer, LJID) ->
+    case roster_rest:del_roster(LUser, LServer, LJID) of
+        ok -> {atomic, ok};
+        {error, Reason} ->  {aborted, Reason}
+    end.
 
 read_subscription_and_groups(LUser, LServer, LJID) ->
     case get_roster_by_jid_with_groups(LUser, LServer, LJID) of
@@ -79,8 +91,11 @@ read_subscription_and_groups(LUser, LServer, LJID) ->
 	    error
     end.
 
-create_roster(_) ->
-    ok.
+create_roster(Item) ->
+    case roster_rest:create_roster(Item) of
+        ok -> {atomic, ok};
+        {error, Reason} -> {aborted, Reason}
+    end.
 
 import(_, _, _) ->
     ok.
