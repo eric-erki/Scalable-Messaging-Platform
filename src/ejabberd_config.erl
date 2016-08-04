@@ -741,7 +741,26 @@ append_option({Opt, Host}, Val, State) ->
     NewVal = if is_list(Val) -> Val ++ GlobalVals;
                 true -> [Val|GlobalVals]
              end,
-    set_option({Opt, Host}, NewVal, State).
+    NewVal2 = case Opt of
+		  modules ->
+		      remove_duplicates(NewVal);
+		  _ ->
+		      NewVal
+	      end,
+    set_option({Opt, Host}, NewVal2, State).
+
+remove_duplicates(List) ->
+    remove_duplicates(List, dict:new()).
+remove_duplicates([], Dict) ->
+    dict:to_list(Dict);
+remove_duplicates([{Name, Val} | T], Dict) ->
+    case dict:is_key(Name, Dict) of
+	true ->
+	    remove_duplicates(T, Dict);
+	_ ->
+	    remove_duplicates(T, dict:store(Name, Val, Dict))
+    end.
+
 
 set_opts(State) ->
     Opts = State#state.opts,
