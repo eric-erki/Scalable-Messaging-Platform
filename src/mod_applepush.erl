@@ -435,9 +435,10 @@ process_customization_iq(From, To, #iq{type = Type, sub_el = SubEl} = IQ) ->
                     Res2 = lists:map(fun([R,M,S]) ->
                                              [{<<"from">>, R},
                                               {<<"mute">>,
-					       if M == true; M == 1 -> <<"true">>;
+					       if M == true; M == 1; M == <<"1">> -> <<"true">>;
 						  true -> <<"false">> end}] ++
-                                                 if S == <<"">> -> []; true -> [{<<"sound">>, S}] end
+                                                 if S == <<"">>; S == null -> [];
+						    true -> [{<<"sound">>, S}] end
                                      end, Res),
                     ResX = [#xmlel{name = <<"item">>, attrs = Attrs} || Attrs <- Res2],
                     IQ#iq{type = result, sub_el = ResX}
