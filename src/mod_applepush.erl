@@ -466,7 +466,7 @@ change_customizations(sql, User, Items) ->
                                     ?SQL("INSERT INTO push_customizations("
                                          "username, match_jid, mute) VALUES "
                                          "(%(LUser)s, %(LSender)s, true)"));
-                             IsDelete andalso Sound /= <<"">> ->
+                             not IsDelete andalso Sound /= <<"">> ->
                                   ejabberd_sql:sql_query_t(
                                     ?SQL("INSERT INTO push_customizations("
                                          "username, match_jid, mute, sound) "
@@ -491,7 +491,7 @@ change_customizations(p1db, User, Items) ->
 	      if not IsDelete andalso IsMute ->
 		      p1db:insert(push_customizations, Key,
 				  opts_to_p1db([{mute, true}]));
-		 IsDelete andalso Sound /= <<"">> ->
+		 not IsDelete andalso Sound /= <<"">> ->
 		      p1db:insert(push_customizations, Key,
 				  opts_to_p1db([{sound, Sound}]));
 		 true ->
