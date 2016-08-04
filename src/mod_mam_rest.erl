@@ -145,8 +145,10 @@ select(LServer, JidRequestor, #jid{luser = LUser} = JidArchive,
     case rest:get(LServer, ArchivePath, Params ++ Page ++ Limit) of
 	{ok, 200, {Archive}} ->
 	    ArchiveEls = proplists:get_value(<<"archive">>, Archive, []),
-	    Count = jlib:binary_to_integer(
-		      proplists:get_value(<<"count">>, Archive, 0)),
+	    Count = case proplists:get_value(<<"count">>, Archive, 0) of
+			    I when is_integer(I) -> I;
+			    B when is_binary(B) -> jlib:binary_to_integer(B)
+		    end,
 	    IsComplete = proplists:get_value(<<"complete">>, Archive, false),
 	    {lists:flatmap(
 	       fun({Attrs}) ->
