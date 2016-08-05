@@ -51,7 +51,12 @@ get_jid_info(LServer, LUser, LJID) ->
 
 get_user_roster(Server, User) ->
     case rest:get(Server, path(Server), [{"username", User}]) of
-        {ok, 200, JSon} -> json_to_rosteritems(Server, User, JSon);
+        {ok, 200, JSon} ->
+            case catch jiffy:decode(JSon) of
+		{[{<<"roster">>, Roster}]} -> json_to_rosteritems(Server, User, Roster);
+                {error, Reason} -> {error, Reason};
+                Other -> {error, {500, Other}}
+            end;
         {ok, Code, JSon} -> {error, {Code, JSon}};
         {error, Reason} -> {error, Reason}
     end.
@@ -133,7 +138,7 @@ create_roster(Item) ->
             {error, Error}
     end.
 
-json_to_rosteritems(LServer, LUser, {[{<<"roster">>, Roster}]}) ->
+json_to_rosteritems(LServer, LUser, Roster) ->
     try lists:map(fun ({Fields}) ->
                           fields_to_roster(LServer, LUser, #roster{}, Fields)
                   end,
