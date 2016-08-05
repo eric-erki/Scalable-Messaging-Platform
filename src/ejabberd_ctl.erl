@@ -370,6 +370,12 @@ format_arg2(Arg, Parse)->
 format_result({error, ErrorAtom}, _) ->
     {io_lib:format("Error: ~p", [ErrorAtom]), make_status(error)};
 
+%% An error should always be allowed to return extended error to help with API.
+%% Extended error is of the form:
+%%  {error, type :: atom(), code :: int(), Desc :: string()}
+format_result({error, ErrorAtom, Code, _Msg}, _) ->
+    {io_lib:format("Error: ~p", [ErrorAtom]), make_status(Code)};
+
 format_result(Atom, {_Name, atom}) ->
     io_lib:format("~p", [Atom]);
 
@@ -429,6 +435,8 @@ format_result(404, {_Name, _}) ->
 
 make_status(ok) -> ?STATUS_SUCCESS;
 make_status(true) -> ?STATUS_SUCCESS;
+make_status(Code) when is_integer(Code), Code > 255 -> ?STATUS_ERROR;
+make_status(Code) when is_integer(Code), Code > 0 -> Code;
 make_status(_Error) -> ?STATUS_ERROR.
 
 get_list_commands(Version) ->

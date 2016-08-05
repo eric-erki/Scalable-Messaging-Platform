@@ -72,7 +72,7 @@ defmodule ModHttpApiMockTest do
 			end)
     :meck.expect(:ejabberd_commands, :get_command_policy_and_scope,
 			fn (@acommand) -> {:ok, :user, [:erlang.atom_to_binary(@acommand,:utf8)]} end)
-		:meck.expect(:ejabberd_commands, :get_commands,
+		:meck.expect(:ejabberd_commands, :get_exposed_commands,
 			fn () -> [@acommand] end)
 		:meck.expect(:ejabberd_commands, :execute_command,
 			fn (:undefined, {@user, @domain, @userpass, false}, @acommand, [], @version, _) ->
@@ -125,7 +125,7 @@ defmodule ModHttpApiMockTest do
 			end)
     :meck.expect(:ejabberd_commands, :get_command_policy_and_scope,
 			fn (@acommand) -> {:ok, :user, [:erlang.atom_to_binary(@acommand,:utf8), "ejabberd:user"]} end)
-		:meck.expect(:ejabberd_commands, :get_commands,
+		:meck.expect(:ejabberd_commands, :get_exposed_commands,
 			fn () -> [@acommand] end)
 		:meck.expect(:ejabberd_commands, :execute_command,
 			fn (:undefined, {@user, @domain, {:oauth, _token}, false},
@@ -218,7 +218,7 @@ defmodule ModHttpApiMockTest do
 			end)
     :meck.expect(:ejabberd_commands, :get_command_policy_and_scope,
 			fn (@acommand) -> {:ok, :user, [:erlang.atom_to_binary(@acommand,:utf8), "ejabberd:user"]} end)
-		:meck.expect(:ejabberd_commands, :get_commands,
+		:meck.expect(:ejabberd_commands, :get_exposed_commands,
 			fn () -> [@acommand] end)
 		:meck.expect(:ejabberd_commands, :execute_command,
 			fn (:undefined, {@user, @domain, {:oauth, _token}, false},

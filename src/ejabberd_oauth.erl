@@ -66,7 +66,7 @@
 %%   * Using the command line and oauth_issue_token command, the token is generated in behalf of ejabberd' sysadmin
 %%    (as it has access to ejabberd command line).
 
--define(EXPIRE, 3600).
+-define(EXPIRE, 31536000).
 
 start() ->
     DBMod = get_db_backend(),
@@ -227,7 +227,7 @@ authenticate_user({User, Server}, Ctx) ->
 authenticate_client(Client, Ctx) -> {ok, {Ctx, {client, Client}}}.
 
 verify_resowner_scope({user, _User, _Server}, Scope, Ctx) ->
-    Cmds = ejabberd_commands:get_commands(),
+    Cmds = ejabberd_commands:get_exposed_commands(),
     Cmds1 = ['ejabberd:user', 'ejabberd:admin', sasl_auth | Cmds],
     RegisteredScope = [atom_to_binary(C, utf8) || C <- Cmds1],
     case oauth2_priv_set:is_subset(oauth2_priv_set:new(Scope),
@@ -249,7 +249,7 @@ get_cmd_scopes() ->
                                                     dict:append(Scope, Cmd, Accum2)
                                             end, Accum, Scopes);
                             _ -> Accum
-                        end end, dict:new(), ejabberd_commands:get_commands()),
+                        end end, dict:new(), ejabberd_commands:get_exposed_commands()),
     ScopeMap.
 
 %% This is callback for oauth tokens generated through the command line.  Only open and admin commands are
@@ -312,12 +312,17 @@ check_token(User, Server, ScopeList, Token) ->
                           expire = Expire}} ->
             {MegaSecs, Secs, _} = os:timestamp(),
             TS = 1000000 * MegaSecs + Secs,
+            if
+                Expire > TS ->
             TokenScopeSet = oauth2_priv_set:new(TokenScope),
             lists:any(fun(Scope) ->
                 oauth2_priv_set:is_member(Scope, TokenScopeSet) end,
-                ScopeList) andalso Expire > TS;
+                              ScopeList);
+                true ->
+                    {false, expired}
+            end;
         _ ->
-            false
+            {false, not_found}
     end.
 
 check_token(ScopeList, Token) ->
@@ -327,15 +332,20 @@ check_token(ScopeList, Token) ->
                           expire = Expire}} ->
             {MegaSecs, Secs, _} = os:timestamp(),
             TS = 1000000 * MegaSecs + Secs,
+            if
+                Expire > TS ->
             TokenScopeSet = oauth2_priv_set:new(TokenScope),
             case lists:any(fun(Scope) ->
                 oauth2_priv_set:is_member(Scope, TokenScopeSet) end,
-                ScopeList) andalso Expire > TS of
+                                   ScopeList) of
                 true -> {ok, user, US};
-                false -> false
+                        false -> {false, no_matching_scope}
+                    end;
+                true ->
+                    {false, expired}
             end;
         _ ->
-            false
+            {false, not_found}
     end.
 
 
@@ -400,12 +410,10 @@ process(_Handlers,
               ?LABEL(<<"ttl">>, [?CT(<<"Token TTL">>), ?CT(<<": ">>)]),
               ?XAE(<<"select">>, [{<<"name">>, <<"ttl">>}],
                    [
-                   ?XAC(<<"option">>, [{<<"selected">>, <<"selected">>},
-                                       {<<"value">>, jlib:integer_to_binary(expire())}],<<"Default (", (integer_to_binary(expire()))/binary, " seconds)">>),
                    ?XAC(<<"option">>, [{<<"value">>, <<"3600">>}],<<"1 Hour">>),
                    ?XAC(<<"option">>, [{<<"value">>, <<"86400">>}],<<"1 Day">>),
                    ?XAC(<<"option">>, [{<<"value">>, <<"2592000">>}],<<"1 Month">>),
-                   ?XAC(<<"option">>, [{<<"value">>, <<"31536000">>}],<<"1 Year">>),
+                   ?XAC(<<"option">>, [{<<"selected">>, <<"selected">>},{<<"value">>, <<"31536000">>}],<<"1 Year">>),
                    ?XAC(<<"option">>, [{<<"value">>, <<"315360000">>}],<<"10 Years">>)]),
               ?BR,
               ?INPUTT(<<"submit">>, <<"">>, <<"Accept">>)
@@ -547,13 +555,10 @@ process(_Handlers,
                    {<<"scope">>, str:join(VerifiedScope, <<" ">>)},
                    {<<"expires_in">>, Expires}]});
             {error, Error} when is_atom(Error) ->
-                json_response(400, {[
-                  {<<"error">>, <<"invalid_grant">>},
-                  {<<"error_description">>, Error}]})
+                json_error(400, <<"invalid_grant">>, Error)
         end;
      _OtherGrantType ->
-                json_response(400, {[
-                  {<<"error">>, <<"unsupported_grant_type">>}]})
+            json_error(400, <<"unsupported_grant_type">>, unsupported_grant_type)
   end;
 
 process(_Handlers, _Request) ->
@@ -576,7 +581,17 @@ json_response(Code, Body) ->
            {<<"Pragma">>, <<"no-cache">>}], 
      jiffy:encode(Body)}.
 
+%% OAauth error are defined in:
+%% https://tools.ietf.org/html/draft-ietf-oauth-v2-25#section-5.2
+json_error(Code, Error, Reason) ->
+    Desc = json_error_desc(Reason),
+    Body = {[{<<"error">>, Error},
+             {<<"error_description">>, Desc}]},
+    json_response(Code, Body).
 
+json_error_desc(access_denied)          -> <<"Access denied">>;
+json_error_desc(unsupported_grant_type) -> <<"Unsupported grant type">>;
+json_error_desc(invalid_scope)          -> <<"Invalid scope">>.
 
 web_head() ->
     [?XA(<<"meta">>, [{<<"http-equiv">>, <<"X-UA-Compatible">>},
