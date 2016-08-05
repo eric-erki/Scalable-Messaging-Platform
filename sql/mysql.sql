@@ -340,6 +340,7 @@ CREATE TABLE sm (
 
 CREATE UNIQUE INDEX i_username_resource ON sm(username, resource);
 CREATE INDEX i_node ON sm(node(75));
+CREATE INDEX i_username ON sm(username);
 
 CREATE TABLE oauth_token (
     token varchar(191) NOT NULL PRIMARY KEY,
