@@ -852,7 +852,7 @@ transform_module_options(Opts) ->
 depends(_Host, _Opts) ->
     [].
 
-imod_opt_type(db_type) ->
+mod_opt_type(db_type) ->
     fun(DB) when DB == p1db;
                  DB == mnesia;
                  DB == sql ->
