@@ -192,9 +192,9 @@ build_push_packet_from_message2(From, To, Packet, ID, _AppID, SendBody, SendFrom
             end
     end.
 
-build_and_customize_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields, Module) ->
+build_and_customize_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields, _Module) ->
     LServer = JID#jid.lserver,
-    case gen_mod:db_type(LServer, Module) of
+    case gen_mod:db_type(LServer, mod_applepush) of
         sql ->
             LUser = JID#jid.luser,
             SJID = jid:remove_resource(jid:tolower(jid:from_string(Sender))),
