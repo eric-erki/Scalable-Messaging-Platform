@@ -55,7 +55,7 @@
 	 muc_remove_member/3, muc_kick_user/3,
 	 muc_send_system_message/4, muc_purge_archive/2,
 	 get_senderjid/1, kick_user/1, mod_opt_type/1,
-	 get_commands_spec/0]).
+	 get_commands_spec/0, depends/2]).
 
 %-include("ejabberd.hrl").
 -include("logger.hrl").
@@ -395,6 +395,9 @@ kick_user(JID) ->
 		  end,
 		  Resources),
     {ok, ""}.
+
+depends(_Host, _Opts) ->
+    [{mod_muc, hard}].
 
 mod_opt_type(senderjid) -> fun (X) -> X end;
 mod_opt_type(_) -> [senderjid].

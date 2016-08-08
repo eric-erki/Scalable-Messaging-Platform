@@ -38,7 +38,7 @@
 
 -export([init/1, handle_info/2, handle_call/3,
 	 handle_cast/2, terminate/2, code_change/3,
-	 mod_opt_type/1]).
+	 depends/2, mod_opt_type/1]).
 
 -include("jlib.hrl").
 
@@ -384,6 +384,9 @@ to_list(Pid, Queue) ->
       {ok, Treap} -> treap:to_list(Treap);
       error -> []
     end.
+
+depends(_Host, _Opts) ->
+    [].
 
 mod_opt_type(timeout) ->
     fun (I) when is_integer(I), I > 0 -> I end;

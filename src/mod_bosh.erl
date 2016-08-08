@@ -39,7 +39,7 @@
 
 -export([init/1, handle_call/3, handle_cast/2,
 	 handle_info/2, terminate/2, code_change/3,
-	 mod_opt_type/1]).
+	 depends/2, mod_opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -294,6 +294,9 @@ get_type(Hdrs) ->
     catch _:_ ->
             xml
     end.
+
+depends(_Host, _Opts) ->
+    [].
 
 mod_opt_type(json) ->
     fun (false) -> false;

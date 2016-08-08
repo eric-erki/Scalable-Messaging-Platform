@@ -15,7 +15,7 @@
 -export([start/2, stop/1]).
 
 -export([update_presence/3, vcard_set/3, export/1,
-	 import_info/0, import/5,
+	 import_info/0, import/5, depends/2,
 	 import_start/2, mod_opt_type/1, opt_type/1]).
 
 -include("ejabberd.hrl").
@@ -48,6 +48,9 @@ stop(Host) ->
     ejabberd_hooks:delete(vcard_set, Host, ?MODULE,
 			  vcard_set, 100),
     ok.
+
+depends(_Host, _Opts) ->
+    [].
 
 %%====================================================================
 %% Hooks

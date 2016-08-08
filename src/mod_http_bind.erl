@@ -37,7 +37,7 @@
 
 -behaviour(gen_mod).
 
--export([start/2, stop/1, process/2, mod_opt_type/1]).
+-export([start/2, stop/1, process/2, mod_opt_type/1, depends/2]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -112,6 +112,8 @@ mod_opt_type(prebind) ->
     fun (B) when is_boolean(B) -> B end;
 mod_opt_type(_) -> [max_inactivity, max_pause, prebind].
 
+depends(_Host, _Opts) ->
+    [].
 
 %%%----------------------------------------------------------------------
 %%% Help Web Page

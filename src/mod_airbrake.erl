@@ -34,7 +34,7 @@
 
 -behaviour(gen_mod).
 
--export([start/2, stop/1, mod_opt_type/1]).
+-export([start/2, stop/1, depends/2, mod_opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("jlib.hrl").
@@ -66,6 +66,9 @@ stop(_Host) -> ok.
 
 check_fun(S) ->
     binary_to_list(iolist_to_binary(S)).
+
+depends(_Host, _Opts) ->
+    [].
 
 mod_opt_type(apikey) -> fun check_fun/1;
 mod_opt_type(environment) -> fun check_fun/1;

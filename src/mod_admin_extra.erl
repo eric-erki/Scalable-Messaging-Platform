@@ -30,7 +30,8 @@
 
 -include("logger.hrl").
 
--export([start/2, stop/1, mod_opt_type/1]).
+-export([start/2, stop/1, mod_opt_type/1,
+	 get_commands_spec/0, depends/2]).
 
 % Commands API
 -export([
@@ -79,8 +80,7 @@
 	 privacy_set/3,
 
 	 % Stats
-	 stats/1, stats/2,
-	 get_commands_spec/0
+	 stats/1, stats/2
 	]).
 
 
@@ -100,6 +100,8 @@ start(_Host, _Opts) ->
 stop(_Host) ->
     ejabberd_commands:unregister_commands(get_commands_spec()).
 
+depends(_Host, _Opts) ->
+    [].
 
 %%%
 %%% Register commands

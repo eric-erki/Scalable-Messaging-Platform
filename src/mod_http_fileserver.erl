@@ -34,7 +34,7 @@
 %% gen_mod callbacks
 -export([start/2, stop/1]).
 
--export([process/2, mod_opt_type/1]).
+-export([process/2, mod_opt_type/1, depends/2]).
 
 %% utility for other http modules
 -export([content_type/3]).
@@ -209,6 +209,9 @@ check_docroot_is_readable(DRInfo, DocRoot) ->
     end.
 
 stop(_Host) -> ok.
+
+depends(_Host, _Opts) ->
+    [].
 
 %%====================================================================
 %% request_handlers callbacks

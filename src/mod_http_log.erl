@@ -42,7 +42,7 @@
 -behaviour(gen_mod).
 
 -export([start/2, stop/1, socket_handoff/6,
-	 send_packet/4, receive_packet/5, mod_opt_type/1]).
+	 send_packet/4, receive_packet/5, depends/2, mod_opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("jlib.hrl").
@@ -202,6 +202,8 @@ loop(SockMod, Socket) ->
             loop(SockMod, Socket)
     end.
 
+depends(_Host, _Opts) ->
+    [].
 
 mod_opt_type(access) -> fun acl:access_rules_validator/1;
 mod_opt_type(_) -> [access].

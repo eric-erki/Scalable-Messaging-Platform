@@ -37,7 +37,7 @@
 	 import_info/0, import_start/2, import/5, announce/3,
 	 send_motd/1, disco_identity/5, disco_features/5,
 	 disco_items/5, send_announcement_to_all/3,
-	 announce_commands/4,
+	 announce_commands/4, depends/2,
 	 announce_items/4, mod_opt_type/1, opt_type/1]).
 
 -include("ejabberd.hrl").
@@ -76,6 +76,9 @@ start(Host, Opts) ->
 		       ?MODULE, send_motd, 50),
     register(gen_mod:get_module_proc(Host, ?PROCNAME),
 	     proc_lib:spawn(?MODULE, init, [])).
+
+depends(_Host, _Opts) ->
+    [{mod_adhoc, hard}].
 
 init() ->
     loop().

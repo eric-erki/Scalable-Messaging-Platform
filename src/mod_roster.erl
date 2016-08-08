@@ -54,7 +54,8 @@
 	 import_start/2, import_stop/2,
 	 invalidate_roster_cache/2]).
 
--export([create_rosters/4, mod_opt_type/1, opt_type/1, set_roster/1]).
+-export([create_rosters/4, mod_opt_type/1, opt_type/1, set_roster/1,
+	 depends/2]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -160,6 +161,9 @@ stop(Host) ->
 			  webadmin_user, 50),
     gen_iq_handler:remove_iq_handler(ejabberd_sm, Host,
 				     ?NS_ROSTER).
+
+depends(_Host, _Opts) ->
+    [].
 
 process_iq(From, To, IQ) when ((From#jid.luser == <<"">>) andalso (From#jid.resource == <<"">>)) ->
     process_iq_manager(From, To, IQ);

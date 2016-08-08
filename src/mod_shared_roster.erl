@@ -46,7 +46,7 @@
 -export([command_group_create/5, command_group_delete/2,
 	 command_add_user/3, command_remove_user/3,
 	 command_list_users/2, command_list_groups/1,
-	 mod_opt_type/1, opt_type/1]).
+	 mod_opt_type/1, opt_type/1, depends/2]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -142,6 +142,9 @@ stop(Host) ->
     %%ejabberd_hooks:delete(remove_user, Host,
     %%    		  ?MODULE, remove_user, 50),
     ejabberd_commands:unregister_commands(get_commands_spec()).
+
+depends(_Host, _Opts) ->
+    [].
 
 get_user_roster(Items, US) ->
     {U, S} = US,

@@ -53,7 +53,7 @@
 	 dec_val/2]).
 
 -export([get_tokens_by_jid/1, mod_opt_type/1,
-	 opt_type/1]).
+	 depends/2, opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -849,12 +849,16 @@ transform_module_options(Opts) ->
               Opt
       end, Opts).
 
-mod_opt_type(db_type) ->
+depends(_Host, _Opts) ->
+    [].
+
+imod_opt_type(db_type) ->
     fun(DB) when DB == p1db;
                  DB == mnesia;
                  DB == sql ->
             DB
     end;
+
 mod_opt_type(default_service) ->
     fun (S) when is_binary(S) -> S end;
 mod_opt_type(default_services) ->
