@@ -849,7 +849,12 @@ transform_module_options(Opts) ->
               Opt
       end, Opts).
 
-mod_opt_type(db_type) -> fun(T) -> ejabberd_config:v_db(?MODULE, T) end;
+mod_opt_type(db_type) ->
+    fun(DB) when DB == p1db;
+                 DB == mnesia;
+                 DB == sql ->
+            DB
+    end;
 mod_opt_type(default_service) ->
     fun (S) when is_binary(S) -> S end;
 mod_opt_type(default_services) ->
