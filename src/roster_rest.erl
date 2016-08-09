@@ -57,10 +57,9 @@ get_user_roster(Server, User) ->
     end.
 
 roster_subscribe(_LUser, LServer, _LJID, Item) ->
-    ItemJson = rosteritem_to_json(Item),
-    Content = {[{<<"op">>,<<"subscribe">>},{<<"subscribe">>,ItemJson}]},
+    Content = rosteritem_to_json(Item),
     case rest:post(LServer, path(LServer), [], Content) of
-        {ok, 200, _Body} ->
+        {ok, 201, _Body} ->
             ok;
         {ok, Code, Body} ->
             ?ERROR_MSG("roster_subscribe error. Code: ~p - Body: ~p", [Code, Body]),
@@ -71,12 +70,8 @@ roster_subscribe(_LUser, LServer, _LJID, Item) ->
     end.
 
 remove_user(LUser, LServer) ->
-    Content = {[{<<"op">>,<<"remove_roster">>},
-                {<<"remove_roster">>,
-                  {[{<<"username">>, LUser}]}
-              }]},
-    case rest:post(LServer, path(LServer), [], Content) of
-        {ok, 204, _Body} ->
+    case rest:delete(LServer, path(LServer, ejabberd_http:url_encode(LUser))) of
+        {ok, 200, _Body} ->
             ok;
         {ok, Code, Body} ->
             ?ERROR_MSG("remove_roster error. Code: ~p - Body: ~p", [Code, Body]),
@@ -87,10 +82,9 @@ remove_user(LUser, LServer) ->
     end.
 
 update_roster(_LUser, LServer, _LJID, Item) ->
-    ItemJson = rosteritem_to_json(Item),
-    Content = {[{<<"op">>,<<"update_roster_item">>},{<<"update_roster_item">>,ItemJson}]},
-    case rest:post(LServer, path(LServer), [], Content) of
-        {ok, 200, _Body} ->
+    Content = rosteritem_to_json(Item),
+    case rest:patch(LServer, path(LServer), [], Content) of
+        {ok, 204, _Body} ->
             ok;
         {ok, Code, Body} ->
             ?ERROR_MSG("update_roster error. Code: ~p - Body: ~p", [Code, Body]),
@@ -102,13 +96,9 @@ update_roster(_LUser, LServer, _LJID, Item) ->
 
 del_roster(LUser, LServer, LJID) ->
     SJID = jid:to_string(LJID),
-    Content = {[{<<"op">>,<<"remove_roster_item">>},
-                {<<"remove_roster_item">>,
-                  {[{<<"username">>,LUser},
-                    {<<"jid">>, SJID}]}
-              }]},
-    case rest:post(LServer, path(LServer), [], Content) of
-        {ok, 204, _Body} ->
+    Entry = <<LUser/binary, "/", SJID/binary>>,
+    case rest:delete(LServer, path(LServer, ejabberd_http:url_encode(Entry))) of
+        {ok, 200, _Body} ->
             ok;
         {ok, Code, Body} ->
             ?ERROR_MSG("del_roster error. Code: ~p - Body: ~p", [Code, Body]),
@@ -120,10 +110,9 @@ del_roster(LUser, LServer, LJID) ->
 
 create_roster(Item) ->
     {_LUser, LServer} = Item#roster.us,
-    ItemJson = rosteritem_to_json(Item),
-    Content = {[{<<"op">>,<<"create_roster_item">>},{<<"create_roster_item">>, ItemJson}]},
-    case rest:post(LServer, path(LServer), [], Content) of
-        {ok, 201, _Body} ->
+    Content = rosteritem_to_json(Item),
+    case rest:put(LServer, path(LServer), [], Content) of
+        {ok, 200, _Body} ->
             ok;
         {ok, Code, Body} ->
             ?ERROR_MSG("create_roster error. Code: ~p - Body: ~p", [Code, Body]),
@@ -228,6 +217,10 @@ path(Server) ->
     ejabberd_config:get_option({ext_api_path_roster, Server},
 			       fun(X) -> iolist_to_binary(X) end,
 			       <<"/roster">>).
+
+path(Server, SubPath) ->
+    Path = path(Server),
+    <<Path/binary, "/", SubPath/binary>>.
 
 opt_type(ext_api_path_roster) ->
     fun (X) -> iolist_to_binary(X) end;
