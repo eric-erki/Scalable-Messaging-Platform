@@ -124,7 +124,7 @@ stop(_Host) ->
     ok.
 
 depends(_Host, _Opts) ->
-    [].
+    [{mod_jabs, soft}].
 
 %% ----------
 %% basic auth
@@ -433,7 +433,7 @@ handle(Host, Call, Auth, Args, Version) when is_atom(Call), is_list(Args) ->
 						     end
 					     end, ArgsSpec),
 			   Result = handle2(Call, Auth, ArgsM, Version),
-			   mod_jabs:add(Host, 1), %% TODO add #ejabberd_command.weight if defined, or 1
+			   mod_jabs:add(Host, ejabberd_commands:get_command_jabs(Call)),
 			   Result
 		   end,
 	    report_command_errors(Exec, ArgsSpec);

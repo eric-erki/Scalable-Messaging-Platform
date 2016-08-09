@@ -257,6 +257,7 @@ get_commands_spec() ->
 			tags = [stats],
 			desc = "Big picture of server use and status",
 			module = ?MODULE, function = server_info,
+			jabs = 0,  %% Do not count tabs for our monitoring
 			args = [],
 			result = {res, {list,
 			    {probe, {tuple, [{name, atom}, {value, integer}]}}}}},

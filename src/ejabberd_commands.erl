@@ -221,6 +221,7 @@
          get_command_policy_and_scope/1,
 	 get_command_definition/1,
 	 get_command_definition/2,
+	 get_command_jabs/1,
 	 get_tags_commands/0,
 	 get_tags_commands/1,
          get_exposed_commands/0,
@@ -430,6 +431,13 @@ get_command_definition(Name, Version) ->
 	[{_, Command} | _ ] -> Command;
         _E -> throw({error, unknown_command})
     end.
+
+get_command_jabs(Name) ->
+    get_command_jabs(Name, ?DEFAULT_VERSION).
+
+get_command_jabs(Name, Version) ->
+    Command = get_command_definition(Name, Version),
+    Command#ejabberd_commands.jabs.
 
 -spec get_commands_definition(integer()) -> [ejabberd_commands()].
 
