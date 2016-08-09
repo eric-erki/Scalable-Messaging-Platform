@@ -94,8 +94,8 @@ is_user_exists(User, Server) ->
         {ok, 401, _RespBody} ->
             false;
         _ ->
-            % assume user exists if we have any trouble with api
-            true
+            % documentation states that error means user doesn't exist
+            false
     end.
 
 %% Functions not implemented or not relevant for REST authentication
