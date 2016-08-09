@@ -431,18 +431,22 @@ extract_path_query(#state{request_method = Method,
 			  socket = _Socket} = State)
     when (Method =:= 'POST' orelse Method =:= 'PUT') andalso
 	   is_integer(Len) ->
-    {NewState, Data} = recv_data(State, Len),
-    ?DEBUG("client data: ~p~n", [Data]),
-    case catch url_decode_q_split(Path) of
-        {'EXIT', _} -> {NewState, false};
-        {NPath, _Query} ->
-            LPath = normalize_path([NPE
-                                    || NPE <- str:tokens(path_decode(NPath), <<"/">>)]),
-            LQuery = case catch parse_urlencoded(Data) of
-                         {'EXIT', _Reason} -> [];
-                         LQ -> LQ
-                     end,
-            {NewState, {LPath, LQuery, Data}}
+    case recv_data(State, Len) of
+	{error, _Err} ->
+	    {State, false};
+	{NewState, Data} ->
+	    ?DEBUG("client data: ~p~n", [Data]),
+	    case catch url_decode_q_split(Path) of
+		{'EXIT', _} -> {NewState, false};
+		{NPath, _Query} ->
+		    LPath = normalize_path([NPE
+					    || NPE <- str:tokens(path_decode(NPath), <<"/">>)]),
+		    LQuery = case catch parse_urlencoded(Data) of
+				 {'EXIT', _Reason} -> [];
+				 LQ -> LQ
+			     end,
+		    {NewState, {LPath, LQuery, Data}}
+	    end
     end;
 extract_path_query(State) ->
     {State, false}.
@@ -566,7 +570,7 @@ recv_data(State, Len, Acc) ->
 		    recv_data(State, Len - byte_size(Data), <<Acc/binary, Data/binary>>);
 		Err ->
 		    ?DEBUG("Cannot receive HTTP data: ~p", [Err]),
-		    <<"">>
+		    {error, Err}
 	    end;
 	_ ->
 	    Trail = (State#state.trail),
