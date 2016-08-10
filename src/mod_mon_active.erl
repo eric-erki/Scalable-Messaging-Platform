@@ -140,6 +140,7 @@ init([Host, Opts]) ->
         L2 = [{PName, NLog} || PName <- Pool,
                                not lists:keymember(PName, 1, L1)],
         Logs = L1++L2,
+        [mod_mon:declare(Host, PName, gauge) || {PName, _PLog} <- Logs],
         [mod_mon:set(Host, PName, log_card(PLog)) || {PName, PLog} <- Logs],
         ok = write_logs(File, Logs),
         {ok, T} = timer:apply_interval(?HOUR, ?MODULE, sync_log, [Host]),

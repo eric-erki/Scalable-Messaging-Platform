@@ -34,7 +34,7 @@
          s2s_send_packet, s2s_receive_packet,
          privacy_iq_get, privacy_iq_set,
          backend_api_call, backend_api_response_time,
-         backend_api_timeout, backend_api_error]).
+         backend_api_timeout, backend_api_error, backend_api_badauth]).
         % TODO those need submodule register
          %muc_create, muc_destroy, muc_user_join, muc_user_leave, muc_rooms, muc_users, muc_message,
          %pubsub_create_node, pubsub_delete_node, pubsub_publish_item, pubsub_broadcast_stanza, pubsub_nodes, pubsub_users]).
@@ -44,9 +44,12 @@
 %%disco_sm_features, disco_sm_identity, disco_sm_items
 %%roster_get, roster_get_jid_info, roster_get_subscription_lists, roster_process_item
 
-% By default all probes are type counter. The ones listed above are gauges:
--define(GAUGES, [client_conn_time, client_auth_time, client_roster_time,
-                 backend_api_response_time]).
+% By default all probes are type counter except these ones:
+-define(AVG, [client_conn_time, client_auth_time, client_roster_time, backend_api_response_time]).
+-define(GAUGE, [sessions, memory, cpu, processes, jabs, message_queues,
+         iq_message_queues, sm_message_queues, c2s_message_queues, sql_message_queues, offline_message_queues,
+         iq_internal_queues, sm_internal_queues, c2s_internal_queues, sql_internal_queues, offline_internal_queues,
+         backend_api_call, backend_api_timeout, backend_api_error, backend_api_badauth]).
 
 % Generic default monitors to aglomerate common values
 -define(DEFAULT_MONITORS,

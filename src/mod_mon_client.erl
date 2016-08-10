@@ -53,9 +53,7 @@ start(Host) ->
                                 {send_timeout, ?TCP_SEND_TIMEOUT},
                                 {recbuf, ?TCP_RECV_BUFF}, {sndbuf, ?TCP_SEND_BUFF}]) of
                 {ok, Sock} ->
-                    mod_mon:set(Host, client_conn_time, age(Start)),
-                    mod_mon:set(Host, client_auth_time, 100000),
-                    mod_mon:set(Host, client_roster_time, 100000),
+                    mod_mon:sum(Host, client_conn_time, age(Start)),
                     Login = proplists:get_value(login, ClientSpec),
                     Pass = proplists:get_value(password, ClientSpec),
                     self() ! connect(Host, Login, Pass, <<"test_client">>),
@@ -68,7 +66,7 @@ start(Host) ->
                     gen_tcp:close(Sock),
                     Result;
                 Error ->
-                    mod_mon:set(Host, client_conn_time, ?TCP_SEND_TIMEOUT),
+                    mod_mon:sum(Host, client_conn_time, ?TCP_SEND_TIMEOUT),
                     ?ERROR_MSG("test_client connection failed: ~p", [Error]),
                     Error
             end
@@ -91,7 +89,7 @@ loop(State) ->
         {tcp_closed, _Sock} ->
             ok;
         {set, Probe} ->
-            mod_mon:set(State#state.host, Probe, age(State#state.start)),
+            mod_mon:sum(State#state.host, Probe, age(State#state.start)),
             loop(State);
         {recv, Match} ->
             case match_inbox(State#state.inbox, Match) of

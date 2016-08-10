@@ -43,10 +43,8 @@
 
 %% module API
 -export([start_link/2, start/2, stop/1]).
--export([value/2, dump/1, declare/3, drop/2, info/1]).
+-export([value/2, avg/2, dump/1, declare/3, info/1]).
 -export([reset/2, set/3, inc/3, dec/3, sum/3]).
-%% sync commands
--export([push_metrics/2]).
 %% administration commands
 -export([flush_probe_command/2]).
 %% monitors
@@ -100,40 +98,35 @@ stop(Host) ->
     supervisor:delete_child(ejabberd_sup, Proc).
 
 value(Host, Probe) when is_binary(Host), is_atom(Probe) ->
-    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    ?GEN_SERVER:call(Proc, {get, Probe}, ?CALL_TIMEOUT).
+    cheap_counters:get(Host, Probe).
 
 set(Host, Probe, Value) when is_binary(Host), is_atom(Probe) ->
-    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    ?GEN_SERVER:cast(Proc, {set, Probe, Value}).
+    cheap_counters:set(Host, Probe, Value).
 
 inc(Host, Probe, Value) when is_binary(Host), is_atom(Probe) ->
-    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    ?GEN_SERVER:cast(Proc, {inc, Probe, Value}).
+    cheap_counters:inc(Host, Probe, Value).
 
 dec(Host, Probe, Value) when is_binary(Host), is_atom(Probe) ->
-    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    ?GEN_SERVER:cast(Proc, {dec, Probe, Value}).
+    cheap_counters:dec(Host, Probe, Value).
 
 sum(Host, Probe, Value) when is_binary(Host), is_atom(Probe) ->
-    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    ?GEN_SERVER:cast(Proc, {sum, Probe, Value}).
+    cheap_counters:inc_pair(Host, Probe, Value).
+
+avg(Host, Probe) when is_binary(Host), is_atom(Probe) ->
+    case cheap_counters:get_pair(Host, Probe) of
+        {_, 0} -> 0;
+        {Sum, Count} -> Sum div Count
+    end.
 
 reset(Host, Probe) when is_binary(Host), is_atom(Probe) ->
-    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    ?GEN_SERVER:call(Proc, {reset, Probe}).
+    cheap_counters:reset(Host, Probe).
 
 dump(Host) when is_binary(Host) ->
-    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    ?GEN_SERVER:call(Proc, dump, ?CALL_TIMEOUT).
+    [{Probe, Value} || {_, Probe, Value} <- cheap_counters:get(Host)].
 
 declare(Host, Probe, Type) when is_binary(Host), is_atom(Probe) ->
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     ?GEN_SERVER:call(Proc, {declare, Probe, Type}, ?CALL_TIMEOUT).
-
-drop(Host, Probe) when is_binary(Host), is_atom(Probe) ->
-    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    ?GEN_SERVER:call(Proc, {drop, Probe}, ?CALL_TIMEOUT).
 
 %%====================================================================
 %% server callbacks
@@ -174,83 +167,48 @@ init([Host, Opts]) ->
 
     % Store probes specs
     catch ets:new(mon_probes, [named_table, public]),
-    [ets:insert(mon_probes, {Probe, gauge}) || Probe<-?GAUGES],
+    [ets:insert(mon_probes, {Probe, gauge}) || Probe<-?GAUGE],
+    [ets:insert(mon_probes, {Probe, average}) || Probe<-?AVG],
 
     % Start timer for backends sync
-    {ok, T} = timer:apply_interval(?MINUTE, ?MODULE, push_metrics, [Host, Backends]),
+    {ok, T} = timer:send_interval(?MINUTE, push_metrics),
 
     {ok, #state{host = Host,
                 backends = Backends,
                 monitors = Monitors,
                 timers = [T]}}.
 
-handle_call({get, Probe}, _From, State) ->
-    Ret = case get(Probe) of
-        {Sum, Count} -> Sum div Count;
-        Value -> Value
-    end,
-    {reply, Ret, State};
-handle_call({reset, Probe}, _From, State) ->
-    OldVal = get(Probe),
-    [put(Probe, 0) || OldVal =/= 0],
-    {reply, OldVal, State};
-handle_call(dump, _From, State) ->
-    {reply, get(), State};
-handle_call(snapshot, _From, State) ->
-    Host = State#state.host,
-    Probes = compute_probes(Host, State#state.monitors),
-    ExtProbes = ejabberd_hooks:run_fold(mon_monitors, Host, [], [Host]),
-    [put(Key, 0) || {Key, Type, Val} <- Probes ++ ExtProbes,
-                    Val =/= 0, Type == counter],
-    {reply, Probes++ExtProbes, State};
 handle_call({declare, Probe, Type}, _From, State) ->
     Result = case Type of
         gauge ->
-            declare_gauge(Probe),
-            put(Probe, 0),
+            [ets:insert(mon_probes, {Probe, gauge}) || not lists:member(Probe, ?GAUGE)],
+            ok;
+        average ->
+            [ets:insert(mon_probes, {Probe, average}) || not lists:member(Probe, ?AVG)],
             ok;
         counter ->
-            put(Probe, 0),
             ok;
         _ ->
             error
     end,
     {reply, Result, State};
-handle_call({drop, Probe}, _From, State) ->
-    {reply, erase(Probe), State};
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State}.
 
-handle_cast({inc, Probe}, State) ->
-    Old = get(Probe),
-    put(Probe, Old+1),
-    {noreply, State};
-handle_cast({inc, Probe, Value}, State) ->
-    Old = get(Probe),
-    put(Probe, Old+Value),
-    {noreply, State};
-handle_cast({dec, Probe}, State) ->
-    Old = get(Probe),
-    put(Probe, Old-1),
-    {noreply, State};
-handle_cast({dec, Probe, Value}, State) ->
-    Old = get(Probe),
-    put(Probe, Old-Value),
-    {noreply, State};
-handle_cast({set, Probe, Value}, State) ->
-    declare_gauge(Probe),
-    put(Probe, Value),
-    {noreply, State};
-handle_cast({sum, Probe, Value}, State) ->
-    declare_gauge(Probe),
-    case get(Probe) of
-        {Old, Count} -> put(Probe, {Old+Value, Count+1});
-        _ -> put(Probe, {Value, 1})
-    end,
-    {noreply, State};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
+handle_info(push_metrics, State) ->
+    Host = State#state.host,
+    Probes = compute_probes(Host, State#state.monitors),
+    ExtProbes = ejabberd_hooks:run_fold(mon_monitors, Host, [], [Host]),
+    [_, NodeId] = str:tokens(jlib:atom_to_binary(node()), <<"@">>),
+    [Node | _] = str:tokens(NodeId, <<".">>),
+    DateTime = erlang:universaltime(),
+    UnixTime = calendar:datetime_to_gregorian_seconds(DateTime) - 62167219200,
+    [push(Host, Node, Probes++ExtProbes, UnixTime, Backend)
+     || Backend <- State#state.backends],
+    {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -301,12 +259,6 @@ packet(Main, _Name, Type) -> <<Type/binary, "_", Main/binary, "_packet">>.
 concat(Pre, <<>>) -> Pre;
 concat(Pre, Post) -> <<Pre/binary, "_", Post/binary>>.
 
-declare_gauge(Probe) ->
-    case lists:member(Probe, ?GAUGES) of
-        false -> ets:insert(mon_probes, {Probe, gauge});
-        true -> ok
-    end.
-
 %serverhost(Host) ->
 %    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
 %    case whereis(Proc) of
@@ -319,20 +271,19 @@ declare_gauge(Probe) ->
 %            {Proc, Host}
 %    end.
 
-cast(Host, Msg) ->
-    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    ?GEN_SERVER:cast(Proc, Msg).
-%    case serverhost(Host) of
-%        {undefined, _} -> error;
-%        {Proc, _Host} -> ?GEN_SERVER:cast(Proc, Msg)
-%    end.
-
-%put(Key, Val) already uses erlang:put(Key, Val)
-%get() already uses erlang:get()
-get(Key) ->
-    case erlang:get(Key) of
-        undefined -> 0;
-        Val -> Val
+get_probe_value(Probe, Value) ->
+    case catch ets:lookup(mon_probes, Probe) of
+        [{Probe, average}] ->
+            % note: we can also call avg(Host, Probe)
+            Sum = Value bsr 24,
+            case Value band 16#ffffff of
+                0 -> {average, 0};
+                Count -> {average, Sum div Count}
+            end;
+        [{Probe, gauge}] ->
+            {gauge, Value};
+        _ ->
+            {counter, Value}
     end.
 
 %%====================================================================
@@ -396,9 +347,9 @@ get(Key) ->
 %%====================================================================
 
 offline_message_hook(_From, #jid{lserver=LServer}, _Packet) ->
-    cast(LServer, {inc, offline_message}).
+    inc(LServer, offline_message, 1).
 resend_offline_messages_hook(Ls, _User, Server) ->
-    cast(jid:nameprep(Server), {inc, resend_offline_messages}),
+    inc(jid:nameprep(Server), resend_offline_messages, 1),
     Ls.
 
 sm_register_connection_hook(_SID, #jid{lserver=LServer}, Info) ->
@@ -407,122 +358,110 @@ sm_register_connection_hook(_SID, #jid{lserver=LServer}, Info) ->
         Atom -> jlib:atom_to_binary(Atom)
     end,
     Hook = hookid(concat(<<"sm_register_connection">>, Post)),
-    cast(LServer, {inc, Hook}).
+    inc(LServer, Hook, 1).
 sm_remove_connection_hook(_SID, #jid{lserver=LServer}, Info) ->
     Post = case proplists:get_value(conn, Info) of
         undefined -> <<>>;
         Atom -> jlib:atom_to_binary(Atom)
     end,
     Hook = hookid(concat(<<"sm_remove_connection">>, Post)),
-    cast(LServer, {inc, Hook}).
+    inc(LServer, Hook, 1).
 
 roster_in_subscription(Ls, _User, Server, _To, _Type, _Reason) ->
-    cast(jid:nameprep(Server), {inc, roster_in_subscription}),
+    inc(jid:nameprep(Server), roster_in_subscription, 1),
     Ls.
 roster_out_subscription(_User, Server, _To, _Type) ->
-    cast(jid:nameprep(Server), {inc, roster_out_subscription}).
+    inc(jid:nameprep(Server), roster_out_subscription, 1).
 
 user_available_hook(#jid{lserver=LServer}) ->
-    cast(LServer, {inc, user_available_hook}).
+    inc(LServer, user_available_hook, 1).
 unset_presence_hook(_User, Server, _Resource, _Status) ->
-    cast(jid:nameprep(Server), {inc, unset_presence_hook}).
+    inc(jid:nameprep(Server), unset_presence_hook, 1).
 set_presence_hook(_User, Server, _Resource, _Presence) ->
-    cast(jid:nameprep(Server), {inc, set_presence_hook}).
+    inc(jid:nameprep(Server), set_presence_hook, 1).
 
 user_send_packet(#xmlel{name=Name, attrs=Attrs} = Packet,
                  _C2SState, #jid{lserver=LServer}, _To) ->
     Type = fxml:get_attr_s(<<"type">>, Attrs),
     Hook = hookid(packet(<<"receive">>, Name, Type)), % user send = server receive
-    cast(LServer, {inc, Hook}),
+    inc(LServer, Hook, 1),
     Packet.
 user_receive_packet(#xmlel{name=Name, attrs=Attrs} = Packet,
                     _C2SState, _JID, _From, #jid{lserver=LServer}) ->
     Type = fxml:get_attr_s(<<"type">>, Attrs),
     Hook = hookid(packet(<<"send">>, Name, Type)), % user receive = server send
-    cast(LServer, {inc, Hook}),
+    inc(LServer, Hook, 1),
     Packet.
 
 c2s_replaced(#jid{lserver=LServer}) ->
-    cast(LServer, {inc, c2s_replaced}).
+    inc(LServer, c2s_replaced, 1).
 
 s2s_send_packet(#jid{lserver=LServer}, _To,
                 #xmlel{name=Name, attrs=Attrs}) ->
     Type = fxml:get_attr_s(<<"type">>, Attrs),
     Hook = hookid(concat(<<"s2s">>, packet(<<"send">>, Name, Type))),
-    cast(LServer, {inc, Hook}).
+    inc(LServer, Hook, 1).
 s2s_receive_packet(_From, #jid{lserver=LServer},
                    #xmlel{name=Name, attrs=Attrs}) ->
     Type = fxml:get_attr_s(<<"type">>, Attrs),
     Hook = hookid(concat(<<"s2s">>, packet(<<"receive">>, Name, Type))),
-    cast(LServer, {inc, Hook}).
+    inc(LServer, Hook, 1).
 
 privacy_iq_set(Acc, #jid{lserver=LServer}, _To, _Iq) ->
-    cast(LServer, {inc, privacy_iq_set}),
+    inc(LServer, privacy_iq_set, 1),
     Acc.
 
 privacy_iq_get(Acc, #jid{lserver=LServer}, _To, _Iq, _) ->
-    cast(LServer, {inc, privacy_iq_get}),
+    inc(LServer, privacy_iq_get, 1),
     Acc.
 
 api_call(_Module, _Function, _Arguments) ->
     [LServer|_] = ejabberd_config:get_myhosts(),
-    cast(LServer, {inc, api_call}).
+    inc(LServer, api_call, 1).
 backend_api_call(LServer, _Method, _Path) ->
-    cast(LServer, {inc, backend_api_call}).
+    inc(LServer, backend_api_call, 1).
 backend_api_response_time(LServer, _Method, _Path, Ms) ->
-    cast(LServer, {sum, backend_api_response_time, Ms}).
+    sum(LServer, backend_api_response_time, Ms).
 backend_api_timeout(LServer, _Method, _Path) ->
-    cast(LServer, {inc, backend_api_timeout}).
+    inc(LServer, backend_api_timeout, 1).
 backend_api_error(LServer, _Method, _Path) ->
-    cast(LServer, {inc, backend_api_error}).
+    inc(LServer, backend_api_error, 1).
 backend_api_badauth(LServer, _Method, _Path) ->
-    cast(LServer, {inc, backend_api_badauth}).
+    inc(LServer, backend_api_badauth, 1).
 
 remove_user(_User, Server) ->
-    cast(jid:nameprep(Server), {inc, remove_user}).
+    inc(jid:nameprep(Server), remove_user, 1).
 register_user(_User, Server) ->
-    cast(jid:nameprep(Server), {inc, register_user}).
+    inc(jid:nameprep(Server), register_user, 1).
 
 %muc_create(_Host, ServerHost, _Room, _JID) ->
-%    cast(ServerHost, {inc, muc_rooms}),
-%    cast(ServerHost, {inc, muc_create}).
+%    inc(ServerHost, muc_rooms, 1),
+%    inc(ServerHost, muc_create, 1).
 %muc_destroy(_Host, ServerHost, _Room) ->
-%    cast(ServerHost, {dec, muc_rooms}),
-%    cast(ServerHost, {inc, muc_destroy}).
+%    dec(ServerHost, muc_rooms, 1),
+%    inc(ServerHost, muc_destroy, 1).
 %muc_user_join(_Host, ServerHost, _Room, _JID) ->
-%    cast(ServerHost, {inc, muc_users}),
-%    cast(ServerHost, {inc, muc_user_join}).
+%    inc(ServerHost, muc_users, 1),
+%    inc(ServerHost, muc_user_join, 1).
 %muc_user_leave(_Host, ServerHost, _Room, _JID) ->
-%    cast(ServerHost, {dec, muc_users}),
-%    cast(ServerHost, {inc, muc_user_leave}).
-%muc_message(_Host, ServerHost, Room, _JID) ->
-%    cast(ServerHost, {inc, {muc_message, Room}}).
-%
+%    dec(ServerHost, muc_users, 1),
+%    inc(ServerHost, muc_user_leave, 1).
+
 pubsub_create_node(ServerHost, _Host, _Node, _Nidx, _NodeOptions) ->
-    cast(ServerHost, {inc, pubsub_create_node}).
+    inc(ServerHost, pubsub_create_node, 1).
 pubsub_delete_node(ServerHost, _Host, _Node, _Nidx) ->
-    cast(ServerHost, {inc, pubsub_delete_node}).
+    inc(ServerHost, pubsub_delete_node, 1).
 pubsub_publish_item(ServerHost, _Node, _Publisher, _From, _ItemId, _Packet) ->
-    %Size = erlang:external_size(Packet),
-    cast(ServerHost, {inc, pubsub_publish_item}).
+    inc(ServerHost, pubsub_publish_item, 1).
 %pubsub_broadcast_stanza(Host, Node, Count, _Stanza) ->
-%    cast(Host, {inc, {pubsub_broadcast_stanza, Node, Count}}).
+%    inc(Host, {inc, {pubsub_broadcast_stanza, Node, Count}}).
 
 %%====================================================================
 %% high level monitors
 %%====================================================================
 
 compute_probes(Host, Monitors) ->
-    Probes = lists:foldl(
-            fun({Key, {Val, Count}}, Acc) when is_integer(Val), is_integer(Count) ->
-                    Avg = Val div Count,
-                    put(Key, Avg), %% to force reset of average count
-                    [{Key, probe_type(Key), Avg}|Acc];
-                ({Key, Val}, Acc) when is_integer(Val) ->
-                    [{Key, probe_type(Key), Val}|Acc];
-                (_, Acc) ->
-                    Acc
-            end, [], get()),
+    Probes = [dump_probe(Host, Probe, Value) || {Probe, Value} <- dump(Host)],
     Computed = lists:foldl(
             fun({I, M, F, A}, Acc) -> acc_monitor(I, apply(M, F, A), Acc);
                 ({I, M, F, A, Fun}, Acc) -> acc_monitor(I, Fun(apply(M, F, A)), Acc);
@@ -533,10 +472,18 @@ compute_probes(Host, Monitors) ->
             end, [], Monitors),
     Probes ++ Computed.
 
-probe_type(Probe) ->
-    case catch ets:lookup(mon_probes, Probe) of
-        [{Probe, Type}] -> Type;
-        _ -> counter
+dump_probe(Host, Probe, RawValue) ->
+    case get_probe_value(Probe, RawValue) of
+        {average, Value} ->
+            % note: later we may need to call cheap_counters:reset_pair instead
+            % but for now, both just set 0 as value
+            reset(Host, Probe),
+            {Probe, gauge, Value};
+        {gauge, Value} ->
+            {Probe, gauge, Value};
+        {counter, Value} ->
+            reset(Host, Probe),
+            {Probe, counter, Value}
     end.
 
 eval_monitors(_, [], Acc) ->
@@ -622,21 +569,6 @@ backend_port(Port, Default) when is_list(Port) ->
             Default
     end.
 
-push_metrics(Host, Backends) ->
-    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-    case catch ?GEN_SERVER:call(Proc, snapshot, ?CALL_TIMEOUT) of
-        {'EXIT', Reason} ->
-            ?WARNING_MSG("Can not push mon metrics~n~p", [Reason]),
-            {error, Reason};
-        Probes ->
-            [_, NodeId] = str:tokens(jlib:atom_to_binary(node()), <<"@">>),
-            [Node | _] = str:tokens(NodeId, <<".">>),
-            DateTime = erlang:universaltime(),
-            UnixTime = calendar:datetime_to_gregorian_seconds(DateTime) - 62167219200,
-            [push(Host, Node, Probes, UnixTime, Backend) || Backend <- Backends],
-            ok
-    end.
-
 push(Host, _Node, Probes, _Time, mnesia) ->
     Table = gen_mod:get_module_proc(Host, mon),
     Cache = [{Key, Val} || {mon, Key, Val} <- ets:tab2list(Table)],
@@ -650,7 +582,11 @@ push(Host, _Node, Probes, _Time, mnesia) ->
                 case proplists:get_value(Key, Cache) of
                     Val -> ok;
                     _ -> mnesia:dirty_write(Table, #mon{probe = Key, value = Val})
-                end
+                end;
+           ({health, _Type, _Val}) ->
+                ok;
+           ({Key, Type, Val}) ->
+                ?WARNING_MSG("can not push ~p metric ~p with value ~p", [Type, Key, Val])
         end, Probes);
 push(Host, Node, Probes, _Time, {statsd, Ip, Port}) ->
     % probe example => process-one.net.xmpp.xmpp-1.chat_receive_packet:value|g
@@ -687,8 +623,8 @@ push_udp({A,B,C,D}=Ip, Port, Probes, Format) ->
                         erlang:port_command(Socket, [Header, Data]);
                    ({health, _Type, _Val}) ->
                         ok;
-                   ({Key, _Type, Val}) ->
-                        ?WARNING_MSG("can not push metrics ~p with value ~p", [Key, Val])
+                   ({Key, Type, Val}) ->
+                        ?WARNING_MSG("can not push ~p metric ~p with value ~p", [Type, Key, Val])
                 end, Probes),
             gen_udp:close(Socket);
         Error ->
@@ -747,8 +683,8 @@ workers(_Host, Sup) ->
     supervisor:which_children(Sup).
 
 % Note: health_check must be called last from monitors list
-%       as it uses values as they are pushed and also some other
-%       monitors values
+%       as it uses gauges values as they are pushed
+%       it can not check counters (as they are reset at that time)
 health_check(Host) ->
     spawn(mod_mon_client, start, [Host]),
     HealthCfg = ejabberd_config:get_option({health, Host},
@@ -760,7 +696,7 @@ health_check(Host) ->
                                 L when is_list(L) -> L;
                                 Other -> [Other]
                             end,
-                            case check_level(Probe, Spec) of
+                            case level(Host, Probe, Spec) of
                                 ok -> Acc2;
                                 critical -> [{critical, Component, Critical}|Acc2];
                                 Level -> [{Level, Component, Message}|Acc2]
@@ -803,32 +739,29 @@ cpu_usage(_Host) ->
 %% Health check helpers
 %%====================================================================
 
-check_level(_, []) ->
+level(_Host, _Probe, []) ->
     ok;
-check_level(iq_queues, Spec) ->
-    Value = get(iq_message_queues)+get(iq_internal_queues),
+level(Host, iq_queues, Spec) ->
+    Value = value(Host, iq_message_queues)+value(Host, iq_internal_queues),
     check_level(ok, Value, Spec);
-check_level(sm_queues, Spec) ->
-    Value = get(sm_message_queues)+get(sm_internal_queues),
+level(Host, sm_queues, Spec) ->
+    Value = value(Host, sm_message_queues)+value(Host, sm_internal_queues),
     check_level(ok, Value, Spec);
-check_level(c2s_queues, Spec) ->
-    Value = get(c2s_message_queues)+get(c2s_internal_queues),
+level(Host, c2s_queues, Spec) ->
+    Value = value(Host, c2s_message_queues)+value(Host, c2s_internal_queues),
     check_level(ok, Value, Spec);
-check_level(s2s_queues, Spec) ->
-    Value = get(s2s_message_queues)+get(s2s_internal_queues),
+level(Host, s2s_queues, Spec) ->
+    Value = value(Host, s2s_message_queues)+value(Host, s2s_internal_queues),
     check_level(ok, Value, Spec);
-check_level(sql_queues, Spec) ->
-    Value = get(sql_message_queues)+get(sql_internal_queues),
+level(Host, sql_queues, Spec) ->
+    Value = value(Host, sql_message_queues)+value(Host, sql_internal_queues),
     check_level(ok, Value, Spec);
-check_level(offline_queues, Spec) ->
-    Value = get(offline_message_queues)+get(offline_internal_queues),
+level(Host, offline_queues, Spec) ->
+    Value = value(Host, offline_message_queues)+value(Host, offline_internal_queues),
     check_level(ok, Value, Spec);
-check_level(Probe, Spec) ->
-    Val = case get(Probe) of
-        {Sum, Count} -> Sum div Count;
-        Value -> Value
-    end,
-    check_level(ok, Val, Spec).
+level(Host, Probe, Spec) ->
+    {_Type, Value} =  get_probe_value(Probe, value(Host, Probe)),
+    check_level(ok, Value, Spec).
 
 check_level(Acc, _, []) -> Acc;
 check_level(Acc, Value, [{Level, gt, Limit}|Tail]) ->
