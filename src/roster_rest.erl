@@ -70,7 +70,7 @@ roster_subscribe(_LUser, LServer, _LJID, Item) ->
     end.
 
 remove_user(LUser, LServer) ->
-    case rest:delete(LServer, path(LServer, ejabberd_http:url_encode(LUser))) of
+    case rest:delete(LServer, path(LServer, LUser)) of
         {ok, 200, _Body} ->
             ok;
         {ok, Code, Body} ->
@@ -97,7 +97,7 @@ update_roster(_LUser, LServer, _LJID, Item) ->
 del_roster(LUser, LServer, LJID) ->
     SJID = jid:to_string(LJID),
     Entry = <<LUser/binary, "/", SJID/binary>>,
-    case rest:delete(LServer, path(LServer, ejabberd_http:url_encode(Entry))) of
+    case rest:delete(LServer, path(LServer, Entry)) of
         {ok, 200, _Body} ->
             ok;
         {ok, Code, Body} ->
@@ -219,8 +219,9 @@ path(Server) ->
 			       <<"/roster">>).
 
 path(Server, SubPath) ->
-    Path = path(Server),
-    <<Path/binary, "/", SubPath/binary>>.
+    Base = path(Server),
+    Path = ejabberd_http:url_encode(SubPath),
+    <<Base/binary, "/", Path/binary>>.
 
 opt_type(ext_api_path_roster) ->
     fun (X) -> iolist_to_binary(X) end;
