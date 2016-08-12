@@ -328,17 +328,16 @@ run1([{_Seq, Node, Module, Function} | Ls], Hook, Args) ->
 	    run1(Ls, Hook, Args)
     end;
 run1([{_Seq, Module, Function} | Ls], Hook, Args) ->
-    Res = safe_apply(Module, Function, Args),
-    case Res of
-	{'EXIT', Reason} ->
-	    ?ERROR_MSG("~p~nrunning hook: ~p", [Reason, {Hook, Args}]),
-	    run1(Ls, Hook, Args);
+    try safe_apply(Module, Function, Args) of
 	stop ->
 	    ok;
 	_ ->
 	    run1(Ls, Hook, Args)
+    catch E:R ->
+	    ?ERROR_MSG("hook ~p with arguments ~p failed: ~p",
+		       [Hook, Args, {E, {R, erlang:get_stacktrace()}}]),
+	    run1(Ls, Hook, Args)
     end.
-
 
 run_fold1([], _Hook, Val, _Args) ->
     Val;
@@ -364,22 +363,22 @@ run_fold1([{_Seq, Node, Module, Function} | Ls], Hook, Val, Args) ->
 	    run_fold1(Ls, Hook, NewVal, Args)
     end;
 run_fold1([{_Seq, Module, Function} | Ls], Hook, Val, Args) ->
-    Res = safe_apply(Module, Function, [Val | Args]),
-    case Res of
-	{'EXIT', Reason} ->
-	    ?ERROR_MSG("~p~nrunning hook: ~p", [Reason, {Hook, Args}]),
-	    run_fold1(Ls, Hook, Val, Args);
+    try safe_apply(Module, Function, [Val | Args]) of
 	stop ->
 	    stopped;
 	{stop, NewVal} ->
 	    NewVal;
 	NewVal ->
 	    run_fold1(Ls, Hook, NewVal, Args)
+    catch E:R ->
+	    ?ERROR_MSG("hook ~p with arguments ~p failed: ~p",
+		       [Hook, [Val|Args], {E, {R, erlang:get_stacktrace()}}]),
+	    run_fold1(Ls, Hook, Val, Args)
     end.
 
 safe_apply(Module, Function, Args) ->
     if is_function(Function) ->
-            catch apply(Function, Args);
+            apply(Function, Args);
        true ->
-            catch apply(Module, Function, Args)
+            apply(Module, Function, Args)
     end.
