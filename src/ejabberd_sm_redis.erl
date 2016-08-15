@@ -139,14 +139,17 @@ delete_node(Node) ->
                                         end
 				end, Vals),
                       Vals2 = [usr_to_key(S#session.usr) || S <- Vals1],
-		      Q1 = ["HDEL", ServKey | Vals2],
+		      Q1 = case Vals2 of
+			       [] -> [];
+			       _ -> ["HDEL", ServKey | Vals2]
+			   end,
 		      Q2 = lists:map(
 			     fun(S) ->
                                      {_, _, R} = S#session.usr,
 				     USKey = us_to_key(S#session.us),
 				     ["HDEL", USKey, R]
 			     end, Vals1),
-		      Res = ejabberd_redis:qp([Q1|Q2]),
+		      Res = ejabberd_redis:qp(lists:delete([], [Q1|Q2])),
 		      case lists:filter(
 			     fun({ok, _}) -> false;
 				(_) -> true
