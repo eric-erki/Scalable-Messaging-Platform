@@ -334,8 +334,11 @@ run1([{_Seq, Module, Function} | Ls], Hook, Args) ->
 	_ ->
 	    run1(Ls, Hook, Args)
     catch E:R ->
-	    ?ERROR_MSG("hook ~p with arguments ~p failed: ~p",
-		       [Hook, Args, {E, {R, erlang:get_stacktrace()}}]),
+	    ?ERROR_MSG("hook ~s failed:~n"
+		       "arguments: ~p~n"
+		       "error: ~p~n"
+		       "stacktrace: ~p",
+		       [Hook, Args, {E, R}, erlang:get_stacktrace()]),
 	    run1(Ls, Hook, Args)
     end.
 
@@ -371,8 +374,11 @@ run_fold1([{_Seq, Module, Function} | Ls], Hook, Val, Args) ->
 	NewVal ->
 	    run_fold1(Ls, Hook, NewVal, Args)
     catch E:R ->
-	    ?ERROR_MSG("hook ~p with arguments ~p failed: ~p",
-		       [Hook, [Val|Args], {E, {R, erlang:get_stacktrace()}}]),
+	    ?ERROR_MSG("hook ~s failed:~n"
+		       "arguments: ~p~n"
+		       "error: ~p~n"
+		       "stacktrace: ~p",
+		       [Hook, [Val|Args], {E, R}, erlang:get_stacktrace()]),
 	    run_fold1(Ls, Hook, Val, Args)
     end.
 
