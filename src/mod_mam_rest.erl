@@ -100,7 +100,7 @@ select(LServer, JidRequestor, #jid{luser = LUser} = JidArchive,
 	       chat ->
 		   [{<<"username">>, LUser},
 		    {<<"type">>, <<"chat">>}];
-	       {groupchat, _Role} ->
+	       {groupchat, _Role, _MUCState} ->
 		   [{<<"username">>, jid:to_string(JidArchive)},
 		    {<<"type">>, <<"groupchat">>}]
 	   end,
