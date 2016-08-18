@@ -674,11 +674,7 @@ get_commands_spec() ->
 							       {value, binary}
 							      ]}}}}}},
 				{delete,
-				 {list, {contact,
-					 {list, {property,
-						 {tuple,
-						  [{name, binary},{value, binary}]}
-						}}}}}],
+				 {list, {contact, binary}}}],
 			result = {res, restuple}},
 
      %%%%%%%%%%%%%%%%%% Private storage
@@ -1482,12 +1478,22 @@ update_vcard_els(Data, ContentList, Els1) ->
 %%%
 
 add_rosteritem(LocalUser, LocalServer, User, Server, Nick, Group, Subs) ->
-    case add_rosteritem(LocalUser, LocalServer, User, Server, Nick, Group, Subs, []) of
-	{atomic, _} ->
-	    push_roster_item(LocalUser, LocalServer, User, Server, {add, Nick, Subs, Group}),
+    case gen_mod:db_type(LocalServer, mod_roster) of
+	rest ->
+	    % We just need to push modification to online resources
+	    push_roster_item(LocalUser, LocalServer, User, Server, 
+			     {add, Nick, Subs, Group}),
 	    ok;
 	_ ->
-	    error
+	    case add_rosteritem(LocalUser, LocalServer,
+				User, Server, Nick, Group, Subs, []) of
+		{atomic, _} ->
+		    push_roster_item(LocalUser, LocalServer, User, Server, 
+				     {add, Nick, Subs, Group}),
+		    ok;
+		_ ->
+		    error
+	    end
     end.
 
 add_rosteritem(LU, LS, User, Server, Nick, Group, Subscription, Xattrs) ->
@@ -1502,12 +1508,19 @@ subscribe(LU, LS, User, Server, Nick, Group, Subscription, _Xattrs) ->
 	    [ItemEl]}).
 
 delete_rosteritem(LocalUser, LocalServer, User, Server) ->
-    case unsubscribe(LocalUser, LocalServer, User, Server) of
-	{atomic, _} ->
+    case gen_mod:db_type(LocalServer, mod_roster) of
+	rest ->
 	    push_roster_item(LocalUser, LocalServer, User, Server, remove),
 	    ok;
-	_  ->
-	    error
+	_ ->
+	    case unsubscribe(LocalUser, LocalServer, User, Server) of
+		{atomic, _} ->
+		    push_roster_item(LocalUser, LocalServer,
+				     User, Server, remove),
+		    ok;
+		_  ->
+		    error
+	    end
     end.
 
 unsubscribe(LU, LS, User, Server) ->
@@ -1740,8 +1753,7 @@ update_roster(User, Host, Add, Del) when is_list(Add), is_list(Del) ->
 	    AddRes = [AddFun(I) || I <- Add],
 	    case lists:all(fun(X) -> X==ok end, AddRes) of
 		true ->
-		    DelFun = fun({Item}) ->
-				     [Contact] = match(Item, [{<<"username">>, <<>>}]),
+		    DelFun = fun(Contact) ->
 				     delete_rosteritem(User, Server, Contact, Server)
 			     end,
 		    [DelFun(I) || I <- Del],
