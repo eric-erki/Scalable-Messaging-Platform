@@ -1734,13 +1734,18 @@ build_broadcast(U, S, SubsAtom) when is_atom(SubsAtom) ->
 
 update_roster(User, Host, Add, Del) when is_list(Add), is_list(Del) ->
     Server = case Host of
-	<<>> ->
-	    [Default|_] = ejabberd_config:get_myhosts(),
-	    Default;
-	_ ->
-	    Host
-    end,
-    case ejabberd_auth:is_user_exists(User, Server) of
+		 <<>> ->
+		     [Default|_] = ejabberd_config:get_myhosts(),
+		     Default;
+		 _ ->
+		     Host
+	     end,
+
+    % Don't need to check is user exists if rest, the api is only used
+    % to push iq to online resources
+    IsRest = gen_mod:db_type(Host, mod_roster) == rest,
+
+    case IsRest orelse ejabberd_auth:is_user_exists(User, Server) of
 	true ->
 	    AddFun = fun({Item}) ->
 		    [Contact, Nick, Sub] = match(Item, [
