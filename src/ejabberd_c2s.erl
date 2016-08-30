@@ -3239,6 +3239,8 @@ verify_cert(StateData, Cert) ->
 		    verify_via_crl(CRLURIs, Cert, CAList);
 	       (CRL == true) and (OCSP == true) ->
 		    case verify_via_ocsp(OCSPURIs, Cert, CAList) of
+			{false, <<"certificate revoked by OCSP server">>} = Err ->
+			    Err;
 			{false, _} ->
 			    verify_via_crl(CRLURIs, Cert, CAList);
 			true when StateData#state.ocsp_poll_interval /= undefined ->
