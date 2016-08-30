@@ -60,7 +60,8 @@
 	 cust_dec_val/2,
          set_local_badge/3,
 	 read_push_customizations/3,
-         p1db_update_device_table/0]).
+         p1db_update_device_table/0,
+	 badge_reset/5]).
 
 
 %% Debug commands
@@ -92,6 +93,8 @@ start(Host, Opts) ->
                                ?MODULE, remove_user, 50),
 	    ejabberd_hooks:add(offline_message_hook, Host,
 			       ?MODULE, receive_offline_packet, 35),
+            ejabberd_hooks:add(p1_push_badge_reset, Host,
+                               ?MODULE, badge_reset, 50),
             MultipleAccs =
                 gen_mod:get_opt(
                   multiple_accounts_per_device, Opts,
@@ -180,9 +183,26 @@ stop(Host) ->
                           ?MODULE, remove_user, 50),
     ejabberd_hooks:delete(offline_message_hook, Host,
 			  ?MODULE, receive_offline_packet, 35),
+    ejabberd_hooks:delete(p1_push_badge_reset, Host,
+			  ?MODULE, badge_reset, 50),
     gen_iq_handler:remove_iq_handler(ejabberd_local, Host, ?NS_P1_PUSH).
 
 
+badge_reset(Acc, JID, Notification, _AppID, Count) ->
+    Type = fxml:get_path_s(Notification, [{elem, <<"type">>}, cdata]),
+    case Type of
+	<<"applepush">> ->
+	    DeviceID = fxml:get_path_s(Notification, [{elem, <<"id">>}, cdata]),
+            ?INFO_MSG("Reseting badge for ~s with applepush token ~p",[jid:to_string(JID),DeviceID]),
+	    case catch erlang:list_to_integer(binary_to_list(DeviceID), 16) of
+		ID1 when is_integer(ID1) ->
+		    {stop, set_local_badge(JID, ID1, Count)};
+                _ ->
+                    Acc
+            end;
+	_ ->
+	    Acc
+    end.
 
 set_local_badge(JID, DeviceID, Count) ->
     case gen_mod:db_type(JID#jid.lserver, ?MODULE) of

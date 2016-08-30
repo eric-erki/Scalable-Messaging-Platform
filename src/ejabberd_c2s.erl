@@ -3104,12 +3104,22 @@ process_push_iq(From, To, #iq{type = _Type, sub_el = El} = IQ, StateData) ->
 					  %% User didn't enable push before in this session,
 					  %% we have no idea of the token.
 					  {{error, ?ERR_BAD_REQUEST}, StateData};
+				      StateData#state.oor_offline == true ->
+					  Notif = StateData#state.oor_notification,
+					  AppId = StateData#state.oor_appid,
+					  R = ejabberd_hooks:run_fold(p1_push_badge_reset,
+								      StateData#state.server,
+								      not_handled,
+								      [StateData#state.jid, Notif, AppId, Badge]),
+					  case R of
+					      not_handled ->
+						  {{error, ?ERR_ITEM_NOT_FOUND}, NSD1};
+					      ok ->
+						  {{result, []}, NSD1};
+					      _ ->
+						  {{error, ?ERR_BAD_REQUEST}, NSD1}
+					  end;
 				      true ->
-					  DeviceID = fxml:get_path_s(
-						       StateData#state.oor_notification,
-						       [{elem, <<"id">>}, cdata]),
-					  ok = mod_applepush:set_local_badge(
-						 From, jlib:binary_to_integer(DeviceID,16), Badge),
 					  {{result, []}, NSD1}
 				  end;
 			      _ ->

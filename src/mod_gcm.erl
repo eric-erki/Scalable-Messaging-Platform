@@ -52,7 +52,8 @@
 	 dec_key/1,
 	 enc_val/2,
 	 dec_val/2,
-    set_local_badge/3]).
+	 set_local_badge/3,
+	 badge_reset/5]).
 
 -export([get_tokens_by_jid/1, mod_opt_type/1,
 	 depends/2, opt_type/1]).
@@ -81,6 +82,8 @@ start(Host, Opts) ->
                                ?MODULE, remove_user, 50),
 	    ejabberd_hooks:add(offline_message_hook, Host,
 			       ?MODULE, receive_offline_packet, 35),
+            ejabberd_hooks:add(p1_push_badge_reset, Host,
+                               ?MODULE, badge_reset, 50),
             IQDisc = gen_mod:get_opt(
                        iqdisc, Opts, fun gen_iq_handler:check_type/1,
                        one_queue),
@@ -129,9 +132,27 @@ stop(Host) ->
                           ?MODULE, remove_user, 50),
     ejabberd_hooks:delete(offline_message_hook, Host,
 			  ?MODULE, receive_offline_packet, 35),
+    ejabberd_hooks:delete(p1_push_badge_reset, Host,
+			  ?MODULE, badge_reset, 50),
     gen_iq_handler:remove_iq_handler(ejabberd_local, Host, ?NS_P1_PUSH).
 
 
+
+badge_reset(Acc, JID, Notification, _AppID, Count) ->
+    Type = fxml:get_path_s(Notification, [{elem, <<"type">>}, cdata]),
+    case Type of
+	<<"gcm">> ->
+	    DeviceID = fxml:get_path_s(Notification, [{elem, <<"id">>}, cdata]),
+            ?INFO_MSG("Reseting badge for ~s with applepush token ~p",[jid:to_string(JID),DeviceID]),
+	    case DeviceID of
+		ID1 when is_binary(ID1), size(ID1) > 0 ->
+		    {stop, set_local_badge(JID, ID1, Count)};
+                _ ->
+                    Acc
+            end;
+	_ ->
+	    Acc
+    end.
 
 set_local_badge(JID, DeviceID, Count) ->
     case gen_mod:db_type(JID#jid.lserver, ?MODULE) of
