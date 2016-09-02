@@ -190,7 +190,7 @@ fields_to_roster(LServer, LUser, Item,
                      Item#roster{name = (Nick)}, Rest);
 fields_to_roster(LServer, LUser, Item,
                  [{Field, Value} | Rest]) ->
-    ?ERROR_MSG("Invalid roster item for user ~s: unknown field ~s=~s", [LUser, Field, Value]),
+    ?ERROR_MSG("Invalid roster item for user ~s: unknown field ~s=~p", [LUser, Field, Value]),
     fields_to_roster(LServer, LUser, Item, Rest).
     %throw({unknown_field, {Field, Value}}).
 
