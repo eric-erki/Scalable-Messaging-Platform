@@ -827,7 +827,20 @@ count_offline_messages(User, Server) ->
     Mod:count_messages(LUser, LServer).
 
 count_offline_messages(_Acc, User, Server) ->
-    N = count_offline_messages(User, Server),
+    N = case gen_mod:get_module_opt(Server, ?MODULE, badge_empty_body,
+                           fun(B) when is_boolean(B) -> B end,
+			   true) of
+        true ->
+            count_offline_messages(User, Server);
+        false ->
+            %%TODO:  This is not efficient.  To do it efficiently need to change
+            %%       schema on all backends implementations
+            Mod = gen_mod:db_mod(Server, ?MODULE),
+            MsgsWithBody = lists:filter(fun(#offline_msg{packet=Packet}) ->
+                                    fxml:get_subtag(Packet, <<"body">>) /= false
+                         end, Mod:read_all_messages(jid:nodeprep(User), jid:nameprep(Server))),
+            length(MsgsWithBody)
+        end,
     {stop, N}.
 
 import_info() ->
@@ -874,9 +887,11 @@ mod_opt_type(store_empty_body) ->
     fun (V) when is_boolean(V) -> V;
         (unless_chat_state) -> unless_chat_state
     end;
+mod_opt_type(badge_empty_body) ->
+    fun (V) when is_boolean(V) -> V end;
 mod_opt_type(_) ->
     [access_max_user_messages, db_type, p1db_group,
-     pool_size, store_empty_body].
+     pool_size, store_empty_body, badge_empty_body].
 
 opt_type(p1db_group) ->
     fun (G) when is_atom(G) -> G end;
