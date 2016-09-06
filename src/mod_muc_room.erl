@@ -1416,6 +1416,7 @@ subscriber_becomes_available(From, Nick, Packet, StateData) ->
     Role = get_default_role(Aff, State1),
     State2 = set_role(From, Role, State1),
     State3 = set_nick(From, Nick, State2),
+    tab_add_online_user(From, StateData),
     send_existing_presences(From, State3),
     send_initial_presence(From, State3, StateData),
     State3.
@@ -1962,7 +1963,6 @@ update_online_user(JID, #user{nick = Nick, subscriptions = Nodes,
     NewStateData.
 
 add_online_user(JID, Nick, Role, IsSubscriber, Nodes, StateData) ->
-    tab_add_online_user(JID, StateData),
     ?GEN_FSM:cancel_timer(StateData#state.hibernate_timer),
     User = #user{jid = JID, nick = Nick, role = Role,
 		 is_subscriber = IsSubscriber, subscriptions = Nodes},
@@ -1986,6 +1986,7 @@ remove_online_user(JID, StateData, _IsSubscriber = true, _Reason) ->
 		error ->
 		    StateData#state.users
 	    end,
+    tab_remove_online_user(JID, StateData),
     set_hibernate_timer_if_empty(StateData#state{users = Users});
 remove_online_user(JID, StateData, _IsSubscriber, Reason) ->
     LJID = jid:tolower(JID),
@@ -2245,6 +2246,7 @@ add_new_user(From, Nick,
 					   add_online_user(From, Nick, Role,
 							   IsSubscribeRequest,
 							   Nodes, StateData)),
+			      tab_add_online_user(From, NewState),
 			      send_existing_presences(From, NewState),
 			      send_initial_presence(From, NewState, StateData),
 			      Shift = count_stanza_shift(Nick, Els, NewState),
