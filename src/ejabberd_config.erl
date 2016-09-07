@@ -326,7 +326,9 @@ get_absolute_path(File) ->
 	relative ->
 	    Config_path = get_ejabberd_config_path(),
 	    Config_dir = filename:dirname(Config_path),
-	    filename:absname_join(Config_dir, File)
+	    filename:absname_join(Config_dir, File);
+	volumerelative ->
+	    filename:absname(File)
     end.
 
 
