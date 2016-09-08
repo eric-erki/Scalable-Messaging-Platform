@@ -205,7 +205,8 @@ normal_state({route, From, <<"">>,
 	     StateData) ->
     Lang = fxml:get_attr_s(<<"xml:lang">>, Attrs),
     case is_user_online(From, StateData) orelse
-	   is_user_allowed_message_nonparticipant(From, StateData)
+	is_subscriber(From, StateData) orelse
+	is_user_allowed_message_nonparticipant(From, StateData)
 	of
       true ->
 	  case fxml:get_attr_s(<<"type">>, Attrs) of
@@ -594,7 +595,8 @@ normal_state({route, From, ToNick,
       continue_delivery ->
 	  case
 	    {(StateData#state.config)#config.allow_private_messages,
-	     is_user_online(From, StateData)}
+	     is_user_online(From, StateData) orelse
+	     is_subscriber(From, StateData)}
 	      of
 	    {true, true} ->
 		case Type of
@@ -629,9 +631,7 @@ normal_state({route, From, ToNick,
 			       PmFromVisitors == anyone;
 			       (PmFromVisitors == moderators) and
 				 DstIsModerator ->
-				   {ok, #user{nick = FromNick}} =
-				       (?DICT):find(jid:tolower(From),
-						    StateData#state.users),
+				   {FromNick, _} = get_participant_data(From, StateData),
 				   FromNickJID =
 				       jid:replace_resource(StateData#state.jid,
 								 FromNick),
@@ -1266,7 +1266,14 @@ get_participant_data(From, StateData) ->
 	of
       {ok, #user{nick = FromNick, role = Role}} ->
 	  {FromNick, Role};
-      error -> {<<"">>, moderator}
+      error ->
+	    case ?DICT:find(jid:tolower(jid:remove_resource(From)),
+			    StateData#state.subscribers) of
+		{ok, #subscriber{nick = FromNick}} ->
+		    {FromNick, none};
+		error ->
+		    {<<"">>, moderator}
+	    end
     end.
 
 process_presence(From, Nick,
