@@ -64,6 +64,7 @@ defmodule Ejabberd.Mixfile do
      # relx is used by exrm. Lock version as for now, ejabberd doesn not compile fine with
      # version 3.20:
      {:relx, "~> 3.21", only: :dev},
+     {:ex_doc, ">= 0.0.0", only: :dev},
      {:meck, "~> 0.8.4", only: :test},
      {:moka, github: "processone/moka", tag: "1.0.5c", only: :test}]
   end
