@@ -15,7 +15,7 @@
 -export([init/2, store_messages/5, pop_messages/2, remove_expired_messages/1,
 	 remove_old_messages/2, remove_user/2, read_message_headers/2,
 	 read_message/3, remove_message/3, read_all_messages/2,
-	 remove_all_messages/2, count_messages/2, import/1,
+	 remove_all_messages/2, count_messages/2, import/1, count_messages_with_body/2,
 	 export/1]).
 
 -include("jlib.hrl").
@@ -48,8 +48,9 @@ store_messages(Host, {User, _Server}, Msgs, Len, MaxOfflineMsgs) ->
 				  jlib:add_delay_info(Packet, Host,
 						      M#offline_msg.timestamp,
 						      <<"Offline Storage">>),
+				  HasBody = M#offline_msg.has_body,
 			      XML = fxml:element_to_binary(NewPacket),
-                              sql_queries:add_spool_sql(LUser, XML)
+                              sql_queries:add_spool_sql(LUser,  HasBody, XML)
 		      end,
 		      Msgs),
 	    sql_queries:add_spool(Host, Query)
@@ -59,8 +60,8 @@ pop_messages(LUser, LServer) ->
     case sql_queries:get_and_del_spool_msg_t(LServer, LUser) of
 	{atomic, {selected, Rs}} ->
 	    {ok, lists:flatmap(
-		   fun({_, XML}) ->
-			   case xml_to_offline_msg(XML) of
+		   fun({_, HasBody, XML}) ->
+			   case xml_to_offline_msg(HasBody, XML) of
 			       {ok, Msg} ->
 				   [Msg];
 			       _Err ->
@@ -95,12 +96,12 @@ remove_user(LUser, LServer) ->
 read_message_headers(LUser, LServer) ->
     case catch ejabberd_sql:sql_query(
 		 LServer,
-                 ?SQL("select @(xml)s, @(seq)d from spool"
+                 ?SQL("select @(xml)s, @(has_body)b, @(seq)d from spool"
                       " where username=%(LUser)s order by seq")) of
 	{selected, Rows} ->
 	    lists:flatmap(
-	      fun({XML, Seq}) ->
-		      case xml_to_offline_msg(XML) of
+	      fun({XML, HasBody, Seq}) ->
+		      case xml_to_offline_msg(HasBody, XML) of
 			  {ok, #offline_msg{from = From,
 					    to = To,
 					    packet = El}} ->
@@ -116,10 +117,10 @@ read_message_headers(LUser, LServer) ->
 read_message(LUser, LServer, Seq) ->
     case ejabberd_sql:sql_query(
 	   LServer,
-	   ?SQL("select @(xml)s from spool where username=%(LUser)s"
+	   ?SQL("select @(has_body)b, @(xml)s from spool where username=%(LUser)s"
                 " and seq=%(Seq)d")) of
-	{selected, [{RawXML}|_]} ->
-	    case xml_to_offline_msg(RawXML) of
+	{selected, [{HasBody, RawXML}|_]} ->
+	    case xml_to_offline_msg(HasBody, RawXML) of
 		{ok, Msg} ->
 		    {ok, Msg};
 		_ ->
@@ -139,12 +140,12 @@ remove_message(LUser, LServer, Seq) ->
 read_all_messages(LUser, LServer) ->
     case catch ejabberd_sql:sql_query(
                  LServer,
-                 ?SQL("select @(xml)s from spool where "
+                 ?SQL("select @(has_body)b, @(xml)s from spool where "
                       "username=%(LUser)s order by seq")) of
         {selected, Rs} ->
             lists:flatmap(
-              fun({XML}) ->
-		      case xml_to_offline_msg(XML) of
+              fun({HasBody, XML}) ->
+		      case xml_to_offline_msg(HasBody, XML) of
 			  {ok, Msg} -> [Msg];
 			  _ -> []
 		      end
@@ -167,9 +168,20 @@ count_messages(LUser, LServer) ->
         _ -> 0
     end.
 
+count_messages_with_body(LUser, LServer) ->
+    case catch ejabberd_sql:sql_query(
+                 LServer,
+                 ?SQL("select @(count(*))d from spool "
+                      "where username=%(LUser)s and has_body=1")) of
+        {selected, [{Res}]} ->
+            Res;
+        _ -> 0
+    end.
+
 export(_Server) ->
     [{offline_msg,
       fun(Host, #offline_msg{us = {LUser, LServer},
+                             has_body = HasBody,
                              timestamp = TimeStamp, from = From, to = To,
                              packet = Packet})
             when LServer == Host ->
@@ -178,8 +190,8 @@ export(_Server) ->
                                             <<"Offline Storage">>),
               XML = fxml:element_to_binary(Packet2),
               [?SQL("delete from spool where username=%(LUser)s;"),
-               ?SQL("insert into spool(username, xml) values ("
-                    "%(LUser)s, %(XML)s);")];
+               ?SQL("insert into spool(username, has_body, xml) values ("
+                    "%(LUser)s, %(HasBody)b, %(XML)s);")];
          (_Host, _R) ->
               []
       end}].
@@ -190,17 +202,17 @@ import(_) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-xml_to_offline_msg(XML) ->
+xml_to_offline_msg(HasBody, XML) ->
     case fxml_stream:parse_element(XML) of
 	#xmlel{} = El ->
-	    el_to_offline_msg(El);
+	    el_to_offline_msg(HasBody, El);
 	Err ->
 	    ?ERROR_MSG("got ~p when parsing XML packet ~s",
 		       [Err, XML]),
 	    Err
     end.
 
-el_to_offline_msg(El) ->
+el_to_offline_msg(HasBody, El) ->
     To_s = fxml:get_tag_attr_s(<<"to">>, El),
     From_s = fxml:get_tag_attr_s(<<"from">>, El),
     To = jid:from_string(To_s),
@@ -213,6 +225,7 @@ el_to_offline_msg(El) ->
 	    {error, bad_jid_from};
        true ->
 	    {ok, #offline_msg{us = {To#jid.luser, To#jid.lserver},
+            has_body = HasBody,
 			      from = From,
 			      to = To,
 			      timestamp = undefined,

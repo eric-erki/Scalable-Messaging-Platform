@@ -4,6 +4,7 @@
 	 expire = now()        :: erlang:timestamp() | never | '_',
 	 from = #jid{}         :: jid() | '_',
 	 to = #jid{}           :: jid() | '_',
+	 has_body = true       :: boolean() | '_',
 	 packet = #xmlel{}     :: xmlel() | '_'}).
 
 -record(state,

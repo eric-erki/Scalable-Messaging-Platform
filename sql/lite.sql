@@ -77,12 +77,13 @@ CREATE INDEX i_sr_user_grp ON sr_user (grp);
 
 CREATE TABLE spool (
     username text NOT NULL,
+    has_body boolean NOT NULL,
     xml text NOT NULL,
     seq INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX i_despool ON spool (username);
+CREATE INDEX i_despool ON spool (username, has_body);
 
 
 CREATE TABLE vcard (

@@ -37,7 +37,7 @@
 	 set_password_scram_t/6, add_user/3, add_user_scram/6,
 	 del_user/2, del_user_return_password/3, list_users/1,
 	 list_users/2, users_number/1, users_number/2,
-	 add_spool_sql/2, add_spool/2, get_and_del_spool_msg_t/2,
+	 add_spool_sql/3, add_spool/2, get_and_del_spool_msg_t/2,
 	 del_spool_msg/2, get_roster/2, get_roster_jid_groups/2,
 	 get_roster_groups/3, del_user_roster_t/2,
 	 get_roster_by_jid/3, get_rostergroup_by_jid/3,
@@ -292,8 +292,8 @@ load_roomhistory(LServer, Room) ->
              "order by timestamp"),
     ejabberd_sql:sql_query(LServer, Q).
 
-add_spool_sql(LUser, XML) ->
-    ?SQL("insert into spool(username, xml) values (%(LUser)s, %(XML)s)").
+add_spool_sql(LUser, HasBody, XML) ->
+    ?SQL("insert into spool(username, has_body, xml) values (%(LUser)s, %(HasBody)b, %(XML)s)").
 
 add_spool(LServer, Queries) ->
     ejabberd_sql:sql_transaction(LServer, Queries).
@@ -302,7 +302,7 @@ get_and_del_spool_msg_t(LServer, LUser) ->
     F = fun () ->
 		Result =
 		    ejabberd_sql:sql_query_t(
-                      ?SQL("select @(username)s, @(xml)s from spool where "
+                      ?SQL("select @(username)s, @(has_body)b, @(xml)s from spool where "
                            "username=%(LUser)s order by seq;")),
 		ejabberd_sql:sql_query_t(
                   ?SQL("delete from spool where username=%(LUser)s;")),

@@ -135,11 +135,13 @@ item_to_offline_msg(LUser, LServer, Item) ->
 	#xmlel{} = El = fxml_stream:parse_element(Packet),
 	#jid{} = From = jid:from_string(From_s),
 	Now = jlib:datetime_string_to_timestamp(Timestamp),
+  HasBody = fxml:get_subtag(El, <<"body">>) /= false,
 	{ok, #offline_msg{us = {LUser, LServer},
 			  from = From,
 			  to = To,
 			  timestamp = Now,
 			  expire = undefined,
+        has_body = HasBody,
 			  packet = El}}
     catch _:{badmatch, error} ->
 	    ?ERROR_MSG("failed to get 'from' JID from REST payload ~p", [Item]),

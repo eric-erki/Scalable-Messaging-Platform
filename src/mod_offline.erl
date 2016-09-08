@@ -462,10 +462,11 @@ store_packet(From, To, Packet) ->
 		    TimeStamp = p1_time_compat:timestamp(),
 		    #xmlel{children = Els} = Packet,
 		    Expire = find_x_expire(TimeStamp, Els),
+		    HasBody = fxml:get_subtag(Packet, <<"body">>) /= false,
 		    Worker = mod_offline_sup:get_worker_for(To#jid.lserver, To#jid.luser),
 		    Worker !  #offline_msg{us = {LUser, LServer},
 				   timestamp = TimeStamp, expire = Expire,
-				   from = From, to = To, packet = Packet},
+				   from = From, to = To, has_body = HasBody, packet = Packet},
 		    stop;
 		_ -> ok
 	    end;
@@ -826,6 +827,19 @@ count_offline_messages(User, Server) ->
     Mod = gen_mod:db_mod(LServer, ?MODULE),
     Mod:count_messages(LUser, LServer).
 
+
+count_offline_messages_with_body(Mod, User, Server) ->
+    count_offline_messages_with_body(Mod, User, Server,
+      erlang:function_exported(Mod, count_messages_with_body, 2)).
+count_offline_messages_with_body(Mod, LUser, LServer, true) ->
+    Mod:count_messages_with_body(LUser, LServer);
+count_offline_messages_with_body(Mod, LUser, LServer, false) ->
+    %% Generic (non-efficient) way, for storage modules that doesn't support this.
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+    MsgsWithBody = lists:filter(fun(#offline_msg{has_body=HasBody}) -> HasBody end, 
+                      Mod:read_all_messages(LUser, LServer)),
+    length(MsgsWithBody).
+
 count_offline_messages(_Acc, User, Server) ->
     N = case gen_mod:get_module_opt(Server, ?MODULE, badge_empty_body,
                            fun(B) when is_boolean(B) -> B end,
@@ -833,13 +847,8 @@ count_offline_messages(_Acc, User, Server) ->
         true ->
             count_offline_messages(User, Server);
         false ->
-            %%TODO:  This is not efficient.  To do it efficiently need to change
-            %%       schema on all backends implementations
             Mod = gen_mod:db_mod(Server, ?MODULE),
-            MsgsWithBody = lists:filter(fun(#offline_msg{packet=Packet}) ->
-                                    fxml:get_subtag(Packet, <<"body">>) /= false
-                         end, Mod:read_all_messages(jid:nodeprep(User), jid:nameprep(Server))),
-            length(MsgsWithBody)
+            count_offline_messages_with_body(Mod, jid:nodeprep(User), jid:nameprep(Server)) 
         end,
     {stop, N}.
 

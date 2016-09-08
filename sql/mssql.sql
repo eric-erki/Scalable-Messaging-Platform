@@ -318,6 +318,7 @@ WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, ALLOW_ROW_LOCKS = ON, ALLOW
 
 CREATE TABLE [dbo].[spool] (
         [username] [varchar] (250) NOT NULL,
+        [has_body] [smallint] NOT NULL,
         [xml] [text] NOT NULL,
         [seq] [bigint] IDENTITY(1,1) NOT NULL,
         [created_at] [datetime] NOT NULL DEFAULT GETDATE(),
@@ -327,7 +328,7 @@ CREATE TABLE [dbo].[spool] (
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON)
 ) TEXTIMAGE_ON [PRIMARY];
 
-CREATE INDEX [spool_username] ON [spool] (username)
+CREATE INDEX [spool_username] ON [spool] (username, has_body)
 WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON);
 
 CREATE INDEX [spool_created_at] ON [spool] (created_at)
