@@ -13,7 +13,7 @@
 -export([init/2, store_messages/5, pop_messages/2, remove_expired_messages/1,
 	 remove_old_messages/2, remove_user/2, read_message_headers/2,
 	 read_message/3, remove_message/3, read_all_messages/2,
-	 remove_all_messages/2, count_messages/2, import/1]).
+	 remove_all_messages/2, count_messages/2, import/1, count_messages_with_body/2]).
 
 -include("jlib.hrl").
 -include("mod_offline.hrl").
@@ -33,7 +33,7 @@ init(_Host, _Opts) ->
 store_messages(_Host, US, Msgs, Len, MaxOfflineMsgs) ->
     F = fun () ->
 		Count = if MaxOfflineMsgs =/= infinity ->
-				Len + count_mnesia_records(US);
+				Len + count_mnesia_records(#offline_msg{us = US,  _ = '_'});
 			   true -> 0
 			end,
 		if Count > MaxOfflineMsgs -> discard;
@@ -151,7 +151,17 @@ remove_all_messages(LUser, LServer) ->
 count_messages(LUser, LServer) ->
     US = {LUser, LServer},
     F = fun () ->
-		count_mnesia_records(US)
+		count_mnesia_records(#offline_msg{us = US,  _ = '_'})
+	end,
+    case catch mnesia:async_dirty(F) of
+	I when is_integer(I) -> I;
+	_ -> 0
+    end.
+ 
+count_messages_with_body(LUser, LServer) ->
+    US = {LUser, LServer},
+    F = fun () ->
+		count_mnesia_records(#offline_msg{us = US, has_body = true,  _ = '_'})
 	end,
     case catch mnesia:async_dirty(F) of
 	I when is_integer(I) -> I;
@@ -170,8 +180,7 @@ import(#offline_msg{} = Msg) ->
 %% getting the record by small increment and by using continuation.
 -define(BATCHSIZE, 100).
 
-count_mnesia_records(US) ->
-    MatchExpression = #offline_msg{us = US,  _ = '_'},
+count_mnesia_records(MatchExpression) ->
     case mnesia:select(offline_msg, [{MatchExpression, [], [[]]}],
 		       ?BATCHSIZE, read) of
 	{Result, Cont} ->

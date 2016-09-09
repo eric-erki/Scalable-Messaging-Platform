@@ -220,9 +220,10 @@ p1db_to_offmsg({LUser, LServer, Now}, Val) ->
                   (_, M) -> M
                end, OffMsg0, binary_to_term(Val)),
     El = OffMsg#offline_msg.packet,
+    HasBody = fxml:get_subtag(El, <<"body">>) /= false,
     #jid{} = To = jid:from_string(fxml:get_tag_attr_s(<<"to">>, El)),
     #jid{} = From = jid:from_string(fxml:get_tag_attr_s(<<"from">>, El)),
-    OffMsg#offline_msg{from = From, to = To}.
+    OffMsg#offline_msg{from = From, to = To, has_body = HasBody}.
 
 offmsg_to_p1db(#offline_msg{packet = Pkt, expire = T}) ->
     term_to_binary([{packet, Pkt}, {expire, T}]).

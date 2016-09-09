@@ -81,12 +81,13 @@ CREATE INDEX i_sr_user_grp ON sr_user USING btree (grp);
 
 CREATE TABLE spool (
     username text NOT NULL,
+    has_body boolean NOT NULL,
     xml text NOT NULL,
     seq SERIAL,
     created_at TIMESTAMP NOT NULL DEFAULT now()
 );
 
-CREATE INDEX i_despool ON spool USING btree (username);
+CREATE INDEX i_despool ON spool USING btree (username, has_body);
 
 CREATE TABLE archive (
     username text NOT NULL,
