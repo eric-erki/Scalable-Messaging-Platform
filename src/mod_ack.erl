@@ -275,11 +275,9 @@ has_receipt_request(Packet) ->
 has_receipt_response(Packet) ->
     has_receipt(Packet, <<"received">>).
 
-has_receipt(#xmlel{name = <<"message">>,
-		   attrs = MsgAttrs} =
-		Packet,
-	    Type) ->
-    case fxml:get_attr_s(<<"id">>, MsgAttrs) of
+has_receipt(#xmlel{name = <<"message">>} = Packet0, Type) ->
+    Packet = unwrap_pubsub_event(Packet0),
+    case fxml:get_attr_s(<<"id">>, Packet#xmlel.attrs) of
       <<"">> ->
 	  case Type of
 	    <<"request">> ->
@@ -304,6 +302,23 @@ has_receipt(#xmlel{name = <<"message">>,
 			SubTagID -> {true, SubTagID}
                     end
             end
+    end.
+
+-ifndef(NS_CLIENT).
+-define(NS_CLIENT, <<"jabber:client">>).
+-endif.
+
+unwrap_pubsub_event(#xmlel{name = <<"message">>} = Packet) ->
+    try
+	#xmlel{} = Event = fxml:get_subtag_with_xmlns(
+			     Packet, <<"event">>, ?NS_PUBSUB_EVENT),
+	#xmlel{} = Item = fxml:get_path_s(Event, [{elem, <<"items">>},
+						  {elem, <<"item">>}]),
+	#xmlel{name = <<"message">>} = Msg = fxml:get_subtag_with_xmlns(
+					       Item, <<"message">>, ?NS_CLIENT),
+	Msg
+    catch _:{badmatch, _} ->
+	    Packet
     end.
 
 are_receipts_supported(Server,
