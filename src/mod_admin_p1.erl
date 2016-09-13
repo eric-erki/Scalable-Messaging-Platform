@@ -832,6 +832,7 @@ server_info() ->
                                 end
                         end, Acc1, AL)
             end, AH, AT),
+    {LogLevel, _, _} = ejabberd_logger:get(),
     lists:flatten([
 	[{online, Sessions} | lists:zip(Nodes--LocalFailed, LocalSessions)],
 	[{jlib:binary_to_atom(Key), Val} || {Key, Val} <- Active],
@@ -841,7 +842,8 @@ server_info() ->
 	{processes, Processes},
 	{iq_handlers, IqHandlers},
 	{sql_pool_size, OdbcPoolSize},
-	{http_pool_size, HttpPoolSize}
+	{http_pool_size, HttpPoolSize},
+	{loglevel, LogLevel}
 	]).
 
 server_version() ->
