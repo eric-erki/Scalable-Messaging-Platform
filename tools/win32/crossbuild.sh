@@ -1,12 +1,12 @@
 #!/bin/sh
 
-root=~/crossbuild
-dll=$root/lib
-erts=7.3
-cd $root
-
-ejsrc=ejabberd
-ejdeps=$root/$ejsrc/deps
+# this script must be installed in cean@build.vpn.p1:crossbuild
+# and be run under the right cean context
+# usage:
+#  ssh cean
+#  prod64
+#  cd ~/crossbuild
+#  ./crossbuild.sh ejabberd-16.09
 
 zlib=zlib-1.2.8
 expat=expat-2.1.0
@@ -14,6 +14,33 @@ yaml=yaml-0.1.5
 ssl=openssl-1.0.2h
 iconv=libiconv-1.14
 sql=sqlite-autoconf-3081002
+
+[ $# -eq 1 ] || {
+  echo "error: no ejabberd version provided"
+  echo
+}
+dist=$1
+
+[ -f ~/pub/src/ejabberd/$dist.tgz ] || {
+  echo "error: no source tarball"
+  exit
+}
+[ -f ~/pub/bin/linux-x86_64/18/ejabberd/$dist.epkg ] || {
+  echo "error: no ejabberd epkg available"
+  exit
+}
+
+[ -f ejabberd ] && rm ejabberd
+tar zxf ~/pub/src/ejabberd/$dist.tgz
+ln -s $dist ejabberd
+
+root=~/crossbuild
+dll=$root/lib
+erts=7.3
+cd $root
+
+ejsrc=ejabberd
+ejdeps=$root/$ejsrc/deps
 
 CHOST=x86_64-w64-mingw32
 CC=$CHOST-gcc
@@ -110,3 +137,18 @@ $CCX -shared -static-libgcc -static-libstdc++ -o $dll/jiffy.dll *o
 cd -
 
 $ST $dll/*dll
+
+tar xf ~/pub/bin/linux-x86_64/18/ejabberd/$dist.epkg
+unzip $dist.deps.zip
+for lib in $(find $dist -name "*so")
+do
+  name=$(basename $lib)
+  rm $lib
+  cp ~/crossbuild/lib/${name/.so/.dll} $(dirname $lib)
+done
+rm $dist.deps.zip
+zip -9qr $dist.deps.zip $dist
+rm -Rf $dist
+tar cf ~/pub/bin/windows/18/ejabberd/$dist.epkg ${dist}*ez ${dist}*zip
+
+echo "success: ~/pub/bin/windows/18/ejabberd/$dist.epkg generated"
