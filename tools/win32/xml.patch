@@ -1,0 +1,27 @@
+diff --git a/c_src/fxml_stream.c b/c_src/fxml_stream.c
+index 301c10c..d0d5182 100644
+--- a/c_src/fxml_stream.c
++++ b/c_src/fxml_stream.c
+@@ -74,11 +74,7 @@ typedef enum xmlns_op {
+   OP_NOP
+ } xmlns_op;
+ 
+-static XML_Memory_Handling_Suite ms = {
+-  .malloc_fcn = enif_alloc,
+-  .realloc_fcn = enif_realloc,
+-  .free_fcn = enif_free
+-};
++static XML_Memory_Handling_Suite ms;
+ 
+ static ErlNifResourceType *parser_state_t = NULL;
+ 
+@@ -718,6 +714,9 @@ static state_t *init_parser_state(ErlNifPid *pid)
+     ASSERT(state->pid);
+     memcpy(state->pid, pid, sizeof(ErlNifPid));
+   }
++  ms.malloc_fcn = enif_alloc;
++  ms.realloc_fcn = enif_realloc;
++  ms.free_fcn = enif_free;
+   state->parser = XML_ParserCreate_MM("UTF-8", &ms, "\n");
+   setup_parser(state);
+   return state;

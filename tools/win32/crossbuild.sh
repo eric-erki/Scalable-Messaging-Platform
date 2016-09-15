@@ -1,7 +1,7 @@
 #!/bin/sh
 
 root=~/crossbuild
-dll=$root/lib-18
+dll=$root/lib
 erts=7.3
 cd $root
 
@@ -11,7 +11,7 @@ ejdeps=$root/$ejsrc/deps
 zlib=zlib-1.2.8
 expat=expat-2.1.0
 yaml=yaml-0.1.5
-ssl=openssl-1.0.2g
+ssl=openssl-1.0.2h
 iconv=libiconv-1.14
 sql=sqlite-autoconf-3081002
 
@@ -41,14 +41,18 @@ $CC -I$w -I$h -I$i -I$e -I$root/$zlib -D_WIN32 -c ezlib_drv.c
 $CC -shared -o $dll/ezlib_drv.dll ezlib_drv.o $l/ei_md.lib $dll/zlib1.dll
 cd -
 
-cd $ejdeps/stringprep/c_src
+cd $ejdeps/stringprep
+patch -p1<$root/stringprep.patch
+cd c_src
 rm *o
 $CC -I$w -I$h -I$i -I$e -D_WIN32 -c *c
 $CCX -I$w -I$h -I$i -I$e -D_WIN32 -c *cpp
 $CCX -shared -static-libgcc -static-libstdc++ -o $dll/stringprep.dll *o
 cd -
 
-cd $ejdeps/fast_xml/c_src
+cd $ejdeps/fast_xml
+patch -p1<$root/xml.patch
+cd c_src
 rm *o
 [ -d $root/$expat ] || curl http://kent.dl.sourceforge.net/project/expat/expat/${expat#*-}/$expat.tar.gz | tar -C $root -zxf -
 (cd $root/$expat; ./configure --host=$CHOST; make)
@@ -65,7 +69,9 @@ $CC -I$w -I$h -I$i -I$e -I$root/$yaml/include -DYAML_DECLARE_STATIC -D_WIN32 -c 
 $CC -shared -o $dll/fast_yaml.dll fast_yaml.o $root/$yaml/src/.libs/libyaml.a
 cd -
 
-cd $ejdeps/fast_tls/c_src
+cd $ejdeps/fast_tls
+patch -p1<$root/tls.patch
+cd c_src
 rm *o
 [ -d $root/$ssl ] || curl https://www.openssl.org/source/$ssl.tar.gz | tar -C $root -zxf -
 (cd $root/$ssl; ./Configure mingw64; make CC=$CC; $CHOST-ranlib *.a)
