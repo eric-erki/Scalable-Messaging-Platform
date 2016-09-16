@@ -33,7 +33,7 @@
 -export([init/3, terminate/2, options/0, features/0,
     create_node_permission/6, create_node/2, delete_node/1,
     purge_node/2, subscribe_node/8, unsubscribe_node/4,
-    publish_item/7, delete_item/4, remove_extra_items/3,
+    publish_item/6, delete_item/4, remove_extra_items/3,
     get_entity_affiliations/2, get_node_affiliations/1,
     get_affiliation/2, set_affiliation/3,
     get_entity_subscriptions/2, get_node_subscriptions/1,
@@ -73,9 +73,8 @@ subscribe_node(Nidx, Sender, Subscriber, AccessModel, SendLast,
 unsubscribe_node(Nidx, Sender, Subscriber, SubId) ->
     node_pep_sql:unsubscribe_node(Nidx, Sender, Subscriber, SubId).
 
-publish_item(Nidx, Publisher, Model, MaxItems, ItemId, Payload, PubOpts) ->
-    node_pep_sql:publish_item(Nidx, Publisher, Model, MaxItems, ItemId,
-			      Payload, PubOpts).
+publish_item(Nidx, Publisher, Model, MaxItems, ItemId, Payload) ->
+    node_pep_sql:publish_item(Nidx, Publisher, Model, MaxItems, ItemId, Payload).
 
 remove_extra_items(Nidx, MaxItems, ItemIds) ->
     node_pep_sql:remove_extra_items(Nidx, MaxItems, ItemIds).
