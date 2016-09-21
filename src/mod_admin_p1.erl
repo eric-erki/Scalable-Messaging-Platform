@@ -804,7 +804,7 @@ server_info() ->
     IqHandlers = iq_handlers_number(),
     Nodes = ejabberd_cluster:get_nodes(),
     {LocalSessions, LocalFailed} = ejabberd_cluster:multicall(Nodes, ?MODULE, local_sessions_number, []),
-    Sessions = ets:info(session, size),
+    Sessions = ejabberd_sm:get_sessions_number(),
     OdbcPoolSize = lists:sum(
 	    [workers_number(gen_mod:get_module_proc(Host, ejabberd_sql_sup))
 		|| Host <- Hosts]),

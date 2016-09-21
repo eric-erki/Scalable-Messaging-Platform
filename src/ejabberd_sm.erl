@@ -67,6 +67,7 @@
 	 force_update_presence/1,
 	 connected_users/0,
 	 connected_users_number/0,
+	 get_sessions_number/0,
 	 user_resources/2,
 	 kick_user/2,
 	 get_session_pid/3,
@@ -998,6 +999,9 @@ connected_users() ->
 	      SUSRs).
 
 connected_users_number() ->
+    length(dirty_get_sessions_list()).
+
+get_sessions_number() ->
     lists:sum([Mod:get_sessions_number() || Mod <- get_sm_backends()]).
 
 user_resources(User, Server) ->
