@@ -1193,6 +1193,15 @@ get_apns_config(Host) ->
     case push_spec(Host, mod_applepush, mod_applepush_service, certfile) of
 	undefined ->
 	    [{production, <<>>}, {sandbox, <<>>}];
+	{_, [{_, _, File}]} ->
+	    Cert = case file:read_file(File) of
+		{ok, Data} -> Data;
+		_ -> <<>>
+	    end,
+	    case cert_type(File) of
+		production -> [{production, Cert}, {sandbox, <<>>}];
+		sandbox -> [{production, <<>>}, {sandbox, Cert}]
+	    end;
 	{_, [{_, _, ProdFile}, {_, _, DevFile}]} ->
 	    ProdCert = case file:read_file(ProdFile) of
 		{ok, ProdData} -> ProdData;
@@ -1268,6 +1277,13 @@ appid_from_cert(Cert) ->
 		++ " -noout -subject | sed 's!.*UID=\\([^/]*\\)/.*!\\1!'"),
 	    right, $\n),
     list_to_binary(AppId).
+
+cert_type(Cert) ->
+    case os:cmd("openssl x509 -in " ++ binary_to_list(Cert)
+		++ " -noout -subject | grep Development") of
+	[] -> production;
+	_ -> sandbox
+    end.
 
 write_cert(CertData) ->
     write_cert(CertData, <<>>).
