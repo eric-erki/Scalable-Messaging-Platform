@@ -208,6 +208,14 @@ AC_ARG_ENABLE(redis,
   *) AC_MSG_ERROR(bad value ${enableval} for --enable-redis) ;;
 esac],[if test "x$redis" = "x"; then redis=false; fi])
 
+AC_ARG_ENABLE(logredis,
+[AC_HELP_STRING([--enable-logredis], [enable logging to redis using sidekiq job (default: no)])],
+[case "${enableval}" in
+  yes) logredis=true ;;
+  no)  logredis=false ;;
+  *) AC_MSG_ERROR(bad value ${enableval} for --enable-logredis) ;;
+esac],[if test "x$logredis" = "x"; then logredis=false; fi])
+
 AC_ARG_ENABLE(p1db,
 [AC_HELP_STRING([--enable-p1db], [enable P1DB support (default: no)])],
 [case "${enableval}" in
@@ -311,6 +319,7 @@ AC_SUBST(pam)
 AC_SUBST(zlib)
 AC_SUBST(riak)
 AC_SUBST(redis)
+AC_SUBST(logredis)
 AC_SUBST(p1db)
 AC_SUBST(elixir)
 AC_SUBST(iconv)

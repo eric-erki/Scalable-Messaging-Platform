@@ -41,3 +41,23 @@
             false -> ok;
             _ -> 'Elixir.Logger':bare_log(error, io_lib:format(Format, Args), [?MODULE])
         end).
+
+
+
+-ifdef(LOG_REDIS).
+
+-define(REMOTE_LOG(Host, Level, Message),
+	mod_log_redis:log(Host, Level, Message)).
+-define(REMOTE_LOG(Host, Level, Format, Args),
+	mod_log_redis:log(Host, Level, Format, Args)).
+-define(REMOTE_LOG(Host, Level, Format, Args, Opts),
+	mod_log_redis:log(Host, Level, Format, Args, Opts)).
+-else.
+
+-define(REMOTE_LOG(Host, Level, Message),
+	{ok, ignored}).
+-define(REMOTE_LOG(Host, Level, Format, Args),
+	{ok, ignored}).
+-define(REMOTE_LOG(Host, Level, Format, Args, Opts),
+	{ok, ignored}).
+-endif.
