@@ -1224,8 +1224,12 @@ setup_apns(Host, ProductionCertData, SandboxCertData) ->
 	    SandboxCert = write_cert(SandboxCertData, <<"_dev">>),
 	    Config = applepush_cfg(Host, ProductionCert, SandboxCert),
 	    case update_extra_config("applepush.yml", Host, Config) of
-		ok -> 0;
-		_ -> 1
+		ok ->
+		    ModulesOpts = proplists:get_value(modules, Config, []),
+		    start_modules(Host, ModulesOpts),
+		    0;
+		_ ->
+		    1
 	    end;
 	%{Prod, [{ProdId, Prod, ProdFile}, {DevId, Dev, DevFile}]} ->
 	    % TODO maybe avoid restart if only cert payload changed
@@ -1233,21 +1237,27 @@ setup_apns(Host, ProductionCertData, SandboxCertData) ->
 	    % 0;
 	_ ->
 	    % if applepush configuration changed, stop it first and config from scratch
-	    [gen_mod:stop_module(Host, Mod) || Mod <- [mod_applepush, mod_applepush_service]],
+	    stop_modules(Host, [mod_applepush, mod_applepush_service]),
 	    setup_apns(Host, ProductionCertData, SandboxCertData)
     end.
 
+applepush_cfg(_, {error, undefined}, {error, undefined}) ->
+    [];
 applepush_cfg(Host, ProductionCert, SandboxCert) ->
     ProductionAppId = appid_from_cert(ProductionCert),
     SandboxAppId = case appid_from_cert(SandboxCert) of
 	undefined -> undefined;
 	AppId -> <<AppId/binary, "_dev">>
     end,
+    DefaultService = case ProductionAppId of
+	undefined -> <<"apnsdev.", Host/binary>>;
+	_ -> <<"apnsprod.", Host/binary>>
+    end,
     [{modules, [
 	{mod_applepush, [
 		{db_type, sql},
 		{iqdisc, 50},
-		{default_service, <<"apnsprod.", Host/binary>>},
+		{default_service, DefaultService},
 		{push_services,
 		    [{ProductionAppId, <<"apnsprod.", Host/binary>>}
 			|| ProductionAppId =/= undefined] ++
@@ -1326,18 +1336,21 @@ setup_gcm(Host, ApiKey, AppId) ->
 	    % if mod_gcm not started, generate config, start gcm
 	    Config = gcm_cfg(Host, ApiKey, AppId),
 	    case update_extra_config("gcm.yml", Host, Config) of
-		ok -> 0;
-		_ -> 1
+		ok ->
+		    ModulesOpts = proplists:get_value(modules, Config, []),
+		    start_modules(Host, ModulesOpts),
+		    0;
+		_ ->
+		    1
 	    end;
-	%{Service, [{AppId, Service, ApiKey}]} ->
-	    % TODO can we avoid restart ?
-	    % 0;
 	_ ->
 	    % if gcm configuration changed, stop it first and config from scratch
-	    [gen_mod:stop_module(Host, Mod) || Mod <- [mod_gcm, mod_gcm_service]],
+	    stop_modules(Host, [mod_gcm, mod_gcm_service]),
 	    setup_gcm(Host, ApiKey, AppId)
     end.
 
+gcm_cfg(_, _, <<>>) ->
+    [];
 gcm_cfg(Host, ApiKey, AppId) ->
     [{modules, [
 	{mod_gcm, [
@@ -1386,15 +1399,21 @@ setup_webhook(Host, Gateway, AppId) ->
 	    % if mod_webhook not started, generate config, start gcm
 	    Config = webhook_cfg(Host, Gateway, AppId),
 	    case update_extra_config("webhook.yml", Host, Config) of
-		ok -> 0;
-		_ -> 1
+		ok ->
+		    ModulesOpts = proplists:get_value(modules, Config, []),
+		    start_modules(Host, ModulesOpts),
+		    0;
+		_ ->
+		    1
 	    end;
 	_ ->
 	    % if webhook configuration changed, stop it first and config from scratch
-	    [gen_mod:stop_module(Host, Mod) || Mod <- [mod_webhook, mod_webhook_service]],
+	    stop_modules(Host, [mod_webhook, mod_webhook_service]),
 	    setup_webhook(Host, Gateway, AppId)
     end.
 
+webhook_cfg(_, _, <<>>) ->
+    [];
 webhook_cfg(Host, Gateway, AppId) ->
     [{modules, [
 	{mod_webhook, [
@@ -1441,22 +1460,38 @@ update_extra_config(ConfigFile, Host, Config) ->
 	_ ->
 	    [{Host, Config}]
     end,
-    case catch fast_yaml:encode([{append_host_config, FullConfig}]) of
+    CleanConfig = case Config of
+	[] ->
+	    lists:keydelete(Host, 1, FullConfig);
+	_ ->
+	    FullConfig
+    end,
+    write_raw_config(File, CleanConfig).
+
+write_raw_config(File, []) ->
+    write_yaml_config(File, "# Empty configuration file\n");
+write_raw_config(File, Config) ->
+    case catch fast_yaml:encode([{append_host_config, Config}]) of
 	{'EXIT', R1} ->
 	    ?ERROR_MSG("Can not encode config: ~p", [R1]),
 	    {error, R1};
-	Yml ->
-	    case file:write_file(File, Yml) of
-		{error, R2} ->
-		    ?ERROR_MSG("Can not write config: ~p", [R2]),
-		    {error, R2};
-		ok ->
-		    Modules = proplists:get_value(modules, Config, []),
-		    [gen_mod:start_module(Host, Mod, Opts)
-			|| {Mod, Opts} <- Modules],
-		    ok
-	    end
+	Yaml ->
+	    write_yaml_config(File, Yaml)
     end.
+write_yaml_config(File, Yaml) ->
+    case file:write_file(File, Yaml) of
+	{error, R2} ->
+	    ?ERROR_MSG("Can not write config: ~p", [R2]),
+	    {error, R2};
+	ok ->
+	    ok
+    end.
+
+stop_modules(Host, Modules) ->
+    [gen_mod:stop_module(Host, Mod) || Mod <- Modules].
+
+start_modules(Host, ModulesOpts) ->
+    [gen_mod:start_module(Host, Mod, Opts) || {Mod, Opts} <- ModulesOpts].
 
 user_action(User, Server, Fun, OK) ->
     case ejabberd_auth:is_user_exists(User, Server) of
