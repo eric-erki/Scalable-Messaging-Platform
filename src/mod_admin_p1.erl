@@ -1314,6 +1314,8 @@ get_gcm_config(Host) ->
     case push_spec(Host, mod_gcm, mod_gcm_service, apikey) of
 	undefined ->
 	    [{apikey, <<>>}, {appid, <<>>}];
+	{_, []} ->
+	    [{apikey, <<>>}, {appid, <<>>}];
 	{_, [{AppId, _, ApiKey}]} ->
 	    [{apikey, ApiKey}, {appid, AppId}]
     end.
