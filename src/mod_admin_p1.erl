@@ -1365,6 +1365,8 @@ get_webhook_config(Host) ->
     case push_spec(Host, mod_webhook, mod_webhook_service, apikey) of
 	undefined ->
 	    [{apikey, <<>>}, {appid, <<>>}];
+	{_, []} ->
+	    [{apikey, <<>>}, {appid, <<>>}];
 	{_, [{AppId, _, ApiKey}]} ->
 	    lists:merge([{apikey, ApiKey}, {appid, AppId}],
                         get_webhook_gateway(Host, AppId))
