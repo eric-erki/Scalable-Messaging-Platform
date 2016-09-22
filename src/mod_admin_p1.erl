@@ -1193,6 +1193,8 @@ get_apns_config(Host) ->
     case push_spec(Host, mod_applepush, mod_applepush_service, certfile) of
 	undefined ->
 	    [{production, <<>>}, {sandbox, <<>>}];
+	{_, []} ->
+	    [{production, <<>>}, {sandbox, <<>>}];
 	{_, [{_, _, File}]} ->
 	    Cert = case file:read_file(File) of
 		{ok, Data} -> Data;
