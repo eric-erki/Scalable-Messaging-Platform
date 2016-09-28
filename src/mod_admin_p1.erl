@@ -57,7 +57,8 @@
 	 p1db_records_number/0, iq_handlers_number/0,
 	 server_info/0, server_version/0, server_health/0,
 	% mass notification
-	 start_mass_message/3, stop_mass_message/1, mass_message/5,
+	 start_mass_message/3, stop_mass_message/1,
+	 send_mass_message/4, mass_message/5,
 	% mam
 	 purge_mam/2,
 	 get_commands_spec/0,
@@ -237,9 +238,16 @@ get_commands_spec() ->
 		       },
      #ejabberd_commands{name = start_mass_message,
 			tags = [stanza],
-			desc = "Send chat message or stanza to a mass of users",
+			desc = "Send chat message or stanza to all online users",
 			module = ?MODULE, function = start_mass_message,
 			args = [{server, binary}, {payload, binary}, {rate, integer}],
+			result = {res, integer}},
+     #ejabberd_commands{name = send_mass_message,
+			tags = [stanza],
+			desc = "Send chat message or stanza to a mass of users",
+			module = ?MODULE, function = send_mass_message,
+			args = [{server, binary}, {payload, binary}, {rate, integer},
+			        {uids, {list, {uid, binary}}}],
 			result = {res, integer}},
      #ejabberd_commands{name = stop_mass_message,
 			tags = [stanza],
@@ -726,14 +734,17 @@ transport_register(Host, TransportString, JIDString,
 %%% Mass message
 %%%
 
-start_mass_message(Host, Payload, Rate)
-	when is_binary(Host), is_binary(Payload), is_integer(Rate) ->
+start_mass_message(Host, Payload, Rate) ->
+    send_mass_message(Host, Payload, Rate, []).
+
+send_mass_message(Host, Payload, Rate, Rs)
+	when is_binary(Host), is_binary(Payload), is_integer(Rate), is_list(Rs) ->
     From = jid:make(<<>>, Host, <<>>),
     Proc = gen_mod:get_module_proc(Host, ?MASSLOOP),
     Delay = 60000 div Rate,
     case global:whereis_name(Proc) of
 	undefined ->
-	    case mass_message_parse(Payload) of
+	    case mass_message_parse(Payload, Rs) of
 		{error, _} -> 4;
 		{ok, _, []} -> 3;
 		{ok, <<>>, _} -> 2;
@@ -1083,7 +1094,10 @@ clean_session_list([S1, S2 | Rest], Res) ->
        true -> clean_session_list([S2 | Rest], [S1 | Res])
     end.
 
-mass_message_parse(Payload) ->
+mass_message_uids([]) -> ejabberd_sm:connected_users();
+mass_message_uids(L) -> L.
+
+mass_message_parse(Payload, Rs) ->
     case file:open(Payload, [read]) of
 	{ok, IoDevice} ->
 	    %% if argument is a file, read message and user list from it
@@ -1095,7 +1109,7 @@ mass_message_parse(Payload) ->
 			end,
 		    Uids = case mass_message_parse_uids(IoDevice) of
 			    {ok, List} when is_list(List) -> List;
-			    _ -> []
+			    _ -> mass_message_uids(Rs)
 			end,
 		    file:close(IoDevice),
 		    {ok, Packet, Uids};
@@ -1104,12 +1118,12 @@ mass_message_parse(Payload) ->
 		    Error
 	    end;
 	{error, FError} ->
-	    % if argument is payload, send it to all online users
+	    % if argument is payload, send it to all online users or defined recipients
 	    case fxml_stream:parse_element(Payload) of
 		{error, XError} ->
 		    {error, {FError, XError}};
 		Packet ->
-		    Uids = ejabberd_sm:connected_users(),
+		    Uids = mass_message_uids(Rs),
 		    {ok, Packet, Uids}
 	    end
     end.
