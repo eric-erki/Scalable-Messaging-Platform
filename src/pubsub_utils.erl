@@ -33,12 +33,11 @@
 
 -compile(export_all).
 
--spec(nodeid/2 ::
+-spec nodeid
     (
 	Host :: mod_pubsub:host(),
 	Node :: mod_pubsub:nodeId())
-    -> mod_pubsub:nodeIdx() | 0
-    ).
+    -> mod_pubsub:nodeIdx() | 0.
 nodeid(Host, Node) ->
     case mnesia:dirty_read({pubsub_node, {Host, Node}}) of
 	[N] -> nodeid(N);
@@ -47,17 +46,16 @@ nodeid(Host, Node) ->
 
 nodeid(N) -> N#pubsub_node.id.
 
--spec(nodeids/0 :: () -> [0 | mod_pubsub:nodeIdx()]).
+-spec nodeids() -> [0 | mod_pubsub:nodeIdx()].
 
 nodeids() ->
     [nodeid(Host, Node)
 	|| {Host, Node} <- mnesia:dirty_all_keys(pubsub_node)].
 
--spec(nodeids_by_type/1 ::
+-spec nodeids_by_type
     (
 	Type :: binary())
-    -> [0 | mod_pubsub:nodeIdx()]
-    ).
+    -> [0 | mod_pubsub:nodeIdx()].
 nodeids_by_type(Type) ->
     [nodeid(N)
 	|| N
