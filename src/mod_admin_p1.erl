@@ -1163,6 +1163,7 @@ mass_message(Host, Delay, Stanza, From, [Uid|Others]) ->
 	    end,
 	    Attrs = lists:keystore(<<"id">>, 1, Stanza#xmlel.attrs,
 			{<<"id">>, <<"job:", (randoms:get_string())/binary>>}),
+	    mod_jabs:add(Host, 1),
 	    ejabberd_router:route(From, To, Stanza#xmlel{attrs = Attrs}),
 	    mass_message(Host, Delay, Stanza, From, Others)
     end.
