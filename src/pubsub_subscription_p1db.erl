@@ -158,13 +158,9 @@ parse_options_xform(XFields) ->
 %%====================================================================
 %% Internal functions
 %%====================================================================
--spec(add_subscription/3 ::
-    (
-	_JID    :: ljid(),
-	_NodeId :: mod_pubsub:nodeIdx(),
-	Options :: [] | mod_pubsub:subOptions())
-    -> SubId :: mod_pubsub:subId()
-    ).
+-spec add_subscription(_JID :: ljid(), _NodeId :: mod_pubsub:nodeIdx(),
+		       Options :: [] | mod_pubsub:subOptions()) ->
+			      SubId :: mod_pubsub:subId().
 
 add_subscription(_JID, _NodeId, []) -> make_subid();
 add_subscription(_JID, _NodeId, Options) ->
@@ -172,25 +168,15 @@ add_subscription(_JID, _NodeId, Options) ->
     p1db:insert(pubsub_subscription, SubID, opts_to_p1db(Options)),
     SubID.
 
--spec(delete_subscription/3 ::
-    (
-	_JID    :: _,
-	_NodeId :: _,
-	SubId   :: mod_pubsub:subId())
-    -> ok
-    ).
+-spec delete_subscription(_JID :: _, _NodeId :: _, SubId :: mod_pubsub:subId()) -> ok.
 
 delete_subscription(_JID, _NodeId, SubID) ->
     p1db:async_delete(pubsub_subscription, SubID).
 
--spec(read_subscription/3 ::
-    (
-	_JID    :: ljid(),
-	_NodeId :: _,
-	SubID   :: mod_pubsub:subId())
-    -> mod_pubsub:pubsubSubscription()
-    | {error, notfound}
-    ).
+-spec read_subscription(_JID :: ljid(), _NodeId :: _,
+			SubID :: mod_pubsub:subId()) ->
+			       mod_pubsub:pubsubSubscription() |
+			       {error, notfound}.
 
 read_subscription(_JID, _NodeId, SubID) ->
     case p1db:get(pubsub_subscription, SubID) of
@@ -198,19 +184,13 @@ read_subscription(_JID, _NodeId, SubID) ->
 	_ -> {error, notfound}
     end.
 
--spec(write_subscription/4 ::
-    (
-	_JID    :: ljid(),
-	_NodeId :: _,
-	SubID   :: mod_pubsub:subId(),
-	Options :: mod_pubsub:subOptions())
-    -> ok
-    ).
+-spec write_subscription(_JID :: ljid(), _NodeId :: _, SubID :: mod_pubsub:subId(),
+			 Options :: mod_pubsub:subOptions()) -> ok.
 
 write_subscription(_JID, _NodeId, SubID, Options) ->
     p1db:insert(pubsub_subscription, SubID, opts_to_p1db(Options)).
 
--spec(make_subid/0 :: () -> SubId::mod_pubsub:subId()).
+-spec make_subid() -> SubId::mod_pubsub:subId().
 make_subid() ->
     {T1, T2, T3} = p1_time_compat:timestamp(),
     iolist_to_binary(io_lib:fwrite("~.16B~.16B~.16B", [T1, T2, T3])).
@@ -269,13 +249,8 @@ xopt_to_bool(<<"false">>) -> false;
 xopt_to_bool(<<"true">>) -> true;
 xopt_to_bool(_) -> {error, ?ERR_NOT_ACCEPTABLE}.
 
--spec(get_option_xfield/3 ::
-    (
-	Lang :: binary(),
-	Key  :: atom(),
-	Options :: mod_pubsub:subOptions())
-    -> xmlel()
-    ).
+-spec get_option_xfield(Lang :: binary(), Key :: atom(),
+			Options :: mod_pubsub:subOptions()) -> xmlel().
 
 %% Return a field for an XForm for Key, with data filled in, if
 %% applicable, from Options.
