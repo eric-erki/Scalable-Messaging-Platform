@@ -870,12 +870,18 @@ check_for_sessions_to_replace(User, Server, NewPid) ->
 
 check_max_sessions(LUser, LServer, NewPid) ->
     Mod = get_sm_backend(LServer),
-    SIDs = [S#session.sid || S <- online(Mod:get_sessions(LUser, LServer))],
+    Ss = Mod:get_sessions(LUser, LServer),
+    {OnlineSs, OfflineSs} = lists:partition(fun is_online/1, Ss),
     MaxSessions = get_max_user_sessions(LUser, LServer),
-    if length(SIDs) =< MaxSessions -> ok;
+    if length(OnlineSs) =< MaxSessions -> ok;
        true ->
-            {_, Pid} = lists:min(SIDs),
+	    #session{sid = {_, Pid}} = lists:min(OnlineSs),
             ejabberd_cluster:send(Pid, {replaced, NewPid})
+    end,
+    if length(OfflineSs) =< MaxSessions -> ok;
+       true ->
+	    #session{sid = SID, usr = {_, _, R}} = lists:min(OfflineSs),
+	    Mod:delete_session(LUser, LServer, R, SID)
     end.
 
 %% Get the user_max_session setting
