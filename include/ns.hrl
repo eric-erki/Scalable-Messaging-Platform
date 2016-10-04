@@ -160,6 +160,7 @@
 -define(NS_THUMBS_1, <<"urn:xmpp:thumbs:1">>).
 -define(NS_NICK,  <<"http://jabber.org/protocol/nick">>).
 -define(NS_RECEIPTS, <<"urn:xmpp:receipts">>).
+-define(NS_PUBSUB_RECEIPTS, <<"urn:xmpp:pubsub:receipts">>).
 -define(NS_P1_REBIND, <<"p1:rebind">>).
 -define(NS_P1_ACK, <<"p1:ack">>).
 -define(NS_P1_PUSH, <<"p1:push">>).

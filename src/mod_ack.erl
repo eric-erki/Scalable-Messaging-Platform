@@ -110,7 +110,7 @@ feature_inspect_packet(JID, Server,
 		       #xmlel{name = <<"presence">>} = Pres,
 		       #xmlel{name = <<"message">>, attrs = Attrs} = El) ->
     HasReceipts = has_receipt_request(El),
-    ReceiptsSupported = are_receipts_supported(Server, Pres),
+    ReceiptsSupported = are_receipts_supported(Server, Pres, El),
     ?DEBUG("feature_inspect_packet:~n** JID: ~p~n** "
 	   "Has receipts: ~p~n** Receipts supported: "
 	   "~p~n** Pres: ~p~n** El: ~p",
@@ -322,12 +322,18 @@ unwrap_pubsub_event(#xmlel{name = <<"message">>} = Packet) ->
     end.
 
 are_receipts_supported(Server,
-                       #xmlel{name = <<"presence">>,
-			      children = Els}) ->
+                       #xmlel{name = <<"presence">>, children = Els},
+                       Packet) ->
     case mod_caps:read_caps(Els) of
       nothing -> unknown;
       Caps ->
-	  lists:member(?NS_RECEIPTS, mod_caps:get_features(Server, Caps))
+	    try
+		#xmlel{} = fxml:get_subtag_with_xmlns(
+			     Packet, <<"event">>, ?NS_PUBSUB_EVENT),
+		lists:member(?NS_PUBSUB_RECEIPTS, mod_caps:get_features(Server, Caps))
+	    catch _:{badmatch, _} ->
+		lists:member(?NS_RECEIPTS, mod_caps:get_features(Server, Caps))
+	    end
     end.
 
 ping(From, To, Server, JID, El) ->
