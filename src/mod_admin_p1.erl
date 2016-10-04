@@ -57,7 +57,8 @@
 	 p1db_records_number/0, iq_handlers_number/0,
 	 server_info/0, server_version/0, server_health/0,
 	% mass notification
-	 start_mass_message/3, stop_mass_message/1, mass_message/5,
+	 start_mass_message/3, stop_mass_message/1,
+	 send_mass_message/4, mass_message/5,
 	% mam
 	 purge_mam/2,
 	 get_commands_spec/0,
@@ -237,9 +238,16 @@ get_commands_spec() ->
 		       },
      #ejabberd_commands{name = start_mass_message,
 			tags = [stanza],
-			desc = "Send chat message or stanza to a mass of users",
+			desc = "Send chat message or stanza to all online users",
 			module = ?MODULE, function = start_mass_message,
 			args = [{server, binary}, {payload, binary}, {rate, integer}],
+			result = {res, integer}},
+     #ejabberd_commands{name = send_mass_message,
+			tags = [stanza],
+			desc = "Send chat message or stanza to a mass of users",
+			module = ?MODULE, function = send_mass_message,
+			args = [{server, binary}, {payload, binary}, {rate, integer},
+			        {uids, {list, {uid, binary}}}],
 			result = {res, integer}},
      #ejabberd_commands{name = stop_mass_message,
 			tags = [stanza],
@@ -726,14 +734,17 @@ transport_register(Host, TransportString, JIDString,
 %%% Mass message
 %%%
 
-start_mass_message(Host, Payload, Rate)
-	when is_binary(Host), is_binary(Payload), is_integer(Rate) ->
+start_mass_message(Host, Payload, Rate) ->
+    send_mass_message(Host, Payload, Rate, []).
+
+send_mass_message(Host, Payload, Rate, Rs)
+	when is_binary(Host), is_binary(Payload), is_integer(Rate), is_list(Rs) ->
     From = jid:make(<<>>, Host, <<>>),
     Proc = gen_mod:get_module_proc(Host, ?MASSLOOP),
     Delay = 60000 div Rate,
     case global:whereis_name(Proc) of
 	undefined ->
-	    case mass_message_parse(Payload) of
+	    case mass_message_parse(Payload, Rs) of
 		{error, _} -> 4;
 		{ok, _, []} -> 3;
 		{ok, <<>>, _} -> 2;
@@ -804,7 +815,7 @@ server_info() ->
     IqHandlers = iq_handlers_number(),
     Nodes = ejabberd_cluster:get_nodes(),
     {LocalSessions, LocalFailed} = ejabberd_cluster:multicall(Nodes, ?MODULE, local_sessions_number, []),
-    Sessions = ets:info(session, size),
+    Sessions = ejabberd_sm:get_sessions_number(),
     OdbcPoolSize = lists:sum(
 	    [workers_number(gen_mod:get_module_proc(Host, ejabberd_sql_sup))
 		|| Host <- Hosts]),
@@ -832,6 +843,7 @@ server_info() ->
                                 end
                         end, Acc1, AL)
             end, AH, AT),
+    {LogLevel, _, _} = ejabberd_logger:get(),
     lists:flatten([
 	[{online, Sessions} | lists:zip(Nodes--LocalFailed, LocalSessions)],
 	[{jlib:binary_to_atom(Key), Val} || {Key, Val} <- Active],
@@ -841,7 +853,8 @@ server_info() ->
 	{processes, Processes},
 	{iq_handlers, IqHandlers},
 	{sql_pool_size, OdbcPoolSize},
-	{http_pool_size, HttpPoolSize}
+	{http_pool_size, HttpPoolSize},
+	{loglevel, LogLevel}
 	]).
 
 server_version() ->
@@ -1081,7 +1094,10 @@ clean_session_list([S1, S2 | Rest], Res) ->
        true -> clean_session_list([S2 | Rest], [S1 | Res])
     end.
 
-mass_message_parse(Payload) ->
+mass_message_uids([]) -> ejabberd_sm:connected_users();
+mass_message_uids(L) -> L.
+
+mass_message_parse(Payload, Rs) ->
     case file:open(Payload, [read]) of
 	{ok, IoDevice} ->
 	    %% if argument is a file, read message and user list from it
@@ -1093,7 +1109,7 @@ mass_message_parse(Payload) ->
 			end,
 		    Uids = case mass_message_parse_uids(IoDevice) of
 			    {ok, List} when is_list(List) -> List;
-			    _ -> []
+			    _ -> mass_message_uids(Rs)
 			end,
 		    file:close(IoDevice),
 		    {ok, Packet, Uids};
@@ -1102,12 +1118,12 @@ mass_message_parse(Payload) ->
 		    Error
 	    end;
 	{error, FError} ->
-	    % if argument is payload, send it to all online users
+	    % if argument is payload, send it to all online users or defined recipients
 	    case fxml_stream:parse_element(Payload) of
 		{error, XError} ->
 		    {error, {FError, XError}};
 		Packet ->
-		    Uids = ejabberd_sm:connected_users(),
+		    Uids = mass_message_uids(Rs),
 		    {ok, Packet, Uids}
 	    end
     end.
@@ -1147,6 +1163,7 @@ mass_message(Host, Delay, Stanza, From, [Uid|Others]) ->
 	    end,
 	    Attrs = lists:keystore(<<"id">>, 1, Stanza#xmlel.attrs,
 			{<<"id">>, <<"job:", (randoms:get_string())/binary>>}),
+	    mod_jabs:add(Host, 1),
 	    ejabberd_router:route(From, To, Stanza#xmlel{attrs = Attrs}),
 	    mass_message(Host, Delay, Stanza, From, Others)
     end.
@@ -1191,6 +1208,17 @@ get_apns_config(Host) ->
     case push_spec(Host, mod_applepush, mod_applepush_service, certfile) of
 	undefined ->
 	    [{production, <<>>}, {sandbox, <<>>}];
+	{_, []} ->
+	    [{production, <<>>}, {sandbox, <<>>}];
+	{_, [{_, _, File}]} ->
+	    Cert = case file:read_file(File) of
+		{ok, Data} -> Data;
+		_ -> <<>>
+	    end,
+	    case cert_type(File) of
+		production -> [{production, Cert}, {sandbox, <<>>}];
+		sandbox -> [{production, <<>>}, {sandbox, Cert}]
+	    end;
 	{_, [{_, _, ProdFile}, {_, _, DevFile}]} ->
 	    ProdCert = case file:read_file(ProdFile) of
 		{ok, ProdData} -> ProdData;
@@ -1211,8 +1239,12 @@ setup_apns(Host, ProductionCertData, SandboxCertData) ->
 	    SandboxCert = write_cert(SandboxCertData, <<"_dev">>),
 	    Config = applepush_cfg(Host, ProductionCert, SandboxCert),
 	    case update_extra_config("applepush.yml", Host, Config) of
-		ok -> 0;
-		_ -> 1
+		ok ->
+		    ModulesOpts = proplists:get_value(modules, Config, []),
+		    start_modules(Host, ModulesOpts),
+		    0;
+		_ ->
+		    1
 	    end;
 	%{Prod, [{ProdId, Prod, ProdFile}, {DevId, Dev, DevFile}]} ->
 	    % TODO maybe avoid restart if only cert payload changed
@@ -1220,21 +1252,27 @@ setup_apns(Host, ProductionCertData, SandboxCertData) ->
 	    % 0;
 	_ ->
 	    % if applepush configuration changed, stop it first and config from scratch
-	    [gen_mod:stop_module(Host, Mod) || Mod <- [mod_applepush, mod_applepush_service]],
+	    stop_modules(Host, [mod_applepush, mod_applepush_service]),
 	    setup_apns(Host, ProductionCertData, SandboxCertData)
     end.
 
+applepush_cfg(_, {error, undefined}, {error, undefined}) ->
+    [];
 applepush_cfg(Host, ProductionCert, SandboxCert) ->
     ProductionAppId = appid_from_cert(ProductionCert),
     SandboxAppId = case appid_from_cert(SandboxCert) of
 	undefined -> undefined;
 	AppId -> <<AppId/binary, "_dev">>
     end,
+    DefaultService = case ProductionAppId of
+	undefined -> <<"apnsdev.", Host/binary>>;
+	_ -> <<"apnsprod.", Host/binary>>
+    end,
     [{modules, [
 	{mod_applepush, [
 		{db_type, sql},
 		{iqdisc, 50},
-		{default_service, <<"apnsprod.", Host/binary>>},
+		{default_service, DefaultService},
 		{push_services,
 		    [{ProductionAppId, <<"apnsprod.", Host/binary>>}
 			|| ProductionAppId =/= undefined] ++
@@ -1267,6 +1305,13 @@ appid_from_cert(Cert) ->
 	    right, $\n),
     list_to_binary(AppId).
 
+cert_type(Cert) ->
+    case os:cmd("openssl x509 -in " ++ binary_to_list(Cert)
+		++ " -noout -subject | grep Development") of
+	[] -> production;
+	_ -> sandbox
+    end.
+
 write_cert(CertData) ->
     write_cert(CertData, <<>>).
 write_cert(<<>>, _) ->
@@ -1294,6 +1339,8 @@ get_gcm_config(Host) ->
     case push_spec(Host, mod_gcm, mod_gcm_service, apikey) of
 	undefined ->
 	    [{apikey, <<>>}, {appid, <<>>}];
+	{_, []} ->
+	    [{apikey, <<>>}, {appid, <<>>}];
 	{_, [{AppId, _, ApiKey}]} ->
 	    [{apikey, ApiKey}, {appid, AppId}]
     end.
@@ -1304,18 +1351,21 @@ setup_gcm(Host, ApiKey, AppId) ->
 	    % if mod_gcm not started, generate config, start gcm
 	    Config = gcm_cfg(Host, ApiKey, AppId),
 	    case update_extra_config("gcm.yml", Host, Config) of
-		ok -> 0;
-		_ -> 1
+		ok ->
+		    ModulesOpts = proplists:get_value(modules, Config, []),
+		    start_modules(Host, ModulesOpts),
+		    0;
+		_ ->
+		    1
 	    end;
-	%{Service, [{AppId, Service, ApiKey}]} ->
-	    % TODO can we avoid restart ?
-	    % 0;
 	_ ->
 	    % if gcm configuration changed, stop it first and config from scratch
-	    [gen_mod:stop_module(Host, Mod) || Mod <- [mod_gcm, mod_gcm_service]],
+	    stop_modules(Host, [mod_gcm, mod_gcm_service]),
 	    setup_gcm(Host, ApiKey, AppId)
     end.
 
+gcm_cfg(_, _, <<>>) ->
+    [];
 gcm_cfg(Host, ApiKey, AppId) ->
     [{modules, [
 	{mod_gcm, [
@@ -1343,6 +1393,8 @@ get_webhook_config(Host) ->
     case push_spec(Host, mod_webhook, mod_webhook_service, apikey) of
 	undefined ->
 	    [{apikey, <<>>}, {appid, <<>>}];
+	{_, []} ->
+	    [{apikey, <<>>}, {appid, <<>>}];
 	{_, [{AppId, _, ApiKey}]} ->
 	    lists:merge([{apikey, ApiKey}, {appid, AppId}],
                         get_webhook_gateway(Host, AppId))
@@ -1362,15 +1414,21 @@ setup_webhook(Host, Gateway, AppId) ->
 	    % if mod_webhook not started, generate config, start gcm
 	    Config = webhook_cfg(Host, Gateway, AppId),
 	    case update_extra_config("webhook.yml", Host, Config) of
-		ok -> 0;
-		_ -> 1
+		ok ->
+		    ModulesOpts = proplists:get_value(modules, Config, []),
+		    start_modules(Host, ModulesOpts),
+		    0;
+		_ ->
+		    1
 	    end;
 	_ ->
 	    % if webhook configuration changed, stop it first and config from scratch
-	    [gen_mod:stop_module(Host, Mod) || Mod <- [mod_webhook, mod_webhook_service]],
+	    stop_modules(Host, [mod_webhook, mod_webhook_service]),
 	    setup_webhook(Host, Gateway, AppId)
     end.
 
+webhook_cfg(_, _, <<>>) ->
+    [];
 webhook_cfg(Host, Gateway, AppId) ->
     [{modules, [
 	{mod_webhook, [
@@ -1417,22 +1475,38 @@ update_extra_config(ConfigFile, Host, Config) ->
 	_ ->
 	    [{Host, Config}]
     end,
-    case catch fast_yaml:encode([{append_host_config, FullConfig}]) of
+    CleanConfig = case Config of
+	[] ->
+	    lists:keydelete(Host, 1, FullConfig);
+	_ ->
+	    FullConfig
+    end,
+    write_raw_config(File, CleanConfig).
+
+write_raw_config(File, []) ->
+    write_yaml_config(File, "# Empty configuration file\n");
+write_raw_config(File, Config) ->
+    case catch fast_yaml:encode([{append_host_config, Config}]) of
 	{'EXIT', R1} ->
 	    ?ERROR_MSG("Can not encode config: ~p", [R1]),
 	    {error, R1};
-	Yml ->
-	    case file:write_file(File, Yml) of
-		{error, R2} ->
-		    ?ERROR_MSG("Can not write config: ~p", [R2]),
-		    {error, R2};
-		ok ->
-		    Modules = proplists:get_value(modules, Config, []),
-		    [gen_mod:start_module(Host, Mod, Opts)
-			|| {Mod, Opts} <- Modules],
-		    ok
-	    end
+	Yaml ->
+	    write_yaml_config(File, Yaml)
     end.
+write_yaml_config(File, Yaml) ->
+    case file:write_file(File, Yaml) of
+	{error, R2} ->
+	    ?ERROR_MSG("Can not write config: ~p", [R2]),
+	    {error, R2};
+	ok ->
+	    ok
+    end.
+
+stop_modules(Host, Modules) ->
+    [gen_mod:stop_module(Host, Mod) || Mod <- Modules].
+
+start_modules(Host, ModulesOpts) ->
+    [gen_mod:start_module(Host, Mod, Opts) || {Mod, Opts} <- ModulesOpts].
 
 user_action(User, Server, Fun, OK) ->
     case ejabberd_auth:is_user_exists(User, Server) of

@@ -73,7 +73,8 @@
 
 init(_Host, _ServerHost, _Opts) -> ok = create_table().
 
--spec subscribe_node(_JID :: _, _NodeId :: _, Options :: [] | mod_pubsub:subOptions()) ->
+-spec subscribe_node(_JID :: _, _NodeId :: _,
+		     Options :: [] | mod_pubsub:subOptions()) ->
 			    {result, mod_pubsub:subId()}.
 
 subscribe_node(_JID, _NodeId, Options) ->
@@ -82,7 +83,8 @@ subscribe_node(_JID, _NodeId, Options) ->
     {result, SubID}.
 
 -spec unsubscribe_node(_JID :: _, _NodeId :: _, SubID :: mod_pubsub:subId()) ->
-			      {result, mod_pubsub:subscription()} | {error, notfound}.
+			      {result, mod_pubsub:subscription()} |
+			      {error, notfound}.
 
 unsubscribe_node(_JID, _NodeId, SubID) ->
     case (?DB_MOD):read_subscription(SubID) of

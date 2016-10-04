@@ -416,8 +416,7 @@ privacy_iq_get(Acc, #jid{lserver=LServer}, _To, _Iq, _) ->
     Acc.
 
 api_call(_Module, _Function, _Arguments) ->
-    [LServer|_] = ejabberd_config:get_myhosts(),
-    inc(LServer, api_call, 1).
+    [inc(LServer, api_call, 1) || LServer <- ejabberd_config:get_myhosts()].
 backend_api_call(LServer, _Method, _Path) ->
     inc(LServer, backend_api_call, 1).
 backend_api_response_time(LServer, _Method, _Path, Ms) ->

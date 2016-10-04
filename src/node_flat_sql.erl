@@ -270,11 +270,11 @@ delete_item(Nidx, Publisher, PublishModel, ItemId) ->
     {result, Affiliation} = get_affiliation(Nidx, GenKey),
     Allowed = Affiliation == publisher orelse
 	Affiliation == owner orelse
-	PublishModel == open orelse
+	(PublishModel == open andalso
 	case get_item(Nidx, ItemId) of
 	{result, #pubsub_item{creation = {_, GenKey}}} -> true;
 	_ -> false
-    end,
+          end),
     if not Allowed ->
 	    {error, ?ERR_FORBIDDEN};
 	true ->
@@ -1051,6 +1051,6 @@ raw_to_item(Nidx, {ItemId, SJID, Creation, Modification, XML}) ->
 	El -> [El]
     end,
     #pubsub_item{itemid = {ItemId, Nidx},
-	creation = {ToTime(Creation), JID},
+	creation = {ToTime(Creation), jid:remove_resource(JID)},
 	modification = {ToTime(Modification), JID},
 	payload = Payload}.

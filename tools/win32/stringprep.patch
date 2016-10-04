@@ -1,0 +1,12 @@
+diff --git a/c_src/stringprep.cpp b/c_src/stringprep.cpp
+index d7ad310..56942bb 100644
+--- a/c_src/stringprep.cpp
++++ b/c_src/stringprep.cpp
+@@ -20,6 +20,7 @@
+ 
+ #include <string.h>
+ #include <erl_nif.h>
++#include <inttypes.h>
+ 
+ #include "uni_data.c"
+ #include "uni_norm.c"

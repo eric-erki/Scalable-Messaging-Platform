@@ -1,0 +1,13 @@
+diff --git a/c_src/fast_tls_drv.c b/c_src/fast_tls_drv.c
+index 11cd956..391d785 100644
+--- a/c_src/fast_tls_drv.c
++++ b/c_src/fast_tls_drv.c
+@@ -60,7 +60,7 @@ typedef unsigned __int32 uint32_t;
+ void erts_exit(int n, char* v, ...);
+ #define erl_exit erts_exit
+ #else
+-void erl_exit(int n, char* v, ...);
++void erl_exit(int n, char* v, ...) { exit(1); }
+ #endif
+ 
+ void *ftls_alloc(ErlDrvSizeT size);

@@ -1,19 +1,46 @@
 #!/bin/sh
 
+# this script must be installed in cean@build.vpn.p1:crossbuild
+# and be run under the right cean context
+# usage:
+#  ssh cean
+#  prod64
+#  cd ~/crossbuild
+#  ./crossbuild.sh ejabberd-16.09
+
+zlib=zlib-1.2.8
+expat=expat-2.1.0
+yaml=yaml-0.1.5
+ssl=openssl-1.0.2h
+iconv=libiconv-1.14
+sql=sqlite-autoconf-3081002
+
+[ $# -eq 1 ] || {
+  echo "error: no ejabberd version provided"
+  echo
+}
+dist=$1
+
+[ -f ~/pub/src/ejabberd/$dist.tgz ] || {
+  echo "error: no source tarball"
+  exit
+}
+[ -f ~/pub/bin/linux-x86_64/18/ejabberd/$dist.epkg ] || {
+  echo "error: no ejabberd epkg available"
+  exit
+}
+
+[ -f ejabberd ] && rm ejabberd
+tar zxf ~/pub/src/ejabberd/$dist.tgz
+ln -s $dist ejabberd
+
 root=~/crossbuild
-dll=$root/lib-18
+dll=$root/lib
 erts=7.3
 cd $root
 
 ejsrc=ejabberd
 ejdeps=$root/$ejsrc/deps
-
-zlib=zlib-1.2.8
-expat=expat-2.1.0
-yaml=yaml-0.1.5
-ssl=openssl-1.0.2g
-iconv=libiconv-1.14
-sql=sqlite-autoconf-3081002
 
 CHOST=x86_64-w64-mingw32
 CC=$CHOST-gcc
@@ -41,14 +68,18 @@ $CC -I$w -I$h -I$i -I$e -I$root/$zlib -D_WIN32 -c ezlib_drv.c
 $CC -shared -o $dll/ezlib_drv.dll ezlib_drv.o $l/ei_md.lib $dll/zlib1.dll
 cd -
 
-cd $ejdeps/stringprep/c_src
+cd $ejdeps/stringprep
+patch -p1<$root/stringprep.patch
+cd c_src
 rm *o
 $CC -I$w -I$h -I$i -I$e -D_WIN32 -c *c
 $CCX -I$w -I$h -I$i -I$e -D_WIN32 -c *cpp
 $CCX -shared -static-libgcc -static-libstdc++ -o $dll/stringprep.dll *o
 cd -
 
-cd $ejdeps/fast_xml/c_src
+cd $ejdeps/fast_xml
+patch -p1<$root/xml.patch
+cd c_src
 rm *o
 [ -d $root/$expat ] || curl http://kent.dl.sourceforge.net/project/expat/expat/${expat#*-}/$expat.tar.gz | tar -C $root -zxf -
 (cd $root/$expat; ./configure --host=$CHOST; make)
@@ -65,7 +96,9 @@ $CC -I$w -I$h -I$i -I$e -I$root/$yaml/include -DYAML_DECLARE_STATIC -D_WIN32 -c 
 $CC -shared -o $dll/fast_yaml.dll fast_yaml.o $root/$yaml/src/.libs/libyaml.a
 cd -
 
-cd $ejdeps/fast_tls/c_src
+cd $ejdeps/fast_tls
+patch -p1<$root/tls.patch
+cd c_src
 rm *o
 [ -d $root/$ssl ] || curl https://www.openssl.org/source/$ssl.tar.gz | tar -C $root -zxf -
 (cd $root/$ssl; ./Configure mingw64; make CC=$CC; $CHOST-ranlib *.a)
@@ -104,3 +137,18 @@ $CCX -shared -static-libgcc -static-libstdc++ -o $dll/jiffy.dll *o
 cd -
 
 $ST $dll/*dll
+
+tar xf ~/pub/bin/linux-x86_64/18/ejabberd/$dist.epkg
+unzip $dist.deps.zip
+for lib in $(find $dist -name "*so")
+do
+  name=$(basename $lib)
+  rm $lib
+  cp ~/crossbuild/lib/${name/.so/.dll} $(dirname $lib)
+done
+rm $dist.deps.zip
+zip -9qr $dist.deps.zip $dist
+rm -Rf $dist
+tar cf ~/pub/bin/windows/18/ejabberd/$dist.epkg ${dist}*ez ${dist}*zip
+
+echo "success: ~/pub/bin/windows/18/ejabberd/$dist.epkg generated"

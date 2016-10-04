@@ -27,6 +27,7 @@
 {zlib, @zlib@}.
 {riak, @riak@}.
 {redis, @redis@}.
+{logredis, @logredis@}.
 {http, @http@}.
 {elixir, @elixir@}.
 {iconv, @iconv@}.
