@@ -64,7 +64,9 @@
 	 get_commands_spec/0,
 	% certificates
 	 get_apns_config/1, get_gcm_config/1, get_webhook_config/1,
-	 setup_apns/3, setup_gcm/3, setup_webhook/3]).
+	 setup_apns/3, setup_gcm/3, setup_webhook/3,
+	% API IP whitelist
+	 get_whitelist_ip/0, set_whitelist_ip/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -344,6 +346,18 @@ get_commands_spec() ->
 			module = ?MODULE, function = setup_webhook,
                         %% apikey is optional
 			args = [{host, binary}, {gateway, binary}, {appid, binary}],
+			result = {res, integer}},
+      #ejabberd_commands{name = get_whitelist_ip,
+			tags = [config],
+			desc = "Get the list of whitelisted IP for REST API",
+			module = ?MODULE, function = get_whitelist_ip,
+			args = [],
+			result = {ips, {list, {ip, string}}}},
+      #ejabberd_commands{name = set_whitelist_ip,
+			tags = [config],
+			desc = "Get the list of whitelisted IP for REST API",
+			module = ?MODULE, function = set_whitelist_ip,
+			args = [{ips, {list, {ip, string}}}],
 			result = {res, integer}}
     ].
 
@@ -1446,6 +1460,24 @@ webhook_cfg(Host, Gateway, AppId) ->
 		    }
 		]}
 	]}].
+
+%% -----------------------------
+%% API IP whitelist
+%% -----------------------------
+
+get_whitelist_ip() ->
+    BaseDir = filename:dirname(os:getenv("EJABBERD_CONFIG_PATH")),
+    File = filename:append(BaseDir, "api_whitelist.txt"),
+    case file:read_file(File) of
+	{ok, Content} -> str:tokens(Content, <<"\n">>);
+	_ -> []
+    end.
+
+set_whitelist_ip(IPs) ->
+    BaseDir = filename:dirname(os:getenv("EJABBERD_CONFIG_PATH")),
+    File = filename:append(BaseDir, "api_whitelist.txt"),
+    Content = str:join(lists:usort(IPs), <<"\n">>),
+    file:write_file(File, <<Content/binary, "\n">>).
 
 %% -----------------------------
 %% Internal function pattern
