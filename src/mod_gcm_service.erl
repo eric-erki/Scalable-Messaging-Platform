@@ -129,7 +129,7 @@ init([MyHost, ServerHost, Opts]) ->
                                 <<"pushalert.wav">>),
     Gateway = gen_mod:get_opt(gateway, Opts,
                               fun iolist_to_string/1,
-			      "https://android.googleapis.com/gcm/send"),
+			      "https://fcm.googleapis.com/fcm/send"),
     ApiKey = gen_mod:get_opt(apikey, Opts, fun iolist_to_string/1, ""),
     ejabberd_router:register_route(MyHost, ServerHost),
     {ok,

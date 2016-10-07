@@ -1392,7 +1392,7 @@ gcm_cfg(Host, ApiKey, AppId) ->
 	{mod_gcm_service, [
 		{hosts,
 		    [{<<"gcm.", Host/binary>>, [
-				{gateway, <<"https://android.googleapis.com/gcm/send">>},
+				{gateway, <<"https://fcm.googleapis.com/fcm/send">>},
 				{apikey, ApiKey}]}
 				    || ApiKey =/= <<>>]
 		    }
