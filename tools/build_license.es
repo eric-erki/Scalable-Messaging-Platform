@@ -72,7 +72,7 @@ main([OutputFile, Vsn, LicenseKey]) ->
         {ok, License, LicenseStr} ->
             BaseOpts = [{outdir, Ebin}, {i, Inc}, {i, Xml}, {d, 'NO_EXT_LIB'}],
             Options = compile_opts(License, BaseOpts),
-            Files = [ejabberd_c2s, ejabberd_listener, ejabberd_router, ejabberd_cluster, ejabberd_config, ejabberd_sm],
+            Files = [ejabberd, ejabberd_c2s, ejabberd_listener, ejabberd_router, ejabberd_cluster, ejabberd_config, ejabberd_sm],
             case build_license(Src, Ebin, Options, Files, []) of
                 {ok, Beams} ->
                     io:format("Writing license ~s...~n", [OutputFile]),

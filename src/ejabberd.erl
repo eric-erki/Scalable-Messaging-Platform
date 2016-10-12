@@ -37,9 +37,10 @@
 -protocol({xep, 270, '1.0'}).
 
 -export([start/0, stop/0, start_app/1, start_app/2,
-	 get_pid_file/0, check_app/1]).
+	 get_pid_file/0, check_app/1, signature/0]).
 
 -include("logger.hrl").
+-include("licence.hrl").
 
 start() ->
     %%ejabberd_cover:start(),
@@ -150,3 +151,18 @@ get_module_file(App, Mod) ->
         Dir ->
             filename:join([Dir, BaseName ++ ".beam"])
     end.
+
+signature() ->
+    Vsn = case application:get_key(ejabberd, vsn) of
+        {ok, V} -> V;
+        _ -> ""
+    end,
+    Val = ?VALIDITY band 16#3FFF,
+    Secs = ((Val bsr 1) * 1000000) + ((Val band 1) * 500000) + 62167219200,
+    Md5 = erlang:md5([beamsum(M) || M<-[ejabberd, ejabberd_c2s, ejabberd_cluster, ejabberd_router]]),
+    {Vsn, Md5, term_to_binary(Secs)}.
+
+beamsum(Module) ->
+    Beam = atom_to_list(Module) ++ ".beam",
+    {ok,{_, [{_,Code}]}} = beam_lib:chunks(code:where_is_file(Beam), ["Code"]),
+    erlang:md5(Code).

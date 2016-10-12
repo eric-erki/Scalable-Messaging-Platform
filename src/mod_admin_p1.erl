@@ -358,7 +358,13 @@ get_commands_spec() ->
 			desc = "Get the list of whitelisted IP for REST API",
 			module = ?MODULE, function = set_whitelist_ip,
 			args = [{ips, {list, {ip, string}}}],
-			result = {res, integer}}
+			result = {res, integer}},
+      #ejabberd_commands{name = license_info,
+			tags = [config],
+			desc = "Display the product license",
+			module = ejabberd_license, function = info,
+			args = [],
+			result = {license, string}}
     ].
 
 
