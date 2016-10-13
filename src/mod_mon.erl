@@ -824,13 +824,11 @@ mod_opt_type(hooks) ->
     fun (List) when is_list(List) -> List end;
 mod_opt_type(monitors_base) ->
     fun (List) when is_list(List) -> List end;
-mod_opt_type(active_count) ->
-    fun (B) when is_boolean(B) -> B end;
 mod_opt_type(backends) ->
     fun (List) when is_list(List) -> List end;
 mod_opt_type(monitors) ->
     fun (L) when is_list(L) -> L end;
-mod_opt_type(_) -> [hooks, monitors_base, active_count, backends, monitors].
+mod_opt_type(_) -> [hooks, monitors_base, backends, monitors].
 
 opt_type(health) -> fun (V) when is_list(V) -> V end;
 opt_type(_) -> [health].
