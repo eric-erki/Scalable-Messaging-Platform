@@ -48,8 +48,7 @@
 -define(AVG, [client_conn_time, client_auth_time, client_roster_time, backend_api_response_time]).
 -define(GAUGE, [sessions, memory, cpu, processes, jabs, message_queues,
          iq_message_queues, sm_message_queues, c2s_message_queues, sql_message_queues, offline_message_queues,
-         iq_internal_queues, sm_internal_queues, c2s_internal_queues, sql_internal_queues, offline_internal_queues,
-         backend_api_call, backend_api_timeout, backend_api_error, backend_api_badauth]).
+         iq_internal_queues, sm_internal_queues, c2s_internal_queues, sql_internal_queues, offline_internal_queues]).
 
 % Generic default monitors to aglomerate common values
 -define(DEFAULT_MONITORS,
