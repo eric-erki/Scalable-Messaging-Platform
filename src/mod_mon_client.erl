@@ -27,7 +27,7 @@
 
 -behaviour(ejabberd_config).
 
--export([start/1, opt_type/1]).
+-export([start/1, depends/2, opt_type/1]).
 
 -include("logger.hrl").
 
@@ -206,6 +206,9 @@ offline() -> <<"<presence type='unavailable'><status>Logged out</status></presen
 connected() -> <<"<success">>.
 %result() -> <<"type='result'">>.
 %error() -> <<"type='error'">>.
+
+depends(_Host, _Opts) ->
+    [{mod_mon, hard}].
 
 opt_type(test_client) ->
     fun (V) when is_list(V) -> V end;
