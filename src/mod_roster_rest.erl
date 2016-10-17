@@ -37,7 +37,7 @@ get_roster(LUser, LServer) ->
     Res = roster_rest:get_user_roster(LServer, LUser),
     case Res of
         {ok, Items} -> {ok, Items};
-        error -> error
+        Error -> Error
     end.
 
 get_roster_by_jid(LUser, LServer, LJID) ->
