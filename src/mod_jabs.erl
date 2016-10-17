@@ -96,7 +96,9 @@ value(Host) ->
     end.
 
 reset(Host) ->
-    gen_server:cast(process(Host), reset).
+    Proc = process(Host),
+    ejabberd_cluster:multicall(gen_server, cast, [Proc, reset]),
+    gen_server:cast(Proc, clean_db).  %% db backend takes care of cluster replication
 
 add(Host, Count) ->
     gen_server:cast(process(Host), {inc, Count}).
@@ -156,8 +158,10 @@ handle_cast({ignore, User}, State) ->
 handle_cast({attend, User}, State) ->
     Ignore = lists:delete(User, State#jabs.ignore),
     {noreply, State#jabs{ignore = Ignore}};
-handle_cast(reset, State) ->
+handle_cast(clean_db, State) ->
     clean_db(State#jabs.host),
+    {noreply, State};
+handle_cast(reset, State) ->
     {noreply, reset_jabs(State)};
 handle_cast(_Msg, State) ->
     {noreply, State}.
