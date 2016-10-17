@@ -149,7 +149,9 @@ init([Host, Opts]) ->
         ejabberd_commands:register_commands(get_commands_spec()),
         {ok, #state{host = Host, log = NLog, pool = Pool, file = File, timers = [T]}}
     catch
-        error:Reason -> {stop, Reason}
+        error:Reason ->
+            ?ERROR_MSG("Can not start active users count service: ~p", [Reason]),
+            {stop, Reason}
     end.
 
 handle_call(values, _From, State) ->
