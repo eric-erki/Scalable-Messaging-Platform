@@ -42,7 +42,8 @@ match(Host) ->
 
 clean(Host) ->
     Record = #jabs{host = {Host, '_'}, _ = '_'},
-    ejabberd_cluster:multicall(mnesia, dirty_delete_object, [Record]),
+    [ejabberd_cluster:multicall(mnesia, dirty_delete, [jabs, Key])
+     || Key <- [Jabs#jabs.host || Jabs <- mnesia:dirty_match_object(Record)]],
     ok.
 
 %%%===================================================================
