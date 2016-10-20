@@ -1,0 +1,751 @@
+
+=== May 9 2014: eBE 3.2.0
+
+ejabberd Business Edition includes all features from commercial edition
+2.2.12, with full refactoring for binary internel encoding, which reduce
+memory usage, and also improve performances.
+
+This version mainly target big deployments; It includes a completely new
+cluster engine able to cope with high scallability, improving previous
+commercial edition by a big margin. It also includes a new mobile stack
+improving mobile user experience, letting server handle the OOR (Out Of
+Reception) client mode, and be able to send apple/google pushes.
+
+- binary refactoring
+- Make websocket work over TLS
+- Add GCM push module
+- Add Apple push module
+- Add SIP support
+- Add TURN support (EJAB-1017)
+- Add MAM support (XEP-0313)
+- Add P1DB support (fast cluster able data backend)
+- Add Remote Roster Management support (XEP-0321)
+- Add Lager logger support
+- Make gen_iq_handlers more robust (EJABS-1758)
+- Make SM dispatchers more robust (EJABS-1845)
+- Make SM handlers more robust
+- Don't try to send privacy pushes in OOR mode
+- Fix persistent_history MUC option (EJABS-1865)
+- Adapt to XEP-0280 v0.8
+- Backward compatibility for xep-0280 v0.6 (EJABS-1953)
+- Add Riak backend support
+- Enable ECDHE key exchange in TSL driver
+- Enable DHE key exchange in TLS driver
+- Add ejabberd_commands for managing shared roster groups
+- Add a function for massive roster creation
+- Add a function for massive users creation
+- Add ability to limit number of registered users.
+- Add new tests and improve the test suite
+- Add odbc (MySQL/PostgreSQL) support for mod_mam (XEP-0313)
+- Add support for the "roster" MAM preference (XEP-0313)
+- Improve the applications start-up
+- Change configuration file format to YAML
+- Improve DHT interface
+- Improve PubSub/PEP broadcasting
+- support mobile archiving
+- Connection pool for mod_mobile_history configurable (EJABS-2090)
+- Added applepush_cache SQL export
+- Added mod_http_notify (EJABS-2110)
+- Add ability to cache user rosters
+- Support new options: log_rotate_size log_rotate_count and log_rate_limit
+- Support for OpenSSL ciphers list in ejabberd_c2s, ejabberd_s2s_in and ejabberd_s2s_out
+- Add mod_muc_light, which provides commands for managing rooms
+- Add intra-cluster multicasting
+- Optimize request processing
+
+=== Jul 7 2014: eBE 3.2.1
+
+- Fix find_route_cluster_node
+- Route all stanzas to SM workers directly
+- Use lowered JID in archived message
+- Support XEP-0198 session resumption
+- Verify host name before offering SASL EXTERNAL
+- Log TLS status for outgoing s2s with SASL EXTERNAL
+- Check TLS state before requesting SASL EXTERNAL
+- Send stream trailer before closing s2s connection
+- Support certificate verification for outgoing s2s
+- New ejabberd command: kick_user/2
+- generalize user friendly routing debug
+- Process 'Contact' headers more accurately (as per RFC3261)
+- Sign 'Record-Route' in order to proxy unauthorized ACKs
+- Rename option 'route' to 'record_route' and add new option 'routes'
+- Reply to pings
+- SIP Outbound (RFC 5626) support
+- Clean up all timers gracefully
+- Change default flow timeout as recommended per the RFC
+- apply string optimizations
+- Add support for p1db and odbc to mod_carboncopy
+- add ability to rotate logs on given date condition
+- Fix direct message routing to the SM pool
+- Add new option support: always_record_route
+
+=== Jul 24 2014: eBE 3.2.2
+
+- Don’t log MUC messages with hint
+- Don’t carbon copy messages with hint
+- Don’t send XEP-0280 v1 copies back to sender
+- Terminate session if stanza queue becomes too large
+- Travis CI: Enable Riak tests
+- Make sure all p1db<->sql interface funs are defined as M:F/A
+- improve restart_module feature
+- Improve Riak pool management
+- Make it possible to check Riak connection status
+- Check Riak connection before running the corresponding suite
+- Fix PostgreSQL schema
+- Fix user archive cleanup on user removal
+- Rewrite get_occupant_nick/2 function
+- Fix room shutdown
+- Add PostgreSQL support for mod_carboncopy
+- add mass messaging feature
+- Add tests
+
+=== Sep 1 2014: eBE 3.2.3
+
+- PubSub refactor
+- fix get_affiliations regression
+- Collection shim header removed
+- Use 'db_type' option in pubsub configuration
+- Hibernate empty rooms (EJABS-2280)
+- Fix problem with handling of duplicate requests in mod_bosh (EJABS-2299).
+- Log data in mod_bosh about early rejected requests
+- fix odbc retract item result bug
+
+=== Nov 6 2014: eBE 3.2.4
+
+- Add sharding backend for MUC and MAM
+- add premiminary REST/JSON admin api (TECH-1715)
+- REST authentication module  (EJSAAS-9)
+- Roster retrieval from REST API (EJSAAS-11)
+- improve statsd probe naming (TECH-1713)
+- Make external REST API path configurable (EJSAAS-14)
+- Fix UTF-16 handling in XML-RPC (EJABS-2314).
+- Added local_sessions_number command.
+- Added local_muc_rooms_number command.
+- Added p1db_records_number command.
+- add full support of jiffy (EJSAAS-11)
+- fix bug in seeking mass loop process on start
+- Increase maximum restart frequency of IQ supervisor (EJABS-2319)
+- Initial REST support for mod_mam (EJSAAS-17)
+- Log HTTP requests/responses
+- make hyperloglogs multi vhost able (EJSAAS-21)
+- Fix MAM queries with no after rsm parameter.
+- Make it possible to store only body via REST interface
+- Fix cluster leave procedure
+
+=== Feb 9 2015: eBE 3.2.5
+
+– New module mod_client_state implements XEP-0352: Client State Indication
+– New module mod_fail2ban to ban IPs that show malicious signs
+– New option store_empty_body in mod_offline
+– New option disable_sasl_mechanisms
+– Improve option resend_on_timeout to support if_offline
+- Only call user_receive_packet hook when the packet is about to send
+- Add HTTP compression (gzip) support
+- Use UPDATE instead of DELETE/INSERT
+- Make it possible to add fractional part to ISO8601 timestamp
+- Use pool of TCP acceptors
+- Make it possible to disable receiver supervisor
+- Use p1_server for ejabberd_receiver
+- Use pool of random generators
+- Don't use an SQL transaction when enabling carbons
+- Make a pool of send loops (EJSAAS-35)
+- Send \r\n\r\n on receiving stream cdata in ejabberd_c2s (EJSAAS-45)
+- switch to NIF xml parser
+- New option for routing between vhosts: host_access
+- Make sure a node gets removed from the ring when leaving
+- Make Push configuration default values configurable in config file (EJSAAS-85)
+- Add content-available=1 to apns pushes (EJSAAS-113)
+- add missing high level command for server and user status (EJSAAS-108)
+- add generic JSON support for #ejabberd_commands (EJSAAS-103)
+- add backend_api_badauth counter (EJSAAS-93)
+- Fix reload_config command (EJAB-1140).
+- Add early version of mod_filter (TECH-1721).
+- add function to get running code version (EJSAAS-104)
+
+=== Feb 19 2015: eBE 3.2.6
+
+- add Elixir support, allows to write plugins in Elixir language
+- New command to reload configuration without restart
+- Support old style erlang expressions in YAML configuration
+- XEP-0198: Check whether routed packets are stanzas
+- XEP-0198: Don't drop session on failed resume
+- XEP-0198: Don't exit on socket send failure
+- XEP-0198: Terminate session on queue overflow
+- Add rest support for update_roster command (EJABS-2400).
+- Add log messages on internal errors (EJABS-2402).
+
+=== Apr 30 2015: eBE 3.2.7
+
+- Customizable session backends
+- Add SCRAM support for SQL authentication backend
+- Add package management
+- Add file transfer over AWS S3 (EJSAAS-82).
+- Fix global registration of routes
+- Add support for rfc 7395 and various cleanups to websocket code
+- Make websocket connection send ping messages each 60 seconds
+- Make mod_http_admin send CORS informations
+- Remove ejabberd_http_poll
+- Dynamic virtual hosts configuration support
+- Add new module/protocol to send a JSON payload to a HTTP API (EJABS-2395)
+- Revert: Add delay for incoming archived messages (EJABS-2081)(EJABS-2409)
+- Add SCRAM support to ejabberd_auth_p1db
+- Use multiple process to handle offline messages (untested)
+- Set max_queue=5000 for SM and offline handlers
+- Add multiple_accounts_per_device option to mod_applepush (EJSAAS-54)
+- Add SQL to p1db convertion function
+- Add process queues monitoring
+- Set default SM pool size to 1000
+- Make offline pool size configurable
+- Add health status monitor (EJABS-2412)
+- Add caching of rosters in rest backend (EJSAAS-184)
+- Make summed probes be treated as f(average,max) (EJSAAS-192)
+- Enable 'nosync' option for p1db tables by default
+- Assume user exists if rest backend fails on query (EJABS-2433)
+- Add ability to prevent pushes from some contacts (part of SAAS-3)
+- Apply customizations also to pushes send from receive_offline_packet
+- Close sessions with a conflicting applepush device id (EJABS-2442)
+- Add ability to pass extra fields to generated pushes (EJSAAS-198)
+- Add XEP-0178 support (EJABS-2446)
+- Add p1db backend for PubSub (EJSAAS-43)
+
+=== Jun 20 2015: eBE 3.2.8
+
+- Document protocol support and version inside each module
+- Remove deprecated XEP-0090 Entity Time and XEP-0091 Delayed Delivery
+- Don’t add body element to MUC subject messages
+- Do not bounce normal messages sent to unavailable resource
+- Add config validation at startup
+- New option net_ticktime, to fine tune Erlang cluster networking
+- New option max_users_presence in mod_muc, to avoid broadcasting presence packet
+- Ability to configure your own custom Diffie-Helman parameters
+- Fix pubsub/odbc crash on remote user unsubscribe
+- Fix use of publish_only affiliation with odbc backend
+- Pick first local multicast service, otherwise remote
+- Microsoft Windows 64 bits installer
+- Provide RPM and DEB binary packages for linux 64 bits.
+- Log packets that cause errors while archiving on rest (EJABS-2458)
+- Retry mod_mam REST calls to store packets on timeouts (EJABS-2458)
+- Implement CRL support (EJABS-2460)
+- Add ext_api_http_pool_size parameter to change number of HTTP connections for outgoing REST calls (EJABS-2458).
+- New command purge_mam (EJSAAS-221).
+- Fixed clustering support in ejabberd_sm backends
+- Add caching for CRLs
+- Let building roster from REST API more fault tolerant and log errors
+- Fix Hyperloglog error when ClusterLog fails (EJSAAS-224)
+- Use non-colliding index names in pg.sql
+- Add possible empty body value on rest call (SAAS-28)
+- Improve mod_http_admin for full ejabberd_commands support (TECH-1752)
+- Add abilty to send silent pushes
+- Implement authentication in request sent to mod_http_admin (EJSAAS-129)
+- Update MAM implementation to support v0.3
+
+=== Aug 11 2015: eBE 3.2.9
+
+- Add “complete” attribute to MAM final response
+- Fix mod_mam compatibility with RSM
+- New API hook: muc_filter_packet
+- Send notifications on MUC configuration changes
+- Allow migration of old pubsub items with old xmlelement structure in body
+- Trigger PEP notifications on CAPS updates
+- Check for node subscription of bare JID
+- Flat is now the default plugin
+- Implement SASL EXTERNAL via OCSP
+- Fix certificate issuer checks when OCSP is enabled
+- Add syslog backend for lager
+- Fix mod_mam compatibility with RSM for REST backend and update to new REST protocol
+- Unify processing of push messages, and add ability to set sound per contact or per message
+- Don't generate push for empty body composing messages
+- Fix case of attribute in push customization request
+- Add ability to not send push for message by including special stanza
+- Report more informations when logging gcm error (EJSAAS-255)
+- Add support of grapherl statistics backend
+- Do not crash if CA file contains private keys (EJABS-2483)
+- Fix OCSP request generation (EJABS-2483)
+- Implement alternative for switching to sandbox aps (EJSAAS-256)
+- Fix OCSP response status checks (EJABS-2483)
+
+=== Oct 6 2015: eBE 3.2.10
+
+- OAuth 2.0 delegation framework
+- preliminary OAuth and HTTP based ejabberd API
+- X-AUTH2 authentication mechanism
+- message archiving for Multi-User Chat
+- Add support back for MSSQL
+- New set_loglevel admin command to ease changing loglevel
+- Improve S2S certificate checks
+- Several Elixir fixes
+- Updated most translation languages
+- Don’t carbon copy messages of type “normal” without body
+- Add XEP-0313 (MAM) v0.4 support
+- SIP: Do not crash SIP authentication on SCRAMed passwords
+- Ejabberd now requires Erlang r17+
+- Avoid MAM dups when routing to multiple resources
+- Add ability to override alert and nickname in push from message stanza
+- Add command for bulk roster updates to mod_http_admin (EJABS-248)
+- Add ocsp_polling support
+- Don't delay packets in mod_multicast
+- Fix purge_mam command (EJSAAS-221).
+- Make it possible to route_iq() from external routes
+- Fix IQ replies in MUC rooms
+- Correctly process IQ timeouts
+- Updated PubSub data migration (EJABS-2511)
+- Add PubSub ram only cluster split pubsub plugin (TECH-1724)
+- Destroy temporary room when the last participant is expulsed (EJAB-520)
+- Don't store messages with <no-store/> hint
+- Fix odbc_keepalive_interval option
+- Add option 'ocsp_fallback_uri' (EJABS-2536)
+
+=== Dec 1 2015: eBE 3.2.11
+
+- Remove check on mod_last for extauth_cache option (EJABS-2541)
+- Provide header with latin-1 encoding in translations to work with Erlang/OTP R17
+- New mod_muc_log option file_permissions (EJAB-1588)
+- Rename muc_filter_packet to muc_filter_message
+- Fix get_aux_field
+- Advertise MAM (XEP-0313) v0.4 support in room disco
+- Fix dialyzer warnings
+- Remove obsolete sasl init
+- Use OTP directory structure for 'make install'
+- Fix access_commands option handling
+- Faster jlib:string_to_usr implementation
+- Fix ipv6 configuration processing (#803)
+- Remove supervisor option, disable it for c2s and muc
+- Allow mass loop to use jids and uids in passed list
+- Fix arguments in command moderate_room_history
+- Support special nick _purge_all_room_history_ in moderate_room_history (EJABS-2561)
+- GCM: set priority flag to 'high'
+- Update APNS notification packet format
+- Limit number of subscriptions per node and allow custom default node configuration (EJABS-2554)
+- Don't crash when out-of-reception mode is enabled and the current presence is 'unavailable'
+- Fix problem with pipelined http requests arriving in single packet
+- Support for muc#roomconfig_presencebroadcast option
+- Add linear accept interval changing in ejabberd_listener (EJABS-2564)
+- Pass {C,CPP,LD}FLAGS used in main ./configure call to invocations from deps
+- Let modules_update_specs report failures (#756)
+- Don't crash on certificates without extensions (EJAB-1724)
+- Add HTTP File Upload support (XEP-0363)
+- Use xml_stream:reset() when possible
+- ejabberd_listener: Fix ETS update on port reuse
+- More eye-candy mod_http_bind help page (thanks to Marek Foss)
+- Webadmin console visual refresh (thanks to Marek Foss) (EJAB-1142)
+- Don't send full JID in 'from' of Roster Push (RFC 6121 section 2.1.6) (#367)
+- ejabberd_c2s: Let stop/1 close XEP-0198 sessions
+- ejabberd_c2s: Close socket when waiting for resume
+- Move JID related functions to jid.erl
+- Allow fully configurable mod_mon backend endpoint
+- Remove need of join_p1db and leave_p1db commands (EJSAAS-261)
+- Follow pubsub configuration when using virtual nodetree (EJABS-2570)
+- Virtual nodetree is not attached to any backend (EJABS-2569)
+
+=== Jan 21 2016: eBE 3.2.12
+
+- Make C2S session establishment optional (ECS-11)
+- CVE-2016-1232: Add Dialback Key Generation and Validation support (XEP-0185)
+- Support presence_broadcast in default_room_options mod_muc option
+- Update translations
+- Degenderise room error message (#747)
+- When user joins logged room, he must be warned (EJAB-726)
+- Fix push_metrics when configured on several hosts (EJABS-2571)
+- Refactor c2s code
+- Fix pubsub virtual nodetree plugin
+- Fix last item message type as message attribute
+- Use correct notification_type for last items (#827)
+- PubSub plugin for online users only
+- Disable use of multi-subscribe and subscription-option on standard pubsub plugins (EJABS-2572)
+- Remove http supervisors
+- Remove receiver's supervisor
+- Add offline REST API
+- Do not fail on incorrect data coming from SQL (898)
+- Log failed SQL requests
+- Add MAM MUC for v0.4.1
+- Restrict access to MAM archives for members-only rooms
+- Use UTF8MB4 character set in MySQL tables
+- Fix archive preference retreiving (#848)
+- ejabberdctl: Call erl without -pa argument
+- ejabberd_http: Cope with large POST/PUT requests
+- ejabberd_http: Log debug message on receive errors
+- Advertise MAM in disco info for account/room JID
+- XEP-0198: Fix stanza counting corner case issue
+- mod_offline: Support discarding chat states
+- Don't let "reopen_log" rotate files (EJAB-1243)
+- Don't return error for blocked MUC messages
+- Fix MUC join from S2S connection with riak backend (EJABS-2568)
+- Add info logging to trace appid when client enables push
+- Extract deps from rebar.config to use in reltool.config.script
+- Fix handling of some options in old style configs
+- Improve escaping of arguments passed to ejabberdctl
+- Add ability to disable timeout for ejabberdctl command
+- Fix problem with handling of old db entries in mod_mam
+- Replace now() calls with p1_time_compat equivalents
+- Return better error messages when arguments passed to http_api don't match spec (EJSAAS-267)
+
+=== Mar 09 2016: eBE 3.2.13
+
+Admin:
+- don't escape ERL_OPTIONS
+- Two new global timeouts configurable: c2s_hibernate, receiver_hibernate
+- Make it possible to define 'sm_db_type' per virtual host
+- Describe option type of 'domain_balancing'
+- Log failed SQL requests
+- mod_http_upload: Expand 'docroot' before using it, also expand @HOST@
+
+Commands:
+- Start documenting arguments in mod_admin_extra commands
+- Add a way to get all ejabberd_commands, not only those that was registered
+- Allow to pass \n in argument to ejabberdctl
+- Add error handling to send_stanza
+
+Dependencies:
+- lager is the default logging module, remove p1_logger
+- Handle spaces in vsn attribute of app file when installing deps
+- Renamed dependencies and modules:
+. p1_iconv -> iconv
+. p1_stringprep -> stringprep
+. p1_stun -> stun
+. p1_yaml -> fast_yaml
+. p1_zlib -> ezlib
+
+MAM:
+- Advertise MUC MAM v0.4.1 in room JID's disco#info
+- Add "delete_old_mam_messages" command
+- Add 'from' attribute to <delay/> tag
+- Add "request_activates_archiving" option
+- Respond to form requests
+- Support XEP-0313 v0.2 MUC archive queries
+- Check whether MUC message is desired
+- Reject <index/>-based paging
+- Limit result set page size
+- Sort messages returned by Mnesia
+- Strip existing JID tags from MUC messages
+- Expose MUC occupant JID in more cases
+- Don't let outcasts access MUC archive
+- Send new preferences when they are set
+- XEP-0198: Let MAM take care of pending messages
+- XEP-0198: Fix session timeout corner case
+
+MUC:
+- Fix groupchat room cluster migration
+- New option 'preload_rooms: true|false'
+- Allow destroy_room command to remove unloaded rooms
+- Send presence with code 170 in initial presence from MUC
+- Add most status codes only to initial MUC presence
+- mod_muc_room: Don't expose JIDs in anonymous rooms
+- mod_muc_room: Let members see admin/owner JIDs
+- Add new regexp_room_id option
+
+PubSub:
+- Fix presence-based delivery
+- Make caps warning less confusing
+- Fix host/serverhost usage
+- Add support of pubsub#itemreply=publisher
+
+Push notifications:
+- Increase body size allowed in push messages
+- Use utf8 aware function to cut too long text in push messages
+
+Other:
+- Add PKIX auth backend
+- Auto-register user at first successful EXTERNAL auth
+- Support for run-time SQL queries selection depending on DBMS version
+- Accept stream compression request after SASL
+- New XEP-0013: Flexible Offline Message Retrieval support
+- Make C2S session establishment optional
+- LDAP: Improve LDAP shared roster support
+- mod_register_web: Allow setting host when deleting account or changing password
+- Several improvements in Elixir
+- Updated many translations
+- Improve web admin rendering on some browsers
+
+=== Apr 12 2016: eBE 3.2.14
+
+Installer now includes Erlang/OTP 18.3, and Elixir 1.2.3.
+
+Riak:
+
+- Add support for Riak authentication
+- Keep alive Riak connections by default
+
+API and Commands:
+
+- Add support for ReST admin commands that are only restricted by source
+  IP. This is key for easy integration with other backend using ReST API.
+- Improve ban_account command to work with other DBs than Mnesia
+- Escape quoting node name for ejabberdctl ping
+- ejabberdctl uses getent to allow ejabberd user from external authentication sources
+- Extend scope of ejabberdctl ping
+- Bare JID in ‘from’ of Roster Push (RFC 6121 section 2.1.6) in mod_admin_extra
+- Fix result type of “connected_users_info” command
+- New command delete_mnesia deletes all tables that can be exported. This
+  is useful after you have migrated to another backend, like SQL.
+- Fix handling of authentication for bulk-roster-update in http_api
+
+SQL databases:
+
+- New parse transform for SQL queries, use prepare/execute calls with Postgres
+- In SQL files create Users table with SCRAM support by default
+- Fix some LIMIT related problems with MSSQL
+- Update Microsoft SQL Server schema
+- Use MEDIUMTEXT type for muc_room.opts in MySQL schema
+- Don't store watchdog notifications in MAM archives
+
+Elixir:
+
+- Add simple Elixir unit tests
+- Use Elixir v1.2.3
+- Fix escaping of argument in iexlive and iexdebug
+- Lager to Elixir Logger bridge is now compliant with ejabberd loglevel set / get
+
+PubSub:
+
+- Unregister route at the very end
+- Define PubSub node configuration per route/host explicitly
+- Fix sender in case of explicit pep subscriptions
+
+Protocols:
+
+- mod_mix: Experimental support for MIX (XEP-0369)
+- mod_http_upload: Add support for XEP-0363 v0.2
+- mod_http_upload: Use application/octet-stream instead of text/html for security reasons
+
+Other:
+
+- Code cleanup, remove unused modules
+- Make sure that ejabberd_sm sid are unique
+- Start ezlib only if required, as it's optional
+- Allow apns and gcm reconfiguration
+- Limit number of times push message can be resend
+- Fix systemd start/stop script
+
+=== Oct 04 2016: eBE 3.2.15
+
+This new release is the culmination of several months of work to
+improve your experience using ejabberd. It contains as usual a lot of
+small bug fixes and some enhancements. However, this version contains
+some new major features:
+- MUC/Sub
+- Major clean-up and improvement on OAuth ReST API
+- Improved commands: more controls, simpler configuration
+- Database backend for OAuth tokens
+- Modules loading in a dependent order
+- Refactor database specific code in dedicated modules
+- Ejabberd configuration can be written in Elixir instead of YAML
+- Module can we written in elixir and handled by ext_mod
+
+The biggest improvement is a new experimental feature for groupchat
+conversations in XMPP to work seamlessly with mobile clients: MUC/Sub.
+
+The main issue with XMPP group chat (based on XEP-0045) is that it is
+bound to user presence. On mobile, presence is almost irrelevant. You
+are always somewhat loosely reachable, but often seen as offline from
+XMPP point of view. MUC/Sub relies as much as possible on existing MUC
+specification, while making the smallest possible change that make
+mobile group conversation client development easy without having to
+send presence.
+See all details in our dedicated blogpost
+(https://blog.process-one.net/xmpp-mobile-groupchat-introducing-muc-subscription/).
+
+For the database changes, you are not required to modify your
+configuration file yet, but you may want to update it:
+- Replace 'odbc_' with 'sql_'
+- Replace 'db_type: odbc' with 'db_type: sql'
+
+This is a selection of the most relevant changes:
+
+Commands/API:
+
+- Add support for checking access rules conformance for commands
+- Add support for rich error reporting for API
+- Add support for sending back missing scope error to API ReST command calls
+- Add X-Admin and basic auth header to CORS allowed headers in http_api
+- Add OAUTH SQL backend
+- Add special OAuth scope: ejabberd:admin and ejabberd:user
+- Add user configurable TTL for OAuth tokens
+- Add send_mass_message command
+- Add support for rich error reporting
+- Allow generation of oauth tokens from command line
+- Allow passing username and ip to ejabberd_commands
+- Refactor HTTP calls to use correct verbs
+- Expand parsing of json input to be able to handle update_roster command
+- Fix handling of complex values as arguments in http_api
+- Fix bulk-roster-update
+
+Config:
+
+- New ACL infrastructure
+- Add shorter version of some common access rules definitions
+- Allow @ inside acl to pass both user and server in single string
+- Allow using shaper defined by name like in in s2s_shaper: fast
+- Allow acl definition in module configuration
+- Allow testing user pattern directly in access rules
+- Better formatting of configuration problem log message
+
+ejabberdctl:
+
+- Remove useless variable and quote EPMD and SPOOL_DIR
+- Fix node ping command
+- Use UUID for ctl node name
+- Force ERL_PATH for Elixir console
+- Give more time to stop and kill epmd
+- Ensure status result is in valid shell supported range
+- Add commands to manage OAuth tokens:
+  oauth_issue_token, oauth_list_tokens, oauth_list_scopes, oauth_revoke_token
+
+Databases:
+
+- Split modules DB specific code into separate modules
+- Rename "odbc" to "sql" everywhere
+- Rename "internal" to "mnesia"
+- Improve detection of databases supported by modules
+- Update SQL escaping
+- Use MEDIUMTEXT type for muc_room.opts in MySQL schema
+- Fix PgSQL schema
+
+Core:
+
+- Bounce messages sent to server JID
+- Properly handle send errors in ejabberd_c2s
+- When stopping ejabberd, stop modules after broadcasting c2s shutdown
+- Let shaper cope with low resolution system clock
+- Drop headline messages sent to offline resources
+- Don't omit bounces for messages of type "result"
+- Match namespace when checking for chat states
+- Disable TLS compression for s2s by default
+- Make sure that ejabberd_sm sid are unique
+- Generate shorted jid for anonymous connections
+- Switch supervised workers from temporary to transient (better robustness)
+- Fix C2S session data leak
+- Fix handling of queued stanzas on session timeout
+- Fix check for standalone chat state notifications
+- Fix anonymous SASL auth
+
+Stream Management:
+
+- Disable stream management when p1:ack is enabled
+- New Stream Management option: ack_timeout
+- Fix Stream Management feature for the websocket connections
+- Cancel timer when waiting for resumption
+- Handle timeouts during stream resumption
+- Add 'h' attribute to <failed/> element
+- Use different error message for bounces
+- Also count stanzas when socket is closed
+
+PubSub:
+
+- Add p1db support for faster cluster sync
+- Set default value for pubsub#itemreply option
+- Add support for PubSub publishing options
+- Add subscribe/unsubscribe hooks
+- Add SQL support for microblogging node plugin
+- Fix use of pubsub node plugin when configured with default_node_config
+- Fix matching of set_node/1 result
+- Fix use of like parameter in sql pubsub's requests
+- Fix node configuration change with sql backends
+- Fix send_last_items duplication with multi-plugin setup
+- Fix publish with subscriber publish model and sql backend
+- Fix notification on subscription change
+- Fix error type on item deletion with insufficient priviledge
+- Fix PubSub RSM on get_items with sql backends
+- Fix creation jid (force convertion to bare jid)
+- Fix sender in case of explicit PEP subscriptions
+- Fix hometree root check
+
+MUC:
+
+- Add Experimental MUC/Sub support
+- Advertise MUC/Sub support in MUC service disco#info
+- Create room on configuration request as per XEP-0045, 10.1.3
+- Support multiple room invitations
+- Include actor element in MUC stanzas when kicking
+- Add commands for MUC subscriptions management
+- Add command create_room_with_opts to support custom room configuration
+- Fix commads get_room_options and set_room_affiliation
+
+MUC/Sub:
+
+- Notify on affiliation changes
+- Do not update muc_online_users table on MUC/Sub operations
+- Handle <subscriptions/> request to list MUC subscribers
+- Link MUC subscription to bare JID
+- Fix nick-to-jid mapping for MUC subscribers
+- Fix subscribed rooms list retreivement
+- Fix message routing from subscribers
+
+MAM:
+
+- Send unique stanza id and archived tag also in the message carbons
+- Updated support of XEP-0313 from version 0.4 to 0.5.1
+- Always limit result set page size
+- Simplify "assume_mam_usage" option
+- Don't store messages of type "headline"
+- Honor <store/> hint for any non-"error" message
+- Store announcements for offline users
+- Fix mnesia backend, don't exceed table size limit, use transactions
+
+Elixir support:
+
+- Update supported Elixir version to 1.2.6
+- Support of configuration file written as Elixir script
+- Support elixir module installer
+- Start Elixir config code only if elixir was enabled in configure script
+- Add logger macro to help troubleshooting Elixir tests
+
+Client State:
+
+- Simplify check for carbon-copied chat states
+- Simplify handling of PEP stanzas
+- Add "queue_pep" option
+- Pass chat states of other resources
+- Queue chat state notifications
+- Throttle PEP stanzas by default
+
+Metrics:
+
+- Add support for custom monitors
+- Add generic average computation (supports external probes)
+- Add support of dynamic probes using dynamic monitor
+- Add cpu probe
+- Add influxdb backend
+- Allow full customization of default probes
+- Optimize resource consumption on metrics push
+- Count active users in a separate thread to not lock mon server
+- Don't lock jabs server on write_db
+
+Push:
+
+- Add code for formating muc invitations as push messages
+- Add webhook push module (perform ReST call for external push)
+- Add APNS/GCM/WebHook get/set API robustness
+- Support for push notifications for MUC Sub
+- Properly store sound cutomizations value
+
+Other:
+
+- Make modules loading in a dependent order
+- Warn on cyclic modules dependencies
+- Make s2s stats commands more robust
+- Handle Redis connection in a separate module
+- Update dependencies
+- auth: Add support for OCSP
+- auth: Use SASL PLAIN authzid as client identity if auth module permits it
+- mod_http_upload: Let client retry HTTP upload on file size mismatch
+- mod_last: Produce mod_last entry on account creation
+- mod_register: Check password with jid:resourceprep when registering account
+- mod_shared_roster: Support sql backend
+- mod_offline: Implement efficient body filter for sql and mnesia backend
+
+=== Oct 18 2016: eBE 3.2.16
+
+This is a bugfix version of 3.2.15. It improves stability of metrics provided
+by mod_mon.
+The only new feature is the licence_info API call, which provides a text
+description of the license applied to the package.
+
+- Fix jabs reset and cleanup on cluster
+- Fix typo to avoid case_clause on get_roster with error
+- Fix metrics bug on overload
+- Fix backend_api_* metrics type
+- Add error log when active counters can not start
+- Add warning message at startup about license expiration
+- Add license_info API call
+- Fix delete_old_messages command for SQL backends
+- Update mod_gcm_service to use FCM endpoint
