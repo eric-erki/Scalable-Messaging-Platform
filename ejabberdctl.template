@@ -7,15 +7,16 @@ ERL_MAX_PORTS=32000
 ERL_PROCESSES=250000
 ERL_MAX_ETS_TABLES=1400
 FIREWALL_WINDOW=""
-ERLANG_NODE=ejabberd@localhost
+ERLANG_NODE=ejabberd@$(hostname -s)
+ROOT_DIR=`cd ${0%/*} && pwd`
 
 # define default environment variables
-SCRIPT_DIR=`cd ${0%/*} && pwd`
-ERL={{erl}}
-IEX={{bindir}}/iex
-EPMD={{epmd}}
-INSTALLUSER={{installuser}}
-ERL_LIBS={{libdir}}
+ERL="{{erl}}"
+IEX="{{bindir}}/iex"
+EPMD="{{epmd}}"
+ERL_LIBS="{{libdir}}"
+INSTALLUSER="{{installuser}}"
+HOME_DIR="$ROOT_DIR"  # can switch to ejabberd's $HOME or /opt/ejabberd
 
 # check the proper system user is used if defined
 if [ "$INSTALLUSER" != "" ] ; then
@@ -59,38 +60,26 @@ while [ $# -ne 0 ] ; do
     esac
 done
 
-# Define ejabberd variable if they have not been defined from the command line
-if [ "$ETC_DIR" = "" ] ; then
-    ETC_DIR={{sysconfdir}}/ejabberd
-fi
-if [ "$EJABBERDCTL_CONFIG_PATH" = "" ] ; then
-    EJABBERDCTL_CONFIG_PATH=$ETC_DIR/ejabberdctl.cfg
-fi
-if [ -f "$EJABBERDCTL_CONFIG_PATH" ] ; then
-    . "$EJABBERDCTL_CONFIG_PATH"
-fi
-if [ "$EJABBERD_CONFIG_PATH" = "" ] ; then
-    EJABBERD_CONFIG_PATH=$ETC_DIR/ejabberd.yml
-fi
-if [ "$LOGS_DIR" = "" ] ; then
-    LOGS_DIR={{localstatedir}}/log/ejabberd
-fi
-if [ "$SPOOL_DIR" = "" ] ; then
-    SPOOL_DIR={{localstatedir}}/lib/ejabberd
-fi
-if [ "$EJABBERD_DOC_PATH" = "" ] ; then
-    EJABBERD_DOC_PATH={{docdir}}
-fi
-if [ "$ERLANG_NODE_ARG" != "" ] ; then
-    ERLANG_NODE=$ERLANG_NODE_ARG
-fi
-if [ "{{release}}" != "true" -a "$EJABBERD_BIN_PATH" = "" ] ; then
-    EJABBERD_BIN_PATH={{libdir}}/ejabberd/priv/bin
-fi
-EJABBERD_LOG_PATH=$LOGS_DIR/ejabberd.log
-DATETIME=`date "+%Y%m%d-%H%M%S"`
-ERL_CRASH_DUMP=$LOGS_DIR/erl_crash_$DATETIME.dump
-ERL_INETRC=$ETC_DIR/inetrc
+# Set configuration path to default if not already defined from the command line
+: ${ETC_DIR:="{{sysconfdir}}/ejabberd"}
+: ${EJABBERD_CONFIG_PATH:="$ETC_DIR"/ejabberd.yml}
+: ${EJABBERDCTL_CONFIG_PATH:="$ETC_DIR"/ejabberdctl.cfg}
+[ -f "$EJABBERDCTL_CONFIG_PATH" ] && . "$EJABBERDCTL_CONFIG_PATH"
+
+# Define ejabberd variable if not already defined from the command line or config file
+[ "$ERLANG_NODE_ARG" != "" ] && ERLANG_NODE=$ERLANG_NODE_ARG
+: ${LOGS_DIR:="{{localstatedir}}/log/ejabberd"}
+: ${SPOOL_DIR:="{{localstatedir}}/lib/ejabberd"}
+: ${EJABBERD_DOC_PATH:="{{docdir}}"}
+#: ${EJABBERD_DIR:="{{libdir}}/ejabberd"}
+#: ${EJABBERD_EBIN_PATH:="$EJABBERD_DIR"/ebin}
+#: ${EJABBERD_PRIV_PATH:="$EJABBERD_DIR"/priv}
+#: ${EJABBERD_BIN_PATH:="$EJABBERD_PRIV_PATH"/bin}
+#: ${EJABBERD_SO_PATH:="$EJABBERD_PRIV_PATH"/lib}
+#: ${EJABBERD_MSGS_PATH:="$EJABBERD_PRIV_PATH"/msgs}
+: ${EJABBERD_LOG_PATH:="$LOGS_DIR"/ejabberd.log}
+ERL_CRASH_DUMP="$LOGS_DIR"/erl_crash_$(date "+%Y%m%d-%H%M%S").dump
+ERL_INETRC="$ETC_DIR"/inetrc
 
 # define mnesia options
 MNESIA_OPTS="-mnesia dir \"\\\"$SPOOL_DIR\\\"\" $MNESIA_OPTIONS"
@@ -101,11 +90,10 @@ if [ "$FIREWALL_WINDOW" != "" ] ; then
     KERNEL_OPTS="${KERNEL_OPTS} -kernel inet_dist_listen_min ${FIREWALL_WINDOW%-*} inet_dist_listen_max ${FIREWALL_WINDOW#*-}"
 fi
 if [ "$INET_DIST_INTERFACE" != "" ] ; then
-    INET_DIST_INTERFACE2="$(echo $INET_DIST_INTERFACE | sed 's/\./,/g')"
-    if [ "$INET_DIST_INTERFACE" != "$INET_DIST_INTERFACE2" ] ; then
-        INET_DIST_INTERFACE2="{$INET_DIST_INTERFACE2}"
+    INET_DIST_INTERFACE2=$("$ERL" -noshell -eval 'case inet:parse_address("'$INET_DIST_INTERFACE'") of {ok,IP} -> io:format("~p",[IP]); _ -> ok end.' -s erlang halt)
+    if [ "$INET_DIST_INTERFACE2" != "" ] ; then
+        KERNEL_OPTS="${KERNEL_OPTS} -kernel inet_dist_use_interface \"${INET_DIST_INTERFACE2}\""
     fi
-    KERNEL_OPTS="${KERNEL_OPTS} -kernel inet_dist_use_interface \"${INET_DIST_INTERFACE2}\""
 fi
 if [ "$ERLANG_NODE" = "${ERLANG_NODE%.*}" ] ; then
     NAME="-sname"
@@ -115,17 +103,10 @@ fi
 IEXNAME="-$NAME"
 
 # define ejabberd environment parameters
-if [ "$EJABBERD_CONFIG_PATH" != "${EJABBERD_CONFIG_PATH%.yml}" ] ; then
-    rate=$(sed '/^[ 	]*log_rate_limit/!d;s/.*://;s/ *//' $EJABBERD_CONFIG_PATH)
-    rotate=$(sed '/^[ 	]*log_rotate_size/!d;s/.*://;s/ *//' $EJABBERD_CONFIG_PATH)
-    count=$(sed '/^[ 	]*log_rotate_count/!d;s/.*://;s/ *//' $EJABBERD_CONFIG_PATH)
-    date=$(sed '/^[ 	]*log_rotate_date/!d;s/.*://;s/ *//' $EJABBERD_CONFIG_PATH)
-else
-    rate=$(sed '/^[ 	]*log_rate_limit/!d;s/.*,//;s/ *//;s/}\.//' $EJABBERD_CONFIG_PATH)
-    rotate=$(sed '/^[ 	]*log_rotate_size/!d;s/.*,//;s/ *//;s/}\.//' $EJABBERD_CONFIG_PATH)
-    count=$(sed '/^[ 	]*log_rotate_count/!d;s/.*,//;s/ *//;s/}\.//' $EJABBERD_CONFIG_PATH)
-    date=$(sed '/^[ 	]*log_rotate_date/!d;s/.*,//;s/ *//;s/}\.//' $EJABBERD_CONFIG_PATH)
-fi
+rate=$(sed '/^[ 	]*log_rate_limit/!d;s/.*://;s/ *//' "$EJABBERD_CONFIG_PATH")
+rotate=$(sed '/^[ 	]*log_rotate_size/!d;s/.*://;s/ *//' "$EJABBERD_CONFIG_PATH")
+count=$(sed '/^[ 	]*log_rotate_count/!d;s/.*://;s/ *//' "$EJABBERD_CONFIG_PATH")
+date=$(sed '/^[ 	]*log_rotate_date/!d;s/.*://;s/ *//' "$EJABBERD_CONFIG_PATH")
 [ -z "$rate" ] || EJABBERD_OPTS="log_rate_limit $rate"
 [ -z "$rotate" ] || EJABBERD_OPTS="${EJABBERD_OPTS} log_rotate_size $rotate"
 [ -z "$count" ] || EJABBERD_OPTS="${EJABBERD_OPTS} log_rotate_count $count"
