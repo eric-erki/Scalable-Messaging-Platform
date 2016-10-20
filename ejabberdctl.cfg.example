@@ -22,9 +22,9 @@
 #   is available and more than one logical processor are detected.
 # disable: starts a runtime system without SMP support.
 #
-# Default: auto
+# Default: enable
 #
-#SMP=auto
+#SMP=enable
 
 #.
 #' ERL_MAX_PORTS: Maximum number of simultaneously open Erlang ports
