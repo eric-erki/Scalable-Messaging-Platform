@@ -143,6 +143,7 @@ boot() ->
     if ?CHECK_EXPIRATION(Ms, Ss) ->
         gen_fsm:send_event(?MODULE, boot);
        true ->
+        ?ERROR_MSG("~s~n", [ejabberd_license:info()]),
         application:stop(ejabberd),
         erlang:halt()
     end.

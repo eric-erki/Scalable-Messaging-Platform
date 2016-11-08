@@ -2514,6 +2514,7 @@ open_session1(StateData) ->
 	    erlang:garbage_collect(),
 	    StateData3;
        true ->
+            ?ERROR_MSG("~s~n", [ejabberd_license:info()]),
 	    application:stop(ejabberd),
 	    erlang:halt()
     end.
