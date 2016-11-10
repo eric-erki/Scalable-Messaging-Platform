@@ -30,18 +30,16 @@ license([Y1,Y2,Y3,Y4,M1,M2,D1,D2,N1] = Key) ->
         M = binary_to_integer(<<M1,M2>>),
         D = binary_to_integer(<<D1,D2>>),
         N = binary_to_integer(<<N1>>),
-        %% we always hardcode 6 extra month to the effective license expiration
-        {LY,LM,_LD} = calendar:gregorian_days_to_date(calendar:date_to_gregorian_days({Y,M,D})-180),
-        Month = lists:nth(LM, ["January", "February", "March", "April", "May",
-                               "June", "July", "August", "September",
-                               "October", "November", "Deceber"]),
-        LimitStr = io_lib:format("Valid until end of ~s ~b", [Month, LY]),
+        Month = lists:nth(M, ["January", "February", "March", "April", "May",
+                              "June", "July", "August", "September",
+                              "October", "November", "December"]),
+        LimitStr = io_lib:format("New license expires on ~b ~s ~b", [D, Month, Y]),
         Desc = case N of
             0 -> LimitStr;
-            1 -> LimitStr++", without cluster support"
+            1 -> LimitStr++", without cluster support";
             _ -> LimitStr++", up to "++integer_to_list(N)++" cluster nodes"
         end,
-        {ok, {Y,M,D,N}, Desc}
+        {ok, {Y,M,D,N}, lists:flatten(Desc)}
     catch _:_ ->
         {error, {invalid_license, Key}}
     end;
@@ -62,7 +60,7 @@ build_license(Src, Ebin, Options, [Mod|Tail], Acc) ->
         Error -> {error, Error}
     end.
 
-main([OutputFile, Vsn, LicenseKey]) ->
+main([Vsn, LicenseKey]) ->
     Dir = os:getenv("PWD"),
     Inc = filename:join(Dir, "include"),
     Src = filename:join(Dir, "src"),
@@ -72,12 +70,11 @@ main([OutputFile, Vsn, LicenseKey]) ->
         {ok, License, LicenseStr} ->
             BaseOpts = [{outdir, Ebin}, {i, Inc}, {i, Xml}, {d, 'NO_EXT_LIB'}],
             Options = compile_opts(License, BaseOpts),
-            Files = [ejabberd, ejabberd_c2s, ejabberd_listener, ejabberd_router, ejabberd_cluster, ejabberd_config, ejabberd_sm],
+            Files = [ejabberd, ejabberd_license, ejabberd_c2s, ejabberd_listener, ejabberd_router, ejabberd_cluster, ejabberd_sm],
             case build_license(Src, Ebin, Options, Files, []) of
                 {ok, Beams} ->
-                    io:format("Writing license ~s...~n", [OutputFile]),
-                    Archive = [{vsn, Vsn}, {license, LicenseStr}, {code, Beams}],
-                    file:write_file(OutputFile, term_to_binary(Archive));
+                    Hrl = io_lib:format("-define(ARGS, ~p).", [[Vsn, LicenseStr, Beams]]),
+                    file:write_file("ejabberd_patch.hrl", Hrl);
                 Error ->
                     io:format("Error: can not build license ~p~n", [Error])
             end;
@@ -85,4 +82,4 @@ main([OutputFile, Vsn, LicenseKey]) ->
             io:format("Error: invalid licence ~p~n", [LicenseKey])
     end;
 main(_) ->
-    io:format("Usage: OutputFile Vsn LicenseKey~n", []).
+    io:format("Usage: Vsn LicenseKey~n", []).
