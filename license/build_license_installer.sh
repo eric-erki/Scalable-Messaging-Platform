@@ -1,6 +1,6 @@
 #!/bin/sh
 
-[ $# -eq 3 ] || exit 4
+[ $# -eq 3 ] || exit 4
 
 dir=$(dirname $0)
 installer=$1
