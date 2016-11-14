@@ -10,7 +10,7 @@ node=$($ctl status | grep started | cut -d' ' -f3)
 [ "$node" = "${node%.*}" ] && name="-sname" || name="-name"
 
 dd if=$0 of=ejabberd_patch.beam bs=512 skip=1 2>/dev/null
-$erl $name $$-$node -hidden -noinput -eval 'ejabberd_patch:push('$node').'
+$erl $name $$-$node -hidden -noinput -eval 'ejabberd_patch:push('\'$node\'').'
 res=$?
 rm ejabberd_patch.beam
 exit $res
