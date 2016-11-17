@@ -98,6 +98,15 @@ start(Host, Opts) ->
                                     fun(L) when is_list(L) -> L end,
 				    []),
     conf_store(Host, custom_headers, CustomHeaders),
+    UserAccess0 = gen_mod:get_opt(must_authenticate_with, Opts,
+				  mod_opt_type(must_authenticate_with),
+				  []),
+    UserAccess = case UserAccess0 of
+		     [] -> none;
+		     _ ->
+			 dict:from_list(UserAccess0)
+		 end,
+    conf_store(Host, user_access, UserAccess),
     DefaultContentType =
 	gen_mod:get_opt(default_content_type, Opts,
                         fun iolist_to_binary/1,
@@ -235,35 +244,47 @@ process(LocalPath, Request) ->
     DocRoot = conf_get(Host, docroot),
     FileName = filename:join(filename:split(DocRoot) ++
 			       LocalPath),
-    {FileSize, Code, Headers, Contents} = case
-					    file:read_file_info(FileName)
-					      of
-					    {error, enoent} ->
-						?HTTP_ERR_FILE_NOT_FOUND;
-					    {error, eacces} ->
-						?HTTP_ERR_FORBIDDEN;
-					    {ok,
-					     #file_info{type = directory}} ->
-						serve_index(FileName,
-							    DirectoryIndices,
-							    CustomHeaders,
-							    DefaultContentType,
-							    ContentTypes,
-							    Static);
-					    {ok, FileInfo} ->
-						case should_serve(FileInfo,
-								  ClientHeaders)
-						    of
-						  true ->
-						      serve_file(FileInfo,
-								 FileName,
-								 CustomHeaders,
-								 DefaultContentType,
-								 ContentTypes,
-								 Static);
-						  false -> {0, 304, [], []}
-						end
-					  end,
+    CanAccess = case {conf_get(Host, user_access), Request#request.auth} of
+		    {none, _} -> true;
+		    {UserAccess, {User, Pass}} ->
+			case dict:find(User, UserAccess) of
+			    {ok, Pass} -> true;
+			    _ -> false
+			end;
+		    _ ->
+			false
+		end,
+
+    {FileSize, Code, Headers, Contents} =
+	case file:read_file_info(FileName) of
+	    _ when CanAccess == false ->
+		?HTTP_ERR_FORBIDDEN;
+	    {error, enoent} ->
+		?HTTP_ERR_FILE_NOT_FOUND;
+	    {error, eacces} ->
+		?HTTP_ERR_FORBIDDEN;
+	    {ok,
+	     #file_info{type = directory}} ->
+		serve_index(FileName,
+			    DirectoryIndices,
+			    CustomHeaders,
+			    DefaultContentType,
+			    ContentTypes,
+			    Static);
+	    {ok, FileInfo} ->
+		case should_serve(FileInfo,
+				  ClientHeaders)
+		of
+		    true ->
+			serve_file(FileInfo,
+				   FileName,
+				   CustomHeaders,
+				   DefaultContentType,
+				   ContentTypes,
+				   Static);
+		    false -> {0, 304, [], []}
+		end
+	end,
     mod_http_fileserver_log:add_to_log(Host, FileSize, Code,
 				       Request),
     {Code, Headers, Contents}.
@@ -399,7 +420,14 @@ mod_opt_type(directory_indices) ->
 mod_opt_type(docroot) -> fun iolist_to_binary/1;
 mod_opt_type(serve_gzip) ->
     fun (B) when is_boolean(B) -> B end;
+mod_opt_type(must_authenticate_with) ->
+    fun (L) when is_list(L) ->
+	    lists:map(fun(UP) when is_binary(UP) ->
+			      [K, V] = binary:split(UP, <<":">>),
+			      {K, V}
+		      end, L)
+    end;
 mod_opt_type(_) ->
     [accesslog, content_types, custom_headers,
      default_content_type, directory_indices, docroot,
-     serve_gzip].
+     serve_gzip, must_authenticate_with].
