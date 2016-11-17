@@ -51,8 +51,13 @@
 -define(HTTP_ERR_FILE_NOT_FOUND,
 	{-1, 404, [], <<"Not found">>}).
 
+-define(REQUEST_AUTH_HEADERS,
+	[{<<"WWW-Authenticate">>, <<"Basic realm=\"ejabberd\"">>}]).
+
 -define(HTTP_ERR_FORBIDDEN,
 	{-1, 403, [], <<"Forbidden">>}).
+-define(HTTP_ERR_REQUEST_AUTH,
+	{-1, 401, ?REQUEST_AUTH_HEADERS, <<"Unauthorized">>}).
 
 -define(DEFAULT_CONTENT_TYPE,
 	<<"application/octet-stream">>).
@@ -252,13 +257,15 @@ process(LocalPath, Request) ->
 			    _ -> false
 			end;
 		    _ ->
-			false
+			request_auth
 		end,
 
     {FileSize, Code, Headers, Contents} =
 	case file:read_file_info(FileName) of
 	    _ when CanAccess == false ->
-		?HTTP_ERR_FORBIDDEN;
+		?HTTP_ERR_REQUEST_AUTH;
+	    _ when CanAccess == request_auth ->
+		?HTTP_ERR_REQUEST_AUTH;
 	    {error, enoent} ->
 		?HTTP_ERR_FILE_NOT_FOUND;
 	    {error, eacces} ->
