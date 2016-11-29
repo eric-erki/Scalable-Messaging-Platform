@@ -149,7 +149,7 @@ check_password(User, AuthzId, Server, Password, Digest,
 
 check_password_with_authmodule(User, AuthzId, Server,
 			       Password) ->
-    check_password_loop(auth_modules(Server),
+    check_password_loop(Server, auth_modules(Server),
 			[User, AuthzId, Server, Password]).
 
 -spec check_password_with_authmodule(binary(), binary(), binary(), binary(), binary(),
@@ -158,14 +158,16 @@ check_password_with_authmodule(User, AuthzId, Server,
 
 check_password_with_authmodule(User, AuthzId, Server, Password,
 			       Digest, DigestGen) ->
-    check_password_loop(auth_modules(Server),
+    check_password_loop(Server, auth_modules(Server),
 			[User, AuthzId, Server, Password, Digest, DigestGen]).
 
-check_password_loop([], _Args) -> false;
-check_password_loop([AuthModule | AuthModules], Args) ->
+check_password_loop(Server, [], [User, _AuthzId, Server, Password | _]) ->
+    ejabberd_hooks:run(badauth, Server, [User, Server, Password]),
+    false;
+check_password_loop(Server, [AuthModule | AuthModules], Args) ->
     case apply(AuthModule, check_password, Args) of
       true -> {true, AuthModule};
-      false -> check_password_loop(AuthModules, Args)
+      false -> check_password_loop(Server, AuthModules, Args)
     end.
 
 -spec set_password(binary(), binary(), binary()) -> ok |

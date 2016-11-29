@@ -53,11 +53,10 @@
 %% server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--export([offline_message_hook/3,
-	 resend_offline_messages_hook/3,
-	 sm_register_connection_hook/3,
-	 sm_remove_connection_hook/3, roster_in_subscription/6,
-	 roster_out_subscription/4, user_available_hook/1,
+-export([offline_message_hook/3, resend_offline_messages_hook/3,
+	 sm_register_connection_hook/3, sm_remove_connection_hook/3,
+	 roster_in_subscription/6, roster_out_subscription/4,
+	 user_available_hook/1, badauth/3,
 	 unset_presence_hook/4, set_presence_hook/4,
 	 user_send_packet/4, user_receive_packet/5,
 	 c2s_replaced/1, s2s_send_packet/3, s2s_receive_packet/3,
@@ -427,6 +426,9 @@ backend_api_error(LServer, _Method, _Path) ->
     inc(LServer, backend_api_error, 1).
 backend_api_badauth(LServer, _Method, _Path) ->
     inc(LServer, backend_api_badauth, 1).
+
+badauth(_LUser, LServer, _Password) ->
+    inc(LServer, badauth, 1).
 
 remove_user(_User, Server) ->
     inc(jid:nameprep(Server), remove_user, 1).

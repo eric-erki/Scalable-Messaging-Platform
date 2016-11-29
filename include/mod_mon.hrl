@@ -34,7 +34,8 @@
          s2s_send_packet, s2s_receive_packet,
          privacy_iq_get, privacy_iq_set,
          backend_api_call, backend_api_response_time,
-         backend_api_timeout, backend_api_error, backend_api_badauth]).
+         backend_api_timeout, backend_api_error, backend_api_badauth,
+         badauth]).
         % TODO those need submodule register
          %muc_create, muc_destroy, muc_user_join, muc_user_leave, muc_rooms, muc_users, muc_message,
          %pubsub_create_node, pubsub_delete_node, pubsub_publish_item, pubsub_broadcast_stanza, pubsub_nodes, pubsub_users]).
