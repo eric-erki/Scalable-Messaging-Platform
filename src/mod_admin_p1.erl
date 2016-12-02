@@ -66,7 +66,8 @@
 	 get_apns_config/1, get_gcm_config/1, get_webhook_config/1,
 	 setup_apns/3, setup_gcm/3, setup_webhook/3,
 	% API IP whitelist
-	 get_whitelist_ip/0, set_whitelist_ip/1]).
+	 get_whitelist_ip/0, set_whitelist_ip/1,
+	 opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -1606,3 +1607,7 @@ build_stamp(Module) ->
     {Y,M,D,HH,MM,SS} = proplists:get_value(time, Module:module_info(compile)),
     DateTime = {{Y,M,D},{HH,MM,SS}},
     {jlib:timestamp_to_iso(DateTime), calendar:datetime_to_gregorian_seconds(DateTime)}.
+
+opt_type(push_cache_db_type) ->
+    fun(V) when is_atom(V) -> V end;
+opt_type(_) -> [push_cache_db_type].
