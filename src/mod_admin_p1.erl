@@ -1290,7 +1290,7 @@ applepush_cfg(Host, ProductionCert, SandboxCert) ->
     end,
     [{modules, [
 	{mod_applepush, [
-		{db_type, sql},
+		{db_type, push_backend()},
 		{iqdisc, 50},
 		{default_service, DefaultService},
 		{push_services,
@@ -1389,7 +1389,7 @@ gcm_cfg(_, _, <<>>) ->
 gcm_cfg(Host, ApiKey, AppId) ->
     [{modules, [
 	{mod_gcm, [
-		{db_type, sql},
+		{db_type, push_backend()},
 		{iqdisc, 50},
 		{default_service, <<"gcm.", Host/binary>>},
 		{push_services, [{AppId, <<"gcm.", Host/binary>>}
@@ -1452,7 +1452,7 @@ webhook_cfg(_, _, <<>>) ->
 webhook_cfg(Host, Gateway, AppId) ->
     [{modules, [
 	{mod_webhook, [
-		{db_type, sql},
+		{db_type, push_backend()},
 		{iqdisc, 50},
 		{default_service, <<"webhook.", Host/binary>>},
 		{push_services, [{AppId, <<"webhook.", Host/binary>>}
@@ -1488,6 +1488,12 @@ set_whitelist_ip(IPs) ->
 %% -----------------------------
 %% Internal function pattern
 %% -----------------------------
+
+push_backend() ->
+    ejabberd_config:get_option(
+      push_cache_db_type,
+      fun(V) when is_atom(V) -> V end,
+      p1db).
 
 push_spec(Host, Mod, SrvMod, Key) ->
     case proplists:get_value(Host, module_options(Mod)) of
