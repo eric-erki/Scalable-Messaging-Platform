@@ -519,21 +519,12 @@ acc_monitor(Probe, Value, Acc) ->
 %% Cache sync
 %%====================================================================
 
-init_backend(_Host, {statsd, EndPoint}) ->
-    {Ip, Port} = backend_ip_port(EndPoint, {127,0,0,1}, 2003),
-    {statsd, Ip, Port};
-init_backend(_Host, statsd) ->
-    {statsd, {127,0,0,1}, 2003};
-init_backend(_Host, {influxdb, EndPoint}) ->
-    {Ip, Port} = backend_ip_port(EndPoint, {127,0,0,1}, 4444),
-    {influxdb, Ip, Port};
-init_backend(_Host, influxdb) ->
-    {influxdb, {127,0,0,1}, 4444};
-init_backend(_Host, {grapherl, EndPoint}) ->
-    {Ip, Port} = backend_ip_port(EndPoint, {127,0,0,1}, 11111),
-    {grapherl, Ip, Port};
-init_backend(_Host, grapherl) ->
-    {grapherl, {127,0,0,1}, 11111};
+init_backend(Host, statsd) ->
+    init_backend(Host, {statsd, <<"127.0.0.1:2003">>});
+init_backend(Host, influxdb) ->
+    init_backend(Host, {influx, <<"127.0.0.1:4444">>});
+init_backend(Host, grapherl) ->
+    init_backend(Host, {grapherl, <<"127.0.0.1:11111">>});
 init_backend(Host, mnesia) ->
     Table = gen_mod:get_module_proc(Host, mon),
     mnesia:create_table(Table,
@@ -542,16 +533,26 @@ init_backend(Host, mnesia) ->
                          {record_name, mon},
                          {attributes, record_info(fields, mon)}]),
     mnesia;
+init_backend(_Host, {Backend, EndPoint}) ->
+    case backend_ip_port(EndPoint) of
+        {Ip, Port} ->
+            test_udp(Backend, Ip, Port),
+            {Backend, Ip, Port};
+        undefined ->
+            none
+    end;
 init_backend(_, _) ->
     none.
 
-backend_ip_port(EndPoint, DefaultServer, DefaultPort) when is_binary(EndPoint) ->
+backend_ip_port(EndPoint) when is_binary(EndPoint) ->
+    DefaultServer = {127,0,0,1},
+    DefaultPort = 0,
     case string:tokens(binary_to_list(EndPoint), ":") of
         [Ip] -> {backend_ip(Ip, DefaultServer), DefaultPort};
         [Ip, Port|_] -> {backend_ip(Ip, DefaultServer), backend_port(Port, DefaultPort)};
         _ ->
             ?WARNING_MSG("backend endoint is invalid: ~p", [EndPoint]),
-            {DefaultServer, DefaultPort}
+            undefined
     end.
 backend_ip(Server, Default) when is_list(Server) ->
     case catch inet:getaddr(Server, inet) of
@@ -611,6 +612,18 @@ push(Host, Node, Probes, Time, {grapherl, Ip, Port}) ->
         end);
 push(_Host, _Node, _Probes, _Time, _Backend) ->
     ok.
+
+test_udp(Backend, Ip, Port) ->
+    case gen_udp:open(0, [{active, false}]) of
+        {ok, Socket} ->
+            case gen_udp:send(Socket, Ip, Port, <<>>) of
+                ok -> ok;
+                Error -> ?ERROR_MSG("Can not send data to ~s backend: ~p", [Backend, Error])
+            end,
+            gen_udp:close(Socket);
+        Error ->
+            ?ERROR_MSG("Can not open UDP socket for ~s backend: ~p", [Backend, Error])
+    end.
 
 push_udp({A,B,C,D}=Ip, Port, Probes, Format) ->
     Header = [(Port bsr 8) band 255, Port band 255, A, B, C, D],
