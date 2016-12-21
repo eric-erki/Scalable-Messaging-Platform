@@ -46,7 +46,7 @@
 	% users
 	 create_account/3, delete_account/2,
 	% sessions
-	 get_resources/2, user_info/2,
+	 get_resources/2, user_info/2, remove_offline/0,
 	% roster
 	 add_rosteritem_groups/5, del_rosteritem_groups/5, modify_rosteritem_groups/6,
 	 get_roster/2, get_roster_with_presence/2,
@@ -296,6 +296,12 @@ get_commands_spec() ->
 				    {sessions, {list,
 					{session, {list,
 					    {info, {tuple, [{name, atom}, {value, string}]}}}}}}]}}},
+     #ejabberd_commands{name = remove_offline,
+			tags = [session],
+			desc = "Remove offline sessions records used by stream management",
+			module = sm_remove_offline, function = remove_offline,
+			args = [],
+			result = {res, rescode}},
 	  #ejabberd_commands{name = purge_mam,
 			     tags = [mam],
 			     desc = "Purge MAM archive for old messages",
