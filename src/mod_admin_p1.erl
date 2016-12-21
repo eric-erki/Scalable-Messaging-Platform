@@ -46,7 +46,7 @@
 	% users
 	 create_account/3, delete_account/2,
 	% sessions
-	 get_resources/2, user_info/2, remove_offline/0,
+	 get_resources/2, user_info/2,
 	% roster
 	 add_rosteritem_groups/5, del_rosteritem_groups/5, modify_rosteritem_groups/6,
 	 get_roster/2, get_roster_with_presence/2,
