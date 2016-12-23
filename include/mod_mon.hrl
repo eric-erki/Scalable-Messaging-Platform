@@ -80,7 +80,7 @@
          {sql_internal_queues, internal_queues, ejabberd_sql_sup},
          {offline_internal_queues, internal_queues, mod_offline_pool},
          {jabs, jabs_count},
-         {sessions, ejabberd_sm, get_sessions_number, []},
+         %{sessions, node_sessions_count}, % define this if sm_register_connection_hook and sm_remove_connection_hook disabled
          {memory, erlang, memory, [total]},
          {cpu, cpu_usage},
          {processes, erlang, system_info, [process_count]},

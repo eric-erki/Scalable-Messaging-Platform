@@ -49,7 +49,7 @@
 -export([flush_probe_command/2]).
 %% monitors
 -export([process_queues/2, internal_queues/2, health_check/1, jabs_count/1]).
--export([cpu_usage/1]).
+-export([node_sessions_count/1, cpu_usage/1]).
 %% server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
@@ -158,6 +158,15 @@ init([Host, Opts]) ->
     %                     lists:suffix(
     %                        str:tokens(Dom, <<".">>),
     %                        str:tokens(Host, <<".">>))],
+
+    % efficient local sessions count
+    EfficientNodeSessions =
+      lists:member(sm_register_connection_hook, Hooks)
+      andalso lists:member(sm_remove_connection_hook, Hooks),
+    if EfficientNodeSessions ->
+         cheap_counters:set(Host, sessions, node_sessions_count(Host))
+    end,
+
     [ejabberd_hooks:add(Hook, Component, ?MODULE, Hook, 20)
      || Component <- [Host], % Todo, Components for muc and pubsub
         Hook <- Hooks],
@@ -357,6 +366,7 @@ sm_register_connection_hook(_SID, #jid{lserver=LServer}, Info) ->
         Atom -> jlib:atom_to_binary(Atom)
     end,
     Hook = hookid(concat(<<"sm_register_connection">>, Post)),
+    inc(LServer, sessions, 1),
     inc(LServer, Hook, 1).
 sm_remove_connection_hook(_SID, #jid{lserver=LServer}, Info) ->
     Post = case proplists:get_value(conn, Info) of
@@ -364,6 +374,7 @@ sm_remove_connection_hook(_SID, #jid{lserver=LServer}, Info) ->
         Atom -> jlib:atom_to_binary(Atom)
     end,
     Hook = hookid(concat(<<"sm_remove_connection">>, Post)),
+    dec(LServer, sessions, 1),
     inc(LServer, Hook, 1).
 
 roster_in_subscription(Ls, _User, Server, _To, _Type, _Reason) ->
@@ -740,6 +751,9 @@ jabs_count(Host) ->
         undefined -> 0;
         {Count, _} -> Count
     end.
+
+node_sessions_count(_Host) ->
+    length(ejabberd_sm_mnesia:get_node_sessions(node())).
 
 cpu_usage(_Host) ->
     Threads = erlang:system_info(schedulers),
