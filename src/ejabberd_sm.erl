@@ -77,7 +77,8 @@
 	 get_all_pids/0,
 	 get_proc_num/0,
 	 get_commands_spec/0,
-	 make_sid/0
+         make_sid/0,
+         cache_tab_error/0
 	]).
 
 -export([init/1, handle_call/3, handle_cast/2,
@@ -230,14 +231,14 @@ get_user_resources(User, Server) ->
     LUser = jid:nodeprep(User),
     LServer = jid:nameprep(Server),
     Mod = get_sm_backend(LServer),
-    Ss = online(Mod:get_sessions(LUser, LServer)),
+    Ss = Mod:get_sessions(LUser, LServer),
     [element(3, S#session.usr) || S <- clean_session_list(Ss)].
 
 -spec get_user_present_resources(binary(), binary()) -> [tuple()].
 
 get_user_present_resources(LUser, LServer) ->
     Mod = get_sm_backend(LServer),
-    Ss = online(Mod:get_sessions(LUser, LServer)),
+    Ss = Mod:get_sessions(LUser, LServer),
     [{S#session.priority, element(3, S#session.usr)}
      || S <- clean_session_list(Ss), is_integer(S#session.priority)].
 
@@ -309,21 +310,19 @@ get_session_pid(User, Server, Resource) ->
     LResource = jid:resourceprep(Resource),
     Mod = get_sm_backend(LServer),
     case Mod:get_session(LUser, LServer, LResource) of
-        {ok, #session{sid = {_, Pid}} = Session} ->
-            case is_online(Session) of
-                true -> Pid;
-                false -> none
-            end;
+        {ok, #session{sid = {_, Pid}}} -> Pid;
         {error, notfound} -> none
     end.
 
 -spec set_offline_info(sid(), binary(), binary(), binary(), info()) -> ok.
 
-set_offline_info(SID, User, Server, Resource, Info) ->
+set_offline_info({Time, _} = _SID, User, Server, Resource, Info) ->
     LUser = jid:nodeprep(User),
     LServer = jid:nameprep(Server),
     LResource = jid:resourceprep(Resource),
-    set_session(SID, LUser, LServer, LResource, undefined, [offline | Info]).
+    Key = {Time, LUser, LServer, LResource},
+    cache_tab:dirty_dist_insert(
+      mgmt_offline, Key, Info, fun ?MODULE:cache_tab_error/0).
 
 -spec get_offline_info(erlang:timestamp(), binary(), binary(),
                        binary()) -> none | info().
@@ -332,25 +331,24 @@ get_offline_info(Time, User, Server, Resource) ->
     LUser = jid:nodeprep(User),
     LServer = jid:nameprep(Server),
     LResource = jid:resourceprep(Resource),
-    Mod = get_sm_backend(LServer),
-    case Mod:get_session(LUser, LServer, LResource) of
-	{ok, #session{sid = {Time, _}, info = Info}} ->
-	    case proplists:get_bool(offline, Info) of
-		true ->
-                    Info;
-		false ->
-		    none
-	    end;
+    Key = {Time, LUser, LServer, LResource},
+    case cache_tab:lookup(mgmt_offline, Key, fun ?MODULE:cache_tab_error/0) of
+	{ok, Info} ->
+            cache_tab:dirty_dist_delete(
+              mgmt_offline, Key, fun ?MODULE:cache_tab_error/0),
+            Info;
 	_ ->
 	    none
     end.
+
+cache_tab_error() -> error.
 
 -spec dirty_get_sessions_list() -> [ljid()].
 
 dirty_get_sessions_list() ->
     lists:flatmap(
       fun(Mod) ->
-	      [S#session.usr || S <- online(Mod:get_sessions())]
+	      [S#session.usr || S <- Mod:get_sessions()]
       end, get_sm_backends()).
 
 -spec dirty_get_my_sessions_list() -> [#session{}].
@@ -358,7 +356,7 @@ dirty_get_sessions_list() ->
 dirty_get_my_sessions_list() ->
     lists:flatmap(
       fun(Mod) ->
-	      [S || S <- online(Mod:get_sessions()),
+	      [S || S <- Mod:get_sessions(),
 		    node(element(2, S#session.sid)) == node()]
       end, get_sm_backends()).
 
@@ -375,14 +373,14 @@ get_vh_my_session_list(Server) ->
 get_vh_session_list(Server) ->
     LServer = jid:nameprep(Server),
     Mod = get_sm_backend(LServer),
-    [S#session.usr || S <- online(Mod:get_sessions(LServer))].
+    [S#session.usr || S <- Mod:get_sessions(LServer)].
 
 -spec get_all_pids() -> [pid()].
 
 get_all_pids() ->
     lists:flatmap(
       fun(Mod) ->
-	      [element(2, S#session.sid) || S <- online(Mod:get_sessions())]
+	      [element(2, S#session.sid) || S <- Mod:get_sessions()]
       end, get_sm_backends()).
 
 -spec get_vh_session_number(binary()) -> non_neg_integer().
@@ -390,7 +388,7 @@ get_all_pids() ->
 get_vh_session_number(Server) ->
     LServer = jid:nameprep(Server),
     Mod = get_sm_backend(LServer),
-    length(online(Mod:get_sessions(LServer))).
+    length(Mod:get_sessions(LServer)).
 
 -spec register_iq_handler(binary(), binary(), atom(), atom()) -> any().
 
@@ -430,6 +428,9 @@ init([]) ->
     start_handlers(),
     cache_tab:new(crls, [{max_size, 10000},
 			 {life_time, timer:minutes(1) div 1000}]),
+    cache_tab:new(mgmt_offline,
+                  [{max_size, 10000},
+                   {life_time, timer:hours(24) div 1000}]),
     {ok, #state{}}.
 
 handle_call({write, Session}, _From, State) ->
@@ -588,16 +589,6 @@ delete_session({_, Pid1} = _SID, USR) ->
 	_ ->
 	    ok
     end.
-
--spec online([#session{}]) -> [#session{}].
-
-online(Sessions) ->
-    lists:filter(fun is_online/1, Sessions).
-
--spec is_online(#session{}) -> boolean().
-
-is_online(#session{info = Info}) ->
-    not proplists:get_bool(offline, Info).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -870,18 +861,12 @@ check_for_sessions_to_replace(User, Server, NewPid) ->
 
 check_max_sessions(LUser, LServer, NewPid) ->
     Mod = get_sm_backend(LServer),
-    Ss = Mod:get_sessions(LUser, LServer),
-    {OnlineSs, OfflineSs} = lists:partition(fun is_online/1, Ss),
+    SIDs = [S#session.sid || S <- Mod:get_sessions(LUser, LServer)],
     MaxSessions = get_max_user_sessions(LUser, LServer),
-    if length(OnlineSs) =< MaxSessions -> ok;
+    if length(SIDs) =< MaxSessions -> ok;
        true ->
-	    #session{sid = {_, Pid}} = lists:min(OnlineSs),
+            {_, Pid} = lists:min(SIDs),
             ejabberd_cluster:send(Pid, {replaced, NewPid})
-    end,
-    if length(OfflineSs) =< MaxSessions -> ok;
-       true ->
-	    #session{sid = SID, usr = {_, _, R}} = lists:min(OfflineSs),
-	    Mod:delete_session(LUser, LServer, R, SID)
     end.
 
 %% Get the user_max_session setting
@@ -937,7 +922,7 @@ process_iq(From, To, Packet) ->
 
 force_update_presence({LUser, LServer}) ->
     Mod = get_sm_backend(LServer),
-    Ss = online(Mod:get_sessions(LUser, LServer)),
+    Ss = Mod:get_sessions(LUser, LServer),
     lists:foreach(fun (#session{sid = {_, Pid}}) ->
                           ejabberd_cluster:send(
                             Pid, {force_update_presence, LUser, LServer})
