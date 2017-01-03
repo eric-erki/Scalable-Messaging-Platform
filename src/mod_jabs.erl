@@ -45,7 +45,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 %% handled ejabberd hooks
--export([sm_register_connection_hook/3, user_send_packet/3, user_send_packet/4]).
+-export([badauth/3, sm_register_connection_hook/3, user_send_packet/3, user_send_packet/4]).
 
 -export([depends/2, mod_opt_type/1, opt_type/1]).
 
@@ -57,7 +57,7 @@
 
 -define(PROCNAME, ?MODULE).
 -define(CALL_TIMEOUT, 5000).
--define(SUPPORTED_HOOKS, [sm_register_connection_hook, user_send_packet]).
+-define(SUPPORTED_HOOKS, [badauth, sm_register_connection_hook, user_send_packet]).
 
 %%====================================================================
 %% API
@@ -260,6 +260,9 @@ jabs_reset_command(Host) ->
 %%====================================================================
 %% Hooks handlers
 %%====================================================================
+
+badauth(LUser, LServer, _Password) ->
+    gen_server:cast(process(LServer), {inc, 3, LUser}).
 
 sm_register_connection_hook(_SID, #jid{luser=User,lserver=Host}, _Info) ->
     gen_server:cast(process(Host), {inc, 5, User}).
