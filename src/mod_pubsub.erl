@@ -5,7 +5,7 @@
 %%% Created :  1 Dec 2007 by Christophe Romain <christophe.romain@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2016   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2017   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -1186,7 +1186,7 @@ iq_get_vcard(Lang) ->
 	#xmlel{name = <<"DESC">>, attrs = [],
 	    children = [{xmlcdata,
 		    <<(translate:translate(Lang, <<"ejabberd Publish-Subscribe module">>))/binary,
-			"\nCopyright (c) 2004-2016 ProcessOne">>}]}].
+			"\nCopyright (c) 2004-2017 ProcessOne">>}]}].
 
 -spec iq_pubsub(Host :: mod_pubsub:host(), ServerHost :: binary(), From :: jid(),
 		IQType :: 'get' | 'set', SubEl :: xmlel(), Lang :: binary()) ->
