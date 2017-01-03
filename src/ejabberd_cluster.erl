@@ -32,8 +32,8 @@
 %% API
 -export([start_link/0, node_id/0, get_node_by_id/1,
 	 get_nodes/0, join/1, leave/1, boot/0, hash/1,
-         subscribe/0, send/2, call/4, multicall/3, multicall/4,
-         get_nodes_from_epmd/0, connect/1]).
+	 subscribe/0, send/2, call/4, multicall/3, multicall/4,
+	 get_known_nodes/0, get_nodes_from_epmd/0, connect/1]).
 
 %% Backward compatibility
 -export([get_node/1]).
@@ -69,6 +69,11 @@ get_node(_) ->
 
 get_nodes() ->
     ets:select(?CLUSTER_NODES, [{{'$1'}, [], ['$1']}]).
+
+-spec get_known_nodes() -> [node()].
+
+get_known_nodes() ->
+    mnesia:dirty_all_keys(cluster_info).
 
 node_id() ->
     jlib:integer_to_binary(hash(node())).
