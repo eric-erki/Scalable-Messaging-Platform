@@ -412,6 +412,9 @@ handle_event({change_shaper, Shaper}, StateName,
 handle_event(_Event, StateName, StateData) ->
     {next_state, StateName, StateData}.
 
+handle_sync_event({send_xml, {xmlstreamraw, <<"\r\n\r\n">>}}, _From, StateName,
+		  StateData) ->
+    {reply, ok, StateName, StateData};
 handle_sync_event({send_xml, Packet}, _From, StateName,
 		  #state{http_receiver = undefined} = StateData) ->
     Output = [Packet | StateData#state.output],
@@ -745,6 +748,12 @@ process_http_put(#http_put{rid = Rid, attrs = Attrs,
 		       MaxPause = get_max_inactivity(StreamTo,
 						     StateData#state.max_pause),
 		       ?DEBUG("really sending now: ~p", [Payload]),
+			 if (Payload == []) ->
+				 gen_fsm:send_all_state_event(C2SPid,
+							      {xmlstreamcdata, <<" ">>});
+			    true ->
+				 ok
+			 end,
 		       lists:foreach(fun ({xmlstreamend, End}) ->
 					     gen_fsm:send_event(C2SPid,
 								{xmlstreamend,
