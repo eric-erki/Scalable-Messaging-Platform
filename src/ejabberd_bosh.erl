@@ -561,6 +561,9 @@ handle_sync_event({send_xml,
     when State#state.xmpp_ver >= <<"1.0">> ->
     OutBuf = buf_in([El], State#state.el_obuf),
     {reply, ok, StateName, State#state{el_obuf = OutBuf}};
+handle_sync_event({send_xml, {xmlstreamraw, <<"\r\n\r\n">>}},
+		  _From, StateName, State) ->
+    {reply, ok, StateName, State};
 handle_sync_event({send_xml, El}, _From, StateName,
 		  State) ->
     OutBuf = buf_in([El], State#state.el_obuf),
@@ -652,6 +655,9 @@ route_els(#state{el_ibuf = Buf} = State) ->
     route_els(State#state{el_ibuf = buf_new()},
 	      buf_to_list(Buf)).
 
+route_els(#state{c2s_pid = C2SPid} = State, []) when is_pid(C2SPid) ->
+    gen_fsm:send_all_state_event(C2SPid, {xmlstreamcdata, <<" ">>}),
+    State;
 route_els(State, Els) ->
     case State#state.c2s_pid of
       C2SPid when is_pid(C2SPid) ->
