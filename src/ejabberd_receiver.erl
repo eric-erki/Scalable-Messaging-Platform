@@ -328,6 +328,14 @@ process_data([], State) ->
     activate_socket(State), State;
 process_data([Element | Els],
 	     #state{c2s_pid = C2SPid} = State)
+  when element(1, Element) == xmlstreamcdata ->
+    if C2SPid == undefined -> State;
+       true ->
+	    catch gen_fsm:send_all_state_event(C2SPid, Element),
+	    process_data(Els, State)
+    end;
+process_data([Element | Els],
+	     #state{c2s_pid = C2SPid} = State)
     when element(1, Element) == xmlel;
 	 element(1, Element) == xmlstreamstart;
 	 element(1, Element) == xmlstreamelement;

@@ -231,6 +231,11 @@ handle_info({received, Packet}, StateName, StateDataI) ->
     {next_state, StateName, SD};
 handle_info(PingPong, StateName, StateData) when PingPong == ping orelse
                                                  PingPong == pong ->
+    case StateData#state.waiting_input of
+	false -> ok;
+	Receiver -> Receiver !
+			{tcp, StateData#state.socket, [{xmlstreamcdata, <<" ">>}]}
+    end,
     StateData2 = setup_timers(StateData),
     {next_state, StateName,
      StateData2#state{pong_expected = false}};
