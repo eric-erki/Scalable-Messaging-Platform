@@ -169,7 +169,7 @@
 
 -type(pubsubLastItem() ::
     #pubsub_last_item{
-	nodeid   :: mod_pubsub:nodeIdx(),
+	nodeid   :: {binary(), mod_pubsub:nodeIdx()},
 	itemid   :: mod_pubsub:itemId(),
 	creation :: {erlang:timestamp(), ljid()},
 	payload  :: mod_pubsub:payload()
@@ -3831,9 +3831,11 @@ set_cached_item({_, ServerHost, _}, Nidx, ItemId, Publisher, Payload) ->
 set_cached_item(Host, Nidx, ItemId, Publisher, Payload) ->
     case is_last_item_cache_enabled(Host) of
 	true ->
-	    Item = {pubsub_last_item, Nidx, ItemId,
-		    {p1_time_compat:timestamp(), jid:tolower(jid:remove_resource(Publisher))},
-		    Payload},
+	    Stamp = {p1_time_compat:timestamp(), jid:tolower(jid:remove_resource(Publisher))},
+	    Item = #pubsub_last_item{nodeid = {Host, Nidx},
+				     itemid = ItemId,
+				     creation = Stamp,
+				     payload = Payload},
 	    [rpc:cast(ClusterNode, mnesia, dirty_write, [Item])
 		|| ClusterNode <- ejabberd_cluster:get_nodes()];
 	_ ->
@@ -3845,7 +3847,7 @@ unset_cached_item({_, ServerHost, _}, Nidx) ->
 unset_cached_item(Host, Nidx) ->
     case is_last_item_cache_enabled(Host) of
 	true ->
-	    Item = {pubsub_last_item, Nidx},
+	    Item = {pubsub_last_item, {Host, Nidx}},
 	    [rpc:cast(ClusterNode, mnesia, dirty_delete, [Item])
 		|| ClusterNode <- ejabberd_cluster:get_nodes()];
 	_ ->
@@ -3860,10 +3862,8 @@ get_cached_item({_, ServerHost, _}, Nidx) ->
 get_cached_item(Host, Nidx) ->
     case is_last_item_cache_enabled(Host) of
 	true ->
-	    case mnesia:dirty_read({pubsub_last_item, Nidx}) of
+	    case mnesia:dirty_read({pubsub_last_item, {Host, Nidx}}) of
 		[#pubsub_last_item{itemid = ItemId, creation = Creation, payload = Payload}] ->
-		    %            [{pubsub_last_item, Nidx, ItemId, Creation,
-		    %              Payload}] ->
 		    #pubsub_item{itemid = {ItemId, Nidx},
 			payload = Payload, creation = Creation,
 			modification = Creation};
