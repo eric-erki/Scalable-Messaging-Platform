@@ -4095,10 +4095,8 @@ transaction_retry(Host, ServerHost, Fun, Trans, DBType, Count) ->
 		_ -> sql_bloc
 	    end,
 	    catch ejabberd_sql:SqlFun(ServerHost, Fun);
-	p1db ->
-	    catch Fun();
 	_ ->
-	    {unsupported, DBType}
+	    catch Fun()
     end,
     case Res of
 	{result, Result} ->
