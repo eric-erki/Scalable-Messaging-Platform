@@ -528,7 +528,9 @@ destroy_rooms_file(Filename) ->
 
 read_rooms(_F, eof, L) ->
     L;
-
+read_rooms(F, no_room, L) ->
+    RJID2 = read_room(F),
+    read_rooms(F, RJID2, L);
 read_rooms(F, RJID, L) ->
     RJID2 = read_room(F),
     read_rooms(F, RJID2, [RJID | L]).
@@ -547,9 +549,12 @@ read_room(F) ->
 %% This function is quite rudimentary
 %% and may not be accurate
 split_roomjid(RoomJID) ->
-    [Name, Host] = binary:split(RoomJID, <<"@">>),
+    split_roomjid2(binary:split(RoomJID, <<"@">>)).
+split_roomjid2([Name, Host]) ->
     [_MUC_service_name, ServerHost] = binary:split(Host, <<".">>),
-    {Name, Host, ServerHost}.
+    {Name, Host, ServerHost};
+split_roomjid2(_) ->
+    no_room.
 
 %%----------------------------
 %% Create Rooms in File
