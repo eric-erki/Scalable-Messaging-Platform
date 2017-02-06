@@ -64,18 +64,19 @@ check_password(User, AuthzId, Server, Password) ->
     true ->
         Path = path(Server, auth),
         case rest:get(Server, Path ,
-    		  [{"username", User}, {"password",Password}]) of
-    	{ok, 200, _RespBody} ->
+                      [{"username", User}, {"password",Password}]) of
+            {ok, 200, _RespBody} ->
                 true;
-            {ok, 401, _RespBody} ->
-                ?WARNING_MSG("API rejected authentication for user ~p (~p) password ~p, resp: ~p" ,[User, Server, Password, _RespBody]),
+            {ok, 401, RespBody} ->
+                ?WARNING_MSG("API rejected authentication for user ~s@~s password ~s"
+                             "~nresponse: ~p", [User, Server, Password, RespBody]),
                 ejabberd_hooks:run(backend_api_badauth, Server, [Server, get, Path]),
                 false;
-            {ok, Other, RespBody} ->
-                ?ERROR_MSG("The authentication module ~p returned "
-    		       "an error~nwhen checking user ~p password "
-    		       "in server ~p~nError message: ~p",
-    		       [?MODULE, User, Server, {Other, RespBody}]),
+            {ok, Code, RespBody} ->
+                ?WARNING_MSG("API failed authentication for user ~s@~s password ~s"
+                             "~nreturn code: ~p"
+                             "~nresponse: ~p", [User, Server, Password, Code, RespBody]),
+                ejabberd_hooks:run(backend_api_error, Server, [Server, get, Path]),
                 false;
             {error, Reason} ->
                 ?ERROR_MSG("HTTP request failed:~n"
