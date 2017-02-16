@@ -1365,8 +1365,7 @@ push_service_cfg(_, _, _) ->
 push_setup(<<"applepush">>, AppId, Cfg) ->
     CertFile = proplists:get_value(certfile, Cfg),
     case read_cert(CertFile) of
-	{ok, Cert, production} -> {AppId, Cert};
-	{ok, Cert, development} -> {undev_appid(AppId), Cert};
+	{ok, Cert} -> {undev_appid(AppId), Cert};
 	_ -> {AppId, <<>>}
     end;
 push_setup(<<"gcm">>, AppId, Cfg) ->
@@ -1381,7 +1380,7 @@ setup_struct(Type, {AppId, Data}) ->
 
 read_cert(CertFile) ->
     case file:read_file(CertFile) of
-	{ok, Cert} -> {ok, Cert, cert_type(CertFile)};
+	{ok, Cert} -> {ok, Cert};
 	Error -> Error
     end.
 
