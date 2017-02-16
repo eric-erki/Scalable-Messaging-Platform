@@ -1000,4 +1000,5 @@ opt_type(listen) -> fun (V) -> V end;
 opt_type(trusted_proxies) ->
     fun (all) -> all;
         (TPs) -> [iolist_to_binary(TP) || TP <- TPs] end;
-opt_type(_) -> [listen, trusted_proxies].
+opt_type(lean_info_pages) -> fun(I) when is_boolean(I) -> I end;
+opt_type(_) -> [listen, trusted_proxies, lean_info_pages].

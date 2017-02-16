@@ -120,6 +120,47 @@ depends(_Host, _Opts) ->
 %%%----------------------------------------------------------------------
 
 get_human_html_xmlel() ->
+    L = ejabberd_config:get_option(lean_info_pages,
+				   fun(I) when is_boolean(I) -> I end,
+				   false),
+
+    case L of
+	true ->
+	    get_human_html_xmlel(lean);
+	_ ->
+	    get_human_html_xmlel(normal)
+    end.
+get_human_html_xmlel(lean) ->
+    Heading = <<"ejabberd ", (jlib:atom_to_binary(?MODULE))/binary>>,
+    #xmlel{name = <<"html">>,
+	   attrs =
+	       [{<<"xmlns">>, <<"http://www.w3.org/1999/xhtml">>}],
+	   children =
+	       [#xmlel{name = <<"head">>, attrs = [],
+		       children =
+			   [#xmlel{name = <<"title">>, attrs = [],
+				   children = [{xmlcdata, Heading}]}]},
+		#xmlel{name = <<"body">>, attrs = [],
+		       children =
+			   [#xmlel{name = <<"h1">>, attrs = [],
+				   children = [{xmlcdata, Heading}]},
+			    #xmlel{name = <<"p">>, attrs = [],
+				   children =
+				       [{xmlcdata, <<"An implementation of ">>},
+					#xmlel{name = <<"a">>,
+					       attrs =
+						   [{<<"href">>,
+						     <<"http://xmpp.org/extensions/xep-0206.html">>}],
+					       children =
+						   [{xmlcdata,
+						     <<"XMPP over BOSH (XEP-0206)">>}]}]},
+			    #xmlel{name = <<"p">>, attrs = [],
+				   children =
+				       [{xmlcdata,
+					 <<"This web page is only informative. To "
+					   "use HTTP-Bind you need a Jabber/XMPP "
+					   "client that supports it.">>}]}]}]};
+get_human_html_xmlel(normal) ->
     Heading = <<"ejabberd ",
 		(iolist_to_binary(atom_to_list(?MODULE)))/binary>>,
     #xmlel{name = <<"html">>,
