@@ -322,21 +322,24 @@ get_commands_spec() ->
 			module = ?MODULE, function = get_apns_config,
 			args = [{host, binary}],
 			result = {res, {list,
-			    {value, {tuple, [{name, atom}, {value, string}]}}}}},
+			    {value, {list,
+			      {value, {tuple, [{name, atom}, {value, string}]}}}}}}},
      #ejabberd_commands{name = get_gcm_config,
 			tags = [config],
 			desc = "Fetch the Google Cloud Messaging service configuration",
 			module = ?MODULE, function = get_gcm_config,
 			args = [{host, binary}],
 			result = {res, {list,
-			    {value, {tuple, [{name, atom}, {value, string}]}}}}},
+			    {value, {list,
+			      {value, {tuple, [{name, atom}, {value, string}]}}}}}}},
      #ejabberd_commands{name = get_webhook_config,
 			tags = [config],
 			desc = "Fetch the webhook push service configuration",
 			module = ?MODULE, function = get_webhook_config,
 			args = [{host, binary}],
 			result = {res, {list,
-			    {value, {tuple, [{name, atom}, {value, string}]}}}}},                           
+			    {value, {list,
+			      {value, {tuple, [{name, atom}, {value, string}]}}}}}}},
      #ejabberd_commands{name = update_apns,
 			tags = [config],
 			desc = "Update the Apple Push Notification Service certificate",
@@ -1237,9 +1240,15 @@ purge_mam(_Host, _Days, _Backend) ->
 %% Push setup API
 %% -----------------------------
 
-get_apns_config(Host) -> get_push_config(<<"applepush">>, Host).
-get_gcm_config(Host) -> get_push_config(<<"gcm">>, Host).
-get_webhook_config(Host) -> get_push_config(<<"webhook">>, Host).
+get_apns_config(Host) ->
+    Setup = get_push_config(<<"applepush">>, Host),
+    [setup_struct(cert, Entry) || Entry <- Setup].
+get_gcm_config(Host) ->
+    Setup = get_push_config(<<"gcm">>, Host),
+    [setup_struct(apikey, Entry) || Entry <- Setup].
+get_webhook_config(Host) ->
+    Setup = get_push_config(<<"webhook">>, Host),
+    [setup_struct(gateway, Entry) || Entry <- Setup].
 
 setup_apns(Host, <<>>, App) -> del_push_entry(<<"applepush">>, Host, App);
 setup_apns(Host, Cert, App) -> add_push_entry(<<"applepush">>, Host, App, Cert).
@@ -1366,6 +1375,9 @@ push_setup(<<"webhook">>, AppId, Cfg) ->
     {AppId, proplists:get_value(gateway, Cfg, <<>>)};
 push_setup(_, AppId, _) ->
     {AppId, <<>>}.
+
+setup_struct(Type, {AppId, Data}) ->
+    [{appid, AppId}, {Type, Data}].
 
 read_cert(CertFile) ->
     case file:read_file(CertFile) of
