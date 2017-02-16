@@ -64,7 +64,9 @@
 	 get_commands_spec/0,
 	% certificates
 	 get_apns_config/1, get_gcm_config/1, get_webhook_config/1,
-	 setup_apns/3, setup_gcm/3, setup_webhook/3,
+	 update_apns/3, setup_apns/3, setup_gcm/3, setup_webhook/3,
+	 add_push_entry/4, del_push_entry/3,
+	 get_push_config/2, set_push_config/3,
 	% API IP whitelist
 	 get_whitelist_ip/0, set_whitelist_ip/1,
 	 opt_type/1]).
@@ -335,11 +337,17 @@ get_commands_spec() ->
 			args = [{host, binary}],
 			result = {res, {list,
 			    {value, {tuple, [{name, atom}, {value, string}]}}}}},                           
+     #ejabberd_commands{name = update_apns,
+			tags = [config],
+			desc = "Update the Apple Push Notification Service certificate",
+			module = ?MODULE, function = update_apns,
+			args = [{host, binary}, {cert, binary}, {appid, binary}],
+			result = {res, integer}},
      #ejabberd_commands{name = setup_apns,
 			tags = [config],
 			desc = "Setup the Apple Push Notification Service",
 			module = ?MODULE, function = setup_apns,
-			args = [{host, binary}, {production, binary}, {sandbox, binary}],
+			args = [{host, binary}, {cert, binary}, {appid, binary}],
 			result = {res, integer}},
      #ejabberd_commands{name = setup_gcm,
 			tags = [config],
@@ -351,7 +359,6 @@ get_commands_spec() ->
 			tags = [config],
 			desc = "Setup the Web Hook based Push API service",
 			module = ?MODULE, function = setup_webhook,
-                        %% apikey is optional
 			args = [{host, binary}, {gateway, binary}, {appid, binary}],
 			result = {res, integer}},
       #ejabberd_commands{name = get_whitelist_ip,
@@ -1227,252 +1234,58 @@ purge_mam(_Host, _Days, _Backend) ->
     -2.
 
 %% -----------------------------
-%% Apple Push Service
+%% Push setup API
 %% -----------------------------
 
-% badarg [{erlang,tuple_to_list,[[{production,<<"subject= /
-get_apns_config(Host) ->
-    case push_spec(Host, mod_applepush, mod_applepush_service, certfile) of
-	undefined ->
-	    [{production, <<>>}, {sandbox, <<>>}];
-	{_, []} ->
-	    [{production, <<>>}, {sandbox, <<>>}];
-	{_, [{_, _, File}]} ->
-	    Cert = case file:read_file(File) of
-		{ok, Data} -> Data;
-		_ -> <<>>
-	    end,
-	    case cert_type(File) of
-		production -> [{production, Cert}, {sandbox, <<>>}];
-		sandbox -> [{production, <<>>}, {sandbox, Cert}]
-	    end;
-	{_, [{_, _, ProdFile}, {_, _, DevFile}]} ->
-	    ProdCert = case file:read_file(ProdFile) of
-		{ok, ProdData} -> ProdData;
-		_ -> <<>>
-	    end,
-	    DevCert = case file:read_file(DevFile) of
-		{ok, DevData} -> DevData;
-		_ -> <<>>
-	    end,
-	    [{production, ProdCert}, {sandbox, DevCert}]
+get_apns_config(Host) -> get_push_config(<<"applepush">>, Host).
+get_gcm_config(Host) -> get_push_config(<<"gcm">>, Host).
+get_webhook_config(Host) -> get_push_config(<<"webhook">>, Host).
+
+setup_apns(Host, <<>>, App) -> del_push_entry(<<"applepush">>, Host, App);
+setup_apns(Host, Cert, App) -> add_push_entry(<<"applepush">>, Host, App, Cert).
+setup_gcm(Host, <<>>, App) -> del_push_entry(<<"gcm">>, Host, App);
+setup_gcm(Host, Key, App) -> add_push_entry(<<"gcm">>, Host, App, Key).
+setup_webhook(Host, <<>>, App) -> del_push_entry(<<"webhook">>, Host, App);
+setup_webhook(Host, Url, App) -> add_push_entry(<<"webhook">>, Host, App, Url).
+
+update_apns(_Host, Cert, App) ->
+    case push_service_cfg(<<"applepush">>, App, Cert) of
+	undefined -> 1;
+	_ -> 0
     end.
 
-setup_apns(Host, ProductionCertData, SandboxCertData) ->
-    case push_spec(Host, mod_applepush, mod_applepush_service, certfile) of
-	undefined ->
-	    % if mod_applepush not started, write certs, generate config, start applepush
-	    ProductionCert = write_cert(ProductionCertData),
-	    SandboxCert = write_cert(SandboxCertData, <<"_dev">>),
-	    Config = applepush_cfg(Host, ProductionCert, SandboxCert),
-	    case update_extra_config("applepush.yml", Host, Config) of
-		ok ->
-		    ModulesOpts = proplists:get_value(modules, Config, []),
-		    start_modules(Host, ModulesOpts),
-		    0;
-		_ ->
-		    1
-	    end;
-	%{Prod, [{ProdId, Prod, ProdFile}, {DevId, Dev, DevFile}]} ->
-	    % TODO maybe avoid restart if only cert payload changed
-	    % so we just write files
-	    % 0;
+add_push_entry(Service, Host, App, Key) ->
+    Setup = get_push_config(Service, Host),
+    set_push_config(Service, Host, [{App, Key}|Setup]).
+del_push_entry(Service, Host, App) ->
+    Setup = get_push_config(Service, Host),
+    set_push_config(Service, Host, lists:keydelete(App, 1, Setup)).
+
+get_push_config(Service, Host) ->
+    ConfigFile = <<Service/binary, ".yml">>, %% TODO check Service member of ....
+    Config = proplists:get_value(Host, read_extra_config(ConfigFile), []),
+    case proplists:get_value(modules, Config, []) of
+	[{_, O1}, {_, [{hosts, O2}]}] ->
+	    [push_setup(Service, App, proplists:get_value(Srv, O2, []))
+	     || {App, Srv} <- proplists:get_value(push_services, O1, [])];
 	_ ->
-	    % if applepush configuration changed, stop it first and config from scratch
-	    stop_modules(Host, [mod_applepush, mod_applepush_service]),
-	    setup_apns(Host, ProductionCertData, SandboxCertData)
+	    []
     end.
 
-applepush_cfg(_, {error, undefined}, {error, undefined}) ->
-    [];
-applepush_cfg(Host, ProductionCert, SandboxCert) ->
-    ProductionAppId = appid_from_cert(ProductionCert),
-    SandboxAppId = case appid_from_cert(SandboxCert) of
-	undefined -> undefined;
-	AppId -> <<AppId/binary, "_dev">>
-    end,
-    DefaultService = case ProductionAppId of
-	undefined -> <<"apnsdev.", Host/binary>>;
-	_ -> <<"apnsprod.", Host/binary>>
-    end,
-    [{modules, [
-	{mod_applepush, [
-		{db_type, push_backend()},
-		{iqdisc, 50},
-		{default_service, DefaultService},
-		{push_services,
-		    [{ProductionAppId, <<"apnsprod.", Host/binary>>}
-			|| ProductionAppId =/= undefined] ++
-		    [{SandboxAppId, <<"apnsdev.", Host/binary>>}
-			|| SandboxAppId =/= undefined]
-		    }
-		]},
-	{mod_applepush_service, [
-		{hosts,
-		    [{<<"apnsprod.", Host/binary>>, [
-				{certfile, ProductionCert},
-				{gateway, <<"gateway.push.apple.com">>},
-				{port, 2195}]}
-			|| ProductionAppId =/= undefined] ++
-		    [{<<"apnsdev.", Host/binary>>, [
-				{certfile, SandboxCert},
-				{gateway, <<"gateway.sandbox.push.apple.com">>},
-				{port, 2195}]}
-			|| SandboxAppId =/= undefined]
-		    }
-		]}
-	]}].
-
-appid_from_cert({error, _}) ->
-    undefined;
-appid_from_cert(Cert) ->
-    AppId = string:strip(
-	    os:cmd("openssl x509 -in " ++ binary_to_list(Cert)
-		++ " -noout -subject | sed 's!.*UID=\\([^/]*\\)/.*!\\1!'"),
-	    right, $\n),
-    list_to_binary(AppId).
-
-cert_type(Cert) ->
-    case os:cmd("openssl x509 -in " ++ binary_to_list(Cert)
-		++ " -noout -subject | grep Development") of
-	[] -> production;
-	_ -> sandbox
-    end.
-
-write_cert(CertData) ->
-    write_cert(CertData, <<>>).
-write_cert(<<>>, _) ->
-    {error, undefined};
-write_cert(CertData, Ext) ->
-    BaseDir = filename:dirname(os:getenv("EJABBERD_CONFIG_PATH")),
-    TmpFile = filename:append(BaseDir, <<"new.pem">>),
-    case file:write_file(TmpFile, CertData) of
+set_push_config(Service, Host, Setup) ->
+    ConfigFile = <<Service/binary, ".yml">>, %% TODO check Service member of ....
+    OldConfig = proplists:get_value(Host, read_extra_config(ConfigFile), []),
+    NewConfig = push_cfg(Service, Host, Setup),
+    case update_extra_config(ConfigFile, Host, NewConfig) of
 	ok ->
-	    AppId = appid_from_cert(TmpFile),
-	    CertFile = filename:append(BaseDir, <<AppId/binary, Ext/binary, ".pem">>),
-	    case file:rename(TmpFile, CertFile) of
-		ok -> CertFile;
-		Error -> Error
-	    end;
-	Error ->
-	    Error
-    end.
-
-%% -----------------------------
-%% Google Push Service
-%% -----------------------------
-
-get_gcm_config(Host) ->
-    case push_spec(Host, mod_gcm, mod_gcm_service, apikey) of
-	undefined ->
-	    [{apikey, <<>>}, {appid, <<>>}];
-	{_, []} ->
-	    [{apikey, <<>>}, {appid, <<>>}];
-	{_, [{AppId, _, ApiKey}]} ->
-	    [{apikey, ApiKey}, {appid, AppId}]
-    end.
-
-setup_gcm(Host, ApiKey, AppId) ->
-    case push_spec(Host, mod_gcm, mod_gcm_service, apikey) of
-	undefined ->
-	    % if mod_gcm not started, generate config, start gcm
-	    Config = gcm_cfg(Host, ApiKey, AppId),
-	    case update_extra_config("gcm.yml", Host, Config) of
-		ok ->
-		    ModulesOpts = proplists:get_value(modules, Config, []),
-		    start_modules(Host, ModulesOpts),
-		    0;
-		_ ->
-		    1
-	    end;
+	    [gen_mod:stop_module(Host, Mod)
+	     || {Mod, _} <- proplists:get_value(modules, OldConfig, [])],
+	    [gen_mod:start_module(Host, Mod, Opts)
+	     || {Mod, Opts} <- proplists:get_value(modules, NewConfig, [])],
+	    0;
 	_ ->
-	    % if gcm configuration changed, stop it first and config from scratch
-	    stop_modules(Host, [mod_gcm, mod_gcm_service]),
-	    setup_gcm(Host, ApiKey, AppId)
+	    1
     end.
-
-gcm_cfg(_, _, <<>>) ->
-    [];
-gcm_cfg(Host, ApiKey, AppId) ->
-    [{modules, [
-	{mod_gcm, [
-		{db_type, push_backend()},
-		{iqdisc, 50},
-		{default_service, <<"gcm.", Host/binary>>},
-		{push_services, [{AppId, <<"gcm.", Host/binary>>}
-				    || AppId =/= <<>>]}
-		]},
-	{mod_gcm_service, [
-		{hosts,
-		    [{<<"gcm.", Host/binary>>, [
-				{gateway, <<"https://fcm.googleapis.com/fcm/send">>},
-				{apikey, ApiKey}]}
-				    || ApiKey =/= <<>>]
-		    }
-		]}
-	]}].
-
-%% -----------------------------
-%% Webhook Push Service
-%% -----------------------------
-
-get_webhook_config(Host) ->
-    case push_spec(Host, mod_webhook, mod_webhook_service, apikey) of
-	undefined ->
-	    [{apikey, <<>>}, {appid, <<>>}];
-	{_, []} ->
-	    [{apikey, <<>>}, {appid, <<>>}];
-	{_, [{AppId, _, ApiKey}]} ->
-	    lists:merge([{apikey, ApiKey}, {appid, AppId}],
-                        get_webhook_gateway(Host, AppId))
-    end.
-
-get_webhook_gateway(Host, AppId) ->
-    case push_spec(Host, mod_webhook, mod_webhook_service, gateway) of
-	{_, [{AppId, _, Gateway}]} ->
-	    [{gateway, Gateway}];
-        _ ->
-            []
-    end.
-
-setup_webhook(Host, Gateway, AppId) ->
-    case push_spec(Host, mod_webhook, mod_webhook_service, gateway) of
-	undefined ->
-	    % if mod_webhook not started, generate config, start gcm
-	    Config = webhook_cfg(Host, Gateway, AppId),
-	    case update_extra_config("webhook.yml", Host, Config) of
-		ok ->
-		    ModulesOpts = proplists:get_value(modules, Config, []),
-		    start_modules(Host, ModulesOpts),
-		    0;
-		_ ->
-		    1
-	    end;
-	_ ->
-	    % if webhook configuration changed, stop it first and config from scratch
-	    stop_modules(Host, [mod_webhook, mod_webhook_service]),
-	    setup_webhook(Host, Gateway, AppId)
-    end.
-
-webhook_cfg(_, _, <<>>) ->
-    [];
-webhook_cfg(Host, Gateway, AppId) ->
-    [{modules, [
-	{mod_webhook, [
-		{db_type, push_backend()},
-		{iqdisc, 50},
-		{default_service, <<"webhook.", Host/binary>>},
-		{push_services, [{AppId, <<"webhook.", Host/binary>>}
-				    || AppId =/= <<>>]}
-		]},
-	{mod_webhook_service, [
-		{hosts,
-		    [{<<"webhook.", Host/binary>>, [
-				{gateway, Gateway}]}
-				    || Gateway =/= <<>>]
-		    }
-		]}
-	]}].
 
 %% -----------------------------
 %% API IP whitelist
@@ -1493,7 +1306,7 @@ set_whitelist_ip(IPs) ->
     file:write_file(File, <<Content/binary, "\n">>).
 
 %% -----------------------------
-%% Internal function pattern
+%% Internal functions
 %% -----------------------------
 
 push_backend() ->
@@ -1502,49 +1315,129 @@ push_backend() ->
       fun(V) when is_atom(V) -> V end,
       p1db).
 
-push_spec(Host, Mod, SrvMod, Key) ->
-    case proplists:get_value(Host, module_options(Mod)) of
-	undefined ->
-	    undefined;
-	O1 ->
-	    [{hosts, O2}] = proplists:get_value(Host, module_options(SrvMod)),
-	    O3 = [{AppId, Service, proplists:get_value(Key, proplists:get_value(Service, O2), <<>>)}
-		    || {AppId, Service} <- proplists:get_value(push_services, O1)],
-	    DefaultService = case proplists:get_value(default_service, O1) of
-		undefined -> [{_, First, _}|_] = O3, First;
-		Defined -> Defined
+push_cfg(Service, Host, Setup) ->
+    Config = lists:reverse(lists:foldl(
+	    fun({App, Arg}, Acc) ->
+		Num = integer_to_binary(length(Acc)+1),
+		Srv = <<Service/binary, Num/binary, ".", Host/binary>>,
+		case push_service_cfg(Service, App, Arg) of
+		    undefined -> Acc;
+		    {IntId, Cfg} -> [{IntId, Srv, Cfg} | Acc]
+		end
+	    end, [], lists:sort(Setup))),
+    [{modules,
+      [{jlib:binary_to_atom(<<"mod_", Service/binary>>),
+	[{db_type, push_backend()},
+	 {iqdisc, 50},
+	 %{default_service, push_route(Host, Service, 1)},
+	 {push_services, [{App, Srv} || {App, Srv, _} <- Config]}
+	]},
+       {jlib:binary_to_atom(<<"mod_", Service/binary, "_service">>),
+	[{hosts, [{Srv, Cfg} || {_, Srv, Cfg} <- Config]}
+	]}
+      ]} || Config=/=[]].
+
+push_service_cfg(<<"applepush">>, AppId, Cert) ->
+    case write_cert(AppId, Cert) of
+	{ok, CertFile, production} ->
+	    {AppId, [{certfile, CertFile}, {gateway, <<"gateway.push.apple.com">>}, {port, 2195}]};
+	{ok, CertFile, development} ->
+	    {dev_appid(AppId), [{certfile, CertFile}, {gateway, <<"gateway.sandbox.push.apple.com">>}, {port, 2195}]};
+	_ ->
+	    undefined
+    end;
+push_service_cfg(<<"gcm">>, AppId, ApiKey) ->
+    {AppId, [{gateway, <<"https://fcm.googleapis.com/fcm/send">>}, {apikey, ApiKey}]};
+push_service_cfg(<<"webhook">>, AppId, Gateway) ->
+    {AppId, [{gateway, Gateway}]};
+push_service_cfg(_, _, _) ->
+    undefined.
+
+push_setup(<<"applepush">>, AppId, Cfg) ->
+    CertFile = proplists:get_value(certfile, Cfg),
+    case read_cert(CertFile) of
+	{ok, Cert, production} -> {AppId, Cert};
+	{ok, Cert, development} -> {undev_appid(AppId), Cert};
+	_ -> {AppId, <<>>}
+    end;
+push_setup(<<"gcm">>, AppId, Cfg) ->
+    {AppId, proplists:get_value(apikey, Cfg, <<>>)};
+push_setup(<<"webhook">>, AppId, Cfg) ->
+    {AppId, proplists:get_value(gateway, Cfg, <<>>)};
+push_setup(_, AppId, _) ->
+    {AppId, <<>>}.
+
+read_cert(CertFile) ->
+    case file:read_file(CertFile) of
+	{ok, Cert} -> {ok, Cert, cert_type(CertFile)};
+	Error -> Error
+    end.
+
+write_cert(_, <<>>) ->
+    {error, undefined};
+write_cert(AppId, CertData) ->
+    BaseDir = filename:dirname(os:getenv("EJABBERD_CONFIG_PATH")),
+    TmpFile = filename:append(BaseDir, <<"pem">>),
+    case file:write_file(TmpFile, CertData) of
+	ok ->
+	    {Name, Type} = case cert_type(TmpFile) of
+		production -> {AppId, production};
+		development -> {dev_appid(AppId), development}
 	    end,
-	    {DefaultService, O3}
+	    CertFile = filename:append(BaseDir, <<Name/binary, ".pem">>),
+	    case file:rename(TmpFile, CertFile) of
+		ok -> {ok, CertFile, Type};
+		Error -> Error
+	    end;
+	Error ->
+	    Error
+    end.
+
+dev_appid(AppId) ->
+    <<AppId/binary, "_dev">>.
+undev_appid(DevId) ->
+    case lists:reverse(string:tokens(binary_to_list(DevId), "_")) of
+	["dev" | Id] -> iolist_to_binary(string:join(lists:reverse(Id), "_"));
+	_ -> DevId
+    end.
+
+cert_type(CertFile) ->
+    Cmd = "openssl x509 -in " ++ binary_to_list(CertFile) ++ " -noout -subject | grep Development",
+    case os:cmd(Cmd) of
+	[] -> production;
+	_ -> development
+    end.
+
+read_extra_config(ConfigFile) ->
+    BaseDir = filename:dirname(os:getenv("EJABBERD_CONFIG_PATH")),
+    File = filename:append(BaseDir, ConfigFile),
+    case catch ejabberd_config:get_plain_terms_file(File) of
+	[{append_host_config, Config}] -> Config;
+	_ -> []
     end.
 
 update_extra_config(ConfigFile, Host, Config) ->
-    BaseDir = filename:dirname(os:getenv("EJABBERD_CONFIG_PATH")),
-    File = filename:append(BaseDir, ConfigFile),
-    FullConfig = case catch ejabberd_config:get_plain_terms_file(File) of
-	[{append_host_config, Current}] ->
-	    lists:keystore(Host, 1, Current, {Host, Config});
-	_ ->
-	    [{Host, Config}]
+    OldConfig = read_extra_config(ConfigFile),
+    NewConfig = case Config of
+	[] -> lists:keydelete(Host, 1, OldConfig);
+	_ -> lists:keystore(Host, 1, OldConfig, {Host, Config})
     end,
-    CleanConfig = case Config of
-	[] ->
-	    lists:keydelete(Host, 1, FullConfig);
-	_ ->
-	    FullConfig
-    end,
-    write_raw_config(File, CleanConfig).
+    write_extra_config(ConfigFile, NewConfig).
 
-write_raw_config(File, []) ->
-    write_yaml_config(File, "# Empty configuration file\n");
-write_raw_config(File, Config) ->
+write_extra_config(ConfigFile, []) ->
+    write_yaml_config(ConfigFile, "# Empty configuration file\n");
+write_extra_config(ConfigFile, Config) ->
     case catch fast_yaml:encode([{append_host_config, Config}]) of
 	{'EXIT', R1} ->
 	    ?ERROR_MSG("Can not encode config: ~p", [R1]),
 	    {error, R1};
 	Yaml ->
-	    write_yaml_config(File, Yaml)
+	    write_yaml_config(ConfigFile, Yaml)
     end.
-write_yaml_config(File, Yaml) ->
+
+write_yaml_config(ConfigFile, Yaml) ->
+    BaseDir = filename:dirname(os:getenv("EJABBERD_CONFIG_PATH")),
+    File = filename:append(BaseDir, ConfigFile),
     case file:write_file(File, Yaml) of
 	{error, R2} ->
 	    ?ERROR_MSG("Can not write config: ~p", [R2]),
@@ -1552,12 +1445,6 @@ write_yaml_config(File, Yaml) ->
 	ok ->
 	    ok
     end.
-
-stop_modules(Host, Modules) ->
-    [gen_mod:stop_module(Host, Mod) || Mod <- Modules].
-
-start_modules(Host, ModulesOpts) ->
-    [gen_mod:start_module(Host, Mod, Opts) || {Mod, Opts} <- ModulesOpts].
 
 user_action(User, Server, Fun, OK) ->
     case ejabberd_auth:is_user_exists(User, Server) of
