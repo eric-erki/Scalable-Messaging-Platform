@@ -1352,7 +1352,7 @@ push_cfg(Service, Host, Setup) ->
 		    undefined -> Acc;
 		    {IntId, Cfg} -> [{IntId, Srv, Cfg} | Acc]
 		end
-	    end, [], lists:sort(Setup))),
+	    end, [], lists:usort(Setup))),
     [{modules,
       [{jlib:binary_to_atom(<<"mod_", Service/binary>>),
 	[{db_type, push_backend()},
