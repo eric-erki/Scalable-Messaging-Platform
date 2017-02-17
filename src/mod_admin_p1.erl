@@ -63,8 +63,9 @@
 	 purge_mam/2,
 	 get_commands_spec/0,
 	% certificates
-	 get_apns_config/1, get_gcm_config/1, get_webhook_config/1,
-	 update_apns/3, setup_apns/3, setup_gcm/3, setup_webhook/3,
+	 get_apns_config/1, update_apns/3, setup_apns/3,
+	 get_gcm_config/1, update_gcm/3, setup_gcm/3,
+	 get_webhook_config/1, update_webhook/3, setup_webhook/3,
 	 add_push_entry/4, del_push_entry/3,
 	 get_push_config/2, set_push_config/3,
 	% API IP whitelist
@@ -352,11 +353,23 @@ get_commands_spec() ->
 			module = ?MODULE, function = setup_apns,
 			args = [{host, binary}, {cert, binary}, {appid, binary}],
 			result = {res, integer}},
+     #ejabberd_commands{name = update_gcm,
+			tags = [config],
+			desc = "Update the Google Cloud Messaging service ApiKey",
+			module = ?MODULE, function = update_gcm,
+			args = [{host, binary}, {apikey, binary}, {appid, binary}],
+			result = {res, integer}},
      #ejabberd_commands{name = setup_gcm,
 			tags = [config],
 			desc = "Setup the Google Cloud Messaging service",
 			module = ?MODULE, function = setup_gcm,
 			args = [{host, binary}, {apikey, binary}, {appid, binary}],
+			result = {res, integer}},
+     #ejabberd_commands{name = update_webhook,
+			tags = [config],
+			desc = "Update the Web Hook based Push API service gateway",
+			module = ?MODULE, function = update_webhook,
+			args = [{host, binary}, {gateway, binary}, {appid, binary}],
 			result = {res, integer}},
       #ejabberd_commands{name = setup_webhook,
 			tags = [config],
@@ -1262,6 +1275,12 @@ update_apns(_Host, Cert, App) ->
 	undefined -> 1;
 	_ -> 0
     end.
+update_gcm(Host, Key, App) ->
+    Setup = get_push_config(<<"gcm">>, Host),
+    set_push_config(<<"gcm">>, Host, lists:keystore(App, 1, Setup, {App, Key})).
+update_webhook(Host, Url, App) ->
+    Setup = get_push_config(<<"webhook">>, Host),
+    set_push_config(<<"webhook">>, Host, lists:keystore(App, 1, Setup, {App, Url})).
 
 add_push_entry(Service, Host, App, Key) ->
     Setup = get_push_config(Service, Host),
