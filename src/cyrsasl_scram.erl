@@ -67,16 +67,20 @@ mech_step(#state{step = 2} = State, ClientIn) ->
 	  when (CBind == <<"y">>) or (CBind == <<"n">>) ->
 	  case parse_attribute(UserNameAttribute) of
 	    {error, Reason} -> {error, Reason};
+	    {error, Reason, User} -> {error, Reason, User};
+	    {error, Reason, User, Desc} -> {error, Reason, User, Desc};
 	    {_, EscapedUserName} ->
 		case unescape_username(EscapedUserName) of
-		  error -> {error, <<"protocol-error-bad-username">>};
+		  error -> {error, <<"malformed-request">>, <<>>, <<"bad username">>};
 		  UserName ->
 		      case parse_attribute(ClientNonceAttribute) of
 			{$r, ClientNonce} ->
 			    {Ret, _AuthModule} = (State#state.get_password)(UserName),
 			    case {Ret, jid:resourceprep(Ret)} of
 			      {false, _} -> {error, <<"not-authorized">>, UserName};
-			      {_, error} when is_binary(Ret) -> ?WARNING_MSG("invalid plain password", []), {error, <<"not-authorized">>, UserName};
+			      {_, error} when is_binary(Ret) ->
+				    ?WARNING_MSG("invalid plain password", []),
+				    {error, <<"not-authorized">>, UserName};
 			      {Ret, _} ->
 				  {StoredKey, ServerKey, Salt, IterationCount} =
 				      if is_tuple(Ret) -> Ret;
@@ -116,11 +120,11 @@ mech_step(#state{step = 2} = State, ClientIn) ->
 					       server_nonce = ServerNonce,
 					       username = UserName}}
 			    end;
-			_Else -> {error, <<"not-supported">>}
+			_Else -> {error, <<"not-authorized">>}
 		      end
 		end
 	  end;
-      _Else -> {error, <<"bad-protocol">>}
+      _Else -> {error, <<"malformed-request">>}
     end;
 mech_step(#state{step = 4} = State, ClientIn) ->
     case str:tokens(ClientIn, <<",">>) of
@@ -158,16 +162,17 @@ mech_step(#state{step = 4} = State, ClientIn) ->
 					       {authzid, State#state.username}],
 				    <<"v=",
 				      (jlib:encode_base64(ServerSignature))/binary>>};
-			       true -> {error, <<"bad-auth">>, State#state.username}
+			       true ->
+				    {error, <<"not-authorized">>, State#state.username}
 			    end;
-			_Else -> {error, <<"bad-protocol">>}
+			_Else -> {error, <<"malformed-request">>}
 		      end;
-		  {$r, _} -> {error, <<"bad-nonce">>};
-		  _Else -> {error, <<"bad-protocol">>}
+		  {$r, _} -> {error, <<"not-authorized">>};
+		  _Else -> {error, <<"malformed-request">>}
 		end;
-	    _Else -> {error, <<"bad-protocol">>}
+	      _Else -> {error, <<"malformed-request">>}
 	  end;
-      _Else -> {error, <<"bad-protocol">>}
+	_Else -> {error, <<"malformed-request">>}
     end.
 
 parse_attribute(Attribute) ->
@@ -180,11 +185,11 @@ parse_attribute(Attribute) ->
 		 if SecondChar == $= ->
 			String = str:substr(Attribute, 3),
 			{lists:nth(1, AttributeS), String};
-		    true -> {error, <<"bad-format second char not equal sign">>}
+		    true -> {error, <<"malformed-request">>, <<>>, <<"second char not equal sign">>}
 		 end;
-	     _Else -> {error, <<"bad-format first char not a letter">>}
+	       _Else -> {error, <<"malformed-request">>, <<>>, <<"first char not a letter">>}
 	   end;
-       true -> {error, <<"bad-format attribute too short">>}
+       true -> {error, <<"malformed-request">>, <<>>, <<"attribute too short">>}
     end.
 
 unescape_username(<<"">>) -> <<"">>;
