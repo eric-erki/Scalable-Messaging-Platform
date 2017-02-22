@@ -438,7 +438,7 @@ del_node_from_ring(Node) ->
       end).
 
 hash(Term) when is_binary(Term) ->
-    <<Hash:160>> = p1_sha:sha1(Term),
+    <<Hash:160>> = crypto:hash(sha, Term),
     Hash;
 hash(Term) ->
     hash(term_to_binary(Term)).
