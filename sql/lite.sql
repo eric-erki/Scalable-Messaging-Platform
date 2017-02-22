@@ -85,6 +85,31 @@ CREATE TABLE spool (
 
 CREATE INDEX i_despool ON spool (username, has_body);
 
+CREATE TABLE archive (
+    username text NOT NULL,
+    timestamp BIGINT UNSIGNED NOT NULL,
+    peer text NOT NULL,
+    bare_peer text NOT NULL,
+    xml text NOT NULL,
+    txt text,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind text,
+    nick text,
+    created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX i_username ON archive(username);
+CREATE INDEX i_timestamp ON archive(timestamp);
+CREATE INDEX i_peer ON archive(peer);
+CREATE INDEX i_bare_peer ON archive(bare_peer);
+
+CREATE TABLE archive_prefs (
+    username text NOT NULL PRIMARY KEY,
+    def text NOT NULL,
+    always text NOT NULL,
+    never text NOT NULL,
+    created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
 CREATE TABLE vcard (
     username text PRIMARY KEY,
@@ -334,32 +359,6 @@ CREATE TABLE carboncopy (
     version text NOT NULL
 );
 CREATE UNIQUE INDEX i_carboncopy_server_username_resource ON carboncopy (server, username, resource);
-
-CREATE TABLE archive (
-    username text NOT NULL,
-    timestamp BIGINT UNSIGNED NOT NULL,
-    peer text NOT NULL,
-    bare_peer text NOT NULL,
-    xml text NOT NULL,
-    txt text,
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    kind text,
-    nick text,
-    created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX i_username ON archive(username);
-CREATE INDEX i_timestamp ON archive(timestamp);
-CREATE INDEX i_peer ON archive(peer);
-CREATE INDEX i_bare_peer ON archive(bare_peer);
-
-CREATE TABLE archive_prefs (
-    username text NOT NULL PRIMARY KEY,
-    def text NOT NULL,
-    always text NOT NULL,
-    never text NOT NULL,
-    created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
 
 CREATE TABLE sm (
     usec bigint NOT NULL,
