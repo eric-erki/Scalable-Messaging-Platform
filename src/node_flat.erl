@@ -58,7 +58,7 @@ init(_Host, _ServerHost, _Opts) ->
     mnesia:create_table(pubsub_item,
 	[{disc_only_copies, [node()]}, {index, [nodeidx]},
 	    {attributes, record_info(fields, pubsub_item)}]),
-    ejabberd_mnesia:create(?MODULE, pubsub_orphan,
+    mnesia:create_table(pubsub_orphan,
 	[{disc_copies, [node()]},
 	    {attributes, record_info(fields, pubsub_orphan)}]),
     ItemsFields = record_info(fields, pubsub_item),
