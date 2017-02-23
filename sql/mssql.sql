@@ -180,6 +180,24 @@ WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, ALLOW_ROW_LOCKS = ON, ALLOW
 CREATE UNIQUE CLUSTERED INDEX [private_storage_username_namespace] ON [private_storage] (username, namespace)
 WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON);
 
+CREATE TABLE [dbo].[pubsub_node] (
+        [host] [varchar] (255) NOT NULL,
+        [node] [varchar] (255) NOT NULL,
+        [parent] [varchar] (255) NOT NULL DEFAULT '',
+        [type] [text] NOT NULL,
+        [nodeid] [bigint] IDENTITY(1,1) NOT NULL,
+ CONSTRAINT [pubsub_node_PRIMARY] PRIMARY KEY CLUSTERED 
+(
+        [nodeid] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON)
+) TEXTIMAGE_ON [PRIMARY];
+
+CREATE INDEX [pubsub_node_parent] ON [pubsub_node] (parent)
+WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON);
+
+CREATE UNIQUE INDEX [pubsub_node_host_node] ON [pubsub_node] (host, node)
+WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON);
+
 CREATE TABLE [dbo].[pubsub_item] (
         [nodeid] [bigint] NULL,
         [itemid] [varchar] (255) NOT NULL,
@@ -237,24 +255,6 @@ CREATE TABLE [dbo].[pubsub_subscription_opt] (
 ) TEXTIMAGE_ON [PRIMARY];
 
 CREATE UNIQUE CLUSTERED INDEX [pubsub_subscription_opt_subid_opt_name] ON [pubsub_subscription_opt] (subid, opt_name)
-WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON);
-
-CREATE TABLE [dbo].[pubsub_node] (
-        [host] [varchar] (255) NOT NULL,
-        [node] [varchar] (255) NOT NULL,
-        [parent] [varchar] (255) NOT NULL DEFAULT '',
-        [type] [text] NOT NULL,
-        [nodeid] [bigint] IDENTITY(1,1) NOT NULL,
- CONSTRAINT [pubsub_node_PRIMARY] PRIMARY KEY CLUSTERED 
-(
-        [nodeid] ASC
-)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON)
-) TEXTIMAGE_ON [PRIMARY];
-
-CREATE INDEX [pubsub_node_parent] ON [pubsub_node] (parent)
-WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON);
-
-CREATE UNIQUE INDEX [pubsub_node_host_node] ON [pubsub_node] (host, node)
 WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON);
 
 CREATE TABLE [dbo].[roster_version] (
