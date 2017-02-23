@@ -54,7 +54,6 @@
 -include("jlib.hrl").
 
 -type sockmod() :: ejabberd_bosh |
-                   ejabberd_http_bind | ejabberd_http_bindjson |
                    ejabberd_http_ws | ejabberd_http_wsjson |
                    gen_tcp | p1_tls | ezlib.
 -type receiver() :: pid () | atom().
@@ -298,7 +297,6 @@ get_conn_type(#socket_state{sockmod = SockMod, socket = Socket}) ->
         ejabberd_http_ws -> http_ws;
         ejabberd_http_bind -> http_bind;
         ejabberd_bosh -> http_bind;
-        ejabberd_http_bindjson -> http_bindjson;
         ejabberd_http_wsjson -> http_wsjson
     end.
 
