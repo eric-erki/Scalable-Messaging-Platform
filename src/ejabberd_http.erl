@@ -64,7 +64,8 @@
     options = []               :: list(),
     trail = <<>>               :: binary(),
     compression                :: gzip,
-    websocket_handlers = []    :: [{[binary()], atom(), list()}]
+    websocket_handlers = []    :: [{[binary()], atom(), list()}],
+    addr_re
 }).
 
 -define(XHTML_DOCTYPE,
@@ -179,11 +180,13 @@ init({SockMod, Socket}, Opts) ->
     ?DEBUG("WS: ~p~n", [WebSocketHandlers]),
     DefaultHost = gen_mod:get_opt(default_host, Opts,
                                   fun iolist_to_binary/1),
+    {ok, RE} = re:compile(<<"^(?:\\[(.*?)\\]|(.*?))(?::(\\d+))?$">>),
     ?INFO_MSG("started: ~p", [{SockMod1, Socket1}]),
     State = #state{sockmod = SockMod1, socket = Socket1,
 		   default_host = DefaultHost, options = Opts,
 		   request_handlers = RequestHandlers,
-		   websocket_handlers = WebSocketHandlers},
+		   websocket_handlers = WebSocketHandlers,
+		   addr_re = RE},
     try receive_headers(State) of
         V -> V
     catch
@@ -323,7 +326,7 @@ process_header(State, Data) ->
 		 [State#state.socket, State#state.request_method,
 		  element(2, State#state.request_path)]),
 	  {HostProvided, Port, TP} =
-	      get_transfer_protocol(SockMod,
+	      get_transfer_protocol(State#state.addr_re, SockMod,
 				    State#state.request_host),
 	  Host = get_host_really_served(State#state.default_host,
 					HostProvided),
@@ -372,16 +375,26 @@ get_host_really_served(Default, Provided) ->
       false -> Default
     end.
 
-get_transfer_protocol(SockMod, HostPort) ->
-    [Host | PortList] = str:tokens(HostPort, <<":">>),
-    case {SockMod, PortList} of
-      {gen_tcp, []} -> {Host, 80, http};
-      {gen_tcp, [Port]} ->
-	  {Host, jlib:binary_to_integer(Port), http};
-      {p1_tls, []} -> {Host, 443, https};
-      {p1_tls, [Port]} ->
-	  {Host, jlib:binary_to_integer(Port), https}
-    end.
+get_transfer_protocol(RE, SockMod, HostPort) ->
+    {Proto, DefPort} = case SockMod of
+			   gen_tcp -> {http, 80};
+			   fast_tls -> {https, 443};
+			   p1_tls -> {https, 443}
+		       end,
+    {Host, Port} = case re:run(HostPort, RE, [{capture,[1,2,3],binary}]) of
+		       nomatch ->
+			   {<<"0.0.0.0">>, DefPort};
+		       {match, [<<>>, H, <<>>]} ->
+			   {H, DefPort};
+		       {match, [H, <<>>, <<>>]} ->
+			   {H, DefPort};
+		       {match, [<<>>, H, PortStr]} ->
+			   {H, binary_to_integer(PortStr)};
+		       {match, [H, <<>>, PortStr]} ->
+			   {H, binary_to_integer(PortStr)}
+		   end,
+
+    {Host, Port, Proto}.
 
 %% XXX bard: search through request handlers looking for one that
 %% matches the requested URL path, and pass control to it.  If none is
