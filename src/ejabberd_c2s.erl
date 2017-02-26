@@ -1505,13 +1505,8 @@ handle_info({route, From, To,
 					     allow ->
 						 if StateData#state.reception ->
 							 case
-							     ejabberd_hooks:run_fold(feature_check_packet,
-										     StateData#state.server,
-										     allow,
-										     [StateData#state.jid,
-										      StateData#state.server,
-										      StateData#state.pres_last,
-										      {From, To, Packet}, in])
+							     filter_incoming_message(
+                                                               StateData, From, To, Packet)
 							 of
 							     allow ->
 								 {true, Attrs, StateData};
@@ -3963,6 +3958,30 @@ add_resent_delay_info(_State, #xmlel{name = <<"iq">>} = El, _Time) ->
     El;
 add_resent_delay_info(#state{server = From}, El, Time) ->
     jlib:add_delay_info(El, From, Time, <<"Resent">>).
+
+filter_incoming_message(StateData, From, To, Packet) ->
+    case ejabberd_hooks:run_fold(
+           feature_check_packet,
+           StateData#state.server,
+           allow,
+           [StateData#state.jid,
+            StateData#state.server,
+            StateData#state.pres_last,
+            {From, To, Packet}, in]) of
+        allow ->
+            case ejabberd_hooks:run_fold(
+                   c2s_filter_incoming_packet,
+                   StateData#state.server,
+                   allow,
+                   [StateData, From, To, Packet]) of
+                allow ->
+                    allow;
+                deny ->
+                    deny
+            end;
+        deny ->
+            deny
+    end.
 
 %%%----------------------------------------------------------------------
 %%% XEP-0352

@@ -43,6 +43,7 @@
 	 unregister_routes/1,
 	 dirty_get_all_routes/0,
 	 dirty_get_all_domains/0,
+         is_my_route/1,
 	 make_id/0,
 	 get_domain_balancing/1,
 	 check_consistency/0]).
@@ -225,6 +226,15 @@ host_of_route(Domain) ->
 		[] ->
 		    erlang:error({unregistered_route, Domain})
 	    end
+    end.
+
+-spec is_my_route(binary()) -> boolean().
+is_my_route(Domain) ->
+    case jid:nameprep(Domain) of
+	error ->
+	    erlang:error({invalid_domain, Domain});
+	LDomain ->
+	    mnesia:dirty_read(route, LDomain) /= []
     end.
 
 %%====================================================================
