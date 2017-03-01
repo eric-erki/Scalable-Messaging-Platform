@@ -1116,9 +1116,7 @@ mod_opt_type(_) ->
 
 opt_type(ext_api_path_archive) ->
     fun (X) -> iolist_to_binary(X) end;
-opt_type(ext_api_path_items) ->
-    fun (X) -> iolist_to_binary(X) end;
 opt_type(p1db_group) ->
     fun (G) when is_atom(G) -> G end;
 opt_type(_) ->
-    [ext_api_path_archive, ext_api_path_items, p1db_group].
+    [ext_api_path_archive, p1db_group].
