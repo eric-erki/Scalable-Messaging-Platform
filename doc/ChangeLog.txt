@@ -749,3 +749,32 @@ description of the license applied to the package.
 - Add license_info API call
 - Fix delete_old_messages command for SQL backends
 - Update mod_gcm_service to use FCM endpoint
+
+=== Mar 03 2017: eBE 3.2.17
+
+This is a bugfix version of 3.2.16 and also add few improvements and
+new extra features. This version is a "long term" revision of ejabberd
+Business Edition.
+
+- Fix use of PubSub virtual nodes with SQL backend
+- Fix support non-JID lines in command create_rooms_file
+- Fix set of subscribers nicks when recreating room
+- Fix webadmin to get nodes from ejabberd_cluster instead of mnesia
+- Add badauth probe
+- Add mod_mon backend status check at start
+- Add mod_block_strangers (anti spam)
+- Add selective garbage collect helper
+- Add SSL support for SQL connections
+- Add log error message when license expires
+- Add support of multi-app push settings
+- Add missing NOT NULL restrictions on PubSub SQL schema
+- Add authentication to mod_http_fileserver
+- Add support of efficient keepalive for bosh and websocket
+- Improve use of crypto:hash/2 function instead of ones from p1_sha
+- Enforce pubsub node removal, don't leak items
+- Don't forget to erase archive cache on user removal
+- Don't let MAM messages go into offline storage
+- Don't let the last item cache intermix PubSub items of different virtual domains.
+- Propagate the TRANSACTION_TIMEOUT to pgsql driver
+- Improve ipv6 support
+- Remove mod_http_bind and migration code to mod_bosh
