@@ -299,16 +299,24 @@ process(LocalPath, Request) ->
 should_serve(FileInfo, Headers) ->
     lists:foldl(fun ({Header, Fun}, Acc) ->
 			case lists:keyfind(Header, 1, Headers) of
-			  {_, Val} -> Fun(FileInfo, Val);
-			  _O -> Acc
+			    {_, Val} -> Acc andalso Fun(FileInfo, Val);
+			    _O -> Acc
 			end
 		end,
-		true, [{'If-None-Match', fun etag/2}]).
-
+		true, [{'If-None-Match', fun etag/2},
+		       {'If-Modified-Since', fun modified_since/2}]).
 etag(FileInfo, Etag) ->
+    SEtag = binary_to_list(Etag),
     case httpd_util:create_etag(FileInfo) of
-      Etag -> false;
+      SEtag -> false;
       _ -> true
+    end.
+
+modified_since(FileInfo, Date) ->
+    CDate = httpd_util:convert_request_date(binary_to_list(Date)),
+    case calendar:local_time_to_universal_time_dst(FileInfo#file_info.mtime) of
+	[CDate | _] -> false;
+	_ -> true
     end.
 
 select_encoding(_Headers, false) -> false;
@@ -349,6 +357,8 @@ serve_file(FileInfo, FileName, CustomHeaders,
     {FileInfo#file_info.size, 200,
      [{<<"Server">>, <<"ejabberd">>},
       {<<"Last-Modified">>, last_modified(FileInfo)},
+      {<<"Etag">>,
+       httpd_util:create_etag(FileInfo)},
       {<<"Content-Type">>, ContentType}
       | CustomHeaders],
      FileContents};
