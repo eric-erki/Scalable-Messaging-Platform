@@ -1357,6 +1357,7 @@ push_cfg(Service, Host, Setup) ->
       [{jlib:binary_to_atom(<<"mod_", Service/binary>>),
 	[{db_type, push_backend()},
 	 {iqdisc, 50},
+	 {silent_push_enabled, true},
 	 %{default_service, push_route(Host, Service, 1)},
 	 {push_services, [{App, Srv} || {App, Srv, _} <- Config]}
 	]},
