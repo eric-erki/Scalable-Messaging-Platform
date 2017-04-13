@@ -4969,7 +4969,7 @@ process_iq_mucsub(From, Packet,
     end;
 process_iq_mucsub(From, _Packet,
 		  #iq{type = set,
-		      sub_el = #xmlel{name = <<"unsubscribe">>}},
+		      sub_el = #xmlel{name = <<"unsubscribe">>, attrs = []}},
 		  StateData) ->
     LBareJID = jid:tolower(jid:remove_resource(From)),
     case ?DICT:find(LBareJID, StateData#state.subscribers) of
@@ -4982,6 +4982,23 @@ process_iq_mucsub(From, _Packet,
 	    {result, [], NewStateData};
 	error ->
 	    {result, [], StateData}
+    end;
+process_iq_mucsub(From, Packet,
+		  #iq{type = set, lang = Lang,
+		      sub_el = #xmlel{name = <<"unsubscribe">>, attrs = Attrs}},
+		  StateData) ->
+    UnsubJid = fxml:get_attr_s(<<"jid">>, Attrs),
+    FAffiliation = get_affiliation(From, StateData),
+    FRole = get_role(From, StateData),
+    if FRole == moderator; FAffiliation == owner; FAffiliation == admin ->
+	    FromUnsub = jid:from_string(UnsubJid),
+	    process_iq_mucsub(FromUnsub, Packet,
+			      #iq{type = set,
+				  sub_el = #xmlel{name = <<"unsubscribe">>, attrs = []}},
+			      StateData);
+       true ->
+	    Txt = <<"Moderator privileges required">>,
+	    {error, ?ERRT_FORBIDDEN(Lang, Txt)}
     end;
 process_iq_mucsub(From, _Packet,
 		  #iq{type = get, lang = Lang,
