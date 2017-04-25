@@ -4969,7 +4969,8 @@ process_iq_mucsub(From, Packet,
     end;
 process_iq_mucsub(From, _Packet,
 		  #iq{type = set,
-		      sub_el = #xmlel{name = <<"unsubscribe">>, attrs = []}},
+		      sub_el = #xmlel{name = <<"unsubscribe">>,
+				      attrs = [{<<"xmlns">>,?NS_MUCSUB}]}},
 		  StateData) ->
     LBareJID = jid:tolower(jid:remove_resource(From)),
     case ?DICT:find(LBareJID, StateData#state.subscribers) of
@@ -4994,7 +4995,7 @@ process_iq_mucsub(From, Packet,
 	    FromUnsub = jid:from_string(UnsubJid),
 	    process_iq_mucsub(FromUnsub, Packet,
 			      #iq{type = set,
-				  sub_el = #xmlel{name = <<"unsubscribe">>, attrs = []}},
+				  sub_el = #xmlel{name = <<"unsubscribe">>, attrs = [{<<"xmlns">>,?NS_MUCSUB}]}},
 			      StateData);
        true ->
 	    Txt = <<"Moderator privileges required">>,
