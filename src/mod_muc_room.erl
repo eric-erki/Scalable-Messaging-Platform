@@ -4929,7 +4929,7 @@ process_iq_vcard(From, set, Lang, SubEl, StateData) ->
 	    {error, ?ERRT_FORBIDDEN(Lang, ErrText)}
     end.
 
-process_iq_mucsub(From, Packet,
+process_iq_mucsub_subscribe(From, Packet,
 		  #iq{type = set, lang = Lang,
 		      sub_el = #xmlel{name = <<"subscribe">>} = SubEl},
 		  #state{config = Config} = StateData) ->
@@ -4966,6 +4966,23 @@ process_iq_mucsub(From, Packet,
 	_ ->
 	    Err = ?ERRT_NOT_ALLOWED(Lang, <<"Subscriptions are not allowed">>),
 	    {error, Err}
+    end.
+
+process_iq_mucsub(From, Packet,
+		  #iq{type = set, lang = Lang,
+		      sub_el = #xmlel{name = <<"subscribe">>, attrs = Attrs}} = Iq,
+		  StateData) ->
+    UnsubJid = fxml:get_attr_s(<<"jid">>, Attrs),
+    FAffiliation = get_affiliation(From, StateData),
+    FRole = get_role(From, StateData),
+    if UnsubJid == <<>> ->
+	    process_iq_mucsub_subscribe(From, Packet, Iq, StateData);
+       FRole == moderator; FAffiliation == owner; FAffiliation == admin ->
+	    FromUnsub = jid:from_string(UnsubJid),
+	    process_iq_mucsub_subscribe(FromUnsub, Packet, Iq, StateData);
+       true ->
+	    Txt = <<"Moderator privileges required">>,
+	    {error, ?ERRT_FORBIDDEN(Lang, Txt)}
     end;
 process_iq_mucsub(From, _Packet,
 		  #iq{type = set,
