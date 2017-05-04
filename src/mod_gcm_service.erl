@@ -421,9 +421,16 @@ make_payload(State, Msg, Badge, Sound, Sender,
                      <<"false">> -> <<"">>;
 		     _ -> Sound
 		   end,
-    AppsPayloadList = [{alert, iolist_to_binary(Msg)},
-		       {badge, jlib:binary_to_integer(Badge)},
-		       {sound, iolist_to_binary(SoundPayload)}],
+    AppsPayloadList = case catch jlib:binary_to_integer(Badge) of
+			  B when is_integer(B) ->
+			      [{alert, iolist_to_binary(Msg)},
+			       {badge, B},
+			       {sound, iolist_to_binary(SoundPayload)}];
+			  _ ->
+			      [{alert, iolist_to_binary(Msg)},
+			       {sound, iolist_to_binary(SoundPayload)}]
+		      end,
+
     PayloadList2 = if Sender /= <<"">> ->
 			  CustomFields ++ [{from_jid, iolist_to_binary(Sender)}];
 		      true -> CustomFields
