@@ -5,7 +5,7 @@
 %%% Created :  9 Oct 2013 by Alexey Shchepin <alexey@process-one.net>
 %%%
 %%%
-%%% ejabberd, Copyright (C) 2002-2017   ProcessOne
+%%% ejabberd, Copyright (C) 2002-2016   ProcessOne
 %%%
 %%% This program is free software; you can redistribute it and/or
 %%% modify it under the terms of the GNU General Public License as
@@ -25,130 +25,210 @@
 
 -module(mod_http_notify).
 -author('alexey@process-one.net').
+-author('cromain@process-one.net').
 
+-define(GEN_SERVER, p1_server).
+-behaviour(gen_server).
 -behaviour(gen_mod).
 
--export([start/2, stop/1, offline_packet/3,
-	 user_available/1, set_presence/4, user_unavailable/4,
+-export([start/2, stop/1, start_link/2, enable/0, disable/0]).
+
+-export([offline/3, available/1, presence/4, unavailable/4,
+	 connect/3, disconnect/3,
+	 create_room/2, destroy_room/2, join_room/3, leave_room/3]).
+
+-export([init/1, handle_info/2, handle_call/3,
+	 handle_cast/2, terminate/2, code_change/3,
 	 depends/2, mod_opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
 -include("jlib.hrl").
 
-start(Host, _Opts) ->
-    rest:start(Host),
-    ejabberd_hooks:add(offline_message_hook, Host, ?MODULE,
-		       offline_packet, 35),
-    ejabberd_hooks:add(user_available_hook, Host,
-		       ?MODULE, user_available, 50),
-    ejabberd_hooks:add(set_presence_hook, Host,
-		       ?MODULE, set_presence, 50),
-    ejabberd_hooks:add(unset_presence_hook, Host,
-		       ?MODULE, user_unavailable, 50),
-    ok.
+-define(PROCNAME, ejabberd_notify).
 
+-define(HOOKS, [{offline_message_hook, offline, 35},
+		{user_available_hook, available, 50},
+		{set_presence_hook, presence, 50},
+		{unset_presence_hook, unavailable, 50},
+		{sm_register_connection_hook, connect, 80},
+		{sm_remove_connection_hook, disconnect, 80},
+		{create_room, create_room, 50},
+		{destroy_room, destroy_room, 50},
+		{join_room, join_room, 50},
+		{leave_room, leave_room, 50}]).
+
+-define(DICT, dict).
+
+-record(state, {host = <<"">>             :: binary(),
+                endpoints = (?DICT):new() :: ?DICT}).
+%%%
+%%% API
+%%%
+
+start_link(Host, Opts) ->
+    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
+    ?GEN_SERVER:start_link({local, Proc}, ?MODULE, [Host, Opts], []).
+
+start(Host, Opts) ->
+    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
+    ChildSpec = {Proc, {?MODULE, start_link, [Host, Opts]},
+		 transient, 1000, worker, [?MODULE]},
+    supervisor:start_child(ejabberd_sup, ChildSpec).
 
 stop(Host) ->
-    ejabberd_hooks:delete(offline_message_hook, Host, ?MODULE,
-                          offline_packet, 35),
-    ejabberd_hooks:delete(user_available_hook, Host,
-                          ?MODULE, user_available, 50),
-    ejabberd_hooks:delete(set_presence_hook, Host,
-                          ?MODULE, set_presence, 50),
-    ejabberd_hooks:delete(unset_presence_hook, Host,
-                          ?MODULE, user_unavailable, 50),
+    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
+    ?GEN_SERVER:call(Proc, stop),
+    supervisor:terminate_child(ejabberd_sup, Proc),
+    supervisor:delete_child(ejabberd_sup, Proc).
+
+init([Host, Opts]) ->
+    rest:start(Host),
+    [maybe_hook(Host, Opts, Hook, Fun, Priority)
+     || {Hook, Fun, Priority} <- ?HOOKS],
+    Cfg = [{Fun, v_fun(Args)} || {Fun, Args} <- Opts],
+    {ok, #state{host = Host, endpoints = (?DICT):from_list(Cfg)}}.
+
+terminate(_Reason, State) ->
+    Host = State#state.host,
+    [unhook(Host, Hook, Fun, Priority)
+     || {Hook, Fun, Priority} <- ?HOOKS],
     ok.
 
+code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
-offline_packet(From, To, Packet) ->
+handle_call(stop, _From, State) ->
+    {stop, normal, ok, State};
+handle_call(_Req, _From, State) ->
+    {reply, {error, badarg}, State}.
+
+handle_cast(_Msg, State) -> {noreply, State}.
+
+handle_info({notify, Type, Params}, State) ->
+    Event = [{<<"notification_type">>, atom_to_binary(Type, latin1)} | Params],
+    case (?DICT):find(Type, State#state.endpoints) of
+	{ok, {URL, <<>>}} ->
+	    rest:post(undefined, URL, [],
+		      jiffy:encode({Event}));
+	{ok, {URL, AuthToken}} ->
+	    rest:post(undefined, URL, [],
+		      jiffy:encode({[{<<"access_token">>, AuthToken} | Event]}));
+	_ ->
+	    ?ERROR_MSG("Received unconfigured event ~s: ~p", [Type, Event])
+    end,
+    {noreply, State};
+handle_info(_Info, State) ->
+    {noreply, State}.
+
+%%%
+%%% Simple debug start/stop helpers
+%%%
+
+enable() ->
+    Conf = [{Host, proplists:get_value(?MODULE,
+			ejabberd_config:get_option({modules, Host},
+						   fun(X) -> X end, []))}
+	    || Host <- ejabberd_config:get_myhosts()],
+    [{Host, gen_mod:start_module(Host, ?MODULE, Opts)}
+     || {Host, Opts} <- Conf, Opts=/=undefined].
+
+disable() ->
+    [{Host, gen_mod:stop_module(Host, ?MODULE)}
+     || Host <- ejabberd_config:get_myhosts()].
+
+%%%
+%%% Hook handlers
+%%%
+
+offline(From, To, Packet) ->
     Host = To#jid.lserver,
-    case gen_mod:get_module_opt(Host, ?MODULE, offline_message, fun v_fun/1) of
-        {URL, AuthToken} ->
-            Type = fxml:get_tag_attr_s(<<"type">>, Packet),
-            Body = fxml:get_path_s(Packet, [{elem, <<"body">>}, cdata]),
-            if (Type == <<"normal">>) or (Type == <<"">>) or
-               (Type == <<"chat">>),
-               Body /= <<"">> ->
-                    SFrom = jid:to_string(From),
-                    STo = jid:to_string(To),
-                    Params =
-                        [{"notification_type", "offline"},
-                         {"from", SFrom},
-                         {"to", STo},
-                         {"body", Body},
-                         {"access_token", AuthToken}],
-                    send_notification(URL, Params),
-                    ok;
-               true ->
-                    ok
-            end;
-        undefined ->
-            ok
+    Type = fxml:get_tag_attr_s(<<"type">>, Packet),
+    Body = fxml:get_subtag(Packet, <<"body">>),
+    if (Body /= <<"">>) andalso
+       ((Type == <<"normal">>) or (Type == <<"">>) or (Type == <<"chat">>)) ->
+	  SFrom = jid:to_string(From),
+	  STo = jid:to_string(To),
+	  notify(Host, offline,
+		 [{<<"from">>, SFrom},
+		  {<<"to">>, STo},
+		  {<<"body">>, Body}]);
+       true ->
+	  ok
     end.
 
-user_available(JID) ->
+available(JID) ->
     Host = JID#jid.lserver,
-    case gen_mod:get_module_opt(Host, ?MODULE, user_available, fun v_fun/1) of
-        {URL, AuthToken} ->
-            SJID = jid:to_string(JID),
-            Params =
-                [{"notification_type", "available"},
-                 {"jid", SJID},
-                 {"access_token", AuthToken}],
-            send_notification(URL, Params),
-            ok;
-        undefined ->
-            ok
-    end.
+    notify(Host, available,
+	   [{<<"jid">>, jid:to_string(JID)}]).
 
-set_presence(User, Server, Resource, _Presence) ->
+presence(User, Server, Resource, _Presence) ->
     Host = jid:nameprep(Server),
-    case gen_mod:get_module_opt(Host, ?MODULE, set_presence, fun v_fun/1) of
-        {URL, AuthToken} ->
-            JID = jid:make(User, Server, Resource),
-            SJID = jid:to_string(JID),
-            Params =
-                [{"notification_type", "set-presence"},
-                 {"jid", SJID},
-                 {"access_token", AuthToken}],
-            send_notification(URL, Params),
-            ok;
-        undefined ->
-            ok
-    end.
+    JID = jid:make(User, Server, Resource),
+    notify(Host, presence,
+	   [{<<"jid">>, jid:to_string(JID)}]).
 
-user_unavailable(User, Server, Resource, _Status) ->
+unavailable(User, Server, Resource, _Status) ->
     Host = jid:nameprep(Server),
-    case gen_mod:get_module_opt(Host, ?MODULE, unset_presence, fun v_fun/1) of
-        {URL, AuthToken} ->
-            JID = jid:make(User, Server, Resource),
-            SJID = jid:to_string(JID),
-            Params =
-                [{"notification_type", "unavailable"},
-                 {"jid", SJID},
-                 {"access_token", AuthToken}],
-            send_notification(URL, Params),
-            ok;
-        undefined ->
-            ok
+    JID = jid:make(User, Server, Resource),
+    notify(Host, unavailable,
+	   [{<<"jid">>, jid:to_string(JID)}]).
+
+connect(_SID, JID, _Info) ->
+    Host = JID#jid.lserver,
+    notify(Host, connect,
+	   [{<<"jid">>, jid:to_string(JID)}]).
+
+disconnect(_SID, JID, _Info) ->
+    Host = JID#jid.lserver,
+    notify(Host, disconnect,
+	   [{<<"jid">>, jid:to_string(JID)}]).
+
+create_room(Host, Room) ->
+    notify(Host, create_room,
+	   [{<<"room">>, jid:to_string(Room)}]).
+
+destroy_room(Host, Room) ->
+    notify(Host, destroy_room,
+	   [{<<"room">>, jid:to_string(Room)}]).
+
+join_room(Host, Room, JID) ->
+    notify(Host, join_room,
+	   [{<<"room">>, jid:to_string(Room)},
+	    {<<"jid">>, jid:to_string(JID)}]).
+
+leave_room(Host, Room, JID) ->
+    notify(Host, leave_room,
+	   [{<<"room">>, jid:to_string(Room)},
+	    {<<"jid">>, jid:to_string(JID)}]).
+
+%%%
+%%% internal helpers
+%%%
+
+notify(Host, Type, Params) ->
+    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
+    Proc ! {notify, Type, Params}.
+
+maybe_hook(Host, Opts, Hook, Fun, Priority) ->
+    case lists:keymember(Fun, 1, Opts) of
+	true -> ejabberd_hooks:add(Hook, Host, ?MODULE, Fun, Priority);
+	false -> ok
     end.
 
-
-send_notification(URL, Params) ->
-    rest:post(undefined, URL, Params, <<>>).
+unhook(Host, Hook, Fun, Priority) ->
+    ejabberd_hooks:delete(Hook, Host, ?MODULE, Fun, Priority).
 
 v_fun(L) when is_list(L) ->
     URL = proplists:get_value(url, L),
-    AuthToken = proplists:get_value(auth_token, L, ""),
-    if
-	is_list(URL) ->
-	    {URL, AuthToken};
-	is_binary(URL) ->
-	    {binary_to_list(URL), AuthToken}
-    end.
+    AuthToken = proplists:get_value(auth_token, L, <<>>),
+    {URL, AuthToken}.
 
 depends(_Host, _Opts) ->
     [].
 
-mod_opt_type(_) -> [].
+mod_opt_type(Handler) ->
+    Handlers = [Fun || {_Hook, Fun, _Priority} <- ?HOOKS],
+    case lists:member(Handler, Handlers) of
+	true -> fun v_fun/1;
+	false -> Handlers
+    end.
