@@ -183,22 +183,22 @@ disconnect(_SID, JID, _Info) ->
     notify(Host, disconnect,
 	   [{<<"jid">>, jid:to_string(JID)}]).
 
-create_room(Host, Name, Service) ->
-    notify(Host, create_room,
-	   [{<<"room">>, <<Name/binary, "@", Service/binary>>}]).
+create_room(ServerHost, Room, Host) ->
+    notify(ServerHost, create_room,
+	   [{<<"room">>, <<Room/binary, "@", Host/binary>>}]).
 
-remove_room(Host, Name, Service) ->
-    notify(Host, remove_room,
-	   [{<<"room">>, <<Name/binary, "@", Service/binary>>}]).
+remove_room(ServerHost, Room, Host) ->
+    notify(ServerHost, remove_room,
+	   [{<<"room">>, <<Room/binary, "@", Host/binary>>}]).
 
-join_room(Host, Name, Service, JID) ->
-    notify(Host, join_room,
-	   [{<<"room">>, <<Name/binary, "@", Service/binary>>},
+join_room(ServerHost, Room, Host, JID) ->
+    notify(ServerHost, join_room,
+	   [{<<"room">>, <<Room/binary, "@", Host/binary>>},
 	    {<<"jid">>, jid:to_string(JID)}]).
 
-leave_room(Host, Name, Service, JID) ->
-    notify(Host, leave_room,
-	   [{<<"room">>, <<Name/binary, "@", Service/binary>>},
+leave_room(ServerHost, Room, Host, JID) ->
+    notify(ServerHost, leave_room,
+	   [{<<"room">>, <<Room/binary, "@", Host/binary>>},
 	    {<<"jid">>, jid:to_string(JID)}]).
 
 %%%
