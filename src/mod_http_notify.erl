@@ -35,7 +35,7 @@
 
 -export([offline/3, available/1, presence/4, unavailable/4,
 	 connect/3, disconnect/3,
-	 create_room/2, destroy_room/2, join_room/3, leave_room/3]).
+	 create_room/3, remove_room/3, join_room/4, leave_room/4]).
 
 -export([init/1, handle_info/2, handle_call/3,
 	 handle_cast/2, terminate/2, code_change/3,
@@ -54,7 +54,7 @@
 		{sm_register_connection_hook, connect, 80},
 		{sm_remove_connection_hook, disconnect, 80},
 		{create_room, create_room, 50},
-		{destroy_room, destroy_room, 50},
+		{remove_room, remove_room, 50},
 		{join_room, join_room, 50},
 		{leave_room, leave_room, 50}]).
 
@@ -183,22 +183,22 @@ disconnect(_SID, JID, _Info) ->
     notify(Host, disconnect,
 	   [{<<"jid">>, jid:to_string(JID)}]).
 
-create_room(Host, Room) ->
+create_room(Host, Name, Service) ->
     notify(Host, create_room,
-	   [{<<"room">>, jid:to_string(Room)}]).
+	   [{<<"room">>, <<Name/binary, "@", Service/binary>>}]).
 
-destroy_room(Host, Room) ->
-    notify(Host, destroy_room,
-	   [{<<"room">>, jid:to_string(Room)}]).
+remove_room(Host, Name, Service) ->
+    notify(Host, remove_room,
+	   [{<<"room">>, <<Name/binary, "@", Service/binary>>}]).
 
-join_room(Host, Room, JID) ->
+join_room(Host, Name, Service, JID) ->
     notify(Host, join_room,
-	   [{<<"room">>, jid:to_string(Room)},
+	   [{<<"room">>, <<Name/binary, "@", Service/binary>>},
 	    {<<"jid">>, jid:to_string(JID)}]).
 
-leave_room(Host, Room, JID) ->
+leave_room(Host, Name, Service, JID) ->
     notify(Host, leave_room,
-	   [{<<"room">>, jid:to_string(Room)},
+	   [{<<"room">>, <<Name/binary, "@", Service/binary>>},
 	    {<<"jid">>, jid:to_string(JID)}]).
 
 %%%
