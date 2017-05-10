@@ -316,7 +316,6 @@ handle_call({create, Room, From, Nick, Opts}, _From,
 		  Room, HistorySize, PersistHistory,
 		  RoomShaper, From,
 		  Nick, NewOpts),
-    ejabberd_hooks:run(create_room, ServerHost, [ServerHost, Room, Host]),
     {reply, ok, State}.
 
 handle_cast(_Msg, State) -> {noreply, State}.
@@ -681,6 +680,7 @@ register_room(ServerHost, Host, Room, Pid) ->
     Proc = gen_mod:get_module_proc(ServerHost, ?PROCNAME),
     lists:foreach(
       fun(Node) when Node == node() ->
+	      ejabberd_hooks:run(create_room, ServerHost, [ServerHost, Room, Host]),
 	      write_room(R);
 	 (Node) ->
 	      ejabberd_cluster:send({Proc, Node}, {write, R})
@@ -689,7 +689,10 @@ register_room(ServerHost, Host, Room, Pid) ->
 unregister_room(ServerHost, Host, Room, Pid) ->
     Proc = gen_mod:get_module_proc(ServerHost, ?PROCNAME),
     lists:foreach(
-      fun(Node) ->
+      fun(Node) when Node == node() ->
+	      ejabberd_hooks:run(remove_room, ServerHost, [ServerHost, Room, Host]),
+	      delete_room({Room, Host}, Pid);
+	 (Node) ->
 	      ejabberd_cluster:send({Proc, Node}, {delete, {Room, Host}, Pid})
       end, ejabberd_cluster:get_nodes()).
 
