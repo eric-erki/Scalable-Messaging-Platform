@@ -316,6 +316,7 @@ handle_call({create, Room, From, Nick, Opts}, _From,
 		  Room, HistorySize, PersistHistory,
 		  RoomShaper, From,
 		  Nick, NewOpts),
+    ejabberd_hooks:run(create_room, ServerHost, [ServerHost, Room, Host]),
     {reply, ok, State}.
 
 handle_cast(_Msg, State) -> {noreply, State}.

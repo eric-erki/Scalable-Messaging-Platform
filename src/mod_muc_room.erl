@@ -5474,6 +5474,8 @@ tab_add_online_user(JID, StateData) ->
     US = {LUser, LServer},
     Room = StateData#state.room,
     Host = StateData#state.host,
+    ServerHost = StateData#state.server_host,
+    ejabberd_hooks:run(join_room, ServerHost, [ServerHost, Room, Host, JID]),
     catch ets:insert(muc_online_users,
 		     #muc_online_users{us = US, resource = LResource,
 				       room = Room, host = Host}).
@@ -5483,6 +5485,8 @@ tab_remove_online_user(JID, StateData) ->
     US = {LUser, LServer},
     Room = StateData#state.room,
     Host = StateData#state.host,
+    ServerHost = StateData#state.server_host,
+    ejabberd_hooks:run(leave_room, ServerHost, [ServerHost, Room, Host, JID]),
     catch ets:delete_object(muc_online_users,
 			     #muc_online_users{us = US, resource = LResource,
 					       room = Room, host = Host}).
