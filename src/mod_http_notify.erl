@@ -35,7 +35,7 @@
 
 -export([offline/3, available/1, presence/4, unavailable/4,
 	 connect/3, disconnect/3,
-	 create_room/3, remove_room/3, join_room/4, leave_room/4]).
+	 create_room/3, destroy_room/3, join_room/4, leave_room/4]).
 
 -export([init/1, handle_info/2, handle_call/3,
 	 handle_cast/2, terminate/2, code_change/3,
@@ -54,7 +54,7 @@
 		{sm_register_connection_hook, connect, 80},
 		{sm_remove_connection_hook, disconnect, 80},
 		{create_room, create_room, 50},
-		{remove_room, remove_room, 50},
+		{destroy_room, destroy_room, 50},
 		{join_room, join_room, 50},
 		{leave_room, leave_room, 50}]).
 
@@ -187,8 +187,8 @@ create_room(ServerHost, Room, Host) ->
     notify(ServerHost, create_room,
 	   [{<<"room">>, <<Room/binary, "@", Host/binary>>}]).
 
-remove_room(ServerHost, Room, Host) ->
-    notify(ServerHost, remove_room,
+destroy_room(ServerHost, Room, Host) ->
+    notify(ServerHost, destroy_room,
 	   [{<<"room">>, <<Room/binary, "@", Host/binary>>}]).
 
 join_room(ServerHost, Room, Host, JID) ->

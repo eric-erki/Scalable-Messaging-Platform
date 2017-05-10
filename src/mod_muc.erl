@@ -690,7 +690,7 @@ unregister_room(ServerHost, Host, Room, Pid) ->
     Proc = gen_mod:get_module_proc(ServerHost, ?PROCNAME),
     lists:foreach(
       fun(Node) when Node == node() ->
-	      ejabberd_hooks:run(remove_room, ServerHost, [ServerHost, Room, Host]),
+	      ejabberd_hooks:run(destroy_room, ServerHost, [ServerHost, Room, Host]),
 	      delete_room({Room, Host}, Pid);
 	 (Node) ->
 	      ejabberd_cluster:send({Proc, Node}, {delete, {Room, Host}, Pid})
