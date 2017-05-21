@@ -300,17 +300,15 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
 activate_socket(#state{socket = Socket,
 		       sock_mod = SockMod}) ->
-    PeerName = case SockMod of
+    Res = case SockMod of
 		 gen_tcp ->
-		     inet:setopts(Socket, [{active, once}]),
-		     inet:peername(Socket);
+		  inet:setopts(Socket, [{active, once}]);
 		 _ ->
-		     SockMod:setopts(Socket, [{active, once}]),
-		     SockMod:peername(Socket)
+		  SockMod:setopts(Socket, [{active, once}])
 	       end,
-    case PeerName of
+    case Res of
       {error, _Reason} -> self() ! {tcp_closed, Socket};
-      {ok, _} -> ok
+      ok -> ok
     end.
 
 deactivate_socket(#state{socket = Socket, tref = TRef,
