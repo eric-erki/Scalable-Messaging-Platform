@@ -288,7 +288,7 @@ clear_and_add_roomhistory(LServer, Room, Queries) ->
 
 load_roomhistory(LServer, Room) ->
     Q = ?SQL("select @(nick)s, @(packet)s, @(have_subject)b, @(timestamp)d, "
-             "@(size)d from room_history where room = %(Room)s, "
+             "@(size)d from room_history where room = %(Room)s "
              "order by timestamp"),
     ejabberd_sql:sql_query(LServer, Q).
 
