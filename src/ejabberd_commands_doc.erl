@@ -374,6 +374,7 @@ gen_doc(#ejabberd_commands{name=Name, tags=_Tags, desc=Desc, longdesc=LongDesc,
 			       ?TAG_R(dd, ResultDesc)])]
                  end,
 
+    try
     [?TAG(h1, [?TAG(strong, atom_to_list(Name)), <<" - ">>, ?RAW(Desc)]),
      ?TAG(p, ?RAW(LDesc)),
      ?TAG(h2, <<"Arguments:">>),
@@ -381,7 +382,13 @@ gen_doc(#ejabberd_commands{name=Name, tags=_Tags, desc=Desc, longdesc=LongDesc,
      ?TAG(h2, <<"Result:">>),
      ResultText,
      ?TAG(h2, <<"Examples:">>),
-     gen_calls(Cmd, HTMLOutput, Langs)].
+	 gen_calls(Cmd, HTMLOutput, Langs)]
+    catch
+	_:Ex ->
+	    throw(iolist_to_binary(io_lib:format(
+				     <<"Error when generating documentation for command '~p': ~p">>,
+				     [Name, Ex])))
+    end.
 
 find_commands_definitions() ->
     case code:lib_dir(ejabberd, ebin) of
