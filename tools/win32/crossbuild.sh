@@ -8,36 +8,35 @@
 #  cd ~/crossbuild
 #  ./crossbuild.sh ejabberd-16.09
 
-zlib=zlib-1.2.8
-expat=expat-2.1.0
-yaml=yaml-0.1.5
-ssl=openssl-1.0.2h
-iconv=libiconv-1.14
-sql=sqlite-autoconf-3081002
-
 [ $# -eq 1 ] || {
   echo "error: no ejabberd version provided"
   echo
 }
 dist=$1
+erts=8.3
+otp=19
+zlib=zlib-1.2.8
+expat=expat-2.1.0
+yaml=yaml-0.1.5
+ssl=openssl-1.0.2l
+iconv=libiconv-1.14
+sql=sqlite-autoconf-3081002
 
 [ -f ~/pub/src/ejabberd/$dist.tgz ] || {
   echo "error: no source tarball"
   exit
 }
-[ -f ~/pub/bin/linux-x86_64/18/ejabberd/$dist.epkg ] || {
+[ -f ~/pub/bin/linux-x86_64/$otp/ejabberd/$dist.epkg ] || {
   echo "error: no ejabberd epkg available"
   exit
 }
 
+root=~/crossbuild
+dll=$root/lib
+cd $root
 [ -f ejabberd ] && rm ejabberd
 tar zxf ~/pub/src/ejabberd/$dist.tgz
 ln -s $dist ejabberd
-
-root=~/crossbuild
-dll=$root/lib
-erts=7.3
-cd $root
 
 ejsrc=ejabberd
 ejdeps=$root/$ejsrc/deps
@@ -136,9 +135,22 @@ $CCX -I$w -I$h -I$i -I$e -I. -c double-conversion/*cc doubles.cc
 $CCX -shared -static-libgcc -static-libstdc++ -o $dll/jiffy.dll *o  
 cd -
 
+cd $ejdeps/cache_tab/c_src
+rm *o
+$CC -I$w -I$h -I$i -I$e -D_WIN32 -c *c
+$CC -shared -o $dll/ets_cache.dll ets_cache.o
+cd -
+
+cd $ejdeps/xmpp/c_src
+rm *o
+$CC -I$w -I$h -I$i -I$e -D_WIN32 -c *c
+$CC -shared -o $dll/jid.dll jid.o
+cd -
+
 $ST $dll/*dll
 
-tar xf ~/pub/bin/linux-x86_64/18/ejabberd/$dist.epkg
+cd bin
+tar xf ~/pub/bin/linux-x86_64/$otp/ejabberd/$dist.epkg
 unzip $dist.deps.zip
 for lib in $(find $dist -name "*so")
 do
@@ -149,6 +161,6 @@ done
 rm $dist.deps.zip
 zip -9qr $dist.deps.zip $dist
 rm -Rf $dist
-tar cf ~/pub/bin/windows/18/ejabberd/$dist.epkg ${dist}*ez ${dist}*zip
+tar cf ~/pub/bin/windows/$otp/ejabberd/$dist.epkg ${dist}*ez ${dist}*zip
 
-echo "success: ~/pub/bin/windows/18/ejabberd/$dist.epkg generated"
+echo "success: $dist.epkg generated"
