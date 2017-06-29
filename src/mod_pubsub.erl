@@ -3352,6 +3352,7 @@ subscribed_nodes_by_jid(NotifyType, SubsByDepth) ->
 			    true ->
 				case state_can_deliver(LJID, SubOptions) of
 				    [] -> {JIDs, Recipients};
+				    [LJID] -> {JIDs, [{LJID, NodeName, [SubID]} | Recipients]};
 				    JIDsToDeliver ->
 					lists:foldl(
 					    fun(JIDToDeliver, {JIDsAcc, RecipientsAcc}) ->
