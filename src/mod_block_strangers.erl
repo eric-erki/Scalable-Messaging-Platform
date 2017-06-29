@@ -56,8 +56,11 @@ filter_packet(Acc, StateData, From, To, Packet) ->
     LBFrom = jid:remove_resource(LFrom),
     NoBody = fxml:get_subtag(Packet, <<"body">>) == false,
     NoSubject = fxml:get_subtag(Packet, <<"subject">>) == false,
+    AllowLocalUsers =
+        gen_mod:get_module_opt(LServer, ?MODULE, allow_local_users, true),
     case (NoBody andalso NoSubject)
-        orelse ejabberd_router:is_my_route(From#jid.lserver)
+        orelse (AllowLocalUsers andalso
+                ejabberd_router:is_my_route(From#jid.lserver))
         orelse (?SETS):is_element(LFrom, StateData#state.pres_a)
 	orelse (?SETS):is_element(LBFrom, StateData#state.pres_a)
         orelse sets_bare_member(LBFrom, StateData#state.pres_a) of
@@ -125,4 +128,6 @@ mod_opt_type(drop) ->
     fun (B) when is_boolean(B) -> B end;
 mod_opt_type(log) ->
     fun (B) when is_boolean(B) -> B end;
-mod_opt_type(_) -> [drop, log].
+mod_opt_type(allow_local_users) ->
+    fun (B) when is_boolean(B) -> B end;
+mod_opt_type(_) -> [drop, log, allow_local_users].
