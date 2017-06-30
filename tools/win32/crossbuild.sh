@@ -34,7 +34,7 @@ sql=sqlite-autoconf-3081002
 root=~/crossbuild
 dll=$root/lib
 cd $root
-[ -f ejabberd ] && rm ejabberd
+[ -e ejabberd ] && rm ejabberd
 tar zxf ~/pub/src/ejabberd/$dist.tgz
 ln -s $dist ejabberd
 
@@ -58,7 +58,7 @@ e=$CEAN_ROOT/src/otp/lib/erl_interface/include
 mkdir -p $dll
 (cd $ejsrc
  ./autogen.sh
- ./configure --enable-mysql --enable-pgsql --enable-sqlite --enable-riak --enable-redis --enable-elixir
+ ./configure --enable-mysql --enable-pgsql --enable-sqlite --enable-riak --enable-redis --enable-elixir --enable-sip --enable-stun
  ./rebar get-deps)
 
 cd $ejdeps/ezlib/c_src
@@ -96,14 +96,13 @@ $CC -shared -o $dll/fast_yaml.dll fast_yaml.o $root/$yaml/src/.libs/libyaml.a
 cd -
 
 cd $ejdeps/fast_tls
-patch -p1<$root/tls.patch
 cd c_src
 rm *o
 [ -d $root/$ssl ] || curl https://www.openssl.org/source/$ssl.tar.gz | tar -C $root -zxf -
 (cd $root/$ssl; ./Configure mingw64; make CC=$CC; $CHOST-ranlib *.a)
-$CC -I$w -I$h -I$i -I$e -I$root/$ssl/include -D_WIN32 -c p1_sha.c fast_tls_drv.c
+$CC -I$w -I$h -I$i -I$e -I$root/$ssl/include -D_WIN32 -c p1_sha.c fast_tls.c
 $CC -shared -o $dll/p1_sha.dll p1_sha.o $root/$ssl/libcrypto.a
-$CC -shared -o $dll/fast_tls_drv.dll fast_tls_drv.o $root/$ssl/libssl.a $root/$ssl/libcrypto.a /usr/$CHOST/lib/libgdi32.a /usr/$CHOST/lib/libwsock32.a
+$CC -shared -o $dll/fast_tls.dll fast_tls.o $root/$ssl/libssl.a $root/$ssl/libcrypto.a /usr/$CHOST/lib/libgdi32.a /usr/$CHOST/lib/libwsock32.a
 cd -
 
 cd $ejdeps/iconv/c_src
@@ -147,7 +146,7 @@ $CC -I$w -I$h -I$i -I$e -D_WIN32 -c *c
 $CC -shared -o $dll/jid.dll jid.o
 cd -
 
-$ST $dll/*dll
+# $ST $dll/*dll
 
 cd bin
 tar xf ~/pub/bin/linux-x86_64/$otp/ejabberd/$dist.epkg
