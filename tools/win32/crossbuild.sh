@@ -100,9 +100,9 @@ cd c_src
 rm *o
 [ -d $root/$ssl ] || curl https://www.openssl.org/source/$ssl.tar.gz | tar -C $root -zxf -
 (cd $root/$ssl; ./Configure mingw64; make CC=$CC; $CHOST-ranlib *.a)
-$CC -I$w -I$h -I$i -I$e -I$root/$ssl/include -D_WIN32 -c p1_sha.c fast_tls.c
+$CC -I$w -I$h -I$i -I$e -I$root/$ssl/include -D_WIN32 -c p1_sha.c fast_tls.c hashmap.c
 $CC -shared -o $dll/p1_sha.dll p1_sha.o $root/$ssl/libcrypto.a
-$CC -shared -o $dll/fast_tls.dll fast_tls.o $root/$ssl/libssl.a $root/$ssl/libcrypto.a /usr/$CHOST/lib/libgdi32.a /usr/$CHOST/lib/libwsock32.a
+$CC -shared -o $dll/fast_tls.dll fast_tls.o hashmap.o $root/$ssl/libssl.a $root/$ssl/libcrypto.a /usr/$CHOST/lib/libgdi32.a /usr/$CHOST/lib/libwsock32.a
 cd -
 
 cd $ejdeps/iconv/c_src
