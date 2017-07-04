@@ -59,6 +59,9 @@ start(normal, _Args) ->
     ejabberd_config:start(),
     set_settings_from_config(),
     Sup = ejabberd_sup:start_link(),
+-ifdef(p1db).
+    p1db:wait_for_tables(),
+-endif.
     ejabberd_rdbms:start(),
     ejabberd_riak_sup:start(),
     ejabberd_redis:start(),
