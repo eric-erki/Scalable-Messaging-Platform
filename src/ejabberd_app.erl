@@ -40,6 +40,14 @@
 %%% Application API
 %%%
 
+-ifdef(p1db).
+maybe_call_p1db_wait_for_tables() ->
+    p1db:wait_for_tables().
+-else.
+maybe_call_p1db_wait_for_tables() ->
+  ok.
+-endif.
+
 start(normal, _Args) ->
     ejabberd_logger:start(),
     write_pid_file(),
@@ -59,9 +67,7 @@ start(normal, _Args) ->
     ejabberd_config:start(),
     set_settings_from_config(),
     Sup = ejabberd_sup:start_link(),
--ifdef(p1db).
-    p1db:wait_for_tables(),
--endif.
+    maybe_call_p1db_wait_for_tables(),
     ejabberd_rdbms:start(),
     ejabberd_riak_sup:start(),
     ejabberd_redis:start(),
