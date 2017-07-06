@@ -57,7 +57,7 @@ filter_packet(Acc, StateData, From, To, Packet) ->
     NoBody = fxml:get_subtag(Packet, <<"body">>) == false,
     NoSubject = fxml:get_subtag(Packet, <<"subject">>) == false,
     AllowLocalUsers =
-        gen_mod:get_module_opt(LServer, ?MODULE, allow_local_users, true),
+        gen_mod:get_module_opt(StateData#state.server, ?MODULE, allow_local_users, true),
     case (NoBody andalso NoSubject)
         orelse (AllowLocalUsers andalso
                 ejabberd_router:is_my_route(From#jid.lserver))
