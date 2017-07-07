@@ -136,9 +136,10 @@ init([Host, Opts]) ->
     MonitorsBase = gen_mod:get_opt(monitors_base, Opts,
                                fun(L) when is_list(L) -> L end,
                                ?DEFAULT_MONITORS),
-    Monitors = gen_mod:get_opt(monitors, Opts,
+    MonitorsDesc = gen_mod:get_opt(monitors, Opts,
                                fun(L) when is_list(L) -> L end,
                                []) ++ MonitorsBase,
+    Monitors = [monitor_spec(Desc) || Desc<-MonitorsDesc],
 
     % List enabled hooks, defaults all supported hooks
     Hooks = gen_mod:get_opt(hooks, Opts,
@@ -469,18 +470,75 @@ pubsub_publish_item(ServerHost, _Node, _Publisher, _From, _ItemId, _Packet) ->
 %    inc(Host, {inc, {pubsub_broadcast_stanza, Node, Count}}).
 
 %%====================================================================
+%% monitors spec parser
+%%====================================================================
+
+monitor_spec([{Name, Desc}]) ->
+    monitor_spec({Name, Desc});
+monitor_spec({Name, Desc}) when is_binary(Desc) ->
+    Spec = case erl_scan:string(binary_to_list(Desc)) of
+        {ok,[{atom,1,Fun}],_} -> parse_call(?MODULE, Fun, [], []);
+        {ok,[{atom,1,Fun},Arg],_} -> parse_call(?MODULE, Fun, [Arg], []);
+        {ok,[{atom,1,Mod},{':',1},{atom,1,Fun}|Args],_} -> parse_call(Mod, Fun, Args, []);
+        {ok,Tokens,_} -> parse_descr(Tokens, []);
+        _ -> undefined
+    end,
+    if Spec == undefined ->
+         ?WARNING_MSG("Invalid description of monitor ~s: ~p", [Name, Desc]);
+       true ->
+         ?DEBUG("Monitor ~s defined as ~p", [Name, Spec])
+    end,
+    {Name, Spec};
+% backward compatibility with old erlang term configuration
+monitor_spec({Name, Fun}) when is_atom(Fun) ->
+    {Name, {?MODULE, Fun, []}};
+monitor_spec({Name, Fun, Arg}) when is_atom(Fun) ->
+    {Name, {?MODULE, Fun, [Arg]}};
+monitor_spec({Name, Mod, Fun, Args}) ->
+    {Name, {Mod, Fun, Args}};
+monitor_spec({Name, Mod, Fun, Args, Filter}) ->
+    ?WARNING_MSG("Unsupported filtered monitor ~s: filter ~p not applied",
+                [Name, Filter]),
+    {Name, {Mod, Fun, Args}};
+monitor_spec({Name, Desc}) ->
+    ?WARNING_MSG("Invalid description of monitor ~s: ~p", [Name, Desc]),
+    {Name, undefined}.
+
+parse_call(Mod, Fun, [], Acc) ->
+    {Mod, Fun, lists:reverse(Acc)};
+parse_call(Mod, Fun, [{dot,1}|Tail], Acc) ->
+   parse_call(Mod, Fun, Tail, Acc);
+parse_call(Mod, Fun, [{'(',1}|Tail], Acc) ->
+   parse_call(Mod, Fun, Tail, Acc);
+parse_call(Mod, Fun, [{')',1}|Tail], Acc) ->
+   parse_call(Mod, Fun, Tail, Acc);
+parse_call(Mod, Fun, [{',',1}|Tail], Acc) ->
+   parse_call(Mod, Fun, Tail, Acc);
+parse_call(Mod, Fun, [{_,1,Arg}|Tail], Acc) ->
+    parse_call(Mod, Fun, Tail, [Arg|Acc]);
+parse_call(_Mod, _Fun, _Tail, _Acc) ->
+    undefined.
+
+parse_descr([], Acc) ->
+    lists:reverse(Acc);
+parse_descr([{'+',1}, {atom,1,Probe}|Tail], Acc) ->
+    parse_descr(Tail, [{'+', Probe}|Acc]);
+parse_descr([{'-',1}, {atom,1,Probe}|Tail], Acc) ->
+    parse_descr(Tail, [{'-', Probe}|Acc]);
+parse_descr(_Other, _Acc) ->
+    undefined.
+
+%%====================================================================
 %% high level monitors
 %%====================================================================
 
 compute_probes(Host, Monitors) ->
     Probes = [dump_probe(Host, Probe, Value) || {Probe, Value} <- dump(Host)],
     Computed = lists:foldl(
-            fun({I, M, F, A}, Acc) -> acc_monitor(I, apply(M, F, A), Acc);
-                ({I, M, F, A, Fun}, Acc) -> acc_monitor(I, Fun(apply(M, F, A)), Acc);
-                ({I, F, A}, Acc) -> acc_monitor(I, apply(?MODULE, F, [Host, A]), Acc);
-                ({I, F}, Acc) when is_atom(F) -> acc_monitor(I, apply(?MODULE, F, [Host]), Acc);
-                ({I, Spec}, Acc) when is_list(Spec) -> acc_monitor(I, eval_monitors(Probes, Spec, 0), Acc);
-                (_, Acc) -> Acc
+            fun({I, {?MODULE, F, A}}, Acc) -> acc_monitor(I, apply(?MODULE, F, [Host|A]), Acc);
+               ({I, {M, F, A}}, Acc) -> acc_monitor(I, apply(M, F, A), Acc);
+               ({I, Spec}, Acc) when is_list(Spec) -> acc_monitor(I, eval_monitors(Probes, Spec, 0), Acc);
+               (_, Acc) -> Acc
             end, [], Monitors),
     Probes ++ Computed.
 

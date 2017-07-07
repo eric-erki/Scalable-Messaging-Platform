@@ -53,21 +53,13 @@
 
 % Generic default monitors to aglomerate common values
 -define(DEFAULT_MONITORS,
-        [{c2s_receive, [message_receive_packet,chat_receive_packet,groupchat_receive_packet,
-                        presence_receive_packet,error_receive_packet,result_receive_packet,
-                        get_receive_packet,set_receive_packet]},
-         {c2s_send, [message_send_packet,chat_send_packet,groupchat_send_packet,
-                     presence_send_packet,error_send_packet,result_send_packet,
-                     get_send_packet,set_send_packet]},
-         {s2s_receive, [s2s_message_receive_packet,s2s_chat_receive_packet,s2s_groupchat_receive_packet,
-                        s2s_presence_receive_packet,s2s_error_receive_packet,s2s_result_receive_packet,
-                        s2s_get_receive_packet,s2s_set_receive_packet]},
-         {s2s_send, [s2s_message_send_packet,s2s_chat_send_packet,s2s_groupchat_send_packet,
-                     s2s_presence_send_packet,s2s_error_send_packet,s2s_result_send_packet,
-                     s2s_get_send_packet,s2s_set_send_packet]},
-         %{muc_rooms, [{'+', muc_create}, {'-', muc_destroy}]},
-         %{muc_users, [{'+', muc_user_join}, {'-', muc_user_leave}]},
-         %{pubsub_nodes, [{'+', pubsub_create_node}, {'-', pubsub_delete_node}]},
+        [{c2s_receive, <<"+message_receive_packet+chat_receive_packet+groupchat_receive_packet+presence_receive_packet">>},
+         {c2s_send, <<"+message_send_packet+chat_send_packet+groupchat_send_packet+presence_send_packet">>},
+         {s2s_receive, <<"+s2s_message_receive_packet+s2s_chat_receive_packet+s2s_groupchat_receive_packet+s2s_presence_receive_packet">>},
+         {s2s_send, <<"+s2s_message_send_packet+s2s_chat_send_packet+s2s_groupchat_send_packet+s2s_presence_send_packet">>},
+         %{muc_rooms, <<"+muc_create-muc_destroy">>},
+         %{muc_users, <<"+muc_user_join-muc_user_leave">>},
+         %{pubsub_nodes, <<"+pubsub_create_node-pubsub_delete_node">>},
          {message_queues, process_queues, all},
          {iq_message_queues, process_queues, ejabberd_iq_sup},
          {sm_message_queues, process_queues, ejabberd_sm_sup},
@@ -81,8 +73,8 @@
          {offline_internal_queues, internal_queues, mod_offline_pool},
          {jabs, jabs_count},
          %{sessions, node_sessions_count}, % define this if sm_register_connection_hook and sm_remove_connection_hook disabled
-         {memory, erlang, memory, [total]},
+         {memory, <<"erlang:memory(total).">>},  %% supported notation
          {cpu, cpu_usage},
-         {processes, erlang, system_info, [process_count]},
+         {processes, <<"erlang:system_info process_count">>}, %% equivalent to erlang:system_info(process_count).
          {health, health_check}
         ]).
