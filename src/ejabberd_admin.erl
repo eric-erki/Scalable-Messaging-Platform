@@ -38,6 +38,7 @@
 	 join_cluster/1, leave_cluster/1, list_cluster/0,
 	 %% P1DB
 	 join_p1db/1, leave_p1db/1, list_p1db/0,
+	 wait_p1db/0, backup_p1db/1,
 	 %% Erlang
 	 update_list/0, update/1,
 	 %% Accounts
@@ -47,8 +48,6 @@
 	 import_file/1, import_dir/1,
 	 %% Purge DB
 	 delete_expired_messages/0, delete_old_messages/1,
-	 %% P1DB
-	 backup_p1db/1,
 	 %% Mnesia
 	 set_master/1,
 	 backup_mnesia/1, restore_mnesia/1,
@@ -198,6 +197,11 @@ get_commands_spec() ->
 			module = ?MODULE, function = list_p1db,
 			args = [],
 			result = {nodes, {list, {node, atom}}}},
+     #ejabberd_commands{name = wait_p1db, tags = [p1db],
+			desc = "Wait for full tables synchronisation on the P1DB cluster",
+			module = ?MODULE, function = wait_p1db,
+			args = [],
+			result = {res, rescode}},
 
      #ejabberd_commands{name = import_file, tags = [mnesia],
 			desc = "Import user data from jabberd14 spool file",
@@ -518,6 +522,9 @@ leave_p1db(NodeBin) ->
 
 list_p1db() ->
     p1db_dist:get_nodes().
+
+wait_p1db() ->
+    p1db:wait_for_tables().
 
 %%%
 %%% Migration management
