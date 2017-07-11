@@ -39,7 +39,9 @@
 	 process_iq_v0_2/3, process_iq_v0_3/3, disco_sm_features/5,
 	 remove_user/2, remove_room/3, mod_opt_type/1, muc_process_iq/4,
 	 muc_filter_message/5, message_is_archived/5, delete_old_messages/2,
-	 opt_type/1, get_commands_spec/0, msg_to_el/4, get_room_config/4, set_room_option/4]).
+	 opt_type/1, get_commands_spec/0, msg_to_el/4, get_room_config/4,
+         set_room_option/4,
+         offline_message/3]).
 
 -include("jlib.hrl").
 -include("logger.hrl").
@@ -96,6 +98,8 @@ start(Host, Opts) ->
 		       user_receive_packet, 500),
     ejabberd_hooks:add(user_send_packet, Host, ?MODULE,
 		       user_send_packet, 500),
+    ejabberd_hooks:add(offline_message_hook, Host, ?MODULE,
+		       offline_message, 40),
     ejabberd_hooks:add(muc_filter_message, Host, ?MODULE,
 		       muc_filter_message, 50),
     ejabberd_hooks:add(muc_process_iq, Host, ?MODULE,
@@ -144,6 +148,8 @@ stop(Host) ->
 			  user_send_packet, 500),
     ejabberd_hooks:delete(user_receive_packet, Host, ?MODULE,
 			  user_receive_packet, 500),
+    ejabberd_hooks:delete(offline_message_hook, Host, ?MODULE,
+                          offline_message, 40),
     ejabberd_hooks:delete(muc_filter_message, Host, ?MODULE,
 			  muc_filter_message, 50),
     ejabberd_hooks:delete(muc_process_iq, Host, ?MODULE,
@@ -266,6 +272,20 @@ user_send_packet(Pkt, C2SState, JID, Peer) ->
 	    NewPkt;
 	false ->
 	    Pkt
+    end.
+
+offline_message(Peer, To, Pkt) ->
+    LUser = To#jid.luser,
+    LServer = To#jid.lserver,
+    case should_archive(Pkt, LServer) of
+	true ->
+	    Pkt1 = strip_my_archived_tag(Pkt, LServer),
+            TS = p1_time_compat:timestamp(),
+            Pkt2 = jlib:add_delay_info(Pkt1, LServer, TS),
+	    store_msg(undefined, Pkt2, LUser, LServer, Peer, recv),
+	    ok;
+	false ->
+	    ok
     end.
 
 muc_filter_message(Pkt, #state{config = Config} = MUCState,
@@ -568,10 +588,10 @@ parse_query_v0_2(Query) ->
       end, Query#xmlel.children).
 
 should_archive(#xmlel{name = <<"message">>} = Pkt, LServer) ->
-	    case is_resent(Pkt, LServer) of
-		true ->
-		    false;
-		false ->
+    case is_resent(Pkt, LServer) orelse is_delayed(Pkt, LServer) of
+        true ->
+            false;
+        false ->
 	    case {check_store_hint(Pkt),
 		  fxml:get_attr_s(<<"type">>, Pkt#xmlel.attrs)} of
 		{_Hint, <<"error">>} ->
@@ -718,6 +738,18 @@ is_resent(Pkt, LServer) ->
 	    end;
 	false ->
 	    false
+    end.
+
+is_delayed(Packet, LServer) ->
+    case fxml:get_subtag_with_xmlns(Packet, <<"delay">>, ?NS_DELAY) of
+        #xmlel{attrs = Attrs} ->
+	    case fxml:get_attr(<<"from">>, Attrs) of
+		{value, LServer} ->
+		    true;
+		_ ->
+		    false
+	    end;
+        _ -> false
     end.
 
 may_enter_room(From,
