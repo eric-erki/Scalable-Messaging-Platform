@@ -45,7 +45,8 @@ build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom,
                 case fxml:get_subtag(EventEl, <<"items">>) of
                     #xmlel{} = ItemsEl ->
                         case fxml:get_tag_attr_s(<<"node">>, ItemsEl) of
-                            ?NS_MUCSUB_NODES_MESSAGES ->
+			    Node when Node == ?NS_MUCSUB_NODES_MESSAGES;
+				      Node == ?NS_MUCSUB_NODES_SUBJECT ->
                                 case fxml:get_subtag(ItemsEl, <<"item">>) of
                                     #xmlel{} = ItemEl ->
                                         case fxml:get_subtag(ItemEl, <<"message">>) of
