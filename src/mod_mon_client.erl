@@ -45,7 +45,8 @@ start(Host) ->
         undefined ->
             ok;
         ClientSpec ->
-            {Ip, Port} = proplists:get_value(interface, ClientSpec, {{127,0,0,1},5222}),
+            Backend = proplists:get_value(interface, ClientSpec, <<"127.0.0.1:5222">>),
+            {Ip, Port} = mod_mon:backend_ip_port(Backend),
             Start = os:timestamp(),
 
             case gen_tcp:connect(Ip, Port,

@@ -52,6 +52,8 @@
 -export([node_sessions_count/1, cpu_usage/1]).
 %% server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
+%% helpers
+-export([backend_ip_port/1]).
 
 -export([offline_message_hook/3, resend_offline_messages_hook/3,
 	 sm_register_connection_hook/3, sm_remove_connection_hook/3,
@@ -614,30 +616,28 @@ init_backend(_, _) ->
     none.
 
 backend_ip_port(EndPoint) when is_binary(EndPoint) ->
-    DefaultServer = {127,0,0,1},
-    DefaultPort = 0,
     case string:tokens(binary_to_list(EndPoint), ":") of
-        [Ip] -> {backend_ip(Ip, DefaultServer), DefaultPort};
-        [Ip, Port|_] -> {backend_ip(Ip, DefaultServer), backend_port(Port, DefaultPort)};
+        [Ip, Port|_] ->
+            {backend_ip(Ip), backend_port(Port)};
         _ ->
             ?WARNING_MSG("backend endoint is invalid: ~p", [EndPoint]),
             undefined
     end.
-backend_ip(Server, Default) when is_list(Server) ->
+backend_ip(Server) when is_list(Server) ->
     case catch inet:getaddr(Server, inet) of
         {ok, IpAddr} ->
             IpAddr;
         _ ->
-            ?WARNING_MSG("backend address is invalid: ~p, fallback to ~p", [Server, Default]),
-            Default
+            ?WARNING_MSG("backend address is invalid: ~p, fallback to localhost", [Server]),
+            {127,0,0,1}
     end.
-backend_port(Port, Default) when is_list(Port) ->
+backend_port(Port) when is_list(Port) ->
     case catch list_to_integer(Port) of
         I when is_integer(I) ->
             I;
         _ ->
-            ?WARNING_MSG("backend port is invalid: ~p, fallback to ~p", [Port, Default]),
-            Default
+            ?WARNING_MSG("backend port is invalid: ~p", [Port]),
+            0
     end.
 
 push(Host, _Node, Probes, _Time, mnesia) ->
