@@ -38,6 +38,7 @@
 -include("ejabberd_sql_pt.hrl").
 
 build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom, BadgeCount, First, FirstPerUser, SilentPushesEnabled, Module) ->
+    Pushed = check_x_pushed(Packet),
     Packet2 =
         case fxml:get_subtag_with_xmlns(
                Packet, <<"event">>, ?NS_PUBSUB_EVENT) of
@@ -67,9 +68,9 @@ build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom,
             false ->
                 Packet
         end,
-    build_push_packet_from_message2(From, To, Packet2, ID, _AppID, SendBody, SendFrom, BadgeCount, First, FirstPerUser, SilentPushesEnabled, Module).
+    build_push_packet_from_message2(From, To, Packet2, ID, _AppID, SendBody, SendFrom, BadgeCount, First, FirstPerUser, SilentPushesEnabled, Module, Pushed).
 
-build_push_packet_from_message2(From, To, Packet, ID, _AppID, SendBody, SendFrom, BadgeCount, First, FirstPerUser, SilentPushesEnabled, Module) ->
+build_push_packet_from_message2(From, To, Packet, ID, _AppID, SendBody, SendFrom, BadgeCount, First, FirstPerUser, SilentPushesEnabled, Module, Pushed) ->
     Body1 = fxml:get_path_s(Packet, [{elem, <<"body">>}, cdata]),
     Body =
         case check_x_attachment(Packet) of
@@ -82,7 +83,6 @@ build_push_packet_from_message2(From, To, Packet, ID, _AppID, SendBody, SendFrom
             false ->
                     Body1
         end,
-    Pushed = check_x_pushed(Packet),
     Composing = fxml:get_subtag_with_xmlns(Packet, <<"composing">>, ?NS_CHATSTATES),
     if
         Pushed ->
