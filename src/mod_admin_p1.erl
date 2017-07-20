@@ -78,6 +78,7 @@
 -include("mod_roster.hrl").
 -include("jlib.hrl").
 -include("ejabberd_sm.hrl").
+-include("ejabberd_c2s.hrl").
 -include("mod_muc.hrl").
 
 -define(MASSLOOP, massloop).
@@ -1490,10 +1491,16 @@ user_action(User, Server, Fun, OK) ->
 session_info(#session{priority = Priority, sid = {Sid, Pid}}) ->
     {_User, Resource, Show, _Status} = ejabberd_c2s:get_presence(Pid),
     ConnDateTime = calendar:now_to_local_time(Sid),
+    State = lists:nth(3, sys:get_state(Pid)),
     [{resource, Resource},
      {presence, Show},
      {priority, integer_to_binary(Priority)},
-     {since, jlib:timestamp_to_iso(ConnDateTime)}].
+     {since, jlib:timestamp_to_iso(ConnDateTime)},
+     {msg_queue_len, State#state.queue_len},
+     {ack_queue_len, queue:len(State#state.ack_queue)},
+     {standby, State#state.standby},
+     {reception, State#state.reception}
+    ].
 
 last_info(U, S) ->
     case catch mod_last:get_last_info(U, S) of
