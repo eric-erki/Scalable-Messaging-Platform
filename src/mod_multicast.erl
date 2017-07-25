@@ -397,7 +397,7 @@ act_groups(FromJID, Packet_stripped, AAttrs, LServiceS,
 perform(From, Packet, AAttrs, _,
 	{route_single, Group}) ->
     [route_packet(From, ToUser, Packet, AAttrs,
-		  Group#group.addresses)
+		  Group#group.others, Group#group.addresses)
      || ToUser <- Group#group.dests];
 perform(From, Packet, AAttrs, _,
 	{{route_multicast, JID, RLimits}, Group}) ->
@@ -602,13 +602,13 @@ decide_action_group(Group) ->
 %%% Route packet
 %%%-------------------------
 
-route_packet(From, ToDest, Packet, AAttrs, Addresses) ->
+route_packet(From, ToDest, Packet, AAttrs, Others, Addresses) ->
     Dests = case ToDest#dest.type of
 	      <<"bcc">> -> [];
 	      _ -> [ToDest]
 	    end,
     route_packet2(From, ToDest#dest.jid_string, Dests,
-		  Packet, AAttrs, Addresses).
+		  Packet, AAttrs, {Others, Addresses}).
 
 route_packet_multicast(From, ToS, Packet, AAttrs, Dests,
 		       Addresses, Limits) ->
@@ -634,6 +634,8 @@ route_packet2(From, ToS, Dests, Packet, AAttrs,
     ToJID = stj(ToS),
     ejabberd_router:route(From, ToJID, Packet2).
 
+append_dests(_Dests, {Others, Addresses}) ->
+    Addresses++Others;
 append_dests([], Addresses) -> Addresses;
 append_dests([Dest | Dests], Addresses) ->
     append_dests(Dests, [Dest#dest.full_xml | Addresses]).
