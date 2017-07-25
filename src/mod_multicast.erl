@@ -1201,5 +1201,5 @@ depends(_Host, _Opts) ->
 mod_opt_type(access) ->
     fun (A) when is_atom(A) -> A end;
 mod_opt_type(host) -> fun iolist_to_binary/1;
-mod_opt_type(limits) -> fun acl:access_rules_validator/1;
+mod_opt_type(limits) -> fun (A) when is_list(A) -> A end;
 mod_opt_type(_) -> [access, host, limits].
