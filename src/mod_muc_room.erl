@@ -5362,15 +5362,27 @@ check_invitation(From, Packet, Lang, StateData) ->
 				    <<"">> -> <<"">>;
 				    _ -> <<" (", Reason/binary, ") ">>
 				  end])}]},
-	    PushCustomize =
+	  PushCustomize =
 		case fxml:get_subtag_with_xmlns(Packet,
 						<<"customize">>,
 						?NS_P1_PUSH_CUSTOMIZE) of
 		    false -> [];
 		    El -> [El]
 		end,
+	  ReceiptRequest =
+		case fxml:get_subtag_with_xmlns(Packet,
+						<<"request">>,
+						?NS_RECEIPTS) of
+		    false -> [];
+		    El -> [El]
+		end,
+	  Attrs =
+		case fxml:get_tag_attr_s(<<"id">>, InviteEl) of
+		    <<"">> -> [{<<"type">>, <<"normal">>}];
+		    ID -> [{<<"type">>, <<"normal">>}, {<<"id">>, ID}]
+		end,
 	  Msg = #xmlel{name = <<"message">>,
-		       attrs = [{<<"type">>, <<"normal">>}],
+		       attrs = Attrs,
 		       children =
 			   [#xmlel{name = <<"x">>,
 				   attrs = [{<<"xmlns">>, ?NS_MUC_USER}],
@@ -5383,7 +5395,7 @@ check_invitation(From, Packet, Lang, StateData) ->
 							     StateData#state.host,
 							     <<"">>})}],
 				   children = [{xmlcdata, Reason}]},
-			    Body] ++ PushCustomize},
+			    Body] ++ PushCustomize ++ ReceiptRequest},
 	  ejabberd_router:route(StateData#state.jid, JID, Msg),
 	  JID
     end.
