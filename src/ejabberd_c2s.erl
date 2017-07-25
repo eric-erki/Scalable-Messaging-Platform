@@ -1971,8 +1971,8 @@ send_or_enqueue_packet(State, From, To, Packet) ->
 	    State1 = send_packet(State, Packet1),
 	    ack(State1, From, To, Packet1);
        true ->
-	    NewState = send_oor_message(State, From, To, Packet),
-	    enqueue(NewState, From, To, Packet)
+	    {NewState, Packet2} = send_oor_message(State, From, To, Packet),
+	    enqueue(NewState, From, To, Packet2)
     end.
 
 new_id() ->
@@ -2626,6 +2626,9 @@ change_reception(#state{reception = true} = StateData, false) ->
 					  StateData#state.pres_f,
 					  StateData#state.pres_a, Packet)
     end,
+    JID = StateData#state.jid,
+    ejabberd_hooks:run(c2s_lost_reception,
+		       JID#jid.lserver, [StateData#state.sid, JID]),
     StateData#state{reception = false};
 change_reception(#state{reception = false, standby = true} = StateData, true) ->
     ?DEBUG("reception -> standby", []),
@@ -2706,27 +2709,41 @@ send_oor_message(StateData, From, To, #xmlel{name = <<"message">>} = Packet) ->
 					 Badge,
 					 StateData#state.oor_unread == 0,
 					 not (?SETS):is_element(LBFrom, StateData#state.oor_unread_users)]),
+	    Packet2 = case Packet of
+			  #xmlel{name = <<"message">>} ->
+                              CleanPacket =
+                                  fxml:remove_subtags(
+                                    Packet, <<"x">>,
+                                    {<<"xmlns">>, ?NS_P1_PUSHED}),
+			      fxml:append_subtags(
+                                CleanPacket,
+                                [#xmlel{name = <<"x">>,
+                                        attrs = [{<<"xmlns">>, ?NS_P1_PUSHED}]}]);
+			  _ ->
+			      Packet
+		      end,
 	    case R of
 		skipped ->
-		    StateData;
+		    {StateData, Packet2};
 		sent ->
 		    ejabberd_hooks:run(delayed_message_hook,
 				       StateData#state.server,
 				       [From, To, Packet]),
 		    UnreadUsers = (?SETS):add_element(LBFrom, StateData#state.oor_unread_users),
-		    StateData#state{oor_unread = StateData#state.oor_unread + 1,
-				    oor_unread_users = UnreadUsers};
+		    {StateData#state{oor_unread = StateData#state.oor_unread + 1,
+                                     oor_unread_users = UnreadUsers},
+                     Packet2};
 		sent_silent ->
 		    ejabberd_hooks:run(delayed_message_hook,
 				       StateData#state.server,
 				       [From, To, Packet]),
-		    StateData
+		    {StateData, Packet2}
 	    end;
        true ->
-	    StateData
+	    {StateData, Packet}
     end;
-send_oor_message(StateData, _From, _To, _Packet) ->
-    StateData.
+send_oor_message(StateData, _From, _To, Packet) ->
+    {StateData, Packet}.
 
 make_oor_presence(StateData) ->
     make_oor_presence(StateData, [], []).
@@ -2781,13 +2798,9 @@ enqueue(StateData, From, To, Packet) ->
 		    StateData#state{pres_queue = NewQueue}
 	    end;
        true ->
-	    CleanPacket = fxml:remove_subtags(Packet, <<"x">>,
-					     {<<"xmlns">>, ?NS_P1_PUSHED}),
-	    Packet2 = case CleanPacket of
+	    Packet2 = case Packet of
 			  #xmlel{name = <<"message">>} ->
-			      fxml:append_subtags(maybe_add_delay(CleanPacket, utc, To, <<"">>),
-						 [#xmlel{name = <<"x">>,
-							 attrs = [{<<"xmlns">>, ?NS_P1_PUSHED}]}]);
+			      maybe_add_delay(Packet, utc, To, <<"">>);
 			  _ ->
 			      Packet
 		      end,

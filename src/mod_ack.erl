@@ -33,7 +33,7 @@
 -export([start/2, stop/1, start_link/2]).
 
 -export([user_send_packet/4, offline_message/3,
-	 delayed_message/3, remove_connection/3,
+	 delayed_message/3, remove_connection/2, remove_connection/3,
 	 feature_inspect_packet/4]).
 
 -export([init/1, handle_info/2, handle_call/3,
@@ -141,10 +141,12 @@ feature_inspect_packet(JID, Server,
 feature_inspect_packet(_User, _Server, _Pres, _El) ->
     ok.
 
-remove_connection({_, C2SPid}, #jid{lserver = Host},
-		  _Info) ->
+remove_connection({_, C2SPid}, #jid{lserver = Host}) ->
     ?GEN_SERVER:cast(gen_mod:get_module_proc(Host, ?PROCNAME),
 		    {del, C2SPid}).
+
+remove_connection(SID, JID, _Info) ->
+    remove_connection(SID, JID).
 
 init([Host, Opts]) ->
     Timeout = timer:seconds(gen_mod:get_opt(timeout, Opts,
@@ -164,6 +166,8 @@ init([Host, Opts]) ->
 		       ?MODULE, remove_connection, 20),
     ejabberd_hooks:add(sm_remove_migrated_connection_hook,
 		       Host, ?MODULE, remove_connection, 20),
+    ejabberd_hooks:add(c2s_lost_reception,
+		       Host, ?MODULE, remove_connection, 50),
     {ok, #state{host = Host, timeout = Timeout}}.
 
 handle_call(stop, _From, State) ->
@@ -202,19 +206,10 @@ handle_cast({del, ID, Pid}, State) ->
 handle_cast({del, Pid}, State) ->
     lists:foreach(fun ({_, _, {TRef, {From, To, El}}}) ->
 			  cancel_timer(TRef),
-			  El1 = fxml:remove_subtags(El, <<"x">>,
-						   {<<"xmlns">>,
-						    ?NS_P1_PUSHED}),
-			  El2 = fxml:append_subtags(El1,
-						   [#xmlel{name = <<"x">>,
-							   attrs =
-							       [{<<"xmlns">>,
-								 ?NS_P1_PUSHED}],
-							   children = []}]),
 			  ?DEBUG("Resending message:~n** From: ~p~n** "
 				 "To: ~p~n** El: ~p",
-				 [From, To, El2]),
-			  ejabberd_router:route(From, To, El2)
+				 [From, To, El]),
+			  ejabberd_router:route(From, To, El)
 		  end,
 		  to_list(Pid, State#state.timers)),
     Timers = delete(Pid, State#state.timers),
@@ -246,6 +241,8 @@ terminate(_Reason, State) ->
 			  ?MODULE, remove_connection, 20),
     ejabberd_hooks:delete(sm_remove_migrated_connection_hook,
 			  Host, ?MODULE, remove_connection, 20),
+    ejabberd_hooks:delete(c2s_lost_reception,
+                          Host, ?MODULE, remove_connection, 50),
     ok.
 
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
