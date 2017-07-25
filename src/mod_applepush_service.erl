@@ -280,29 +280,31 @@ handle_info({ssl, Socket, Packet}, State)
 	<<8, Status, CmdID:32>> when Status /= 0 ->
 	    case dict:find(CmdID, State#state.cmd_cache) of
 		{ok, {JID, DeviceID}} ->
-                    ?ERROR_MSG("PUSH ERROR for ~p: ~p", [JID, Status]),
+		    ?ERROR_MSG("PUSH ERROR for ~p: ~s",
+			       [JID, decode_status(Status)]),
 		    if
 			Status == 8 ->
 			    From = jid:make(<<"">>, State#state.host, <<"">>),
-                            BJID = jid:remove_resource(JID),
-                            ejabberd_router:route(
-                              From, BJID,
-                              #xmlel{name = <<"iq">>,
-                                     attrs = [{<<"id">>, <<"disable">>},
-                                              {<<"type">>, <<"set">>}],
-                                     children =
-                                     [#xmlel{name = <<"disable">>,
-                                             attrs =
-                                             [{<<"xmlns">>, ?NS_P1_PUSH_APPLEPUSH},
-                                              {<<"status">>, <<"feedback">>},
-                                              {<<"id">>, jlib:integer_to_binary(DeviceID, 16)}],
-                                             children = []}]});
-			true ->
-			    ok
+			    BJID = jid:remove_resource(JID),
+			    ejabberd_router:route(
+			      From, BJID,
+			      #xmlel{name = <<"iq">>,
+				     attrs = [{<<"id">>, <<"disable">>},
+					      {<<"type">>, <<"set">>}],
+				     children =
+				     [#xmlel{name = <<"disable">>,
+					     attrs =
+					     [{<<"xmlns">>, ?NS_P1_PUSH_APPLEPUSH},
+					      {<<"status">>, <<"feedback">>},
+					      {<<"id">>, jlib:integer_to_binary(DeviceID, 16)}],
+					     children = []}]});
+		      true ->
+			ok
 		    end,
-                    ok;
+		    ok;
 		error ->
-		    ?ERROR_MSG("Unknown cmd ID ~p~n", [CmdID]),
+		    ?ERROR_MSG("PUSH ERROR for unknown cmd ~p: ~s",
+			       [CmdID, decode_status(Status)]),
 		    ok
 	    end;
 	_ ->
@@ -828,6 +830,18 @@ parse_feedback_buf(Buf, State) ->
 
 iolist_to_string(S) ->
     binary_to_list(iolist_to_binary(S)).
+
+decode_status(1) -> <<"Processing error">>;
+decode_status(2) -> <<"Missing device token">>;
+decode_status(3) -> <<"Missing topic">>;
+decode_status(4) -> <<"Missing payload">>;
+decode_status(5) -> <<"Invalid token size">>;
+decode_status(6) -> <<"Invalid topic size">>;
+decode_status(7) -> <<"Invalid payload size">>;
+decode_status(8) -> <<"Invalid token">>;
+decode_status(10) -> <<"Shutdown">>;
+decode_status(128) -> <<"Protocol error">>;
+decode_status(_) -> <<"Unknown error">>.
 
 depends(_Host, _Opts) ->
     [{mod_applepush, hard}].
