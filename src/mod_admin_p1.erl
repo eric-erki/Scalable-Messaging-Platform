@@ -1488,10 +1488,19 @@ user_action(User, Server, Fun, OK) ->
       false -> 404
     end.
 
-session_info(#session{priority = Priority, sid = {Sid, Pid}}) ->
+session_info(#session{usr = {U,S,R}, priority = Priority, sid = {Sid, Pid}}) ->
     {_User, Resource, Show, _Status} = ejabberd_c2s:get_presence(Pid),
     ConnDateTime = calendar:now_to_local_time(Sid),
     State = lists:nth(3, sys:get_state(Pid)),
+    Features = case ejabberd_c2s:get_aux_field(caps_resources, State) of
+                {ok, Rs} ->
+                    case gb_trees:lookup({U,S,R}, Rs) of
+                        {value, Caps} -> mod_caps:get_features(S, Caps);
+                        none -> []
+                    end;
+                error ->
+                    []
+           end,
     [{resource, Resource},
      {presence, Show},
      {priority, integer_to_binary(Priority)},
@@ -1499,7 +1508,8 @@ session_info(#session{priority = Priority, sid = {Sid, Pid}}) ->
      {msg_queue_len, State#state.queue_len},
      {ack_queue_len, queue:len(State#state.ack_queue)},
      {standby, State#state.standby},
-     {reception, State#state.reception}
+     {reception, State#state.reception},
+     {features, Features}
     ].
 
 last_info(U, S) ->
