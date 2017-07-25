@@ -5367,14 +5367,14 @@ check_invitation(From, Packet, Lang, StateData) ->
 						<<"customize">>,
 						?NS_P1_PUSH_CUSTOMIZE) of
 		    false -> [];
-		    El -> [El]
+		    PushEl -> [PushEl]
 		end,
 	  ReceiptRequest =
 		case fxml:get_subtag_with_xmlns(Packet,
 						<<"request">>,
 						?NS_RECEIPTS) of
 		    false -> [];
-		    El -> [El]
+		    ReceiptEl -> [ReceiptEl]
 		end,
 	  Attrs =
 		case fxml:get_tag_attr_s(<<"id">>, InviteEl) of
