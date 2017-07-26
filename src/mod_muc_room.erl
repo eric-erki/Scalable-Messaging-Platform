@@ -5377,7 +5377,7 @@ check_invitation(From, Packet, Lang, StateData) ->
 		    ReceiptEl -> [ReceiptEl]
 		end,
 	  Attrs =
-		case fxml:get_tag_attr_s(<<"id">>, InviteEl) of
+		case fxml:get_tag_attr_s(<<"id">>, Packet) of
 		    <<"">> -> [{<<"type">>, <<"normal">>}];
 		    ID -> [{<<"type">>, <<"normal">>}, {<<"id">>, ID}]
 		end,
