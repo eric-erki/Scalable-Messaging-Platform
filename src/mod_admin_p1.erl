@@ -1505,11 +1505,11 @@ session_info(#session{usr = {U,S,R}, priority = Priority, sid = {Sid, Pid}}) ->
      {presence, Show},
      {priority, integer_to_binary(Priority)},
      {since, jlib:timestamp_to_iso(ConnDateTime)},
-     {msg_queue_len, State#state.queue_len},
-     {ack_queue_len, queue:len(State#state.ack_queue)},
-     {standby, State#state.standby},
-     {reception, State#state.reception},
-     {features, Features}
+     {msg_queue_len, integer_to_binary(State#state.queue_len)},
+     {ack_queue_len, integer_to_binary(queue:len(State#state.ack_queue))},
+     {standby, jlib:atom_to_binary(State#state.standby)},
+     {reception, jlib:atom_to_binary(State#state.reception)},
+     {features, str:join(Features, <<",">>)}
     ].
 
 last_info(U, S) ->
