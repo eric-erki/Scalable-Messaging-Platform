@@ -88,8 +88,9 @@ prep_stop(State) ->
     ejabberd_listener:stop_listeners(),
     ejabberd_admin:stop(),
     broadcast_c2s_shutdown(),
+    timer:sleep(2500),
     gen_mod:stop_modules(),
-    timer:sleep(5000),
+    timer:sleep(2500),
     State.
 
 %% All the processes were killed when this function is called
