@@ -1654,10 +1654,6 @@ handle_info(system_shutdown, wait_for_stream, StateData) ->
     fsm_send_and_stop(StateData, ?MYNAME, <<"1.0">>, <<"en">>, ?SERR_SYSTEM_SHUTDOWN);
 handle_info(system_shutdown, _StateName, StateData) ->
     fsm_send_and_stop(StateData, ?SERR_SYSTEM_SHUTDOWN);
-handle_info(node_shutdown, wait_for_stream, StateData) ->
-    fsm_send_and_stop(StateData, ?MYNAME, <<"1.0">>, <<"en">>, ?SERR_NODE_SHUTDOWN);
-handle_info(node_shutdown, _StateName, StateData) ->
-    fsm_send_and_stop(StateData, ?SERR_NODE_SHUTDOWN);
 handle_info({route_xmlstreamelement, El}, _StateName, StateData) ->
     {next_state, NStateName, NStateData, _Timeout} =
 	session_established({xmlstreamelement, El}, StateData),

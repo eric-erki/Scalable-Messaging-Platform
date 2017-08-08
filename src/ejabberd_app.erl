@@ -145,13 +145,9 @@ add_windows_nameservers() ->
 
 broadcast_c2s_shutdown() ->
     Children = ejabberd_sm:get_all_pids(),
-    Message = case ejabberd_cluster:get_nodes() of
-	[Node] when Node == node() -> system_shutdown;
-	_ -> node_shutdown
-    end,
     lists:foreach(
       fun(C2SPid) when node(C2SPid) == node() ->
-	      C2SPid ! Message;
+	      C2SPid ! system_shutdown;
 	 (_) ->
 	      ok
       end, Children).
