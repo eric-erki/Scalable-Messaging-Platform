@@ -6,7 +6,7 @@ extract customer sources, then:
 cust="customer_name"
 cfg=$(grep configure ~/.cean_processone/pkg/$cust/ejabberd_$cust.pub | cut -d'"' -f2)
 ./configure $cfg
-./rebar get-deps
+make
 license/build_license_installer.sh ${cust}_license 3.2.x_y YYYYMMDDN
 
 this generates ${cust}_license.run in current directory
