@@ -37,6 +37,7 @@
 
 -include("pubsub.hrl").
 -include("jlib.hrl").
+-include("logger.hrl").
 
 -export([init/3, terminate/2, options/0, features/0,
     create_node_permission/6, create_node/2, delete_node/1,
@@ -53,12 +54,15 @@
 
 -export([enc_state_key/1, dec_state_key/1, enc_state_val/2, dec_state_val/2]).
 
+-export([enc_state2_key/1, dec_state2_key/1, enc_state2_val/2, dec_state2_val/2]).
+
 -export([enc_item_key/1, dec_item_key/1, enc_item_val/2,
 	 dec_item_val/2, mod_opt_type/1, opt_type/1]).
 
 init(Host, ServerHost, Opts) ->
     %%pubsub_subscription_p1db:init(Host, ServerHost, Opts),
-    Group = gen_mod:get_opt(p1db_group, Opts, fun(G) when is_atom(G) -> G end, 
+    Group = gen_mod:get_opt(p1db_group, Opts
+			   , fun(G) when is_atom(G) -> G end,
 			ejabberd_config:get_option(
 			    {p1db_group, ServerHost}, fun(G) when is_atom(G) -> G end)),
     [SKey|SValues] = record_info(fields, pubsub_state),
@@ -70,6 +74,15 @@ init(Host, ServerHost, Opts) ->
 				   {dec_key, fun ?MODULE:dec_state_key/1},
 				   {enc_val, fun ?MODULE:enc_state_val/2},
 				   {dec_val, fun ?MODULE:dec_state_val/2}]}]),
+    [SKey2|SValues2] = record_info(fields, pubsub_state2),
+    p1db:open_table(pubsub_state2,
+			[{group, Group}, {nosync, true},
+			 {schema, [{keys, [SKey2]},
+				   {vals, SValues2},
+				   {enc_key, fun ?MODULE:enc_state2_key/1},
+				   {dec_key, fun ?MODULE:dec_state2_key/1},
+				   {enc_val, fun ?MODULE:enc_state2_val/2},
+				   {dec_val, fun ?MODULE:dec_state2_val/2}]}]),
     [IKey|IValues] = record_info(fields, pubsub_item),
     p1db:open_table(pubsub_item,
 			[{group, Group}, {nosync, true},
@@ -643,22 +656,32 @@ acc_pending([#pubsub_state{stateid = {_, Nidx}, subscriptions = Subs}|Tail], Nod
 %% ```get_states(Nidx) ->
 %%           node_default:get_states(Nidx).'''</p>
 get_states(Nidx) ->
-    States = get_states_by_nidx(p1db:first(pubsub_state), Nidx, []),
+    States = lists:flatten(get_states_by_nidx(Nidx)),
     {result, States}.
 get_states_by_prefix(USR) ->
     case p1db:get_by_prefix(pubsub_state, enc_state_key(USR)) of
 	{ok, L} -> [p1db_to_state(Key, Val) || {Key, Val, _} <- L];
 	_ -> []
     end.
-get_states_by_nidx({ok, Key, Val, _}, Nidx, Acc) ->
-    {USR, NodeIdx} = dec_state_key(Key),
-    Acc2 = case NodeIdx of
-	Nidx -> [p1db_to_state({USR, Nidx}, Val)|Acc];
-	_ -> Acc
+
+get_states_by_nidx(Nidx) ->
+    case p1db:get_by_prefix(pubsub_state2, enc_state2_key(Nidx)) of
+	{ok, L} ->
+	    F = fun({_Key, Val, _}) ->
+			USR = dec_state2_val(Nidx, Val),
+			Key = enc_state_key({USR, Nidx}),
+			case p1db:get(pubsub_state, Key) of
+			    {ok, Val2, _VClock} ->
+				p1db_to_state(Key, Val2);
+			    _E ->
+				?ERROR_MSG("pubsub_state2 mismatch on Key ~p:~p",
+					   [{USR, Nidx}, _E]),
+				[]
+			end
     end,
-    get_states_by_nidx(p1db:next(pubsub_state, Key), Nidx, Acc2);
-get_states_by_nidx(_, _, Acc) ->
-    Acc.
+	    lists:map(F, L);
+	_ -> []
+    end.
 
 %% @doc <p>Returns a state (one state list), given its reference.</p>
 get_state(Nidx, USR) ->
@@ -672,7 +695,10 @@ get_state(Nidx, USR) ->
 set_state(State) when is_record(State, pubsub_state) ->
     Key = enc_state_key(State#pubsub_state.stateid),
     Val = state_to_p1db(State),
-    p1db:insert(pubsub_state, Key, Val).
+    p1db:insert(pubsub_state, Key, Val),
+    {USR, NodeIdx} = State#pubsub_state.stateid,
+    p1db:insert(pubsub_state2, enc_state2_key({NodeIdx, USR}),
+		enc_state2_val({NodeIdx, USR}, USR)).
 %set_state(_) -> {error, ?ERR_INTERNAL_SERVER_ERROR}.
 
 %% @doc <p>Delete a state from database.</p>
@@ -862,6 +888,21 @@ dec_state_key(Key) ->
     SLen = str:chr(Key, 0) - 1,
     <<USR:SLen/binary, 0, Nidx/binary>> = Key,
     {jid:string_to_usr(USR), Nidx}.
+
+enc_state2_key({Nidx, USR}) ->
+    <<Nidx/binary, 0, (jid:to_string(USR))/binary>>;
+enc_state2_key(Nidx) ->
+    <<Nidx/binary, 0>>.
+dec_state2_key(Key) ->
+    SLen = str:chr(Key, 0) - 1,
+    <<Nidx:SLen/binary, 0, USR/binary>> = Key,
+    {Nidx, jid:string_to_usr(USR)}.
+enc_state2_val(_, {U, S, R}) ->
+    jid:to_string({U, S, R}).
+dec_state2_val(_, Bin) ->
+    jid:string_to_usr(Bin).
+
+
 enc_item_key({Id, Nidx}) ->
     <<Nidx/binary, 0, Id/binary>>;
 enc_item_key(Nidx) ->

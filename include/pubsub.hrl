@@ -151,6 +151,13 @@
     subscriptions = []    % :: [{mod_pubsub:subscription(), mod_pubsub:subId()}]
 }).
 
+% For p1db indexation
+-record(pubsub_state2,
+{
+    key                   ,% :: {mod_pubsub:nodeIdx(), jlib:ljid()},
+    usr                    % :: jlib:ljid()
+}).
+
 -record(pubsub_item,
 {
     itemid                           ,% :: {mod_pubsub:itemId(), mod_pubsub:nodeIdx()},
