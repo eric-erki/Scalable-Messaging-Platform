@@ -350,9 +350,18 @@ init_send_pool(ServerHost) ->
     lists:foreach(
 	fun(I) ->
 		register(send_pool_name(I, ServerHost),
-		    spawn_link(fun() -> send_loop(State) end))
+		    spawn(fun() -> send_loop(State) end))
 	end, lists:seq(1, send_pool_size())),
     State.
+
+terminate_send_pool(ServerHost) ->
+    lists:foreach(
+	fun(I) ->
+		case whereis(send_pool_name(I, ServerHost)) of
+		    undefined -> ok;
+		    Pid -> exit(Pid, kill)
+		end
+	end, lists:seq(1, send_pool_size())).
 
 depends(ServerHost, Opts) ->
     Host = gen_mod:get_opt_host(ServerHost, Opts, <<"pubsub.@HOST@">>),
@@ -900,6 +909,7 @@ terminate(_Reason,
     ejabberd_hooks:delete(anonymous_purge_hook, ServerHost,
 	?MODULE, remove_user, 50),
     mod_disco:unregister_feature(ServerHost, ?NS_PUBSUB),
+    terminate_send_pool(ServerHost),
     terminate_plugins(Host, ServerHost, Plugins, TreePlugin),
     ejabberd_router:unregister_route(Host).
 
