@@ -704,7 +704,7 @@ set_state(State) when is_record(State, pubsub_state) ->
 %% @doc <p>Delete a state from database.</p>
 del_state(Nidx, USR) ->
     Key = enc_state_key({USR, Nidx}),
-    p1db:delete(pubsub_state, Key).
+    p1db:async_delete(pubsub_state, Key).
 
 %% @doc Returns the list of stored items for a given node.
 %% <p>For the default PubSub module, items are stored in Mnesia database.</p>
