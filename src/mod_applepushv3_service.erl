@@ -70,7 +70,6 @@
 -define(SSL_TIMEOUT, 5000).
 -define(MAX_QUEUE_SIZE, 1000).
 -define(CACHE_SIZE, 4096).
--define(MAX_PAYLOAD_SIZE, 2048).
 -define(MAX_RESEND_COUNT, 5).
 
 -define(APNS_PRIORITY_HIGH, 10).
@@ -388,7 +387,7 @@ get_custom_fields(Packet) ->
 
 handle_message(From, To, Packet, ResendCount, #state{gun_connection = undefined} = State) ->
     queue_message(From, To, Packet, ResendCount, State);
-handle_message(From, _To, Packet, _ResendCount, State) ->
+handle_message(From, To, Packet, _ResendCount, State) ->
     DeviceID =
 	fxml:get_path_s(Packet,
 		       [{elem, <<"push">>}, {elem, <<"id">>}, cdata]),
@@ -409,7 +408,7 @@ handle_message(From, _To, Packet, _ResendCount, State) ->
 		       [{elem, <<"push">>}, {elem, <<"to">>}, cdata]),
     CustomFields  = get_custom_fields(Packet),
     PriorityFlag = check_push_priority(Msg, Badge, Sound),
-    Payload = make_payload(State, Msg, Badge, Sound, Sender, CustomFields),
+    Payload = make_payload(To#jid.lserver, State, Msg, Badge, Sound, Sender, CustomFields),
     ID =
 	case catch erlang:list_to_integer(binary_to_list(DeviceID), 16) of
 	    ID1 when is_integer(ID1) ->
@@ -492,7 +491,7 @@ process_apns3_response(_From, _Token, _Status, _Headers, _Body, State) ->
 invalid_certificate(State) ->
     State.
 
-make_payload(State, Msg, Badge, Sound, Sender, CustomFields) ->
+make_payload(Host, State, Msg, Badge, Sound, Sender, CustomFields) ->
     Msg2 = json_escape(Msg),
     AlertPayload =
 	case Msg2 of
@@ -534,9 +533,13 @@ make_payload(State, Msg, Badge, Sound, Sender, CustomFields) ->
          <<"}">>],
     Payload = list_to_binary(Payload1),
     PayloadLen = size(Payload),
+    MaxPayloadSize = case gen_mod:get_module_opt(Host, ?MODULE, voip_service,	fun(V) when is_boolean(V) -> V end, false) of
+			 true -> 5*1024;
+			 false -> 4*1024
+		     end,
     if
-	PayloadLen > ?MAX_PAYLOAD_SIZE ->
-	    Delta = PayloadLen - ?MAX_PAYLOAD_SIZE,
+	PayloadLen > MaxPayloadSize ->
+	    Delta = PayloadLen - MaxPayloadSize,
 	    MsgLen = size(Msg),
 	    if
 		MsgLen /= 0 ->
@@ -547,7 +550,7 @@ make_payload(State, Msg, Badge, Sound, Sender, CustomFields) ->
 			    true ->
 				<<"">>
 			end,
-		    make_payload(State, CutMsg, Badge, Sound, Sender, CustomFields);
+		    make_payload(Host, State, CutMsg, Badge, Sound, Sender, CustomFields);
 		true ->
 		    Payload2 =
 			<<"{\"aps\":{", (str:join(Payloads, <<",">>))/binary, "}}">>,
@@ -904,6 +907,7 @@ mod_opt_type(teamid) -> fun iolist_to_binary/1;
 mod_opt_type(failure_script) -> fun iolist_to_string/1;
 mod_opt_type(gateway) -> fun iolist_to_string/1;
 mod_opt_type(default_topic) -> fun iolist_to_binary/1;
+mod_opt_type(voip_service) -> fun(V) when is_boolean(V) -> V end;
 mod_opt_type(host) -> fun iolist_to_binary/1;
 mod_opt_type(hosts) ->
     fun (L) when is_list(L) ->
