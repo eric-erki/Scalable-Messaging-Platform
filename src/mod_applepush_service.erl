@@ -173,7 +173,7 @@ init([MyHost, ServerHost, Opts]) ->
                               "gateway.push.apple.com"),
     Feedback = gen_mod:get_opt(feedback, Opts,
                                fun iolist_to_string/1,
-                               undefined),
+                               "feedback.push.apple.com"),
     Port = gen_mod:get_opt(port, Opts,
                            fun(I) when is_integer(I), I>0, I<65536 -> I end,
                            2195),
