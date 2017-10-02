@@ -366,7 +366,8 @@ need_to_ping(Node, State) ->
                 [#cluster_info{last = LastSeen}] ->
                     Diff1 = timer:now_diff(LastPing, LastSeen),
                     Diff2 = timer:now_diff(p1_time_compat:timestamp(), LastPing),
-                    Diff2 >= Diff1;
+		    %% Avoid timeout to grow above 2 minutes
+		    Diff2 >= min(timer:minutes(2)*1000, Diff1);
                 [] ->
                     false
             end;
