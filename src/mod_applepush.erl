@@ -61,7 +61,8 @@
          set_local_badge/3,
 	 read_push_customizations/3,
          p1db_update_device_table/0,
-	 badge_reset/5]).
+	 badge_reset/5,
+	 lookup_cache/1]).
 
 
 %% Debug commands
