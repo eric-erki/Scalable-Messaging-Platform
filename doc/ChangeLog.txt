@@ -778,3 +778,31 @@ Business Edition.
 - Propagate the TRANSACTION_TIMEOUT to pgsql driver
 - Improve ipv6 support
 - Remove mod_http_bind and migration code to mod_bosh
+
+=== Oct 04 2017: eBE 3.2.18
+
+This is a bugfix version of 3.2.17 and also add few improvements and
+new extra features. This version is a "long term" revision of ejabberd
+Business Edition.
+
+- Use p1db 1.1.3 for better cluster recover
+- Avoid ping timeout to grow above 2 minutes for faster cluster recover
+- Update to riakc 2.4.2
+- Allow to restart mod_pubsub during runtime
+- Optimize PubSub performances with p1db backend
+- Add applepush service compatible with protocol version 3
+- Enable apple push feedback service by default
+- Improve logging errors from APNS
+- Fix issue with empty badge in gcm
+- Fix push of pubsub events
+- Pass message id and receipt request in muc invitation when needed
+- Improved marking of messages as pushed, mod_ack resends messages on reception loss.
+- Check for p1:pushed before extracting incapsulated message in ejabberd_push
+- Add caps features list on user_info
+- Add usefull c2s state infos in user_info
+- Archive message before delivering it to offline storage
+- Fix SQL request in load_roomhistory
+- Make http notify more generic and extenssible
+- Allow a room admin to unsubscribe another JID
+- Allow a room admin also to subscribe another JID
+- Fix Etag and add Last-Modified handling in mod_http_fileserver

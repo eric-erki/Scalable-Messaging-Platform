@@ -22,11 +22,14 @@ ssl=openssl-1.0.2l
 iconv=libiconv-1.14
 sql=sqlite-autoconf-3081002
 
+master="~/pub/bin/linux-x86_64/$otp/ejabberd/$dist.epkg"
+[ -f $dist.epkg ] && master="$PWD/$dist.epkg"
+
 [ -f ~/pub/src/ejabberd/$dist.tgz ] || {
   echo "error: no source tarball"
   exit
 }
-[ -f ~/pub/bin/linux-x86_64/$otp/ejabberd/$dist.epkg ] || {
+[ -f "$master" ] || {
   echo "error: no ejabberd epkg available"
   exit
 }
@@ -58,7 +61,7 @@ e=$CEAN_ROOT/src/otp/lib/erl_interface/include
 mkdir -p $dll
 (cd $ejsrc
  ./autogen.sh
- ./configure --enable-mysql --enable-pgsql --enable-sqlite --enable-riak --enable-redis --enable-elixir --enable-sip --enable-stun
+ ./configure --enable-mysql --enable-pgsql --enable-sqlite --enable-riak --enable-redis --enable-elixir --enable-sip --enable-stun --disable-graphics
  ./rebar get-deps)
 
 cd $ejdeps/ezlib/c_src
@@ -146,10 +149,16 @@ $CC -I$w -I$h -I$i -I$e -D_WIN32 -c *c
 $CC -shared -o $dll/jid.dll jid.o
 cd -
 
+#cd $ejdeps/eimp/c_src
+#rm *o
+#$CC -I$w -I$h -I$i -I$e -D_WIN32 -c *c
+#$CC -shared -o $dll/eimp.dll eimp.o
+#cd -
+
 # $ST $dll/*dll
 
 cd bin
-tar xf ~/pub/bin/linux-x86_64/$otp/ejabberd/$dist.epkg
+tar xf "$master"
 unzip $dist.deps.zip
 for lib in $(find $dist -name "*so")
 do
