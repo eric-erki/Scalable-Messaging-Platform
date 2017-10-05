@@ -274,6 +274,19 @@ fun(Hooks) ->
 		  end, Hooks)
 end,
 
+UpdateLicense = fun(Vals) ->
+			case lists:keysearch(licence, 1, Vars) of
+			    {value, {licence, {0,0,0,0}}} ->
+				 Vals;
+			    {value, {licence, {Y,M,D,N}}} ->
+				Secs = calendar:datetime_to_gregorian_seconds({{Y,M,D},{23,59,00}})-62167219200,
+				Val = (N bsl 14) + ((Secs div 1000000) bsl 1) + ((Secs rem 1000000) bsr 19),
+				[{d, 'VALIDITY', Val} | Vals];
+			    _ ->
+				Vals
+			end
+		end,
+
 ProcessErlOpt = fun(Vals) ->
 			lists:map(
 			  fun({i, Path}) ->
@@ -332,6 +345,8 @@ Rules = [
 	  AppendStr2(CtParams), "", []},
 	 {[erl_opts], true,
 	  ProcessErlOpt, []},
+	 {[erl_opts], true,
+	  UpdateLicense, []},
 	 {[xref_queries], [xref_exclusions], true,
 	  AppendList2(ProcssXrefExclusions), [], []},
 	 {[deps], [floating_deps], true,
