@@ -500,9 +500,10 @@ make_payload(State, Msg, Badge, Sound, Sender, CustomFields) ->
 		<<"\"sound\":\"", (json_escape(SoundFile))/binary, "\"">>
 	end,
     ContentAvailablePayload = <<"\"content-available\":1">>,
+    MutableContentPayload = <<"\"mutable-content\":1">>,
     Payloads = lists:filter(
                  fun(S) -> S /= <<"">> end,
-                 [AlertPayload, BadgePayload, SoundPayload, ContentAvailablePayload]),
+                 [AlertPayload, BadgePayload, SoundPayload, ContentAvailablePayload, MutableContentPayload]),
 
     CustomPayloadFields =
         [<<"\"", (json_escape(Name))/binary, "\":\"",
