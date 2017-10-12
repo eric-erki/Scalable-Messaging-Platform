@@ -3,7 +3,7 @@ defmodule Ejabberd.Mixfile do
 
   def project do
     [app: :ejabberd,
-     version: "3.2.15",
+     version: "3.2.18",
      description: description,
      elixir: "~> 1.2",
      elixirc_paths: ["lib"],
@@ -42,6 +42,7 @@ defmodule Ejabberd.Mixfile do
 
   defp deps do
     [{:lager, "~> 3.2"},
+     {:p1db, git: "ssh://git@git.process-one.net:7999/ebe/p1db.git", tag: "1.1.4"},
      {:p1_utils, "~> 1.0"},
      {:cache_tab, "~> 1.0"},
      {:stringprep, "~> 1.0"},

@@ -779,13 +779,13 @@ Business Edition.
 - Improve ipv6 support
 - Remove mod_http_bind and migration code to mod_bosh
 
-=== Oct 04 2017: eBE 3.2.18
+=== Oct 11 2017: eBE 3.2.18
 
 This is a bugfix version of 3.2.17 and also add few improvements and
 new extra features. This version is a "long term" revision of ejabberd
 Business Edition.
 
-- Use p1db 1.1.3 for better cluster recover
+- Use p1db 1.1.4 for better cluster recover and improved join
 - Avoid ping timeout to grow above 2 minutes for faster cluster recover
 - Update to riakc 2.4.2
 - Allow to restart mod_pubsub during runtime
@@ -806,3 +806,4 @@ Business Edition.
 - Allow a room admin to unsubscribe another JID
 - Allow a room admin also to subscribe another JID
 - Fix Etag and add Last-Modified handling in mod_http_fileserver
+- Set mutable-content: 1 in Apple push aps payload
