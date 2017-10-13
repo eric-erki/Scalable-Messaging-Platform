@@ -256,7 +256,7 @@ handle_info(connect_feedback, State)
     Feedback = State#state.feedback,
     FeedbackPort = State#state.feedback_port,
     CertFile = State#state.certfile,
-    ssl_manager:clear_pem_cache(),
+    clear_pem_cache(),
     case ssl:connect(Feedback, FeedbackPort,
 		     [{certfile, CertFile},
 		      {active, true},
@@ -585,7 +585,7 @@ connect(#state{socket = undefined, certfile_mtime = undefined} = State) ->
     Gateway = State#state.gateway,
     Port = State#state.port,
     CertFile = State#state.certfile,
-    ssl_manager:clear_pem_cache(),
+    clear_pem_cache(),
     case ssl:connect(Gateway, Port, [{certfile, CertFile},
 				     {active, true},
 				     binary],
@@ -831,6 +831,14 @@ parse_feedback_buf(Buf, State) ->
 
 iolist_to_string(S) ->
     binary_to_list(iolist_to_binary(S)).
+
+-ifdef(ERL_SSL_MANAGER_CLEAR_PEM_CACHE).
+clear_pem_cache() ->
+    ssl_manager:clear_pem_cache().
+-else.
+clear_pem_cache() ->
+    ssl:clear_pem_cache().
+-endif.
 
 decode_status(1) -> <<"Processing error">>;
 decode_status(2) -> <<"Missing device token">>;
