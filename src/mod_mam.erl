@@ -99,7 +99,7 @@ start(Host, Opts) ->
     ejabberd_hooks:add(user_send_packet, Host, ?MODULE,
 		       user_send_packet, 500),
     ejabberd_hooks:add(offline_message_hook, Host, ?MODULE,
-		       offline_message, 40),
+		       offline_message, 50),
     ejabberd_hooks:add(muc_filter_message, Host, ?MODULE,
 		       muc_filter_message, 50),
     ejabberd_hooks:add(muc_process_iq, Host, ?MODULE,
@@ -149,7 +149,7 @@ stop(Host) ->
     ejabberd_hooks:delete(user_receive_packet, Host, ?MODULE,
 			  user_receive_packet, 500),
     ejabberd_hooks:delete(offline_message_hook, Host, ?MODULE,
-                          offline_message, 40),
+                          offline_message, 50),
     ejabberd_hooks:delete(muc_filter_message, Host, ?MODULE,
 			  muc_filter_message, 50),
     ejabberd_hooks:delete(muc_process_iq, Host, ?MODULE,
@@ -283,7 +283,7 @@ offline_message(Peer, To, Pkt) ->
             TS = p1_time_compat:timestamp(),
             Pkt2 = jlib:add_delay_info(Pkt1, LServer, TS),
 	    store_msg(undefined, Pkt2, LUser, LServer, Peer, recv),
-	    ok;
+	    stop;
 	false ->
 	    ok
     end.
