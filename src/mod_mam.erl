@@ -282,7 +282,8 @@ offline_message(Peer, To, Pkt) ->
 	    Pkt1 = strip_my_archived_tag(Pkt, LServer),
             TS = p1_time_compat:timestamp(),
             Pkt2 = jlib:add_delay_info(Pkt1, LServer, TS),
-	    store_msg(undefined, Pkt2, LUser, LServer, Peer, recv),
+	    store_msg(undefined, jlib:replace_from_to(Peer, To, Pkt2),
+		      LUser, LServer, Peer, recv),
 	    stop;
 	false ->
 	    ok
