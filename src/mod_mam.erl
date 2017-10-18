@@ -410,7 +410,8 @@ message_is_archived(false, C2SState, Peer,
 	true ->
 	    Mod = gen_mod:db_mod(LServer, ?MODULE),
 	    should_archive(strip_my_archived_tag(Pkt, LServer), LServer)
-		andalso should_archive_peer(C2SState, Mod:get_prefs(LUser, LServer),
+		andalso should_archive_peer(LUser, LServer,
+					    C2SState, Mod:get_prefs(LUser, LServer),
 					    Peer);
 	false ->
 	    false
@@ -647,7 +648,7 @@ strip_x_jid_tags(Pkt) ->
 	      end, Pkt#xmlel.children),
     Pkt#xmlel{children = NewEls}.
 
-should_archive_peer(C2SState,
+should_archive_peer(LUser, LServer, C2SState,
 		    #archive_prefs{default = Default,
 				   always = Always,
 				   never = Never},
@@ -665,8 +666,9 @@ should_archive_peer(C2SState,
 			always -> true;
 			never -> false;
 			roster ->
-			    case ejabberd_c2s:get_subscription(
-				   LPeer, C2SState) of
+			    case get_peer_subscription(LUser, LServer,
+						       Peer, LPeer,
+						       C2SState) of
 				both -> true;
 				from -> true;
 				to -> true;
@@ -675,6 +677,30 @@ should_archive_peer(C2SState,
 		    end
 	    end
     end.
+
+get_peer_subscription(LUser, LServer, Peer, _LPeer, undefined) ->
+    {Fs, Ts, Bs} = ejabberd_hooks:run_fold(roster_get_subscription_lists,
+					   LServer, {[], [], []},
+					   [LUser, LServer]),
+    PeerUSR = {Peer#jid.luser, Peer#jid.lserver, <<>>},
+    case lists:member(PeerUSR, Bs) of
+	true ->
+	    both;
+	_ ->
+	    case lists:member(PeerUSR, Fs) of
+		true ->
+		    from;
+		_ ->
+		    case lists:member(PeerUSR, Ts) of
+			true ->
+			    to;
+			_ ->
+			    none
+		    end
+	    end
+    end;
+get_peer_subscription(_LUser, _LServer, _Peer, LPeer, C2SState) ->
+    ejabberd_c2s:get_subscription(LPeer, C2SState).
 
 should_archive_muc(Pkt) ->
     case fxml:get_attr_s(<<"type">>, Pkt#xmlel.attrs) of
@@ -761,7 +787,7 @@ may_enter_room(From, MUCState) ->
 
 store_msg(C2SState, Pkt, LUser, LServer, Peer, Dir) ->
     Prefs = get_prefs(LUser, LServer),
-    case should_archive_peer(C2SState, Prefs, Peer) of
+    case should_archive_peer(LUser, LServer, C2SState, Prefs, Peer) of
 	true ->
 	    US = {LUser, LServer},
 	    Mod = gen_mod:db_mod(LServer, ?MODULE),
