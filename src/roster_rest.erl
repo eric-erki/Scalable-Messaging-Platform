@@ -43,10 +43,14 @@ stop(_Host) ->
     ok.
 
 get_jid_info(LServer, LUser, LJID) ->
-    {ok, Roster} = get_user_roster(LServer, LUser),
-    case lists:keyfind(LJID, #roster.jid, Roster) of
-      false -> not_found;
-      Item -> {ok, Item}
+    case get_user_roster(LServer, LUser) of
+      {ok, Roster} ->
+        case lists:keyfind(LJID, #roster.jid, Roster) of
+          false -> not_found;
+          Item -> {ok, Item}
+        end;
+      {error, _} ->
+        not_found
     end.
 
 get_user_roster(Server, User) ->
