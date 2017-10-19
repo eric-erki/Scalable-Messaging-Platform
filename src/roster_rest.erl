@@ -51,6 +51,7 @@ get_jid_info(LServer, LUser, LJID) ->
 
 get_user_roster(Server, User) ->
     case rest:get(Server, path(Server), [{"username", User}]) of
+        {ok, 200, []} -> {ok, []};
         {ok, 200, JSon} -> json_to_rosteritems(Server, User, JSon);
         {ok, Code, JSon} -> {error, {Code, JSon}};
         {error, Reason} -> {error, Reason}
