@@ -1970,6 +1970,8 @@ send_message_with_push_fields(Type, From, To, Subject, Body, Extras) ->
 %% the packet is sent to the bare JID.
 %% If the user is local and is online in several resources,
 %% the packet is sent to all its resources.
+send_packet_all_resources(Loop, Loop, _) ->
+    {error, invalid_route};
 send_packet_all_resources(FromJIDString, ToJIDString, Packet) ->
     FromJID = jid:from_string(FromJIDString),
     ToJID = jid:from_string(ToJIDString),
@@ -1996,8 +1998,14 @@ send_packet_all_resources(FromJID, ToUser, ToServer, Packet) ->
     end.
 
 send_packet_all_resources(FromJID, ToU, ToS, ToR, Packet) ->
-    ToJID = jid:make(ToU, ToS, ToR),
-    ejabberd_router:route(FromJID, ToJID, Packet).
+    case lists:member(FromJID#jid.lserver,
+		      ejabberd_router:dirty_get_all_routes()) of
+	true ->
+	    {error, invalid_route};
+	false ->
+	    ToJID = jid:make(ToU, ToS, ToR),
+	    ejabberd_router:route(FromJID, ToJID, Packet)
+    end.
 
 build_packet(Type, Subject, Body, Extras) ->
     Tail = if Subject == <<"">>; Type == <<"chat">> -> Extras;
@@ -2016,7 +2024,13 @@ send_stanza(FromString, ToString, Stanza) ->
 	    #xmlel{attrs = Attrs} = XmlEl,
 	    From = jid:from_string(proplists:get_value(<<"from">>, Attrs, FromString)),
 	    To = jid:from_string(proplists:get_value(<<"to">>, Attrs, ToString)),
-	    ejabberd_router:route(From, To, XmlEl)
+	    case {lists:member(From#jid.lserver,
+			       ejabberd_router:dirty_get_all_routes()),
+		  From} of
+		{true, _} -> {error, invalid_route};
+		{_, To} -> {error, invalid_route};
+		_ -> ejabberd_router:route(From, To, XmlEl)
+	    end
     end.
 
 send_stanza_c2s(Username, Host, Resource, Stanza) ->
