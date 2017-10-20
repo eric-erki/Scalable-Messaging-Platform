@@ -64,6 +64,8 @@ get_user_roster(Server, User) ->
 roster_subscribe(_LUser, LServer, _LJID, Item) ->
     Content = rosteritem_to_json(Item),
     case rest:post(LServer, path(LServer), [], Content) of
+        {ok, 200, _Body} ->
+            ok;
         {ok, 201, _Body} ->
             ok;
         {ok, Code, Body} ->
@@ -89,6 +91,8 @@ remove_user(LUser, LServer) ->
 update_roster(_LUser, LServer, _LJID, Item) ->
     Content = rosteritem_to_json(Item),
     case rest:patch(LServer, path(LServer), [], Content) of
+        {ok, 200, _Body} ->
+            ok;
         {ok, 204, _Body} ->
             ok;
         {ok, Code, Body} ->
