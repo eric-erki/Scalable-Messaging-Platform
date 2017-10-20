@@ -574,7 +574,7 @@ do_route1(Host, ServerHost, Access, HistorySize,
 			    ErrText = <<"Conference room does not exist">>,
 			    Err = jlib:make_error_reply(Packet,
 				    ?ERRT_ITEM_NOT_FOUND(Lang, ErrText)),
-			    ejabberd_router:route(To, From, Err)
+			    ejabberd_router:route_error(To, From, Err, Packet)
 		    end;
 		[R] ->
 		    Pid = R#muc_online_room.pid,
