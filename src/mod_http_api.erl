@@ -132,6 +132,12 @@ depends(_Host, _Opts) ->
 
 check_permissions(Request, Command) ->
     case catch binary_to_existing_atom(Command, utf8) of
+	Call when Call == 'bulk_roster_update' ->
+            check_permissions2(Request, 'bulk-roster-update', admin,
+			       [atom_to_binary(Call, utf8), <<"ejabberd:admin">>])
+	    orelse
+            check_permissions2(Request, Call, admin,
+			       [atom_to_binary(Call, utf8), <<"ejabberd:admin">>]);
 	Call when Call == 'bulk-roster-update' ->
             check_permissions2(Request, Call, admin,
 			       [atom_to_binary(Call, utf8), <<"ejabberd:admin">>]);
@@ -402,6 +408,8 @@ report_command_errors(Fun, ArgsSpec) ->
     end.
 
 
+handle(Host, 'bulk_roster_update', Auth, Args, Version) ->
+    handle(Host, 'bulk-roster-update', Auth, Args, Version);
 handle(Host, 'bulk-roster-update', Auth, Args, Version) ->
     Exec = fun() ->
 		   Allowed = case Auth of

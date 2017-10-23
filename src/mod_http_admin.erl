@@ -242,6 +242,8 @@ get_json_prop(Name, JSON, Default) ->
 	false -> Default
     end.
 
+handle(<<"bulk_roster_update">>, Args, Versions) ->
+    handle(<<"bulk-roster-update">>, Args, Versions);
 handle(<<"bulk-roster-update">>, Args, _Versions) ->
     Err1 = case lists:keyfind(<<"add">>, 1, Args) of
                {<<"add">>, List} ->
