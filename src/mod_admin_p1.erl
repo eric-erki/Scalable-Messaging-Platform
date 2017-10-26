@@ -1503,7 +1503,10 @@ session_info(#session{usr = {U,S,R}, priority = Priority, sid = {Sid, Pid}}) ->
            end,
     [{resource, Resource},
      {presence, Show},
-     {priority, integer_to_binary(Priority)},
+     case Priority of
+       I when is_integer(I) -> {priority, integer_to_binary(I)};
+       _ -> {priority, <<"undefined">>}
+     end,
      {since, jlib:timestamp_to_iso(ConnDateTime)},
      {msg_queue_len, integer_to_binary(State#state.queue_len)},
      {ack_queue_len, integer_to_binary(queue:len(State#state.ack_queue))},
