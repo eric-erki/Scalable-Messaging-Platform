@@ -12,8 +12,8 @@
 -behaviour(mod_muc_room).
 
 %% API
--export([init/2, import/3, store_room/4, restore_room/3, forget_room/3,
-	 can_use_nick/4, get_rooms/2, get_nick/3, set_nick/4]).
+-export([init/2, import/3, store_room/5, restore_room/3, forget_room/3,
+	 can_use_nick/4, get_rooms/2, get_nick/3, set_nick/4, get_subscribed_rooms/3]).
 -export([set_affiliation/6, set_affiliations/4, get_affiliation/5,
 	 get_affiliations/3, search_affiliation/4]).
 -export([enc_key/1, dec_key/1, enc_aff/2, dec_aff/2, rh_prefix/2,
@@ -59,7 +59,7 @@ init(Host, _Opts) ->
                                {enc_key, fun ?MODULE:enc_key/1},
                                {dec_key, fun ?MODULE:dec_key/1}]}]).
 
-store_room(_LServer, Host, Name, Config) ->
+store_room(_LServer, Host, Name, Config, _) ->
     Opts = proplists:delete(affiliations, Config),
     RoomKey = rh2key(Name, Host),
     CfgVal = term_to_binary(Opts),
@@ -427,3 +427,6 @@ encode_opts(_, Vals) ->
                      {Key, Val}
              end, lists:zip(mod_muc_room:config_fields(), Vals)),
     term_to_binary(Opts).
+
+get_subscribed_rooms(_, _, _) ->
+    not_implemented.

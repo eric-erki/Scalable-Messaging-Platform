@@ -41,6 +41,7 @@
 	 start/2,
 	 stop/1,
 	 store_room/5,
+	 store_room/6,
 	 restore_room/3,
 	 forget_room/3,
 	 create_room/5,
@@ -84,13 +85,15 @@
 -type muc_room_opts() :: [{atom(), any()}].
 -callback init(binary(), gen_mod:opts()) -> any().
 -callback import(binary(), binary(), [binary()]) -> ok.
--callback store_room(binary(), binary(), binary(), list()) -> {atomic, any()}.
+-callback store_room(binary(), binary(), binary(), list(), list()|undefined) -> {atomic, any()}.
 -callback restore_room(binary(), binary(), binary()) -> muc_room_opts() | error.
 -callback forget_room(binary(), binary(), binary()) -> {atomic, any()}.
 -callback can_use_nick(binary(), binary(), jid(), binary()) -> boolean().
 -callback get_rooms(binary(), binary()) -> [#muc_room{}].
 -callback get_nick(binary(), binary(), jid()) -> binary() | error.
 -callback set_nick(binary(), binary(), jid(), binary()) -> {atomic, ok | false}.
+-callback get_subscribed_rooms(binary(), binary(), jid()) ->
+    {ok, [{ljid(), binary(), [binary()]}]} | {error, any()}.
 
 %%====================================================================
 %% API
@@ -160,10 +163,13 @@ create_room(Host, Name, From, Nick, Opts) ->
     ?GEN_SERVER:call(Proc, {create, Name, From, Nick, Opts}).
 
 store_room(ServerHost, Host, Name, Config, Affiliations) ->
+    store_room(ServerHost, Host, Name, Config, Affiliations, undefined).
+
+store_room(ServerHost, Host, Name, Config, Affiliations, ChangesHints) ->
     LServer = jid:nameprep(ServerHost),
     Opts = [{affiliations, Affiliations}|Config],
     Mod = gen_mod:db_mod(LServer, ?MODULE),
-    Mod:store_room(LServer, Host, Name, Opts).
+    Mod:store_room(LServer, Host, Name, Opts, ChangesHints).
 
 restore_room(ServerHost, Host, Name) ->
     LServer = jid:nameprep(ServerHost),
@@ -858,18 +864,25 @@ get_vh_rooms_direction(_Direction, _I, _Index,
     AllRooms.
 
 get_subscribed_rooms(ServerHost, Host, From) ->
-    Rooms = get_rooms(ServerHost, Host),
+    LServer = jid:nameprep(ServerHost),
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
     BareFrom = jid:remove_resource(From),
-    lists:flatmap(
-      fun(#muc_room{name_host = {Name, _}, opts = Opts}) ->
-	      Subscribers = proplists:get_value(subscribers, Opts, []),
-	      case lists:keymember(BareFrom, 1, Subscribers) of
-		  true -> [jid:make(Name, Host, <<>>)];
-		  false -> []
-	      end;
-	 (_) ->
-	      []
-      end, Rooms).
+    case Mod:get_subscribed_rooms(LServer, Host, BareFrom) of
+	not_implmented ->
+	    Rooms = get_rooms(ServerHost, Host),
+	    lists:flatmap(
+		fun(#muc_room{name_host = {Name, _}, opts = Opts}) ->
+		    Subscribers = proplists:get_value(subscribers, Opts, []),
+		    case lists:keymember(BareFrom, 1, Subscribers) of
+			true -> [jid:make(Name, Host, <<>>)];
+			false -> []
+		    end;
+		   (_) ->
+		       []
+		end, Rooms);
+	V ->
+	    V
+    end.
 
 %% @doc Return the position of desired room in the list of rooms.
 %% The room must exist in the list. The count starts in 0.

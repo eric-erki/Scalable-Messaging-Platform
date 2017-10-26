@@ -12,8 +12,8 @@
 -behaviour(mod_muc_room).
 
 %% API
--export([init/2, import/3, store_room/4, restore_room/3, forget_room/3,
-	 can_use_nick/4, get_rooms/2, get_nick/3, set_nick/4]).
+-export([init/2, import/3, store_room/5, restore_room/3, forget_room/3,
+	 can_use_nick/4, get_rooms/2, get_nick/3, set_nick/4, get_subscribed_rooms/3]).
 -export([set_affiliation/6, set_affiliations/4, get_affiliation/5,
 	 get_affiliations/3, search_affiliation/4]).
 
@@ -37,7 +37,7 @@ init(_Host, Opts) ->
     update_tables(MyHost),
     mnesia:add_table_index(muc_registered, nick).
 
-store_room(_LServer, Host, Name, Opts) ->
+store_room(_LServer, Host, Name, Opts, _) ->
     F = fun () ->
 		mnesia:write(#muc_room{name_host = {Name, Host},
 				       opts = Opts})
@@ -188,3 +188,6 @@ update_muc_registered_table(_Host) ->
 	  ?INFO_MSG("Recreating muc_registered table", []),
 	  mnesia:transform_table(muc_registered, ignore, Fields)
     end.
+
+get_subscribed_rooms(_, _, _) ->
+    not_implemented.

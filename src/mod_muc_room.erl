@@ -1969,7 +1969,7 @@ set_subscriber(JID, Nick, Nodes, StateData) ->
     Nicks = ?DICT:store(Nick, [LBareJID], StateData#state.subscriber_nicks),
     NewStateData = StateData#state{subscribers = Subscribers,
 				   subscriber_nicks = Nicks},
-    store_room(NewStateData),
+    store_room(NewStateData, [{add_subscription, BareJID, Nick, Nodes}]),
     NewStateData.
 
 add_online_user(JID, Nick, Role, StateData) ->
@@ -4448,10 +4448,7 @@ change_config(Config, StateData) ->
                    true ->
                         ok
                 end,
-                mod_muc:store_room(StateData1#state.server_host,
-                                   StateData1#state.host, StateData1#state.room,
-                                   make_opts(StateData1),
-                                   make_affiliations(StateData1)),
+                store_room(StateData1),
                 StateData1;
             {true, false} ->
                 Affiliations = get_affiliations(StateData),
@@ -4996,7 +4993,7 @@ process_iq_mucsub(From, _Packet,
 	    Subscribers = ?DICT:erase(LBareJID, StateData#state.subscribers),
 	    NewStateData = StateData#state{subscribers = Subscribers,
 					   subscriber_nicks = Nicks},
-	    store_room(NewStateData),
+	    store_room(NewStateData, [{del_subscription, LBareJID}]),
 	    {result, [], NewStateData};
 	error ->
 	    {result, [], StateData}
@@ -5529,11 +5526,14 @@ fsm_limit_opts() ->
     end.
 
 store_room(StateData) ->
+    store_room(StateData, []).
+store_room(StateData, ChangesHints) ->
     if (StateData#state.config)#config.persistent ->
 	    mod_muc:store_room(StateData#state.server_host,
 			       StateData#state.host, StateData#state.room,
 			       make_opts(StateData),
-			       make_affiliations(StateData));
+			       make_affiliations(StateData),
+			       ChangesHints);
        true ->
 	    ok
     end.

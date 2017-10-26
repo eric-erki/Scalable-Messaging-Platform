@@ -305,6 +305,18 @@ CREATE TABLE muc_registered (
 CREATE INDEX i_muc_registered_nick USING BTREE ON muc_registered(nick(75));
 CREATE UNIQUE INDEX i_muc_registered_jid_host USING BTREE ON muc_registered(jid(75), host(75));
 
+CREATE TABLE muc_room_subscribers (
+   room varchar(191) NOT NULL,
+   host varchar(191) NOT NULL,
+   jid varchar(191) NOT NULL,
+   nick text NOT NULL,
+   nodes text NOT NULL,
+   created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY i_muc_room_subscribers_host_room_jid (host, room, jid)
+) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+CREATE INDEX i_muc_room_subscribers_host_jid USING BTREE ON muc_room_subscribers(host, jid);
+
 CREATE TABLE irc_custom (
     jid text NOT NULL,
     host text NOT NULL,

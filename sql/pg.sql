@@ -351,6 +351,18 @@ CREATE TABLE muc_registered (
 CREATE INDEX i_muc_registered_nick ON muc_registered USING btree (nick);
 CREATE UNIQUE INDEX i_muc_registered_jid_host ON muc_registered USING btree (jid, host);
 
+CREATE TABLE muc_room_subscribers (
+   room text NOT NULL,
+   host text NOT NULL,
+   jid text NOT NULL,
+   nick text NOT NULL,
+   nodes text NOT NULL,
+   created_at TIMESTAMP NOT NULL DEFAULT now()
+);
+
+CREATE INDEX i_muc_room_subscribers_host_jid ON muc_room_subscribers USING btree (host, jid);
+CREATE UNIQUE INDEX i_muc_room_subscribers_host_room_jid ON muc_room_subscribers USING btree (host, room, jid);
+
 CREATE TABLE irc_custom (
     jid text NOT NULL,
     host text NOT NULL,

@@ -125,6 +125,18 @@ CREATE TABLE [dbo].[muc_room] (
 CREATE UNIQUE CLUSTERED INDEX [muc_room_name_host] ON [muc_room] (name, host)
 WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON);
 
+CREATE TABLE [dbo].[muc_room_subscribers] (
+        [room] [varchar] (191) NOT NULL,
+        [host] [varchar] (191) NOT NULL,
+        [jid] [varchar] (191) NOT NULL,
+        [nick] [text] NOT NULL,
+        [nodes] [text] NOT NULL,
+        [created_at] [datetime] NOT NULL DEFAULT GETDATE()
+);
+
+CREATE UNIQUE CLUSTERED INDEX [muc_room_subscribers_host_room_jid] ON [muc_room_subscribers] (host, room, jid);
+CREATE INDEX [muc_room_subscribers_host_jid] ON [muc_room_subscribers] (host, jid);
+
 CREATE TABLE [dbo].[privacy_default_list] (
         [username] [varchar] (250) NOT NULL,
         [name] [varchar] (250) NOT NULL,
