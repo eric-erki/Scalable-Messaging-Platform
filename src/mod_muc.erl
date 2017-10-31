@@ -868,7 +868,7 @@ get_subscribed_rooms(ServerHost, Host, From) ->
     Mod = gen_mod:db_mod(LServer, ?MODULE),
     BareFrom = jid:remove_resource(From),
     case Mod:get_subscribed_rooms(LServer, Host, BareFrom) of
-	not_implmented ->
+	not_implemented ->
 	    Rooms = get_rooms(ServerHost, Host),
 	    lists:flatmap(
 		fun(#muc_room{name_host = {Name, _}, opts = Opts}) ->
