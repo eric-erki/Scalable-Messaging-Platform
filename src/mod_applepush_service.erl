@@ -58,6 +58,7 @@
 		queue = {0, queue:new()}  :: {non_neg_integer(), ?TQUEUE},
 		soundfile = <<"">>        :: binary(),
 		cmd_id = 0                :: non_neg_integer(),
+		time_to_live              :: non_neg_integer(),
 		cmd_cache = dict:new()    :: ?TDICT,
 		device_cache = dict:new() :: ?TDICT}).
 
@@ -174,6 +175,9 @@ init([MyHost, ServerHost, Opts]) ->
     Feedback = gen_mod:get_opt(feedback, Opts,
                                fun iolist_to_string/1,
                                "feedback.push.apple.com"),
+    TTL = gen_mod:get_opt(time_to_live, Opts,
+			  mod_opt_type(time_to_live),
+			  24 * 60 * 60),
     Port = gen_mod:get_opt(port, Opts,
                            fun(I) when is_integer(I), I>0, I<65536 -> I end,
                            2195),
@@ -199,6 +203,7 @@ init([MyHost, ServerHost, Opts]) ->
 		certfile = CertFile,
 		failure_script = FailureScript,
 		queue = {0, queue:new()},
+		time_to_live = TTL,
 		soundfile = SoundFile}}.
 
 %%--------------------------------------------------------------------
@@ -446,7 +451,7 @@ handle_message(From, To, Packet, ResendCount, State) ->
     if
     is_integer(ID) ->
         Notification = build_apns_notification(State#state.cmd_id,ID,Payload,
-                                               PriorityFlag),
+                                               PriorityFlag, State#state.time_to_live),
 	    ?INFO_MSG("(~p) sending notification for ~s~n~p~npayload:~n~s~n"
 		      "Sender: ~s~n"
 		      "Receiver: ~s~n"
@@ -556,9 +561,9 @@ check_push_priority(Msg, Badge, Sound) ->
         _ -> ?APNS_PRIORITY_HIGH
     end.
 
-build_apns_notification(CmdID,DeviceID,Payload,PriorityFlag) ->
+build_apns_notification(CmdID,DeviceID,Payload,PriorityFlag, TTL) ->
     {MegaSecs, Secs, _MicroSecs} = os:timestamp(),
-    Expiry = MegaSecs * 1000000 + Secs + 24 * 60 * 60,
+    Expiry = MegaSecs * 1000000 + Secs + TTL,
     PayloadLen = size(Payload),
 
     PayloadFrame = [<<2:8, PayloadLen:16>>, Payload],
@@ -868,6 +873,8 @@ mod_opt_type(hosts) ->
     end;
 mod_opt_type(port) ->
     fun (I) when is_integer(I), I > 0, I < 65536 -> I end;
+mod_opt_type(time_to_live) ->
+    fun (I) when is_integer(I), I > 0 -> I end;
 mod_opt_type(sound_file) -> fun iolist_to_binary/1;
 mod_opt_type(_) ->
     [certfile, failure_script, feedback, feedback_port,

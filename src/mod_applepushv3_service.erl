@@ -61,6 +61,7 @@
 		jwt			  :: binary(),
 		jwt_timestamp             :: binary(),
 		queue = {0, queue:new()}  :: {non_neg_integer(), ?TQUEUE},
+		time_to_live              :: non_neg_integer(),
 		soundfile = <<"">>        :: binary()}).
 
 -define(PROCNAME, ejabberd_mod_applepushv3_service).
@@ -183,6 +184,9 @@ init([MyHost, ServerHost, Opts]) ->
     Gateway = gen_mod:get_opt(gateway, Opts,
                               fun iolist_to_string/1,
                               "api.push.apple.com"),
+    TTL = gen_mod:get_opt(time_to_live, Opts,
+			  mod_opt_type(time_to_live),
+			  24 * 60 * 60),
     Port = gen_mod:get_opt(port, Opts,
                            fun(I) when is_integer(I), I>0, I<65536 -> I end,
                            443),
@@ -205,6 +209,7 @@ init([MyHost, ServerHost, Opts]) ->
 		failure_script = FailureScript,
 		queue          = {0, queue:new()},
 		soundfile      = SoundFile,
+		time_to_live   = TTL,
 		default_topic  = DefaultTopic}}.
 
 %%--------------------------------------------------------------------
@@ -419,7 +424,7 @@ handle_message(From, To, Packet, _ResendCount, State) ->
     if
     is_integer(ID) ->
         {MegaSecs, Secs, _MicroSecs} = os:timestamp(),
-        Expiry = MegaSecs * 1000000 + Secs + 24 * 60 * 60,
+        Expiry = MegaSecs * 1000000 + Secs + State#state.time_to_live,
 	{Jwt, State2} = get_jwt(State),
         APNS_Headers = [{<<"apns-expiration">>, integer_to_binary(Expiry)},
                         {<<"apns-priority">>, integer_to_binary(PriorityFlag)}] ++
@@ -916,7 +921,9 @@ mod_opt_type(hosts) ->
     end;
 mod_opt_type(port) ->
     fun (I) when is_integer(I), I > 0, I < 65536 -> I end;
+mod_opt_type(time_to_live) ->
+    fun (I) when is_integer(I), I > 0 -> I end;
 mod_opt_type(sound_file) -> fun iolist_to_binary/1;
 mod_opt_type(_) ->
     [certfile, authkeyfile, authkeyid, teamid, failure_script, default_topic,
-     gateway, host, hosts, port, sound_file].
+     gateway, host, hosts, port, time_to_live, sound_file].

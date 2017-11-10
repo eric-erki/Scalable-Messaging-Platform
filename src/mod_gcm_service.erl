@@ -55,6 +55,7 @@
 		apikey = ""              :: string(),
 		soundfile = <<"">>       :: binary(),
 		mode = ?MODE_ACCEPT      :: accept | enqueue | active,
+		time_to_live             :: non_neg_integer(),
 		prev_attempts = 0        :: non_neg_integer()}).
 
 -define(PROCNAME, ejabberd_mod_gcm_service).
@@ -130,12 +131,15 @@ init([MyHost, ServerHost, Opts]) ->
     Gateway = gen_mod:get_opt(gateway, Opts,
                               fun iolist_to_string/1,
 			      "https://fcm.googleapis.com/fcm/send"),
+    TTL = gen_mod:get_opt(time_to_live, Opts,
+			  mod_opt_type(time_to_live),
+			  ?EXPIRY_DATE),
     ApiKey = gen_mod:get_opt(apikey, Opts, fun iolist_to_string/1, ""),
     ejabberd_router:register_route(MyHost, ServerHost),
     {ok,
      #state{host = MyHost, gateway = Gateway,
 	    queue = {0, queue:new()}, apikey = ApiKey,
-	    soundfile = SoundFile}}.
+	    time_to_live = TTL, soundfile = SoundFile}}.
 
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State}.
@@ -254,7 +258,7 @@ handle_message(From, To, Packet, State) ->
     case size(DeviceID) of
       0 -> State;
       _ ->
-	  Expiry = (?EXPIRY_DATE),
+	  Expiry = State#state.time_to_live,
 	  Baseurl = State#state.gateway,
 	  ApiKey = "key=" ++ State#state.apikey,
 	  Notification = jiffy:encode(
@@ -582,10 +586,12 @@ depends(_Host, _Opts) ->
 mod_opt_type(apikey) -> fun iolist_to_string/1;
 mod_opt_type(gateway) -> fun iolist_to_string/1;
 mod_opt_type(host) -> fun iolist_to_binary/1;
+mod_opt_type(time_to_live) ->
+    fun (I) when is_integer(I), I > 0 -> I end;
 mod_opt_type(hosts) ->
     fun (L) when is_list(L) ->
 	    [{iolist_to_binary(H), O} || {H, O} <- L]
     end;
 mod_opt_type(sound_file) -> fun iolist_to_binary/1;
 mod_opt_type(_) ->
-    [apikey, gateway, host, hosts, sound_file].
+    [apikey, gateway, host, hosts, sound_file, time_to_live].
