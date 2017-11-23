@@ -227,7 +227,7 @@ handle_message(From, To, Packet, State) ->
       0 -> State;
       _ ->
           Sender = get_sender(Packet),
-          Receiver = get_receiver(Packet),    
+          Receiver = get_receiver(Packet),
           Message = unwrap_message(Packet),
           Payload = fxml:element_to_binary(Message),
           Baseurl = build_endpoint(State#state.gateway, DeviceID),
@@ -501,7 +501,7 @@ exp_backoff(#state{prev_attempts = 0}) ->
 exp_backoff(#state{prev_attempts = Attempts}) ->
     random:seed(),
     K = random:uniform(round(math:pow(2, Attempts) - 1)),
-    K * (?MIN_RETRY_WAIT).
+    erlang:min(5 * 60 * 1000, K * (?MIN_RETRY_WAIT)).
 
 iolist_to_string(S) ->
     binary_to_list(iolist_to_binary(S)).
