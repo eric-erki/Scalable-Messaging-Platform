@@ -1375,10 +1375,9 @@ get_module_resource(Server) ->
     end.
 
 get_vcard_content(User, Server, Data) ->
-    [{_, Module, Function, _Opts}] = ets:lookup(sm_iqtable, {?NS_VCARD, Server}),
     JID = jid:make(User, Server, get_module_resource(Server)),
     IQ = #iq{type = get, xmlns = ?NS_VCARD},
-    IQr = Module:Function(JID, JID, IQ),
+    IQr = mod_vcard:process_sm_iq(JID, JID, IQ),
     [A1] = IQr#iq.sub_el,
     case A1#xmlel.children of
 	[_|_] ->
@@ -1412,10 +1411,9 @@ set_vcard_content(User, Server, Data, SomeContent) ->
 	[Bin | _] when is_binary(Bin) -> SomeContent;
 	Bin when is_binary(Bin) -> [SomeContent]
     end,
-    [{_, Module, Function, _Opts}] = ets:lookup(sm_iqtable, {?NS_VCARD, Server}),
     JID = jid:make(User, Server, get_module_resource(Server)),
     IQ = #iq{type = get, xmlns = ?NS_VCARD},
-    IQr = Module:Function(JID, JID, IQ),
+    IQr = mod_vcard:process_sm_iq(JID, JID, IQ),
 
     %% Get old vcard
     A4 = case IQr#iq.sub_el of
@@ -1430,7 +1428,7 @@ set_vcard_content(User, Server, Data, SomeContent) ->
     SubEl = {xmlel, <<"vCard">>, [{<<"xmlns">>,<<"vcard-temp">>}], A4},
     IQ2 = #iq{type=set, sub_el = SubEl},
 
-    Module:Function(JID, JID, IQ2),
+    mod_vcard:process_sm_iq(JID, JID, IQ2),
     ok.
 
 take_vcard_tel(TelType, [{xmlel, <<"TEL">>, _, SubEls}=OldEl | OldEls], NewEls, Taken) ->
