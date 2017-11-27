@@ -78,11 +78,10 @@ stop(Host) ->
 
 
 socket_handoff([SJID],
-               #request{method = 'GET',
-                        auth = Auth},
+               #request{method = 'GET'} = Req,
                Socket, SockMod, _Buf, _Opts) ->
-    case get_auth_admin(Auth) of
-        {ok, {_User, _Server}} ->
+    case get_auth_admin(Req) of
+        {ok, _} ->
             case jid:from_string(SJID) of
                 #jid{} = JID when JID#jid.luser /= <<"">> ->
                     SockMod:send(
@@ -125,42 +124,33 @@ socket_handoff(_LocalPath, _Request, _Socket, _SockMod, _Buf, _Opts) ->
     ejabberd_web:error(not_found).
 
 
-get_auth_admin(Auth) ->
+get_auth_admin(#request{auth = Auth, ip = Ip}) ->
+    {AuthData, Err} =
     case Auth of
         {SJID, Pass} ->
-            AccessRule =
-                gen_mod:get_module_opt(
-                  ?MYNAME, ?MODULE, access,
-                  fun(A) -> A end, none),
             case jid:from_string(SJID) of
-                error -> {unauthorized, <<"badformed-jid">>};
-                #jid{user = <<"">>, server = User} ->
-                    get_auth_account(?MYNAME, AccessRule, User, ?MYNAME, Pass);
+                error ->
+                    {#{}, {unauthorized, <<"badformed-jid">>}};
                 #jid{user = User, server = Server} ->
-                    get_auth_account(?MYNAME, AccessRule, User, Server, Pass)
+                    case ejabberd_auth:check_password(User, <<"">>, Server, Pass) of
+                        true ->
+                            {#{usr => {User, Server, <<>>}}, {unauthorized, <<"unprivileged-account">>}};
+                        _ ->
+                            {#{}, {unauthorized, <<"bad-password">>}}
+                    end
             end;
-        undefined ->
-            {unauthorized, <<"no-auth-provided">>}
+        _ ->
+            {#{}, {unauthorized, <<"no-auth-provided">>}}
+    end,
+    AccessRule = gen_mod:get_module_opt(
+        ?MYNAME, ?MODULE, access,
+        fun(A) -> A end, none),
+    case acl:access_matches(AccessRule, AuthData#{ip => Ip}, global) of
+        allow ->
+            {ok, allow};
+        _ ->
+            Err
     end.
-
-get_auth_account(HostOfRule, AccessRule, User, Server, Pass) ->
-    case ejabberd_auth:check_password(User, <<"">>, Server, Pass) of
-        true ->
-            case is_acl_match(HostOfRule, AccessRule,
-                              jid:make(User, Server, <<"">>)) of
-                false -> {unauthorized, <<"unprivileged-account">>};
-                true -> {ok, {User, Server}}
-            end;
-        false ->
-            case ejabberd_auth:is_user_exists(User, Server) of
-                true -> {unauthorized, <<"bad-password">>};
-                false -> {unauthorized, <<"inexistent-account">>}
-            end
-    end.
-
-is_acl_match(Host, Rule, JID) ->
-    allow == acl:match_rule(Host, Rule, JID).
-
 
 send_packet(Packet, _StateData, From, _To) ->
     log(From, <<"SEND">>, Packet),
