@@ -241,7 +241,7 @@ build_error_msg(Code, []) ->
 build_error_msg(Code, Body) when is_binary(Body) ->
     CodeBin = integer_to_binary(Code),
     <<CodeBin/binary,":",Body/binary>>;
-build_error_msg(Code, Body) when is_list(Body) ->
+build_error_msg(Code, Body) ->
     CodeBin = integer_to_binary(Code),
     BodyBin = jiffy:encode(Body),
     <<CodeBin/binary,":",BodyBin/binary>>.
