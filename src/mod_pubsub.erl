@@ -3928,10 +3928,9 @@ plugins(Host) ->
 
 subscription_plugin(Host) ->
     case gen_mod:db_type(serverhost(Host), ?MODULE) of
-	mnesia -> pubsub_subscription;
 	sql -> pubsub_subscription_sql;
 	p1db -> pubsub_subscription_p1db;
-	_ -> none
+	_ -> pubsub_subscription
     end.
 
 config(ServerHost, Key) ->
