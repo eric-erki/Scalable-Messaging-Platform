@@ -341,7 +341,7 @@ ctl()
 {
     NID=$(uid ctl)
     CMD="`shell_escape \"$ERL\" \"$NAME\" \"$NID\"` \
-         -noinput -hidden $KERNEL_OPTS -s ejabberd_ctl \
+         -noinput -hidden $KERNEL_OPTS $ERLANG_OPTS -s ejabberd_ctl \
          -extra `shell_escape \"$ERLANG_NODE\"` $EJABBERD_NO_TIMEOUT \
          `shell_escape \"$@\"`"
     $EXEC_CMD "$CMD"
