@@ -88,12 +88,11 @@ get_node_sessions(Node) ->
         end)).
 
 delete_node(Node) ->
-    ets:select_delete(
-      session,
-      ets:fun2ms(
-	fun(#session{sid = {_, Pid}}) ->
-		node(Pid) == Node
-	end)),
+    Sessions = get_node_sessions(Node),
+    lists:foreach(
+      fun(S) ->
+              mnesia:dirty_delete_object(S)
+      end, Sessions),
     ok.
 
 get_sessions_number() ->
