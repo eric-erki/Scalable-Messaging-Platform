@@ -83,9 +83,9 @@ del_roster(LUser, LServer, LJID) ->
     end.
 
 read_subscription_and_groups(LUser, LServer, LJID) ->
-    case get_roster_by_jid_with_groups(LUser, LServer, LJID) of
-        #roster{subscription = Subscription,
-		groups = Groups} ->
+    case roster_rest:get_jid_info(LServer, LUser, LJID) of
+	{ok, #roster{subscription = Subscription,
+		     groups = Groups}} ->
 	    {Subscription, Groups};
         _ ->
 	    error
