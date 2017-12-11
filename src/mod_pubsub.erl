@@ -595,7 +595,7 @@ disco_sm_features({result, OtherFeatures} = _Acc, From, To, Node, _Lang) ->
 disco_sm_features(Acc, _From, _To, _Node, _Lang) -> Acc.
 
 disco_features(Host, <<>>, _From) ->
-    [?NS_PUBSUB | [feature(F) || F <- plugin_features(Host, <<"pep">>)]];
+    [?NS_PUBSUB | [feature(F) || F <- [<<"publish-options">> | plugin_features(Host, <<"pep">>)]]];
 disco_features(Host, Node, From) ->
     Action = fun (#pubsub_node{id = Nidx, type = Type, options = Options, owners = O}) ->
 	    Owners = node_owners_call(Host, Type, Nidx, O),
@@ -1237,7 +1237,14 @@ iq_pubsub(Host, ServerHost, From, IQType, SubEl, Lang, Access, Plugins) ->
 			[#xmlel{name = <<"item">>, attrs = ItemAttrs,
 					children = Payload}] ->
 			    ItemId = fxml:get_attr_s(<<"id">>, ItemAttrs),
-			    publish_item(Host, ServerHost, Node, From, ItemId, Payload, Access);
+			    PubOptsEl = case [C || #xmlel{name = <<"publish-options">>,
+							  children = [C]} <- Rest] of
+					    [XEl] ->
+						XEl;
+					    _ ->
+						undefined
+					end,
+			    publish_item(Host, ServerHost, Node, From, ItemId, Payload, PubOptsEl, Access);
 			[] ->
 			    {error,
 				extended_error(?ERR_BAD_REQUEST, <<"item-required">>)};
@@ -2076,15 +2083,21 @@ unsubscribe_node(Host, Node, From, Subscriber, SubId) ->
 %%</ul>
 -spec publish_item(Host :: mod_pubsub:host(), ServerHost :: binary(),
 		   Node :: mod_pubsub:nodeId(), Publisher :: jid(),
-	ItemId     :: <<>> | mod_pubsub:itemId(),
+		   ItemId     :: <<>> | mod_pubsub:itemId(),
 		   Payload :: mod_pubsub:payload()) ->
 			  {result, [xmlel(),...]} | {error, xmlel()}.
 
 publish_item(Host, ServerHost, Node, Publisher, ItemId, Payload) ->
-    publish_item(Host, ServerHost, Node, Publisher, ItemId, Payload, all).
-publish_item(Host, ServerHost, Node, Publisher, <<>>, Payload, Access) ->
-    publish_item(Host, ServerHost, Node, Publisher, uniqid(), Payload, Access);
-publish_item(Host, ServerHost, Node, Publisher, ItemId, Payload, Access) ->
+    publish_item(Host, ServerHost, Node, Publisher, ItemId, Payload, undefined, all).
+publish_item(Host, ServerHost, Node, Publisher, <<>>, Payload, PubOptsEl, Access) ->
+    publish_item(Host, ServerHost, Node, Publisher, uniqid(), Payload, PubOptsEl, Access);
+publish_item(Host, ServerHost, Node, Publisher, ItemId, Payload, PubOptsEl, Access) ->
+    PubOpts = if PubOptsEl == undefined -> [];
+		 true -> case jlib:parse_xdata_submit(PubOptsEl) of
+			     invalid -> [];
+			     Form -> Form
+			 end
+	      end,
     Action = fun (#pubsub_node{options = Options, type = Type, id = Nidx}) ->
 	    Features = plugin_features(Host, Type),
 	    PublishFeature = lists:member(<<"publish">>, Features),
@@ -2095,9 +2108,17 @@ publish_item(Host, ServerHost, Node, Publisher, ItemId, Payload, Access) ->
 	    PayloadCount = payload_xmlelements(Payload),
 	    PayloadSize = byte_size(term_to_binary(Payload)) - 2,
 	    PayloadMaxSize = get_option(Options, max_payload_size),
+	    PubOptsValid = pubopts_valid(PubOpts),
+	    PreconditionsMet = preconditions_met(PubOpts, Options),
 	    if not PublishFeature ->
 		    {error,
 			extended_error(?ERR_FEATURE_NOT_IMPLEMENTED, unsupported, <<"publish">>)};
+		not PubOptsValid ->
+		    {error,
+			extended_error(?ERR_BAD_REQUEST, <<"invalid-options">>)};
+		not PreconditionsMet ->
+		    {error,
+			extended_error(?ERR_CONFLICT, <<"precondition-not-met">>)};
 		PayloadSize > PayloadMaxSize ->
 		    {error,
 			extended_error(?ERR_NOT_ACCEPTABLE, <<"payload-too-big">>)};
@@ -2180,13 +2201,18 @@ publish_item(Host, ServerHost, Node, Publisher, ItemId, Payload, Access) ->
 	    Type = select_type(ServerHost, Host, Node),
 	    case lists:member(<<"auto-create">>, plugin_features(Host, Type)) of
 		true ->
-		    case create_node(Host, ServerHost, Node, Publisher, Type, Access, []) of
+		    Configuration = if PubOptsEl == undefined -> [];
+				       true -> [PubOptsEl]
+				    end,
+		    case create_node(Host, ServerHost, Node, Publisher, Type,
+				     Access, Configuration) of
 			{result,
 				    [#xmlel{name = <<"pubsub">>,
 					    attrs = [{<<"xmlns">>, ?NS_PUBSUB}],
 					    children = [#xmlel{name = <<"create">>,
 						    attrs = [{<<"node">>, NewNode}]}]}]} ->
-			    publish_item(Host, ServerHost, NewNode, Publisher, ItemId, Payload);
+			    publish_item(Host, ServerHost, NewNode, Publisher,
+					 ItemId, Payload, PubOptsEl, Access);
 			_ ->
 			    {error, ?ERR_ITEM_NOT_FOUND}
 		    end;
@@ -3032,6 +3058,31 @@ subscription_to_string(subscribed) -> <<"subscribed">>;
 subscription_to_string(pending) -> <<"pending">>;
 subscription_to_string(unconfigured) -> <<"unconfigured">>;
 subscription_to_string(_) -> <<"none">>.
+
+-spec pubopts_valid([{binary(), [binary()]}]) -> boolean().
+pubopts_valid([]) ->
+    true;
+pubopts_valid([{Opt, _} | PubOpts]) when Opt == <<"FORM_TYPE">>;
+					 Opt == <<"pubsub#access_model">> ->
+    pubopts_valid(PubOpts);
+pubopts_valid(_PubOpts) ->
+    false.
+
+-spec preconditions_met([{binary(), [binary()]}], mod_pubsub:nodeOptions())
+      -> boolean().
+preconditions_met([], _Options) ->
+    true;
+preconditions_met([{<<"FORM_TYPE">>,
+		   [?NS_PUBSUB_PUBLISH_OPTIONS | _]} | PubOpts], Options) ->
+    preconditions_met(PubOpts, Options);
+preconditions_met([{<<"pubsub#access_model">>,
+		   [DesiredModel | _]} | PubOpts], Options) ->
+    AccessModel = jlib:atom_to_binary(get_option(Options, access_model)),
+    if AccessModel /= DesiredModel -> false;
+       true -> preconditions_met(PubOpts, Options)
+    end;
+preconditions_met(_PubOpts, _Options) ->
+    false.
 
 -spec service_jid(Host :: mod_pubsub:host()) -> jid().
 service_jid(#jid{} = Jid) -> Jid;
@@ -3981,6 +4032,7 @@ features() ->
 	<<"presence-subscribe">>,   % RECOMMENDED
 	<<"publisher-affiliation">>,   % RECOMMENDED
 	<<"publish-only-affiliation">>,   % OPTIONAL
+	<<"publish-options">>,   % OPTIONAL
 	<<"retrieve-default">>,
 	<<"shim">>].   % RECOMMENDED
 
