@@ -41,13 +41,6 @@ init([]) ->
 	 brutal_kill,
 	 worker,
 	 [ejabberd_hooks]},
-    SystemMonitor =
-	{ejabberd_system_monitor,
-	 {ejabberd_system_monitor, start_link, []},
-	 permanent,
-	 brutal_kill,
-	 worker,
-	 [ejabberd_system_monitor]},
     Router =
 	{ejabberd_router,
 	 {ejabberd_router, start_link, []},
@@ -159,7 +152,6 @@ init([]) ->
 	 [ejabberd_sm_sup]},
     {ok, {{one_for_one, 10, 1},
 	  [Hooks,
-	   SystemMonitor,
            Cluster,
            ACL,
            Shaper,

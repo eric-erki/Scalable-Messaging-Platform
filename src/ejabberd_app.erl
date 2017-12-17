@@ -68,6 +68,7 @@ start(normal, _Args) ->
     %ejabberd_debug:eprof_start(),
     %ejabberd_debug:fprof_start(),
     maybe_add_nameservers(),
+    ejabberd_system_monitor:start(),
     ejabberd_auth:start(),
     ejabberd_oauth:start(),
     gen_mod:start_modules(),
