@@ -727,16 +727,10 @@ type_to_char(Type) ->
 process_queues(_Host, all) ->
     weight([queue(Pid, message_queue_len) || Pid <- processes()]);
 process_queues(Host, Sup) ->
-    case catch workers(Host, Sup) of
-        {'EXIT', _} -> 0;
-        Workers -> weight([queue(Pid, message_queue_len) || {_,Pid,_,_} <- Workers])
-    end.
+    weight([queue(Pid, message_queue_len) || Pid <- workers(Host, Sup)]).
 
 internal_queues(Host, Sup) ->
-    case catch workers(Host, Sup) of
-        {'EXIT', _} -> 0;
-        Workers -> weight([queue(Pid, dictionary) || {_,Pid,_,_} <- Workers])
-    end.
+    weight([queue(Pid, dictionary) || Pid <- workers(Host, Sup)]).
 
 weight([]) -> 0;
 weight(List) when is_list(List) ->
@@ -756,14 +750,28 @@ queue({message_queue_len, I}) -> I;
 queue({dictionary, D}) -> proplists:get_value('$internal_queue_len', D, 0);
 queue(_) -> 0.
 
+workers(Host, ejabberd_mod_pubsub_loop) ->
+    [whereis(pubsub_send_pool_name(I, Host)) || I <- lists:seq(1,100)];
 workers(Host, ejabberd_sql_sup) ->
     Sup = gen_mod:get_module_proc(Host, ejabberd_sql_sup),
     workers(Host, Sup);
 workers(Host, mod_offline_pool) ->
     Sup = gen_mod:get_module_proc(Host, mod_offline_pool),
     workers(Host, Sup);
-workers(_Host, Sup) ->
-    supervisor:which_children(Sup).
+workers(Host, Sup) ->
+    case catch supervisor:which_children(Sup) of
+        {'EXIT', _} ->
+            case whereis(gen_mod:get_module_proc(Host, Sup)) of
+                undefined -> [];
+                Pid -> [Pid]
+            end;
+        Workers ->
+            [Pid || {_,Pid,_,_} <- Workers]
+    end.
+
+pubsub_send_pool_name(I, ServerHost) ->
+    list_to_atom("ejabberd_mod_pubsub_loop_" ++ binary_to_list(ServerHost)
+	++ "_" ++ integer_to_list(I)).
 
 % Note: health_check must be called last from monitors list
 %       as it uses gauges values as they are pushed
