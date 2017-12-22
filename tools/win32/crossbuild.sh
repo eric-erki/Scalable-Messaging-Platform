@@ -13,8 +13,8 @@
   echo
 }
 dist=$1
-erts=8.3
-otp=19
+erts=9.2
+otp=20
 zlib=zlib-1.2.8
 expat=expat-2.1.0
 yaml=yaml-0.1.5
@@ -155,7 +155,7 @@ cd -
 #$CC -shared -o $dll/eimp.dll eimp.o
 #cd -
 
-# $ST $dll/*dll
+$ST $dll/*dll
 
 cd bin
 tar xf "$master"
@@ -166,6 +166,7 @@ do
   rm $lib
   cp ~/crossbuild/lib/${name/.so/.dll} $(dirname $lib)
 done
+cp ~/crossbuild/inotifywait.exe $(/bin/ls -d $dist/deps/fs-*/priv)
 rm $dist.deps.zip
 zip -9qr $dist.deps.zip $dist
 rm -Rf $dist
