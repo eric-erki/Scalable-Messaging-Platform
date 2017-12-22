@@ -147,6 +147,7 @@ cd $ejdeps/xmpp/c_src
 rm *o
 $CC -I$w -I$h -I$i -I$e -D_WIN32 -c *c
 $CC -shared -o $dll/jid.dll jid.o
+$CC -shared -o $dll/xmpp_uri.dll xmpp_uri.o
 cd -
 
 #cd $ejdeps/eimp/c_src
