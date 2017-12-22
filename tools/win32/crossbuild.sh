@@ -4,9 +4,11 @@
 # and be run under the right cean context
 # usage:
 #  ssh cean
-#  prod64
+#  cean20
 #  cd ~/crossbuild
-#  ./crossbuild.sh ejabberd-16.09
+#  ./crossbuild.sh ejabberd-17.12
+#  cdr
+#  export/bitrock ejabberd windows
 
 [ $# -eq 1 ] || {
   echo "error: no ejabberd version provided"
