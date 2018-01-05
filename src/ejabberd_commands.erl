@@ -404,7 +404,7 @@ get_command_policy_and_scope(Name) ->
 %% The oauth scopes for a command are the command name itself,
 %% also might include either 'ejabberd:user' or 'ejabberd:admin'
 cmd_scope(#ejabberd_commands{policy = Policy, name = Name}) ->
-    [erlang:atom_to_binary(Name,utf8)] ++ [<<"ejabberd:user">> || Policy == user] ++ [<<"ejabberd:admin">> || Policy == admin].
+    [erlang:atom_to_binary(Name,utf8)] ++ [<<"ejabberd:user">> || Policy == user] ++ [<<"ejabberd:admin">>].
 
 
 -spec get_command_definition(atom()) -> ejabberd_commands() | command_not_found.
