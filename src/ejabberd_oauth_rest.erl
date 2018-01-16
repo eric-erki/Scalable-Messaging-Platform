@@ -77,10 +77,10 @@ lookup(Token) ->
 			 scope = Scope,
 			 expire = Expire};
         {ok, 404, _Resp} ->
-            error;
+	    false;
         Other ->
             ?ERROR_MSG("Unexpected response for oauth lookup: ~p", [Other]),
-	    error
+	    false
     end.
 
 clean(_TS) ->
