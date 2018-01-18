@@ -716,7 +716,8 @@ probes_to_packets([], _Format, Pks) ->
 probes_to_packets([{health, _T, _V}|Probes], Format, Pks) ->
     probes_to_packets(Probes, Format, Pks);
 probes_to_packets([{K, T, V}|Probes], Format, [Pk|Pks]) ->
-    Line = Format(K, integer_to_binary(V), type_to_char(T)),
+    Key = jlib:atom_to_binary(K),
+    Line = Format(Key, integer_to_binary(V), type_to_char(T)),
     NewPk = <<Line/binary, 10, Pk/binary>>,
     if size(NewPk) > 1300 ->
          probes_to_packets(Probes, Format, [<<>>,NewPk|Pks]);
