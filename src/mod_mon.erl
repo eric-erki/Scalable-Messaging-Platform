@@ -686,32 +686,42 @@ test_udp(Backend, Ip, Port) ->
     case gen_udp:open(0, [{active, false}]) of
         {ok, Socket} ->
             case gen_udp:send(Socket, Ip, Port, <<>>) of
-                ok -> ok;
-                Error -> ?ERROR_MSG("Can not send data to ~s backend: ~p", [Backend, Error])
+                ok ->
+                    ok;
+                ErrSend ->
+                    ?ERROR_MSG("Can not send data to ~s backend: ~p", [Backend, ErrSend]),
+                    ErrSend
             end,
             gen_udp:close(Socket);
-        Error ->
-            ?ERROR_MSG("Can not open UDP socket for ~s backend: ~p", [Backend, Error])
+        ErrOpen ->
+            ?ERROR_MSG("Can not open UDP socket for ~s backend: ~p", [Backend, ErrOpen]),
+            ErrOpen
     end.
 
-push_udp({A,B,C,D}=Ip, Port, Probes, Format) ->
-    Header = [(Port bsr 8) band 255, Port band 255, A, B, C, D],
-    case gen_udp:open(0, [{active, false}]) of
+push_udp(Ip, Port, Probes, Format) ->
+    case gen_udp:open(0, [{active, false}, {sndbuf, 1500}]) of
         {ok, Socket} ->
-            lists:foreach(
-                fun({Key, Type, Val}) when is_integer(Val) ->
-                        BKey = jlib:atom_to_binary(Key),
-                        BVal = integer_to_binary(Val),
-                        Data = Format(BKey, BVal, type_to_char(Type)),
-                        erlang:port_command(Socket, [Header, Data]);
-                   ({health, _Type, _Val}) ->
-                        ok;
-                   ({Key, Type, Val}) ->
-                        ?WARNING_MSG("can not push ~p metric ~p with value ~p", [Type, Key, Val])
-                end, Probes),
+            [gen_udp:send(Socket, Ip, Port, Packet)
+             || Packet<-probes_to_packets(Probes, Format)],
             gen_udp:close(Socket);
         Error ->
-            ?WARNING_MSG("can not open udp socket to ~p port ~p: ~p", [Ip, Port, Error])
+            ?WARNING_MSG("can not open udp socket to ~p port ~p: ~p", [Ip, Port, Error]),
+            Error
+    end.
+
+probes_to_packets(Probes, Format) ->
+    probes_to_packets(Probes, Format, [<<>>]).
+probes_to_packets([], _Format, Pks) ->
+    Pks;
+probes_to_packets([{health, _T, _V}|Probes], Format, Pks) ->
+    probes_to_packets(Probes, Format, Pks);
+probes_to_packets([{K, T, V}|Probes], Format, [Pk|Pks]) ->
+    Line = Format(K, integer_to_binary(V), type_to_char(T)),
+    NewPk = <<Line/binary, 10, Pk/binary>>,
+    if size(NewPk) > 1300 ->
+         probes_to_packets(Probes, Format, [<<>>,NewPk|Pks]);
+       true ->
+         probes_to_packets(Probes, Format, [NewPk|Pks])
     end.
 
 type_to_char(counter) -> $c;
