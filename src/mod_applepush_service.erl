@@ -803,15 +803,15 @@ parse_feedback_buf(Buf, State) ->
 	<<TimeStamp:32, IDLen:16, BDeviceID:IDLen/binary, Rest/binary>> ->
 	    IDLen8 = IDLen * 8,
 	    <<DeviceID:IDLen8>> = BDeviceID,
-	    ?INFO_MSG("(~p) received feedback for ~s~n",
-		      [State#state.host, erlang:integer_to_list(DeviceID, 16)]),
+	    ?DEBUG("(~p) received feedback for ~s~n",
+                   [State#state.host, erlang:integer_to_list(DeviceID, 16)]),
 	    case dict:find(DeviceID, State#state.device_cache) of
 		{ok, {_Counter, JID}} ->
                     BJID = jid:remove_resource(JID),
-                    ?INFO_MSG("(~p) sending feedback for ~s to ~s~n",
-                              [State#state.host,
-                               erlang:integer_to_list(DeviceID, 16),
-                               jid:to_string(BJID)]),
+                    ?DEBUG("(~p) sending feedback for ~s to ~s~n",
+                           [State#state.host,
+                            erlang:integer_to_list(DeviceID, 16),
+                            jid:to_string(BJID)]),
 		    From = jid:make(<<"">>, State#state.host, <<"">>),
 		    ejabberd_router:route(
 		      From, BJID,
