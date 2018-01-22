@@ -183,7 +183,8 @@ read_file(File, Opts) ->
 
 load_file(File) ->
     State = read_file(File),
-    set_opts(State).
+    State2 = validate_opts(State),
+    set_opts(State2).
 
 -spec reload_file() -> ok.
 
