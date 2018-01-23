@@ -82,7 +82,7 @@ start() ->
           fun(I) when is_integer(I), I>0 -> I end,
           timer:hours(1) div 1000),
     cache_tab:new(oauth_token,
-		  [{max_size, MaxSize}, {life_time, LifeTime}]),
+		  [{max_size, MaxSize}, {life_time, LifeTime}, {lru, false}]),
     Expire = expire(),
     application:set_env(oauth2, backend, ejabberd_oauth),
     application:set_env(oauth2, expiry_time, Expire),
