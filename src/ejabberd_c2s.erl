@@ -522,7 +522,7 @@ wait_for_stream({xmlstreamstart, Name, Attrs}, StateData) ->
 					(StateData#state.sockmod):get_sockmod(StateData#state.socket),
 				    Zlib = StateData#state.zlib,
 				    CompressFeature = case Zlib andalso
-							  ((SockMod == gen_tcp) orelse (SockMod == p1_tls)) of
+							  ((SockMod == gen_tcp) orelse (SockMod == fast_tls)) of
 							  true ->
 							      [#xmlel{name = <<"compression">>,
 								      attrs = [{<<"xmlns">>, ?NS_FEATURE_COMPRESS}],
@@ -886,7 +886,7 @@ wait_for_feature_request({xmlstreamelement, El}, StateData) ->
 	    end;
 	{?NS_COMPRESS, <<"compress">>}
 	  when Zlib == true,
-	       (SockMod == gen_tcp) or (SockMod == p1_tls) ->
+	       (SockMod == gen_tcp) or (SockMod == fast_tls) ->
 	  case fxml:get_subtag(El, <<"method">>) of
 		false ->
 		    send_failure(StateData, ?NS_COMPRESS, <<"setup-failed">>, <<"">>),

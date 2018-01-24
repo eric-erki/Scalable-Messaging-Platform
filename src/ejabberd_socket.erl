@@ -55,10 +55,10 @@
 
 -type sockmod() :: ejabberd_bosh |
                    ejabberd_http_ws | ejabberd_http_wsjson |
-                   gen_tcp | p1_tls | ezlib.
+                   gen_tcp | fast_tls | ezlib.
 -type receiver() :: pid () | atom().
 -type socket() :: pid() | inet:socket() |
-                  p1_tls:tls_socket() |
+                  fast_tls:tls_socket() |
                   ezlib:zlib_socket() |
                   ejabberd_bosh:bosh_socket() |
                   ejabberd_http_ws:ws_socket().
@@ -157,7 +157,7 @@ starttls(SocketData, TLSOpts, Data) ->
                                     TLSOpts, Data) of
         {ok, TLSSocket} ->
             {ok, SocketData#socket_state{socket = TLSSocket,
-                                         sockmod = p1_tls}};
+                                         sockmod = fast_tls}};
         {error, Why} = Err ->
 	    if is_binary(Why) ->
 		    ?ERROR_MSG("starttls error = ~s", [Why]);
@@ -263,10 +263,10 @@ get_peer_certificate(SocketData) ->
     get_peer_certificate(SocketData, plain).
 
 get_peer_certificate(SocketData, Type) ->
-    p1_tls:get_peer_certificate(SocketData#socket_state.socket, Type).
+    fast_tls:get_peer_certificate(SocketData#socket_state.socket, Type).
 
 get_verify_result(SocketData) ->
-    p1_tls:get_verify_result(SocketData#socket_state.socket).
+    fast_tls:get_verify_result(SocketData#socket_state.socket).
 
 close(SocketData) ->
     ejabberd_receiver:close(SocketData#socket_state.receiver).
@@ -288,11 +288,11 @@ peername(#socket_state{sockmod = SockMod,
 get_conn_type(#socket_state{sockmod = SockMod, socket = Socket}) ->
     case SockMod of
         gen_tcp -> c2s;
-        p1_tls -> c2s_tls;
+        fast_tls -> c2s_tls;
         ezlib ->
             case ezlib:get_sockmod(Socket) of
                 gen_tcp -> c2s_compressed;
-                p1_tls -> c2s_compressed_tls
+                fast_tls -> c2s_compressed_tls
             end;
         ejabberd_http_ws -> http_ws;
         ejabberd_http_bind -> http_bind;

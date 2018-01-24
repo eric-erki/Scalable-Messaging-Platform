@@ -178,7 +178,7 @@ handle_call({starttls, TLSOpts, Data}, _From, State) ->
                                     TLSOpts, Data) of
         {ok, TLSSocket} ->
             {reply, ok, State#socket_state{socket = TLSSocket,
-                                           sockmod = p1_tls},
+                                           sockmod = fast_tls},
              ?HIBERNATE_TIMEOUT};
         {error, _} = Err ->
             {stop, normal, Err, State}
@@ -209,10 +209,10 @@ handle_call(get_sockmod, _From, State) ->
     Reply = State#socket_state.sockmod,
     {reply, Reply, State, ?HIBERNATE_TIMEOUT};
 handle_call(get_peer_certificate, _From, State) ->
-    Reply = p1_tls:get_peer_certificate(State#socket_state.socket),
+    Reply = fast_tls:get_peer_certificate(State#socket_state.socket),
     {reply, Reply, State, ?HIBERNATE_TIMEOUT};
 handle_call(get_verify_result, _From, State) ->
-    Reply = p1_tls:get_verify_result(State#socket_state.socket),
+    Reply = fast_tls:get_verify_result(State#socket_state.socket),
     {reply, Reply, State, ?HIBERNATE_TIMEOUT};
 handle_call(close, _From, State) ->
     ejabberd_receiver:close(State#socket_state.receiver),
@@ -261,7 +261,7 @@ check_starttls(SockMod, Socket, Receiver, Opts) ->
     if TLSEnabled ->
            case ejabberd_receiver:starttls(Receiver, TLSOpts) of
                {ok, TLSSocket} ->
-                   {ok, p1_tls, TLSSocket};
+                   {ok, fast_tls, TLSSocket};
                {error, _} = Err ->
                    Err
            end;

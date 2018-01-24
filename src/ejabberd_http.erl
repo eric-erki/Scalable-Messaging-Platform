@@ -45,8 +45,8 @@
 
 -record(state,
 {
-    sockmod = gen_tcp          :: gen_tcp | p1_tls,
-    socket                     :: inet:socket() | p1_tls:tls_socket(),
+    sockmod = gen_tcp          :: gen_tcp | fast_tls,
+    socket                     :: inet:socket() | fast_tls:tls_socket(),
     request_method             :: method(),
     request_version = {1, 1}   :: {non_neg_integer(), non_neg_integer()},
     request_path               :: {abs_path, binary()} | binary(),
@@ -114,9 +114,9 @@ init({SockMod, Socket}, Opts) ->
     TLSOpts = [verify_none | TLSOpts3],
     {SockMod1, Socket1} = if TLSEnabled ->
 				 inet:setopts(Socket, [{recbuf, 8192}]),
-				 {ok, TLSSocket} = p1_tls:tcp_to_tls(Socket,
+				 {ok, TLSSocket} = fast_tls:tcp_to_tls(Socket,
 								  TLSOpts),
-				 {p1_tls, TLSSocket};
+				 {fast_tls, TLSSocket};
 			     true -> {SockMod, Socket}
 			  end,
     Captcha = case proplists:get_bool(captcha, Opts) of
@@ -382,7 +382,7 @@ get_transfer_protocol(RE, SockMod, HostPort) ->
     {Proto, DefPort} = case SockMod of
 			   gen_tcp -> {http, 80};
 			   fast_tls -> {https, 443};
-			   p1_tls -> {https, 443}
+			   fast_tls -> {https, 443}
 		       end,
     {Host, Port} = case re:run(HostPort, RE, [{capture,[1,2,3],binary}]) of
 		       nomatch ->

@@ -208,7 +208,7 @@ start_apps() ->
     ejabberd:start_app(sasl),
     ejabberd:start_app(ssl),
     ejabberd:start_app(fast_yaml),
-    ejabberd:start_app(p1_tls),
+    ejabberd:start_app(fast_tls),
     ejabberd:start_app(fast_xml),
     ejabberd:start_app(stringprep),
     http_p1:start(),

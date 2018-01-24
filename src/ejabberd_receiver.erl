@@ -51,8 +51,8 @@
 -include("logger.hrl").
 
 -record(state,
-	{socket :: inet:socket() | p1_tls:tls_socket() | ezlib:zlib_socket(),
-         sock_mod = gen_tcp :: gen_tcp | p1_tls | ezlib,
+	{socket :: inet:socket() | fast_tls:tls_socket() | ezlib:zlib_socket(),
+         sock_mod = gen_tcp :: gen_tcp | fast_tls | ezlib,
          shaper_state = none :: shaper:shaper(),
          c2s_pid :: pid(),
 	 max_stanza_size = infinity :: non_neg_integer() | infinity,
@@ -93,13 +93,13 @@ change_shaper(Pid, Shaper) ->
 
 reset_stream(Pid) -> do_call(Pid, reset_stream).
 
--spec starttls(pid(), iodata()) -> {ok, p1_tls:tls_socket()} | {error, any()}.
+-spec starttls(pid(), iodata()) -> {ok, fast_tls:tls_socket()} | {error, any()}.
 
 starttls(Pid, TLSOpts) ->
     starttls(Pid, TLSOpts, undefined).
 
 -spec starttls(pid(), list(), iodata() | undefined) -> {error, any()} |
-                                                       {ok, p1_tls:tls_socket()}.
+                                                       {ok, fast_tls:tls_socket()}.
 
 starttls(Pid, TLSOpts, Data) ->
     do_call(Pid, {starttls, TLSOpts, Data}).
@@ -156,14 +156,14 @@ init([Socket, SockMod, Shaper, MaxStanzaSize]) ->
 
 handle_call({starttls, TLSOpts, Data}, _From,
 	    #state{socket = Socket} = State) ->
-    {ok, TLSSocket} = p1_tls:tcp_to_tls(Socket, TLSOpts),
+    {ok, TLSSocket} = fast_tls:tcp_to_tls(Socket, TLSOpts),
     if Data /= undefined -> do_send(State, Data);
        true -> ok
     end,
     State1 = reset_parser(State),
     NewState = State1#state{socket = TLSSocket,
-			    sock_mod = p1_tls},
-    case p1_tls:recv_data(TLSSocket, <<"">>) of
+			    sock_mod = fast_tls},
+    case fast_tls:recv_data(TLSSocket, <<"">>) of
 	{ok, TLSData} ->
 	    {reply, {ok, TLSSocket},
 		process_data(TLSData, NewState), ?HIBERNATE_TIMEOUT};
@@ -235,8 +235,8 @@ handle_info({Tag, _TCPSocket, Data},
     when (Tag == tcp) or (Tag == ssl) or
 	   (Tag == ejabberd_xml) ->
     case SockMod of
-      p1_tls ->
-	  case p1_tls:recv_data(Socket, Data) of
+      fast_tls ->
+	  case fast_tls:recv_data(Socket, Data) of
 	    {ok, TLSData} ->
 		{noreply, process_data(TLSData, State),
 		 ?HIBERNATE_TIMEOUT};
