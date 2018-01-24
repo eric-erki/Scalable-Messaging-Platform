@@ -591,9 +591,9 @@ acc_monitor(Probe, Value, Acc) ->
 %%====================================================================
 
 init_backend(Host, statsd) ->
-    init_backend(Host, {statsd, <<"127.0.0.1:2003">>});
+    init_backend(Host, {statsd, <<"127.0.0.1:8125">>});
 init_backend(Host, influxdb) ->
-    init_backend(Host, {influx, <<"127.0.0.1:4444">>});
+    init_backend(Host, {influx, <<"127.0.0.1:8089">>});
 init_backend(Host, grapherl) ->
     init_backend(Host, {grapherl, <<"127.0.0.1:11111">>});
 init_backend(Host, mnesia) ->
@@ -605,15 +605,27 @@ init_backend(Host, mnesia) ->
                          {attributes, record_info(fields, mon)}]),
     mnesia;
 init_backend(_Host, {Backend, EndPoint}) ->
-    case backend_ip_port(EndPoint) of
-        {Ip, Port} ->
-            test_udp(Backend, Ip, Port),
-            {Backend, Ip, Port};
-        undefined ->
-            none
-    end;
+    init_udp_backend(Backend, backend_ip_port(EndPoint));
 init_backend(_, _) ->
     none.
+
+init_udp_backend(Backend, undefined) ->
+    none;
+init_udp_backend(Backend, {Ip, Port}) ->
+    case get_udp_socket(Ip, Port) of
+        {ok, Socket} ->
+            case gen_udp:send(Socket, Ip, Port, <<>>) of
+                ok ->
+                    gen_udp:close(Socket),
+                    {Backend, Ip, Port};
+                Error ->
+                    ?ERROR_MSG("Can not send data to ~s backend: ~p", [Backend, Error]),
+                    gen_udp:close(Socket),
+                    none
+            end;
+        _ ->
+            none
+    end.
 
 backend_ip_port(EndPoint) when is_binary(EndPoint) ->
     case string:tokens(binary_to_list(EndPoint), ":") of
@@ -638,6 +650,15 @@ backend_port(Port) when is_list(Port) ->
         _ ->
             ?WARNING_MSG("backend port is invalid: ~p", [Port]),
             0
+    end.
+
+get_udp_socket(Ip, Port) ->
+    case gen_udp:open(0, [{active, false}, {sndbuf, 1500}]) of
+        {ok, Socket} ->
+            {ok, Socket};
+        Error ->
+            ?WARNING_MSG("can not open udp socket to ~p port ~p: ~p", [Ip, Port, Error]),
+            Error
     end.
 
 push(Host, _Node, Probes, _Time, mnesia) ->
@@ -682,47 +703,30 @@ push(Host, Node, Probes, Time, {grapherl, Ip, Port}) ->
 push(_Host, _Node, _Probes, _Time, _Backend) ->
     ok.
 
-test_udp(Backend, Ip, Port) ->
-    case gen_udp:open(0, [{active, false}]) of
-        {ok, Socket} ->
-            case gen_udp:send(Socket, Ip, Port, <<>>) of
-                ok ->
-                    ok;
-                ErrSend ->
-                    ?ERROR_MSG("Can not send data to ~s backend: ~p", [Backend, ErrSend]),
-                    ErrSend
-            end,
-            gen_udp:close(Socket);
-        ErrOpen ->
-            ?ERROR_MSG("Can not open UDP socket for ~s backend: ~p", [Backend, ErrOpen]),
-            ErrOpen
-    end.
-
 push_udp(Ip, Port, Probes, Format) ->
-    case gen_udp:open(0, [{active, false}, {sndbuf, 1500}]) of
+    case get_udp_socket(Ip, Port) of
         {ok, Socket} ->
             [gen_udp:send(Socket, Ip, Port, Packet)
-             || Packet<-probes_to_packets(Probes, Format)],
+             || Packet <- line_packets(Probes, Format)],
             gen_udp:close(Socket);
         Error ->
-            ?WARNING_MSG("can not open udp socket to ~p port ~p: ~p", [Ip, Port, Error]),
             Error
     end.
 
-probes_to_packets(Probes, Format) ->
-    probes_to_packets(Probes, Format, [<<>>]).
-probes_to_packets([], _Format, Pks) ->
+line_packets(Probes, Format) ->
+    line_packets(Probes, Format, [<<>>]).
+line_packets([], _Format, Pks) ->
     Pks;
-probes_to_packets([{health, _T, _V}|Probes], Format, Pks) ->
-    probes_to_packets(Probes, Format, Pks);
-probes_to_packets([{K, T, V}|Probes], Format, [Pk|Pks]) ->
+line_packets([{health, _T, _V}|Probes], Format, Pks) ->
+    line_packets(Probes, Format, Pks);
+line_packets([{K, T, V}|Probes], Format, [Pk|Pks]) ->
     Key = jlib:atom_to_binary(K),
     Line = Format(Key, integer_to_binary(V), type_to_char(T)),
     NewPk = <<Line/binary, 10, Pk/binary>>,
     if size(NewPk) > 1300 ->
-         probes_to_packets(Probes, Format, [<<>>,NewPk|Pks]);
+         line_packets(Probes, Format, [<<>>,NewPk|Pks]);
        true ->
-         probes_to_packets(Probes, Format, [NewPk|Pks])
+         line_packets(Probes, Format, [NewPk|Pks])
     end.
 
 type_to_char(counter) -> $c;
