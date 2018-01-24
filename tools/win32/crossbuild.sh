@@ -15,8 +15,8 @@
   echo
 }
 dist=$1
-erts=9.2
-otp=20
+erts=$(sed '/VSN/!d;s/.*= //' ~/src/otp/erts/vsn.mk)
+otp=$(sed 's/\..*//' ~/src/otp/OTP_VERSION)
 zlib=zlib-1.2.8
 expat=expat-2.1.0
 yaml=yaml-0.1.5
@@ -24,7 +24,7 @@ ssl=openssl-1.0.2l
 iconv=libiconv-1.14
 sql=sqlite-autoconf-3081002
 
-master="~/pub/bin/linux-x86_64/$otp/ejabberd/$dist.epkg"
+master=~/pub/bin/linux-x86_64/$otp/ejabberd/$dist.epkg
 [ -f $dist.epkg ] && master="$PWD/$dist.epkg"
 
 [ -f ~/pub/src/ejabberd/$dist.tgz ] || {
@@ -57,13 +57,14 @@ ST=$CHOST-strip
 w=/usr/$CHOST/include
 i=$root/erl$erts/usr/include
 l=$root/erl$erts/usr/lib
-h=$CEAN_ROOT/src/otp/erts/emulator/sys/win32
-e=$CEAN_ROOT/src/otp/lib/erl_interface/include
+h=~/src/otp/erts/emulator/sys/win32
+e=~/src/otp/lib/erl_interface/include
 
+config=$(grep configure ~/.cean/pkg/ejabberd/ejabberd.pub | cut -d'"' -f2)
 mkdir -p $dll
 (cd $ejsrc
  ./autogen.sh
- ./configure --enable-mysql --enable-pgsql --enable-sqlite --enable-riak --enable-redis --enable-elixir --enable-sip --enable-stun --disable-graphics
+ ./configure $config
  ./rebar get-deps)
 
 cd $ejdeps/ezlib/c_src
@@ -152,11 +153,13 @@ $CC -shared -o $dll/jid.dll jid.o
 $CC -shared -o $dll/xmpp_uri.dll xmpp_uri.o
 cd -
 
-#cd $ejdeps/eimp/c_src
-#rm *o
-#$CC -I$w -I$h -I$i -I$e -D_WIN32 -c *c
-#$CC -shared -o $dll/eimp.dll eimp.o
-#cd -
+[ -d $ejdeps/eimp ] && {
+  cd $ejdeps/eimp/c_src
+  rm *o
+  $CC -I$w -I$h -I$i -I$e -D_WIN32 -c *c
+  $CC -shared -o $dll/eimp.dll eimp.o
+  cd -
+}
 
 $ST $dll/*dll
 
