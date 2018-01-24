@@ -609,7 +609,7 @@ init_backend(_Host, {Backend, EndPoint}) ->
 init_backend(_, _) ->
     none.
 
-init_udp_backend(Backend, undefined) ->
+init_udp_backend(_, undefined) ->
     none;
 init_udp_backend(Backend, {Ip, Port}) ->
     case get_udp_socket(Ip, Port) of
@@ -681,20 +681,30 @@ push(Host, _Node, Probes, _Time, mnesia) ->
                 ?WARNING_MSG("can not push ~p metric ~p with value ~p", [Type, Key, Val])
         end, Probes);
 push(Host, Node, Probes, _Time, {statsd, Ip, Port}) ->
-    % probe example => process-one.net.xmpp.xmpp-1.chat_receive_packet:value|g
+    % host.xmpp.node.metric:value|type
+    % example: process-one.net.xmpp.xmpp-1.chat_receive_packet:1|c
     BaseId = <<Host/binary, ".xmpp.", Node/binary, ".">>,
     push_udp(Ip, Port, Probes, fun(Key, Val, Type) ->
             <<BaseId/binary, Key/binary, ":", Val/binary, "|", Type>>
         end);
+push(Host, Node, Probes, _Time, {dogstatsd, Ip, Port}) ->
+    % metric:value|type|#tag1:value,tag2
+    % example: chat_receive_packet:1|c|#host=process-one.net,node=xmpp-1
+    Tags = <<"#host:", Host/binary, ",node:", Node/binary>>,
+    push_udp(Ip, Port, Probes, fun(Key, Val, Type) ->
+            <<Key/binary, ":", Val/binary, "|", Type, "|", Tags/binary>>
+        end);
 push(Host, Node, Probes, Time, {influxdb, Ip, Port}) ->
-    % probe example => chat_receive_packet,host=process-one.net,node=xmpp-1 value timestamp
+    % metric,tag1=v1,tag2:v2 value=value timestamp
+    % example: chat_receive_packet,host=process-one.net,node=xmpp-1 1 0
     Tags = <<"host=", Host/binary, ",node=", Node/binary>>,
     TS = <<(integer_to_binary(Time))/binary, "000000000">>,
     push_udp(Ip, Port, Probes, fun(Key, Val, _Type) ->
             <<Key/binary, ",", Tags/binary, " value=", Val/binary, " ", TS/binary>>
         end);
 push(Host, Node, Probes, Time, {grapherl, Ip, Port}) ->
-    % probe example => process-one.net/xmpp-1.chat_receive_packet:g/timestamp:value
+    % host/node.metric:type/timestamp:value
+    % example: process-one.net/xmpp-1.chat_receive_packet:c/0:1
     BaseId = <<Host/binary, "/", Node/binary, ".">>,
     TS = integer_to_binary(Time),
     push_udp(Ip, Port, Probes, fun(Key, Val, Type) ->
