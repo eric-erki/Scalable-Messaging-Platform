@@ -592,6 +592,8 @@ acc_monitor(Probe, Value, Acc) ->
 
 init_backend(Host, statsd) ->
     init_backend(Host, {statsd, <<"127.0.0.1:8125">>});
+init_backend(Host, dogstatsd) ->
+    init_backend(Host, {dogstatsd, <<"127.0.0.1:8125">>});
 init_backend(Host, influxdb) ->
     init_backend(Host, {influx, <<"127.0.0.1:8089">>});
 init_backend(Host, grapherl) ->
