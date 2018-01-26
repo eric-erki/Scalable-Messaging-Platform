@@ -606,6 +606,8 @@ init_backend(Host, mnesia) ->
                          {record_name, mon},
                          {attributes, record_info(fields, mon)}]),
     mnesia;
+init_backend(_Host, {datadog, ApiKey}) ->
+    {datadog, ApiKey};
 init_backend(_Host, {Backend, EndPoint}) ->
     init_udp_backend(Backend, backend_ip_port(EndPoint));
 init_backend(_, _) ->
@@ -696,6 +698,18 @@ push(Host, Node, Probes, _Time, {dogstatsd, Ip, Port}) ->
     push_udp(Ip, Port, Probes, fun(Key, Val, Type) ->
             <<Key/binary, ":", Val/binary, "|", Type, "|", Tags/binary>>
         end);
+push(Host, Node, Probes, Time, {datadog, ApiKey}) ->
+    Url = <<"https://app.datadoghq.com/api/v1/series?api_key=", ApiKey/binary>>,
+    push_api(Url, Probes, fun(Key, Type, Val) ->
+            {[{<<"metric">>, jlib:atom_to_binary(Key)},
+              {<<"points">>, [[Time, Val]]},
+              {<<"type">>, type_to_binary(Type)},
+              {<<"host">>, Host},
+              {<<"tags">>, [<<"node:", Node/binary>>]}]}
+        end,
+        fun(Metrics) ->
+            {[{<<"series">>, Metrics}]}
+        end);
 push(Host, Node, Probes, Time, {influxdb, Ip, Port}) ->
     % metric,tag1=v1,tag2:v2 value=value timestamp
     % example: chat_receive_packet,host=process-one.net,node=xmpp-1 1 0
@@ -718,19 +732,56 @@ push(_Host, _Node, _Probes, _Time, _Backend) ->
 push_udp(Ip, Port, Probes, Format) ->
     case get_udp_socket(Ip, Port) of
         {ok, Socket} ->
+            OnlyProbes = lists:keydelete(health, 1, Probes),
             [gen_udp:send(Socket, Ip, Port, Packet)
-             || Packet <- line_packets(Probes, Format)],
+             || Packet <- line_packets(OnlyProbes, Format)],
             gen_udp:close(Socket);
         Error ->
             Error
     end.
 
+push_api(Url, Probes, Format, Wrap) ->
+    OnlyProbes = lists:keydelete(health, 1, Probes),
+    Data = [Format(K, T, V) || {K, T, V} <- OnlyProbes],
+    Payload = jiffy:encode(Wrap(Data)),
+    Opts = [{connect_timeout, 8000},
+            {timeout, 8000}],
+    Hdrs = [{"content-type", "application/json"}],
+    case catch http_p1:request(port, Url, Hdrs, Payload, Opts) of
+        {ok, 200, _, _} ->
+            ok;
+        {ok, Code, _, Body} ->
+            try jiffy:decode(Body) of
+                JSon ->
+                    {error, JSon}
+            catch
+                _:Error ->
+                    ?ERROR_MSG("HTTP response decode failed:~n"
+                               "** Url = ~s~n"
+                               "** Body = ~p~n"
+                               "** Err = ~p",
+                               [Url, Body, Error]),
+                    {error, Code}
+            end;
+        {error, Reason} ->
+            ?ERROR_MSG("HTTP request failed:~n"
+                       "** Url = ~s~n"
+                       "** Err = ~p",
+                       [Url, Reason]),
+            {error, Reason};
+        {'EXIT', Reason} ->
+            ?ERROR_MSG("HTTP request failed:~n"
+                       "** Url = ~s~n"
+                       "** Err = ~p",
+                       [Url, Reason]),
+            {error, Reason}
+    end.
+    % TODO send events based on health probe ?
+
 line_packets(Probes, Format) ->
     line_packets(Probes, Format, [<<>>]).
 line_packets([], _Format, Pks) ->
     Pks;
-line_packets([{health, _T, _V}|Probes], Format, Pks) ->
-    line_packets(Probes, Format, Pks);
 line_packets([{K, T, V}|Probes], Format, [Pk|Pks]) ->
     Key = jlib:atom_to_binary(K),
     Line = Format(Key, integer_to_binary(V), type_to_char(T)),
@@ -746,6 +797,12 @@ type_to_char(gauge) -> $g;
 type_to_char(Type) ->
     ?WARNING_MSG("invalid probe type ~p, assuming counter", [Type]),
     $c.
+
+type_to_binary(counter) -> <<"counter">>;
+type_to_binary(gauge) -> <<"gauge">>;
+type_to_binary(Type) ->
+    ?WARNING_MSG("invalid probe type ~p, assuming counter", [Type]),
+    <<"counter">>.
 
 %%====================================================================
 %% Monitors helpers
