@@ -755,22 +755,16 @@ push_api(Url, Probes, Format, Wrap) ->
     Opts = [{connect_timeout, 8000},
             {timeout, 8000}],
     Hdrs = [{"content-type", "application/json"}],
-    case catch http_p1:request(port, Url, Hdrs, Payload, Opts) of
+    case catch http_p1:request(post, binary_to_list(Url), Hdrs, Payload, Opts) of
         {ok, 200, _, _} ->
             ok;
         {ok, Code, _, Body} ->
-            try jiffy:decode(Body) of
-                JSon ->
-                    {error, JSon}
-            catch
-                _:Error ->
-                    ?ERROR_MSG("HTTP response decode failed:~n"
-                               "** Url = ~s~n"
-                               "** Body = ~p~n"
-                               "** Err = ~p",
-                               [Url, Body, Error]),
-                    {error, Code}
-            end;
+            ?ERROR_MSG("HTTP request rejected:~n"
+                       "** Url = ~s~n"
+                       "** Body = ~p~n"
+                       "** Err = ~p",
+                       [Url, Body, Code]),
+            {error, Code};
         {error, Reason} ->
             ?ERROR_MSG("HTTP request failed:~n"
                        "** Url = ~s~n"
