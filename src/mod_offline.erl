@@ -143,7 +143,7 @@ init([Host, Opts]) ->
     IQDisc = gen_mod:get_opt(iqdisc, Opts, fun gen_iq_handler:check_type/1,
 			     no_queue),
     ejabberd_hooks:add(offline_message_hook, Host, ?MODULE,
-		       store_packet, 40),
+		       store_packet, 50),
     ejabberd_hooks:add(resend_offline_messages_hook, Host,
 		       ?MODULE, pop_offline_messages, 50),
     ejabberd_hooks:add(remove_user, Host,
@@ -193,7 +193,7 @@ handle_info(_Info, State) ->
 terminate(_Reason, State) ->
     Host = State#state.host,
     ejabberd_hooks:delete(offline_message_hook, Host,
-			  ?MODULE, store_packet, 40),
+			  ?MODULE, store_packet, 50),
     ejabberd_hooks:delete(resend_offline_messages_hook,
 			  Host, ?MODULE, pop_offline_messages, 50),
     ejabberd_hooks:delete(remove_user, Host, ?MODULE,
