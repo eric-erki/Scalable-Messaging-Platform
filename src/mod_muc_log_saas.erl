@@ -64,7 +64,7 @@ init([Host, Opts]) ->
     {ok, #state{host = Host, opts = Opts, timer = Ref}}.
 
 terminate(_Reason, State) ->
-    timer:cancel_timer(State#state.timer),
+    timer:cancel(State#state.timer),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
