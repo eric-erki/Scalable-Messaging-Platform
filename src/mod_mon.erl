@@ -184,6 +184,14 @@ init([Host, Opts]) ->
     % Start timer for backends sync
     {ok, T} = timer:send_interval(?MINUTE, push_metrics),
 
+    % trigger restart of mod_mon_active if enabled
+    % this is needed on mod_mon restart, to reset active gauges
+    case gen_mod:is_loaded(Host, mod_mon_active) of
+        true -> timer:apply_after(5000, mod_admin_extra, restart_module,
+                                  [mod_mon_active, Host]);
+        false -> ok
+    end,
+
     {ok, #state{host = Host,
                 backends = Backends,
                 monitors = Monitors,
