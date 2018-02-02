@@ -103,5 +103,6 @@ path(Server, SubPath) ->
     <<Base/binary, "/", Path/binary>>.
 
 opt_type(ext_api_path_filter) ->
+    fun (X) -> iolist_to_binary(X) end;
 opt_type(_) -> [ext_api_path_filter].
 
