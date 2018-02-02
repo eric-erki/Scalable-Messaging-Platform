@@ -756,7 +756,7 @@ push_api(Url, Probes, Format, Wrap) ->
             {timeout, 8000}],
     Hdrs = [{"content-type", "application/json"}],
     case catch http_p1:request(post, binary_to_list(Url), Hdrs, Payload, Opts) of
-        {ok, 200, _, _} ->
+        {ok, Code, _, _} when Code >= 200, Code =< 205 ->
             ok;
         {ok, Code, _, Body} ->
             ?ERROR_MSG("HTTP request rejected:~n"
