@@ -376,7 +376,7 @@ sidekiq_job(Root, Queue, Class, Args) ->
 		     [?SIDEKIQ_POOL, 'sidekiq_job', Command]).
 
 generate_job_id() ->
-    jlib:integer_to_binary(random:uniform(trunc(math:pow(10,15))), 16).
+    jlib:integer_to_binary(randoms:uniform(trunc(math:pow(10,15))), 16).
 
 with_exp_backoff(Module, Function,  Args) ->
     with_exp_backoff(Module, Function,  Args, 0).
@@ -395,7 +395,7 @@ with_exp_backoff(Module, Function, Args, RetryCount) ->
 	    NewRetryCount = RetryCount +1,
 	    %% 300, 600, 1200, 2400, 4800 seconds
 	    timer:sleep(round(math:pow(2, NewRetryCount))  * 150 +
-			    random:uniform(200)),
+			    randoms:uniform(200)),
 	    with_exp_backoff(Module, Function, Args, NewRetryCount)
     end.
 

@@ -36,7 +36,7 @@
 
 -include("jlib.hrl").
 -include("XmppAddr.hrl").
--include_lib("public_key/include/public_key.hrl"). 
+-include_lib("public_key/include/public_key.hrl").
 -define(PKIXEXPLICIT, 'OTP-PUB-KEY').
 -define(PKIXIMPLICIT, 'OTP-PUB-KEY').
 
@@ -69,7 +69,7 @@ mech_step(State, ClientIn) ->
             case find_jid_to_authenticate(JIDs, JID) of
                 #jid{user = U, server = S} ->
 		    case ejabberd_auth:try_register(
-			   U, S, base64:encode(crypto:rand_bytes(20))) of
+			   U, S, base64:encode(randoms:bytes(20))) of
 			{atomic, Res} when Res == exists; Res == ok ->
                             {ok, [{username, U}, {authzid, U},
                                   {auth_module, ejabberd_auth_pkix}]};

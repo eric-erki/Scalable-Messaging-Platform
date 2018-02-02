@@ -1110,9 +1110,9 @@ mix_master(Config) ->
 					retract = [ParticipantID]}]}]}),
     disconnect(Config).
 
-mix_slave(Config) ->	   
+mix_slave(Config) ->
     disconnect(Config).
-      
+
 roster_subscribe_master(Config) ->
     send(Config, #presence{}),
     ?recv1(#presence{}),
@@ -1265,7 +1265,7 @@ proxy65_master(Config) ->
           Config,
           #iq{type = get, sub_els = [#bytestreams{}], to = Proxy}),
     SID = randoms:get_string(),
-    Data = crypto:rand_bytes(1024),
+    Data = randoms:bytes(1024),
     put_event(Config, {StreamHost, SID, Data}),
     Socks5 = socks5_connect(StreamHost, {SID, MyJID, Peer}),
     wait_for_slave(Config),
