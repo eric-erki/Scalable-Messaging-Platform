@@ -29,6 +29,7 @@
 -author('christophe.romain@process-one.net').
 
 -export([init/2, set_rule/4, del_rule/2, rules/1, filter/4]).
+-export([opt_type/1]).
 
 -include("jlib.hrl").
 -include("mod_filter.hrl").
@@ -100,3 +101,7 @@ path(Server, SubPath) ->
     Base = path(Server),
     Path = ejabberd_http:url_encode(SubPath),
     <<Base/binary, "/", Path/binary>>.
+
+opt_type(ext_api_path_filter) ->
+opt_type(_) -> [ext_api_path_filter].
+
