@@ -46,7 +46,6 @@ start(normal, _Args) ->
     start_apps(),
     start_elixir_application(),
     ejabberd:check_app(ejabberd),
-    randoms:start(),
     db_init(),
     start(),
     translate:start(),

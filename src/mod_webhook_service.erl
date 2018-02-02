@@ -499,8 +499,7 @@ exp_backoff(RetryAfter, State) ->
 exp_backoff(#state{prev_attempts = 0}) ->
     ?MIN_RETRY_WAIT;
 exp_backoff(#state{prev_attempts = Attempts}) ->
-    random:seed(),
-    K = random:uniform(round(math:pow(2, Attempts) - 1)),
+    K = randoms:uniform(round(math:pow(2, Attempts) - 1)),
     erlang:min(5 * 60 * 1000, K * (?MIN_RETRY_WAIT)).
 
 iolist_to_string(S) ->
