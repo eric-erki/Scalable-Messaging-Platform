@@ -704,12 +704,12 @@ push(Host, Node, Probes, _Time, {dogstatsd, Ip, Port}) ->
     % example: chat_receive_packet:1|c|#host=process-one.net,node=xmpp-1
     Tags = <<"#host:", Host/binary, ",node:", Node/binary>>,
     push_udp(Ip, Port, Probes, fun(Key, Val, Type) ->
-            <<Key/binary, ":", Val/binary, "|", Type, "|", Tags/binary>>
+            <<"xmpp.", Key/binary, ":", Val/binary, "|", Type, "|", Tags/binary>>
         end);
 push(Host, Node, Probes, Time, {datadog, ApiKey}) ->
     Url = <<"https://app.datadoghq.com/api/v1/series?api_key=", ApiKey/binary>>,
     push_api(Url, Probes, fun(Key, Type, Val) ->
-            {[{<<"metric">>, jlib:atom_to_binary(Key)},
+            {[{<<"metric">>, <<"xmpp.", (jlib:atom_to_binary(Key))/binary>>},
               {<<"points">>, [[Time, Val]]},
               {<<"type">>, type_to_binary(Type)},
               {<<"host">>, Host},
