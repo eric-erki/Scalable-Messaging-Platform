@@ -52,6 +52,7 @@
 /dialyzer/
 /test/*.beam
 /test/*.ctc
+/test/ejabberd_SUITE_data/openssl-copy.cnf
 /logs/
 /priv/sql
 /rel/ejabberd
