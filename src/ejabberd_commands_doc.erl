@@ -441,6 +441,12 @@ generate_html_output(File, RegExp, Languages) ->
     file:close(Fh),
     ok.
 
+maybe_add_policy_arguments(#ejabberd_commands{args=Args1, policy=user}=Cmd) ->
+    Args2 = [{user, binary}, {server, binary} | Args1],
+    Cmd#ejabberd_commands{args = Args2};
+maybe_add_policy_arguments(Cmd) ->
+    Cmd.
+
 generate_md_output(File, RegExp, Languages) ->
     Cmds = find_commands_definitions(),
     {ok, RE} = re:compile(RegExp),
