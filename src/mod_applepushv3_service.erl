@@ -539,9 +539,11 @@ make_payload(Host, State, Msg, Badge, Sound, Sender, CustomFields) ->
          <<"}">>],
     Payload = list_to_binary(Payload1),
     PayloadLen = size(Payload),
-    MaxPayloadSize = case gen_mod:get_module_opt(Host, ?MODULE, voip_service,	fun(V) when is_boolean(V) -> V end, false) of
+    Topic = State#state.default_topic,
+    STopic = byte_size(Topic),
+    MaxPayloadSize = case STopic > 5 andalso binary:part(Topic, STopic, -5) == <<".voip">> of
 			 true -> 5*1024;
-			 false -> 4*1024
+			 _ -> 4*1024
 		     end,
     if
 	PayloadLen > MaxPayloadSize ->
