@@ -1968,7 +1968,12 @@ send_or_enqueue_packet(State, From, To, Packet) ->
 	    ack(State1, From, To, Packet1);
        true ->
 	    {NewState, Packet2} = send_oor_message(State, From, To, Packet),
-	    enqueue(NewState, From, To, Packet2)
+            Packet1 = ejabberd_hooks:run_fold(
+                        user_receive_packet,
+                        NewState#state.server,
+                        Packet2,
+                        [NewState, State#state.jid, From, To]),
+	    enqueue(NewState, From, To, Packet1)
     end.
 
 new_id() ->
