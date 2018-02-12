@@ -972,7 +972,7 @@ get_commands_spec() ->
 			desc = "List user's connected resources",
                         policy = user,
 			module = ?MODULE, function = user_resources,
-			args = [{user, binary}, {host, binary}],
+			args = [],
 			args_desc = ["User name", "Server name"],
 			args_example = [<<"user1">>, <<"example.com">>],
 			result_example = [<<"tka1">>, <<"Gajim">>, <<"mobile-app">>],
