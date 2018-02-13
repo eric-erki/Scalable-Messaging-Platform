@@ -362,10 +362,6 @@ gen_param(Name, Type, Desc, HTMLOutput) ->
 gen_doc(#ejabberd_commands{name=Name, tags=_Tags, desc=Desc, longdesc=LongDesc,
                            args=Args, args_desc=ArgsDesc,
                            result=Result, result_desc=ResultDesc}=Cmd, HTMLOutput, Langs) ->
-    LDesc = case LongDesc of
-                "" -> Desc;
-                _ -> LongDesc
-            end,
     ArgsText = case ArgsDesc of
                    none ->
                        [?TAG(ul, "args-list", [gen_param(AName, Type, undefined, HTMLOutput)
@@ -393,11 +389,15 @@ gen_doc(#ejabberd_commands{name=Name, tags=_Tags, desc=Desc, longdesc=LongDesc,
                  end,
 
     try
-    [?TAG(h1, [?TAG(strong, atom_to_list(Name)), <<" - ">>, ?RAW(Desc)]),
-     ?TAG(p, ?RAW(LDesc)),
-	 ?TAG(h2, <<"Arguments:">>), ArgsText,
-	 ?TAG(h2, <<"Result:">>), ResultText,
-	 ?TAG(h2, <<"Examples:">>), gen_calls(Cmd, HTMLOutput, Langs)]
+        [?TAG(h1, atom_to_list(Name)),
+         ?TAG(p, ?RAW(Desc)),
+         case LongDesc of
+             "" -> [];
+             _ -> ?TAG(p, ?RAW(LongDesc))
+         end,
+         ?TAG(h2, <<"Arguments:">>), ArgsText,
+         ?TAG(h2, <<"Result:">>), ResultText,
+         ?TAG(h2, <<"Examples:">>), gen_calls(Cmd, HTMLOutput, Langs)]
     catch
 	_:Ex ->
 	    throw(iolist_to_binary(io_lib:format(
