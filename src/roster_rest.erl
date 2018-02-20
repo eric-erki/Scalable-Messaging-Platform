@@ -43,7 +43,7 @@ stop(_Host) ->
     ok.
 
 get_jid_info(LServer, LUser, LJID) ->
-    case get_user_roster(LServer, LUser) of
+    case get_user_roster_cached(LServer, LUser) of
       {ok, Roster} ->
         case lists:keyfind(LJID, #roster.jid, Roster) of
           false -> not_found;
@@ -59,6 +59,16 @@ get_user_roster(Server, User) ->
         {ok, 200, JSon} -> json_to_rosteritems(Server, User, JSon);
         {ok, Code, JSon} -> {error, {Code, JSon}};
         {error, Reason} -> {error, Reason}
+    end.
+
+get_user_roster_cached(Server, User) ->
+    case use_cache(Server) of
+        true ->
+            cache_tab:dirty_lookup(
+                roster, {User, Server},
+                fun() -> get_user_roster(Server, User) end);
+        false ->
+            get_user_roster(Server, User)
     end.
 
 roster_subscribe(_LUser, LServer, _LJID, Item) ->
@@ -245,3 +255,8 @@ build_error_msg(Code, Body) ->
     CodeBin = integer_to_binary(Code),
     BodyBin = jiffy:encode(Body),
     <<CodeBin/binary,":",BodyBin/binary>>.
+
+use_cache(LServer) ->
+    gen_mod:get_module_opt(LServer, mod_roster, use_cache,
+                           fun(B) when is_boolean(B) -> B end,
+                           false).
