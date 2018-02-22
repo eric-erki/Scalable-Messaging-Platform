@@ -795,12 +795,12 @@ disable_push(JID, DeviceID, State) ->
 				 children =
 				     [#xmlel{name = <<"disable">>,
 					     attrs =
-						 [{<<"xmlns">>, ?NS_P1_PUSH_GCM},
+						 [{<<"xmlns">>, ?NS_P1_PUSH_APPLEPUSH},
 						  {<<"status">>,
 						   <<"feedback">>},
 						  {<<"ts">>,
 						   jlib:integer_to_binary(TimeStamp)},
-						  {<<"id">>, DeviceID}],
+						  {<<"id">>, list_to_binary(DeviceID)}],
 					     children = []}]}).
 
 iolist_to_string(S) ->
