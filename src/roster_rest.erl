@@ -49,7 +49,7 @@ get_jid_info(LServer, LUser, LJID) ->
           false -> not_found;
           Item -> {ok, Item}
         end;
-      {error, _} ->
+      _ ->
         not_found
     end.
 
