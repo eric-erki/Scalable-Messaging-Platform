@@ -332,6 +332,8 @@ process_sm_iq(From, To, #iq{type = Type, sub_el = SubEl} = IQ) ->
 	{set, #xmlel{name = <<"disable">>}} ->
             Host = To#jid.lserver,
             DeviceID = fxml:get_tag_attr_s(<<"id">>, SubEl),
+	    ejabberd_sm:route(
+	      From, To, {broadcast, {disable_push, DeviceID}}),
             case lookup_cache(To, DeviceID) of
                 [{_ID, AppID, _SendBody, _SendFrom, _LocalBadge}] ->
                     PushService = get_push_service(Host, To, AppID),

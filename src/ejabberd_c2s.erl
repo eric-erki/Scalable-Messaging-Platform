@@ -1391,6 +1391,23 @@ handle_info({route, _From, _To, {broadcast, Data}}, StateName, StateData) ->
 		    Pid2 ! {rebind, false},
 		    fsm_next_state(StateName, StateData)
 	    end;
+	{disable_push, DeviceID} ->
+	    case catch fxml:get_path_s(StateData#state.oor_notification,
+					 [{elem, <<"id">>}, cdata])
+	    of
+		DeviceID ->
+		    NSD1 = StateData#state{
+			     keepalive_timeout = undefined,
+			     oor_timeout = undefined,
+			     oor_status = <<"">>,
+			     oor_show = <<"">>,
+			     oor_notification = undefined,
+			     oor_send_body = all},
+		    NSD2 = start_keepalive_timer(NSD1),
+		    fsm_next_state(StateName, NSD2);
+		_ ->
+		    fsm_next_state(StateName, StateData)
+	    end;
 	{stop_by_device_id, DeviceID} ->
 	    case catch jlib:binary_to_integer(
 			 fxml:get_path_s(StateData#state.oor_notification,

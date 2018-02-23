@@ -391,7 +391,9 @@ process_sm_iq(From, To, #iq{type = Type, sub_el = SubEl} = IQ) ->
             Host = To#jid.lserver,
             SDeviceID = fxml:get_tag_attr_s(<<"id">>, SubEl),
             DeviceID =
-                erlang:list_to_integer(binary_to_list(SDeviceID), 16),
+		erlang:binary_to_integer(SDeviceID, 16),
+	    ejabberd_sm:route(
+	      From, To, {broadcast, {disable_push, SDeviceID}}),
             case lookup_cache(To, DeviceID) of
                 [{_ID, AppID, _SendBody, _SendFrom, _LocalBadge}] ->
                     PushService = get_push_service(Host, To, AppID),
@@ -399,7 +401,7 @@ process_sm_iq(From, To, #iq{type = Type, sub_el = SubEl} = IQ) ->
                     if
                         From#jid.lserver == ServiceJID#jid.lserver ->
                             delete_cache(To, DeviceID),
-                            IQ#iq{type = result, sub_el = []};
+			    IQ#iq{type = result, sub_el = []};
                         true ->
                             IQ#iq{type = error,
                                   sub_el = [SubEl, ?ERR_NOT_ALLOWED]}
