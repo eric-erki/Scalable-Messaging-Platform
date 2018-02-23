@@ -1306,28 +1306,30 @@ setup_webhook(Host, Url, App) ->
     add_push_entry(<<"webhook">>, Host, App, Url).
 
 update_apns(_Host, Cert, App) ->
+    % TODO make update cluster wide
     case push_service_cfg(<<"applepush">>, App, Cert) of
 	undefined -> 1;
 	_ -> 0
     end.
 update_apns3(_Host, Key, Id, Team, Voip, Prod, App) ->
+    % TODO make update cluster wide
     case push_service_cfg(<<"applepush">>, App, {Key, Id, Team, Voip, Prod}) of
 	undefined -> 1;
 	_ -> 0
     end.
 update_gcm(Host, Key, App) ->
     Setup = get_push_config(<<"gcm">>, Host),
-    set_push_config(<<"gcm">>, Host, lists:keystore(App, 1, Setup, {App, Key})).
+    cluster_set_push_config(<<"gcm">>, Host, lists:keystore(App, 1, Setup, {App, Key})).
 update_webhook(Host, Url, App) ->
     Setup = get_push_config(<<"webhook">>, Host),
-    set_push_config(<<"webhook">>, Host, lists:keystore(App, 1, Setup, {App, Url})).
+    cluster_set_push_config(<<"webhook">>, Host, lists:keystore(App, 1, Setup, {App, Url})).
 
 add_push_entry(Service, Host, App, Key) ->
     Setup = get_push_config(Service, Host),
-    set_push_config(Service, Host, [{App, Key}|Setup]).
+    cluster_set_push_config(Service, Host, [{App, Key}|Setup]).
 del_push_entry(Service, Host, App) ->
     Setup = get_push_config(Service, Host),
-    set_push_config(Service, Host, lists:keydelete(App, 1, Setup)).
+    cluster_set_push_config(Service, Host, lists:keydelete(App, 1, Setup)).
 
 get_push_config(Service, Host) ->
     ConfigFile = <<Service/binary, ".yml">>,
@@ -1354,6 +1356,14 @@ set_push_config(Service, Host, Setup) ->
 	    0;
 	_ ->
 	    1
+    end.
+
+cluster_set_push_config(Service, Host, Setup) ->
+    {Good, _} = ejabberd_cluster:multicall(
+		    ?MODULE, set_push_config, [Service, Host, Setup]),
+    case Good of
+	[] -> 1;
+	[Res|_] -> Res
     end.
 
 %% -----------------------------
