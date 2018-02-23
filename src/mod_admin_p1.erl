@@ -64,6 +64,7 @@
 	 get_commands_spec/0,
 	% certificates
 	 get_apns_config/1, update_apns/3, setup_apns/3,
+	 get_apns3_config/1, update_apns3/7, setup_apns3/7,
 	 get_gcm_config/1, update_gcm/3, setup_gcm/3,
 	 get_webhook_config/1, update_webhook/3, setup_webhook/3,
 	 add_push_entry/4, del_push_entry/3,
@@ -326,6 +327,14 @@ get_commands_spec() ->
 			result = {res, {list,
 			    {value, {list,
 			      {value, {tuple, [{name, atom}, {value, string}]}}}}}}},
+%     #ejabberd_commands{name = get_apns3_config,
+%			tags = [config],
+%			desc = "Fetch the Apple Push Notification Service v3 configuration",
+%			module = ?MODULE, function = get_apns3_config,
+%			args = [{host, binary}],
+%			result = {res, {list,
+%			    {value, {list,
+%			      {value, {tuple, [{name, atom}, {value, string}]}}}}}}},
      #ejabberd_commands{name = get_gcm_config,
 			tags = [config],
 			desc = "Fetch the Google Cloud Messaging service configuration",
@@ -354,6 +363,18 @@ get_commands_spec() ->
 			module = ?MODULE, function = setup_apns,
 			args = [{host, binary}, {cert, binary}, {appid, binary}],
 			result = {res, integer}},
+%     #ejabberd_commands{name = update_apns3,
+%			tags = [config],
+%			desc = "Update the Apple Push Notification Service v3 AppIds",
+%			module = ?MODULE, function = update_apns,
+%			args = [{host, binary}, {cert, binary}, {appid, binary}],
+%			result = {res, integer}},
+%     #ejabberd_commands{name = setup_apns3,
+%			tags = [config],
+%			desc = "Setup the Apple Push Notification Service v3",
+%			module = ?MODULE, function = setup_apns,
+%			args = [{host, binary}, {cert, binary}, {appid, binary}],
+%			result = {res, integer}},
      #ejabberd_commands{name = update_gcm,
 			tags = [config],
 			desc = "Update the Google Cloud Messaging service ApiKey",
@@ -1256,7 +1277,10 @@ purge_mam(_Host, _Days, _Backend) ->
 
 get_apns_config(Host) ->
     Setup = get_push_config(<<"applepush">>, Host),
-    [setup_struct(cert, Entry) || Entry <- Setup].
+    [setup_struct(cert, Entry) || Entry <- Setup, is_binary(element(2,Entry))].
+get_apns3_config(Host) ->
+    Setup = get_push_config(<<"applepush">>, Host),
+    [setup_struct(apns3, Entry) || Entry <- Setup, is_tuple(element(2,Entry))].
 get_gcm_config(Host) ->
     Setup = get_push_config(<<"gcm">>, Host),
     [setup_struct(apikey, Entry) || Entry <- Setup].
@@ -1264,15 +1288,30 @@ get_webhook_config(Host) ->
     Setup = get_push_config(<<"webhook">>, Host),
     [setup_struct(gateway, Entry) || Entry <- Setup].
 
-setup_apns(Host, <<>>, App) -> del_push_entry(<<"applepush">>, Host, App);
-setup_apns(Host, Cert, App) -> add_push_entry(<<"applepush">>, Host, App, Cert).
-setup_gcm(Host, <<>>, App) -> del_push_entry(<<"gcm">>, Host, App);
-setup_gcm(Host, Key, App) -> add_push_entry(<<"gcm">>, Host, App, Key).
-setup_webhook(Host, <<>>, App) -> del_push_entry(<<"webhook">>, Host, App);
-setup_webhook(Host, Url, App) -> add_push_entry(<<"webhook">>, Host, App, Url).
+setup_apns(Host, <<>>, App) ->
+    del_push_entry(<<"applepush">>, Host, App);
+setup_apns(Host, Cert, App) ->
+    add_push_entry(<<"applepush">>, Host, App, Cert).
+setup_apns3(Host, <<>>, _Id, _Team, _Voip, _Prod, App) ->
+    del_push_entry(<<"applepush">>, Host, App);
+setup_apns3(Host, Key, Id, Team, Voip, Prod, App) ->
+    add_push_entry(<<"applepush">>, Host, App, {Key, Id, Team, Voip, Prod}).
+setup_gcm(Host, <<>>, App) ->
+    del_push_entry(<<"gcm">>, Host, App);
+setup_gcm(Host, Key, App) ->
+    add_push_entry(<<"gcm">>, Host, App, Key).
+setup_webhook(Host, <<>>, App) ->
+    del_push_entry(<<"webhook">>, Host, App);
+setup_webhook(Host, Url, App) ->
+    add_push_entry(<<"webhook">>, Host, App, Url).
 
 update_apns(_Host, Cert, App) ->
     case push_service_cfg(<<"applepush">>, App, Cert) of
+	undefined -> 1;
+	_ -> 0
+    end.
+update_apns3(_Host, Key, Id, Team, Voip, Prod, App) ->
+    case push_service_cfg(<<"applepush">>, App, {Key, Id, Team, Voip, Prod}) of
 	undefined -> 1;
 	_ -> 0
     end.
@@ -1291,18 +1330,19 @@ del_push_entry(Service, Host, App) ->
     set_push_config(Service, Host, lists:keydelete(App, 1, Setup)).
 
 get_push_config(Service, Host) ->
-    ConfigFile = <<Service/binary, ".yml">>, %% TODO check Service member of ....
+    ConfigFile = <<Service/binary, ".yml">>,
     Config = proplists:get_value(Host, read_extra_config(ConfigFile), []),
     case proplists:get_value(modules, Config, []) of
-	[{_, O1}, {_, [{hosts, O2}]}] ->
-	    [push_setup(Service, App, proplists:get_value(Srv, O2, []))
-	     || {App, Srv} <- proplists:get_value(push_services, O1, [])];
+	[{_, Opts} | Services] ->
+	    SrvOpts = lists:flatten([SOpts || {_, [{hosts, SOpts}]} <- Services]),
+	    [push_setup(Service, App, proplists:get_value(Srv, SrvOpts, []))
+	     || {App, Srv} <- proplists:get_value(push_services, Opts, [])];
 	_ ->
 	    []
     end.
 
 set_push_config(Service, Host, Setup) ->
-    ConfigFile = <<Service/binary, ".yml">>, %% TODO check Service member of ....
+    ConfigFile = <<Service/binary, ".yml">>,
     OldConfig = proplists:get_value(Host, read_extra_config(ConfigFile), []),
     NewConfig = push_cfg(Service, Host, Setup),
     case update_extra_config(ConfigFile, Host, NewConfig) of
@@ -1351,43 +1391,79 @@ push_cfg(Service, Host, Setup) ->
 		Srv = <<Service/binary, Num/binary, ".", Host/binary>>,
 		case push_service_cfg(Service, App, Arg) of
 		    undefined -> Acc;
-		    {IntId, Cfg} -> [{IntId, Srv, Cfg} | Acc]
+		    {Mod, AppId, Cfg} -> [{Mod, AppId, Srv, Cfg} | Acc]
 		end
 	    end, [], lists:usort(Setup))),
+    Services = [{SrvMod,
+		 [{hosts,
+		    lists:filtermap(
+			  fun({Mod, _, Srv, Cfg}) when Mod==SrvMod -> {true, {Srv, Cfg}};
+			     (_) -> false
+			  end, Config)}]}
+		|| SrvMod <- lists:usort([Mod || {Mod, _, _, _} <- Config])],
     [{modules,
       [{jlib:binary_to_atom(<<"mod_", Service/binary>>),
 	[{db_type, push_backend()},
 	 {iqdisc, 50},
 	 {silent_push_enabled, true},
-	 %{default_service, push_route(Host, Service, 1)},
-	 {push_services, [{App, Srv} || {App, Srv, _} <- Config]}
-	]},
-       {jlib:binary_to_atom(<<"mod_", Service/binary, "_service">>),
-	[{hosts, [{Srv, Cfg} || {_, Srv, Cfg} <- Config]}
+	 {push_services, [{AppId, Srv} || {_, AppId, Srv, _} <- Config]}
 	]}
-      ]} || Config=/=[]].
+       | Services]} || Config=/=[]].
 
+push_service_cfg(<<"applepush">>, AppId, {Key, Id, Team, Voip, Prod}) ->
+    case write_file(Id, Key) of
+	{ok, KeyFile, apns3} ->
+	    {mod_applepushv3_service, AppId,
+	     [{default_topic, apns3_appid(AppId, Voip)},
+	      {authkeyfile, KeyFile},
+	      {authkeyid, Id},
+	      {teamid, Team},
+	      {gateway, case Prod of
+			  true -> <<"api.push.apple.com">>;
+			  false -> <<"api.development.push.apple.com">>
+			end},
+	      {port, 443}]};
+	_ ->
+	    undefined
+    end;
 push_service_cfg(<<"applepush">>, AppId, Cert) ->
-    case write_cert(AppId, Cert) of
-	{ok, CertFile, production} ->
-	    {AppId, [{certfile, CertFile}, {gateway, <<"gateway.push.apple.com">>}, {port, 2195}]};
-	{ok, CertFile, development} ->
-	    {dev_appid(AppId), [{certfile, CertFile}, {gateway, <<"gateway.sandbox.push.apple.com">>}, {port, 2195}]};
+    case write_file(AppId, Cert) of
+	{ok, CertFile, apns_prod} ->
+	    {mod_applepush_service, AppId,
+	     [{certfile, CertFile},
+	      {gateway, <<"gateway.push.apple.com">>},
+	      {port, 2195}]};
+	{ok, CertFile, apns_dev} ->
+	    {mod_applepush_service, dev_appid(AppId),
+	     [{certfile, CertFile},
+	      {gateway, <<"gateway.sandbox.push.apple.com">>},
+	      {port, 2195}]};
 	_ ->
 	    undefined
     end;
 push_service_cfg(<<"gcm">>, AppId, ApiKey) ->
-    {AppId, [{gateway, <<"https://fcm.googleapis.com/fcm/send">>}, {apikey, ApiKey}]};
+    {mod_gcm_service, AppId,
+     [{gateway, <<"https://fcm.googleapis.com/fcm/send">>},
+      {apikey, ApiKey}]};
 push_service_cfg(<<"webhook">>, AppId, Gateway) ->
-    {AppId, [{gateway, Gateway}]};
+    {mod_webhook_service, AppId,
+     [{gateway, Gateway}]};
 push_service_cfg(_, _, _) ->
     undefined.
 
 push_setup(<<"applepush">>, AppId, Cfg) ->
-    CertFile = proplists:get_value(certfile, Cfg),
-    case read_cert(CertFile) of
-	{ok, Cert} -> {undev_appid(AppId), Cert};
-	_ -> {AppId, <<>>}
+    case proplists:get_value(certfile, Cfg) of
+	undefined ->
+	    KeyFile = proplists:get_value(authkeyfile, Cfg),
+	    case read_file(KeyFile) of
+		{ok, Key} -> {AppId, apns3_setup(Key, Cfg)};
+		_ -> {undev_appid(AppId), <<>>}
+	    end;
+	CertFile ->
+	    case read_file(CertFile) of
+		{ok, Cert} -> {undev_appid(AppId), Cert};
+		_ -> {undev_appid(AppId), <<>>}
+	    end
     end;
 push_setup(<<"gcm">>, AppId, Cfg) ->
     {AppId, proplists:get_value(apikey, Cfg, <<>>)};
@@ -1396,30 +1472,47 @@ push_setup(<<"webhook">>, AppId, Cfg) ->
 push_setup(_, AppId, _) ->
     {AppId, <<>>}.
 
+apns3_setup(Key, Cfg) ->
+    Id = proplists:get_value(authkeyid, Cfg, <<>>),
+    Team = proplists:get_value(teamid, Cfg, <<>>),
+    Voip = binary:match(proplists:get_value(default_topic, Cfg, <<>>), <<".voip">>) =/= nomatch,
+    Prod = proplists:get_value(gateway, Cfg, <<>>) == <<"api.push.apple.com">>,
+    {Key, Id, Team, Voip, Prod}.
+
+setup_struct(apns3, {AppId, {Key, Id, Team, Voip, Prod}}) ->
+    [{key, Key}, {keyid, Id}, {teamid, Team},
+     {voip, Voip}, {prod, Prod}, {appid, AppId}];
 setup_struct(Type, {AppId, Data}) ->
     [{appid, AppId}, {Type, Data}].
 
-read_cert(CertFile) ->
-    case file:read_file(CertFile) of
-	{ok, Cert} -> {ok, Cert};
+read_file(File) ->
+    case file:read_file(File) of
+	{ok, Data} -> {ok, Data};
 	Error -> Error
     end.
 
-write_cert(_, <<>>) ->
+write_file(_, <<>>) ->
     {error, undefined};
-write_cert(AppId, CertData) ->
+write_file(Id, CertData) ->
     BaseDir = filename:dirname(os:getenv("EJABBERD_CONFIG_PATH")),
     TmpFile = filename:append(BaseDir, <<"pem">>),
     case file:write_file(TmpFile, CertData) of
 	ok ->
-	    {Name, Type} = case cert_type(TmpFile) of
-		production -> {AppId, production};
-		development -> {dev_appid(AppId), development}
+	    {Name, Type, Ext} = case cert_type(TmpFile) of
+		apns_prod -> {Id, apns_prod, <<".pem">>};
+		apns_dev -> {dev_appid(Id), apns_dev, <<".pem">>};
+		apns3 -> {Id, apns3, <<".p8">>};
+		_ -> {Id, undefined, undefined}
 	    end,
-	    CertFile = filename:append(BaseDir, <<Name/binary, ".pem">>),
-	    case file:rename(TmpFile, CertFile) of
-		ok -> {ok, CertFile, Type};
-		Error -> Error
+	    case Type of
+		undefined ->
+		    {error, undefined};
+		_ ->
+		    File = filename:append(BaseDir, <<Name/binary, Ext/binary>>),
+		    case file:rename(TmpFile, File) of
+			ok -> {ok, File, Type};
+			Error -> Error
+		    end
 	    end;
 	Error ->
 	    Error
@@ -1433,11 +1526,23 @@ undev_appid(DevId) ->
 	_ -> DevId
     end.
 
+apns3_appid(AppId, true) -> <<AppId/binary, ".voip">>;
+apns3_appid(AppId, false) -> AppId.
+
 cert_type(CertFile) ->
-    Cmd = "openssl x509 -in " ++ binary_to_list(CertFile) ++ " -noout -subject | grep Development",
-    case os:cmd(Cmd) of
-	[] -> production;
-	_ -> development
+    Subject = os:cmd("openssl x509 -in " ++ binary_to_list(CertFile) ++ " -noout -subject"),
+    case {string:str(Subject, "Apple Push"), string:str(Subject, "Apple Development")} of
+	{0, 0} -> key_type(CertFile);
+	{_, 0} -> apns_prod;
+	{0, _} -> apns_dev;
+	_ -> undefined
+    end.
+
+key_type(KeyFile) ->
+    Key = os:cmd("openssl pkcs8 -nocrypt -in " ++ binary_to_list(KeyFile)),
+    case string:str(Key, "BEGIN PRIVATE KEY") of
+	0 -> undefined;
+	_ -> apns3
     end.
 
 read_extra_config(ConfigFile) ->
