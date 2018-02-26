@@ -47,7 +47,7 @@ is_search_supported(_LServer) ->
 get_vcard(LUser, LServer) ->
     Path = vcard_rest_path(LUser, LServer),
     case rest:with_retry(get, [LServer, Path], 2, 500) of
-	{ok, 200, {Body}}  ->
+	{ok, 200, Body}  ->
 	    case fxml_stream:parse_element(Body) of
 		{error, _Reason} = Err ->
 		    ?ERROR_MSG("got ~p when parsing vCard ~s", [Err, Body]),
