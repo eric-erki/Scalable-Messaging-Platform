@@ -56,7 +56,7 @@ get_vcard(LUser, LServer) ->
 		    [VCard]
 	    end;
 	Other ->
-	    ?ERROR_MSG("Unexpected response for offline count: ~p", [Other]),
+	    ?ERROR_MSG("Unexpected response for vCard get: ~p", [Other]),
 	    error
     end.
 
@@ -67,7 +67,7 @@ set_vcard(LUser, LServer, VCARD, _VCardSearch) ->
 	{ok, 200, _} ->
 	    {atomic, ok};
 	Other ->
-	    ?ERROR_MSG("Unexpected response for offline pop: ~p", [Other]),
+	    ?ERROR_MSG("Unexpected response for vCard set: ~p", [Other]),
 	    {error, rest_failed}
     end.
 
