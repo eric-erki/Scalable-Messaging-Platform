@@ -1402,9 +1402,10 @@ handle_info({route, _From, _To, {broadcast, Data}}, StateName, StateData) ->
 			     oor_status = <<"">>,
 			     oor_show = <<"">>,
 			     oor_notification = undefined,
-			     oor_send_body = all},
-		    NSD2 = start_keepalive_timer(NSD1),
-		    fsm_next_state(StateName, NSD2);
+                             oor_send_body = all},
+                    NSD2 = change_reception(NSD1, true),
+                    NSD3 = start_keepalive_timer(NSD2),
+                    fsm_next_state(StateName, NSD3);
 		_ ->
 		    fsm_next_state(StateName, StateData)
 	    end;
@@ -3112,8 +3113,9 @@ process_push_iq(From, To, #iq{type = _Type, sub_el = El} = IQ, StateData) ->
 						   oor_show = <<"">>,
 						   oor_notification = undefined,
 						   oor_send_body = all},
-					  NSD2 = start_keepalive_timer(NSD1),
-					  {{result, []}, NSD2};
+                                          NSD2 = change_reception(NSD1, true),
+                                          NSD3 = start_keepalive_timer(NSD2),
+                                          {{result, []}, NSD3};
 				      {error, ErrText} ->
 					  Lang = StateData#state.lang,
 					  Txt = iolist_to_binary(ErrText),
