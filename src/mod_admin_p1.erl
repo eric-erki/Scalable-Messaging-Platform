@@ -64,7 +64,7 @@
 	 get_commands_spec/0,
 	% certificates
 	 get_apns_config/1, update_apns/3, setup_apns/3,
-	 get_apns3_config/1, update_apns3/7, setup_apns3/7,
+	 get_apns3_config/1, update_apns3/5, setup_apns3/5,
 	 get_gcm_config/1, update_gcm/3, setup_gcm/3,
 	 get_webhook_config/1, update_webhook/3, setup_webhook/3,
 	 add_push_entry/4, del_push_entry/3,
@@ -327,14 +327,14 @@ get_commands_spec() ->
 			result = {res, {list,
 			    {value, {list,
 			      {value, {tuple, [{name, atom}, {value, string}]}}}}}}},
-%     #ejabberd_commands{name = get_apns3_config,
-%			tags = [config],
-%			desc = "Fetch the Apple Push Notification Service v3 configuration",
-%			module = ?MODULE, function = get_apns3_config,
-%			args = [{host, binary}],
-%			result = {res, {list,
-%			    {value, {list,
-%			      {value, {tuple, [{name, atom}, {value, string}]}}}}}}},
+     #ejabberd_commands{name = get_apns3_config,
+			tags = [config],
+			desc = "Fetch the Apple Push Notification Service v3 configuration",
+			module = ?MODULE, function = get_apns3_config,
+			args = [{host, binary}],
+			result = {res, {list,
+			    {value, {list,
+			      {value, {tuple, [{name, atom}, {value, string}]}}}}}}},
      #ejabberd_commands{name = get_gcm_config,
 			tags = [config],
 			desc = "Fetch the Google Cloud Messaging service configuration",
@@ -363,18 +363,20 @@ get_commands_spec() ->
 			module = ?MODULE, function = setup_apns,
 			args = [{host, binary}, {cert, binary}, {appid, binary}],
 			result = {res, integer}},
-%     #ejabberd_commands{name = update_apns3,
-%			tags = [config],
-%			desc = "Update the Apple Push Notification Service v3 AppIds",
-%			module = ?MODULE, function = update_apns,
-%			args = [{host, binary}, {cert, binary}, {appid, binary}],
-%			result = {res, integer}},
-%     #ejabberd_commands{name = setup_apns3,
-%			tags = [config],
-%			desc = "Setup the Apple Push Notification Service v3",
-%			module = ?MODULE, function = setup_apns,
-%			args = [{host, binary}, {cert, binary}, {appid, binary}],
-%			result = {res, integer}},
+     #ejabberd_commands{name = update_apns3,
+			tags = [config],
+			desc = "Update the Apple Push Notification Service v3",
+			module = ?MODULE, function = update_apns,
+			args = [{host, binary}, {key, binary}, {keyid, binary},
+				{teamid, binary}, {appid, binary}],
+			result = {res, integer}},
+     #ejabberd_commands{name = setup_apns3,
+			tags = [config],
+			desc = "Setup the Apple Push Notification Service v3",
+			module = ?MODULE, function = setup_apns,
+			args = [{host, binary}, {key, binary}, {keyid, binary},
+				{teamid, binary}, {appid, binary}],
+			result = {res, integer}},
      #ejabberd_commands{name = update_gcm,
 			tags = [config],
 			desc = "Update the Google Cloud Messaging service ApiKey",
@@ -1279,7 +1281,8 @@ get_apns_config(Host) ->
     Setup = get_push_config(<<"applepush">>, Host),
     [setup_struct(cert, Entry) || Entry <- Setup, is_binary(element(2,Entry))].
 get_apns3_config(Host) ->
-    Setup = get_push_config(<<"applepush">>, Host),
+    Setup = lists:usort([{undev_appid(App), Arg}
+			  || {App, Arg} <- get_push_config(<<"applepush">>, Host)]),
     [setup_struct(apns3, Entry) || Entry <- Setup, is_tuple(element(2,Entry))].
 get_gcm_config(Host) ->
     Setup = get_push_config(<<"gcm">>, Host),
@@ -1292,10 +1295,13 @@ setup_apns(Host, <<>>, App) ->
     del_push_entry(<<"applepush">>, Host, App);
 setup_apns(Host, Cert, App) ->
     add_push_entry(<<"applepush">>, Host, App, Cert).
-setup_apns3(Host, <<>>, _Id, _Team, _Voip, _Prod, App) ->
-    del_push_entry(<<"applepush">>, Host, App);
-setup_apns3(Host, Key, Id, Team, Voip, Prod, App) ->
-    add_push_entry(<<"applepush">>, Host, App, {Key, Id, Team, Voip, Prod}).
+setup_apns3(Host, <<>>, _Id, _Team, App) ->
+    Setup0 = get_push_config(<<"applepush">>, Host),
+    Setup1 = lists:keydelete(App, 1, Setup0),
+    Setup2 = lists:keydelete(dev_appid(App), 1, Setup1),
+    cluster_set_push_config(<<"applepush">>, Host, Setup2);
+setup_apns3(Host, Key, Id, Team, App) ->
+    add_push_entry(<<"applepush">>, Host, App, {Key, Id, Team}).
 setup_gcm(Host, <<>>, App) ->
     del_push_entry(<<"gcm">>, Host, App);
 setup_gcm(Host, Key, App) ->
@@ -1305,25 +1311,21 @@ setup_webhook(Host, <<>>, App) ->
 setup_webhook(Host, Url, App) ->
     add_push_entry(<<"webhook">>, Host, App, Url).
 
-update_apns(_Host, Cert, App) ->
-    % TODO make update cluster wide
-    case push_service_cfg(<<"applepush">>, App, Cert) of
-	undefined -> 1;
-	_ -> 0
-    end.
-update_apns3(_Host, Key, Id, Team, Voip, Prod, App) ->
-    % TODO make update cluster wide
-    case push_service_cfg(<<"applepush">>, App, {Key, Id, Team, Voip, Prod}) of
-	undefined -> 1;
-	_ -> 0
-    end.
+update_apns(Host, Cert, App) ->
+    upd_push_entry(<<"applepush">>, Host, App, Cert).
+update_apns3(Host, Key, Id, Team, App) ->
+    Setup0 = get_push_config(<<"applepush">>, Host),
+    Setup1 = lists:keydelete(App, 1, Setup0),
+    Setup2 = lists:keydelete(dev_appid(App), 1, Setup1),
+    cluster_set_push_config(<<"applepush">>, Host, [{App, {Key, Id, Team}}|Setup2]).
 update_gcm(Host, Key, App) ->
-    Setup = get_push_config(<<"gcm">>, Host),
-    cluster_set_push_config(<<"gcm">>, Host, lists:keystore(App, 1, Setup, {App, Key})).
+    upd_push_entry(<<"gcm">>, Host, App, Key).
 update_webhook(Host, Url, App) ->
-    Setup = get_push_config(<<"webhook">>, Host),
-    cluster_set_push_config(<<"webhook">>, Host, lists:keystore(App, 1, Setup, {App, Url})).
+    upd_push_entry(<<"webhook">>, Host, App, Url).
 
+upd_push_entry(Service, Host, App, Key) ->
+    Setup = lists:keydelete(App, 1, get_push_config(Service, Host)),
+    cluster_set_push_config(Service, Host, [{App, Key}|Setup]).
 add_push_entry(Service, Host, App, Key) ->
     Setup = get_push_config(Service, Host),
     cluster_set_push_config(Service, Host, [{App, Key}|Setup]).
@@ -1395,15 +1397,16 @@ push_backend() ->
       p1db).
 
 push_cfg(Service, Host, Setup) ->
+    RawConfig = lists:flatten([push_service_cfg(Service, App, Arg)
+			       || {App, Arg} <- lists:usort(Setup)]),
     Config = lists:reverse(lists:foldl(
-	    fun({App, Arg}, Acc) ->
+	    fun({Mod, AppId, Cfg}, Acc) ->
 		Num = integer_to_binary(length(Acc)+1),
 		Srv = <<Service/binary, Num/binary, ".", Host/binary>>,
-		case push_service_cfg(Service, App, Arg) of
-		    undefined -> Acc;
-		    {Mod, AppId, Cfg} -> [{Mod, AppId, Srv, Cfg} | Acc]
-		end
-	    end, [], lists:usort(Setup))),
+		[{Mod, AppId, Srv, Cfg} | Acc];
+	       (_, Acc) ->
+		Acc
+	    end, [], RawConfig)),
     Services = [{SrvMod,
 		 [{hosts,
 		    lists:filtermap(
@@ -1420,19 +1423,23 @@ push_cfg(Service, Host, Setup) ->
 	]}
        | Services]} || Config=/=[]].
 
-push_service_cfg(<<"applepush">>, AppId, {Key, Id, Team, Voip, Prod}) ->
+push_service_cfg(<<"applepush">>, AppId, {Key, Id, Team}) ->
     case write_file(Id, Key) of
 	{ok, KeyFile, apns3} ->
-	    {mod_applepushv3_service, AppId,
-	     [{default_topic, apns3_appid(AppId, Voip)},
+	    [{mod_applepushv3_service, AppId,
+	     [{default_topic, AppId},
 	      {authkeyfile, KeyFile},
 	      {authkeyid, Id},
 	      {teamid, Team},
-	      {gateway, case Prod of
-			  true -> <<"api.push.apple.com">>;
-			  false -> <<"api.development.push.apple.com">>
-			end},
-	      {port, 443}]};
+	      {gateway, <<"api.push.apple.com">>},
+	      {port, 443}]},
+	     {mod_applepushv3_service, dev_appid(AppId),
+	     [{default_topic, AppId},
+	      {authkeyfile, KeyFile},
+	      {authkeyid, Id},
+	      {teamid, Team},
+	      {gateway, <<"api.development.push.apple.com">>},
+	      {port, 443}]}];
 	_ ->
 	    undefined
     end;
@@ -1467,7 +1474,7 @@ push_setup(<<"applepush">>, AppId, Cfg) ->
 	    KeyFile = proplists:get_value(authkeyfile, Cfg),
 	    case read_file(KeyFile) of
 		{ok, Key} -> {AppId, apns3_setup(Key, Cfg)};
-		_ -> {undev_appid(AppId), <<>>}
+		_ -> {AppId, <<>>}
 	    end;
 	CertFile ->
 	    case read_file(CertFile) of
@@ -1485,13 +1492,10 @@ push_setup(_, AppId, _) ->
 apns3_setup(Key, Cfg) ->
     Id = proplists:get_value(authkeyid, Cfg, <<>>),
     Team = proplists:get_value(teamid, Cfg, <<>>),
-    Voip = binary:match(proplists:get_value(default_topic, Cfg, <<>>), <<".voip">>) =/= nomatch,
-    Prod = proplists:get_value(gateway, Cfg, <<>>) == <<"api.push.apple.com">>,
-    {Key, Id, Team, Voip, Prod}.
+    {Key, Id, Team}.
 
-setup_struct(apns3, {AppId, {Key, Id, Team, Voip, Prod}}) ->
-    [{key, Key}, {keyid, Id}, {teamid, Team},
-     {voip, Voip}, {prod, Prod}, {appid, AppId}];
+setup_struct(apns3, {AppId, {Key, Id, Team}}) ->
+    [{appid, AppId}, {key, Key}, {keyid, Id}, {teamid, Team}];
 setup_struct(Type, {AppId, Data}) ->
     [{appid, AppId}, {Type, Data}].
 
@@ -1535,9 +1539,6 @@ undev_appid(DevId) ->
 	["dev" | Id] -> iolist_to_binary(string:join(lists:reverse(Id), "_"));
 	_ -> DevId
     end.
-
-apns3_appid(AppId, true) -> <<AppId/binary, ".voip">>;
-apns3_appid(AppId, false) -> AppId.
 
 cert_type(CertFile) ->
     Subject = os:cmd("openssl x509 -in " ++ binary_to_list(CertFile) ++ " -noout -subject"),
