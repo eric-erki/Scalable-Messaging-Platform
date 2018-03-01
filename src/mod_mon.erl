@@ -57,6 +57,7 @@
 
 -export([offline_message_hook/3, resend_offline_messages_hook/3,
 	 sm_register_connection_hook/3, sm_remove_connection_hook/3,
+	 sm_remove_migrated_connection_hook/3,
 	 roster_in_subscription/6, roster_out_subscription/4,
 	 user_available_hook/1, badauth/3,
 	 unset_presence_hook/4, set_presence_hook/4,
@@ -165,7 +166,8 @@ init([Host, Opts]) ->
     % efficient local sessions count
     EfficientNodeSessions =
       lists:member(sm_register_connection_hook, Hooks)
-      andalso lists:member(sm_remove_connection_hook, Hooks),
+      andalso lists:member(sm_remove_connection_hook, Hooks)
+      andalso lists:member(sm_remove_migrated_connection_hook, Hooks),
     if EfficientNodeSessions ->
          cheap_counters:set(Host, sessions, node_sessions_count(Host))
     end,
@@ -387,6 +389,8 @@ sm_remove_connection_hook(_SID, #jid{lserver=LServer}, Info) ->
     Hook = hookid(concat(<<"sm_remove_connection">>, Post)),
     dec(LServer, sessions, 1),
     inc(LServer, Hook, 1).
+sm_remove_migrated_connection_hook(SID, JID, Info) ->
+    sm_remove_connection_hook(SID, JID, Info).
 
 roster_in_subscription(Ls, _User, Server, _To, _Type, _Reason) ->
     inc(jid:nameprep(Server), roster_in_subscription, 1),

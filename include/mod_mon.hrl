@@ -27,6 +27,7 @@
 -define(SUPPORTED_HOOKS,
         [offline_message_hook, resend_offline_messages_hook,
          sm_register_connection_hook, sm_remove_connection_hook,
+         sm_remove_migrated_connection_hook,
          % remove_user, register_user,
          % roster_in_subscription, roster_out_subscription,
          user_available_hook, unset_presence_hook, set_presence_hook,
