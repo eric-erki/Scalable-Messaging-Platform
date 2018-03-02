@@ -113,7 +113,7 @@ init([Host, Opts]) ->
     ejabberd_commands:register_commands(commands(Host)),
     Ignore = gen_mod:get_opt(ignore, Opts,
                              fun(L) when is_list(L) -> L end, []),
-    {ok, TRef} = timer:send_interval(60000*5, backup),  % backup every 5 minutes
+    {ok, TRef} = timer:send_interval(60000, backup),  % backup every 60s
     R1 = read_db(Host),
     IgnoreLast = lists:usort(Ignore++R1#jabs.ignore),
     R2 = R1#jabs{ignore = IgnoreLast, timer = TRef},
