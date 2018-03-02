@@ -1303,7 +1303,10 @@ setup_apns3(Host, <<>>, _Id, _Team, App) ->
 setup_apns3(Host, Key, Id, Team, App) ->
     Setup0 = get_push_config(<<"applepush">>, Host),
     Setup1 = lists:keydelete(App, 1, Setup0),
-    Setup2 = lists:keydelete(dev_appid(App), 1, Setup1),
+    Setup2 = lists:filter(
+	       fun({AppId, _}) ->
+		   binary:longest_common_suffix([AppId, <<"_dev">>]) < 4
+	       end, Setup1),
     cluster_set_push_config(<<"applepush">>, Host, [{App, {Key, Id, Team}}|Setup2]).
 setup_gcm(Host, <<>>, App) ->
     del_push_entry(<<"gcm">>, Host, App);
