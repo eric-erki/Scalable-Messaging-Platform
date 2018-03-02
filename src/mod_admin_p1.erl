@@ -1281,8 +1281,7 @@ get_apns_config(Host) ->
     Setup = get_push_config(<<"applepush">>, Host),
     [setup_struct(cert, Entry) || Entry <- Setup, is_binary(element(2,Entry))].
 get_apns3_config(Host) ->
-    Setup = lists:usort([{undev_appid(App), Arg}
-			  || {App, Arg} <- get_push_config(<<"applepush">>, Host)]),
+    Setup = remove_dev_entries(get_push_config(<<"applepush">>, Host)),
     [setup_struct(apns3, Entry) || Entry <- Setup, is_tuple(element(2,Entry))].
 get_gcm_config(Host) ->
     Setup = get_push_config(<<"gcm">>, Host),
@@ -1298,15 +1297,12 @@ setup_apns(Host, Cert, App) ->
 setup_apns3(Host, <<>>, _Id, _Team, App) ->
     Setup0 = get_push_config(<<"applepush">>, Host),
     Setup1 = lists:keydelete(App, 1, Setup0),
-    Setup2 = lists:keydelete(dev_appid(App), 1, Setup1),
+    Setup2 = remove_dev_entries(Setup1),
     cluster_set_push_config(<<"applepush">>, Host, Setup2);
 setup_apns3(Host, Key, Id, Team, App) ->
     Setup0 = get_push_config(<<"applepush">>, Host),
     Setup1 = lists:keydelete(App, 1, Setup0),
-    Setup2 = lists:filter(
-	       fun({AppId, _}) ->
-		   binary:longest_common_suffix([AppId, <<"_dev">>]) < 4
-	       end, Setup1),
+    Setup2 = remove_dev_entries(Setup1),
     cluster_set_push_config(<<"applepush">>, Host, [{App, {Key, Id, Team}}|Setup2]).
 setup_gcm(Host, <<>>, App) ->
     del_push_entry(<<"gcm">>, Host, App);
@@ -1542,6 +1538,11 @@ undev_appid(DevId) ->
 	["dev" | Id] -> iolist_to_binary(string:join(lists:reverse(Id), "_"));
 	_ -> DevId
     end.
+remove_dev_entries(Setup) ->
+    lists:filter(
+	fun({App, _}) ->
+	    binary:longest_common_suffix([App, <<"_dev">>]) < 4
+	end, Setup).
 
 cert_type(CertFile) ->
     Subject = os:cmd("openssl x509 -in " ++ binary_to_list(CertFile) ++ " -noout -subject"),
