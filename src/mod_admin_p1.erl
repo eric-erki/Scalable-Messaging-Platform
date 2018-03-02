@@ -1301,7 +1301,10 @@ setup_apns3(Host, <<>>, _Id, _Team, App) ->
     Setup2 = lists:keydelete(dev_appid(App), 1, Setup1),
     cluster_set_push_config(<<"applepush">>, Host, Setup2);
 setup_apns3(Host, Key, Id, Team, App) ->
-    add_push_entry(<<"applepush">>, Host, App, {Key, Id, Team}).
+    Setup0 = get_push_config(<<"applepush">>, Host),
+    Setup1 = lists:keydelete(App, 1, Setup0),
+    Setup2 = lists:keydelete(dev_appid(App), 1, Setup1),
+    cluster_set_push_config(<<"applepush">>, Host, [{App, {Key, Id, Team}}|Setup2]).
 setup_gcm(Host, <<>>, App) ->
     del_push_entry(<<"gcm">>, Host, App);
 setup_gcm(Host, Key, App) ->
@@ -1314,10 +1317,7 @@ setup_webhook(Host, Url, App) ->
 update_apns(Host, Cert, App) ->
     upd_push_entry(<<"applepush">>, Host, App, Cert).
 update_apns3(Host, Key, Id, Team, App) ->
-    Setup0 = get_push_config(<<"applepush">>, Host),
-    Setup1 = lists:keydelete(App, 1, Setup0),
-    Setup2 = lists:keydelete(dev_appid(App), 1, Setup1),
-    cluster_set_push_config(<<"applepush">>, Host, [{App, {Key, Id, Team}}|Setup2]).
+    setup_apns3(Host, Key, Id, Team, App).
 update_gcm(Host, Key, App) ->
     upd_push_entry(<<"gcm">>, Host, App, Key).
 update_webhook(Host, Url, App) ->
