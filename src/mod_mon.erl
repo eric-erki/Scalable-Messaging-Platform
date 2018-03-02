@@ -48,7 +48,7 @@
 %% administration commands
 -export([flush_probe_command/2]).
 %% monitors
--export([process_queues/2, internal_queues/2, health_check/1, jabs_count/1]).
+-export([process_queues/2, internal_queues/2, jabs_count/1]).
 -export([node_sessions_count/1, cpu_usage/1]).
 %% server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -694,8 +694,6 @@ push(Host, _Node, Probes, _Time, mnesia) ->
                     Val -> ok;
                     _ -> mnesia:dirty_write(Table, #mon{probe = Key, value = Val})
                 end;
-           ({health, _Type, _Val}) ->
-                ok;
            ({Key, Type, Val}) ->
                 ?WARNING_MSG("can not push ~p metric ~p with value ~p", [Type, Key, Val])
         end, Probes);
@@ -747,17 +745,15 @@ push(_Host, _Node, _Probes, _Time, _Backend) ->
 push_udp(Ip, Port, Probes, Format) ->
     case get_udp_socket(Ip, Port) of
         {ok, Socket} ->
-            OnlyProbes = lists:keydelete(health, 1, Probes),
             [gen_udp:send(Socket, Ip, Port, Packet)
-             || Packet <- line_packets(OnlyProbes, Format)],
+             || Packet <- line_packets(Probes, Format)],
             gen_udp:close(Socket);
         Error ->
             Error
     end.
 
 push_api(Url, Probes, Format, Wrap) ->
-    OnlyProbes = lists:keydelete(health, 1, Probes),
-    Data = [Format(K, T, V) || {K, T, V} <- OnlyProbes],
+    Data = [Format(K, T, V) || {K, T, V} <- Probes],
     Payload = jiffy:encode(Wrap(Data)),
     Opts = [{connect_timeout, 8000},
             {timeout, 8000}],
@@ -785,7 +781,6 @@ push_api(Url, Probes, Format, Wrap) ->
                        [Url, Reason]),
             {error, Reason}
     end.
-    % TODO send events based on health probe ?
 
 line_packets(Probes, Format) ->
     line_packets(Probes, Format, [<<>>]).
@@ -866,44 +861,6 @@ pubsub_send_pool_name(I, ServerHost) ->
     list_to_atom("ejabberd_mod_pubsub_loop_" ++ binary_to_list(ServerHost)
 	++ "_" ++ integer_to_list(I)).
 
-% Note: health_check must be called last from monitors list
-%       as it uses gauges values as they are pushed
-%       it can not check counters (as they are reset at that time)
-health_check(Host) ->
-    spawn(mod_mon_client, start, [Host]),
-    HealthCfg = ejabberd_config:get_option({health, Host},
-                               fun(V) when is_list(V) -> V end,
-                               []),
-    lists:foldr(fun({Component, Check}, Acc) ->
-                lists:foldr(fun({Probe, Message, Critical}, Acc2) ->
-                            Spec = case proplists:get_value(Probe, HealthCfg, []) of
-                                L when is_list(L) -> L;
-                                Other -> [Other]
-                            end,
-                            case level(Host, Probe, Spec) of
-                                ok -> Acc2;
-                                critical -> [{critical, Component, Critical}|Acc2];
-                                Level -> [{Level, Component, Message}|Acc2]
-                            end
-                    end, Acc, Check)
-            end, [],
-        [{<<"REST API">>,
-          [{backend_api_response_time, <<"slow responses">>, <<"no response">>},
-           {backend_api_error, <<"error responses">>, <<"total failure">>},
-           {backend_api_badauth, <<"logins with bad credentials">>, <<"auth flooding">>}]},
-         {<<"Router">>,
-          [{c2s_queues, <<"c2s processes overloaded">>, <<"c2s dead">>},
-           {s2s_queues, <<"s2s processes overloaded">>, <<"s2s dead">>},
-           {iq_queues, <<"iq handlers overloaded">>, <<"iq handlers dead">>},
-           {sm_queues, <<"session managers overloaded">>, <<"sessions dead">>}]},
-         {<<"Database">>,
-          [{sql_queues, <<"sql driver overloaded">>, <<"service down">>},
-           {offline_queues, <<"offline spool overloaded">>, <<"service down">>}]},
-         {<<"Client">>,
-          [{client_conn_time, <<"connection is slow">>, <<"service unavailable">>},
-           {client_auth_time, <<"authentification is slow">>, <<"auth broken">>},
-           {client_roster_time, <<"roster response is slow">>, <<"roster broken">>}]}]).
-
 jabs_count(Host) ->
     case catch mod_jabs:value(Host) of
         {'EXIT', _} -> 0;
@@ -921,63 +878,6 @@ cpu_usage(_Host) ->
     % every minute, and we get this runtime delta for reference
     % ?MINUTE div 100
     Runtime div (600 * Threads).
-
-%%====================================================================
-%% Health check helpers
-%%====================================================================
-
-level(_Host, _Probe, []) ->
-    ok;
-level(Host, iq_queues, Spec) ->
-    Value = value(Host, iq_message_queues)+value(Host, iq_internal_queues),
-    check_level(ok, Value, Spec);
-level(Host, sm_queues, Spec) ->
-    Value = value(Host, sm_message_queues)+value(Host, sm_internal_queues),
-    check_level(ok, Value, Spec);
-level(Host, c2s_queues, Spec) ->
-    Value = value(Host, c2s_message_queues)+value(Host, c2s_internal_queues),
-    check_level(ok, Value, Spec);
-level(Host, s2s_queues, Spec) ->
-    Value = value(Host, s2s_message_queues)+value(Host, s2s_internal_queues),
-    check_level(ok, Value, Spec);
-level(Host, sql_queues, Spec) ->
-    Value = value(Host, sql_message_queues)+value(Host, sql_internal_queues),
-    check_level(ok, Value, Spec);
-level(Host, offline_queues, Spec) ->
-    Value = value(Host, offline_message_queues)+value(Host, offline_internal_queues),
-    check_level(ok, Value, Spec);
-level(Host, Probe, Spec) ->
-    {_Type, Value} =  get_probe_value(Probe, value(Host, Probe)),
-    check_level(ok, Value, Spec).
-
-check_level(Acc, _, []) -> Acc;
-check_level(Acc, Value, [{Level, gt, Limit}|Tail]) ->
-    if Value > Limit -> check_level(Level, Value, Tail);
-        true -> check_level(Acc, Value, Tail)
-    end;
-check_level(Acc, Value, [{Level, lt, Limit}|Tail]) ->
-    if Value < Limit -> check_level(Level, Value, Tail);
-        true -> check_level(Acc, Value, Tail)
-    end;
-check_level(Acc, Value, [{Level, in, Low, Up}|Tail]) ->
-    if (Value >= Low) and (Value =< Up) -> check_level(Level, Value, Tail);
-        true -> check_level(Acc, Value, Tail)
-    end;
-check_level(Acc, Value, [{Level, out, Low, Up}|Tail]) ->
-    if (Value < Low) or (Value > Up) -> check_level(Level, Value, Tail);
-        true -> check_level(Acc, Value, Tail)
-    end;
-check_level(Acc, Value, [{Level, eq, Limit}|Tail]) ->
-    if Value == Limit -> check_level(Level, Value, Tail);
-        true -> check_level(Acc, Value, Tail)
-    end;
-check_level(Acc, Value, [{Level, neq, Limit}|Tail]) ->
-    if Value =/= Limit -> check_level(Level, Value, Tail);
-        true -> check_level(Acc, Value, Tail)
-    end;
-check_level(Acc, Value, [Invalid|Tail]) ->
-    ?WARNING_MSG("invalid health limit spec: ~p", [Invalid]),
-    check_level(Acc, Value, Tail).
 
 %%====================================================================
 %% Temporary helper to get clear cluster view of most important probes
@@ -1018,5 +918,4 @@ mod_opt_type(monitors) ->
     fun (L) when is_list(L) -> L end;
 mod_opt_type(_) -> [hooks, monitors_base, backends, monitors].
 
-opt_type(health) -> fun (V) when is_list(V) -> V end;
-opt_type(_) -> [health].
+opt_type(_) -> [].

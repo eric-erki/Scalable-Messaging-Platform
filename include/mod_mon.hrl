@@ -79,6 +79,5 @@
          {jabs, jabs_count},
          {memory, <<"erlang:memory(total).">>},  %% supported notation
          {cpu, cpu_usage},
-         {processes, <<"erlang:system_info process_count">>}, %% equivalent to erlang:system_info(process_count).
-         {health, health_check}
+         {processes, <<"erlang:system_info process_count">>} %% equivalent to erlang:system_info(process_count).
         ]).
