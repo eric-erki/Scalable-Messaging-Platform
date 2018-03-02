@@ -169,7 +169,10 @@ init([Host, Opts]) ->
       andalso lists:member(sm_remove_connection_hook, Hooks)
       andalso lists:member(sm_remove_migrated_connection_hook, Hooks),
     if EfficientNodeSessions ->
-         cheap_counters:set(Host, sessions, node_sessions_count(Host))
+         cheap_counters:set(Host, sessions, node_sessions_count(Host));
+       true ->
+         ?DEBUG("efficient local sessions count disabled", []),
+         ok
     end,
 
     [ejabberd_hooks:add(Hook, Component, ?MODULE, Hook, 20)
