@@ -1543,11 +1543,13 @@ undev_appid(DevId) ->
 
 cert_type(CertFile) ->
     Subject = os:cmd("openssl x509 -in " ++ binary_to_list(CertFile) ++ " -noout -subject"),
-    case {string:str(Subject, "Apple Push"), string:str(Subject, "Apple Development")} of
-	{0, 0} -> key_type(CertFile);
-	{_, 0} -> apns_prod;
-	{0, _} -> apns_dev;
-	_ -> undefined
+    case {string:str(Subject, "Apple Push"),
+	  string:str(Subject, "Apple Development"),
+	  string:str(Subject, "VoIP Services")} of
+	{0, 0, 0} -> key_type(CertFile);
+	{_, 0, 0} -> apns_prod;
+	{0, 0, _} -> apns_prod;
+	{0, _, 0} -> apns_dev
     end.
 
 key_type(KeyFile) ->
