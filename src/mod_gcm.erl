@@ -84,6 +84,28 @@ start(Host, Opts) ->
 			       ?MODULE, receive_offline_packet, 35),
             ejabberd_hooks:add(p1_push_badge_reset, Host,
                                ?MODULE, badge_reset, 50),
+	    MultipleAccs =
+	    gen_mod:get_opt(
+		multiple_accounts_per_device, Opts,
+		fun(true) -> true;
+		   (false) -> false
+		end,
+		false),
+	    case {gen_mod:db_type(Host, Opts, ?MODULE), MultipleAccs} of
+		{sql, _} -> ok;
+		{p1db, false} -> ok;
+		{p1db = DBType, true} ->
+		    ?WARNING_MSG(
+			"Option 'multiple_accounts_per_device' is forced "
+			"to 'false' with db_type=~w in ~w", [DBType, ?MODULE]),
+		    ok;
+		{DBType, false} ->
+		    ?WARNING_MSG(
+			"Option 'multiple_accounts_per_device' is forced "
+			"to 'true' with db_type=~w in ~w", [DBType, ?MODULE]),
+		    ok;
+		_ -> ok
+	    end,
             IQDisc = gen_mod:get_opt(
                        iqdisc, Opts, fun gen_iq_handler:check_type/1,
                        one_queue),
@@ -669,18 +691,48 @@ store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom) ->
             name -> <<"N">>;
             _ -> <<"-">>
         end,
+    MultipleAccs =
+    gen_mod:get_module_opt(
+	LServer, ?MODULE,
+	multiple_accounts_per_device,
+	fun(true) -> true;
+	   (false) -> false
+	end,
+	false),
+    MultipleDevices =
+    gen_mod:get_module_opt(
+	LServer, ?MODULE,
+	multiple_devices_per_account,
+	fun(true) -> true;
+	   (false) -> false
+	end,
+	false),
     F = fun() ->
-                %% We must keep the previous local_badge if it exists.
-                ?SQL_UPSERT_T(
-                   "gcm_cache",
-                   ["!username=%(LUser)s",
-                    "!device_id=%(DeviceID)s",
-                    "app_id=%(AppID)s",
-                    "send_body=%(SSendBody)s",
-                    "send_from=%(SSendFrom)s",
-                    "-local_badge=0"
-                   ])
-        end,
+	if MultipleDevices ->
+	    if
+		MultipleAccs -> ok;
+		true ->
+		    ejabberd_sql:sql_query_t(
+			?SQL("delete from gcm_cache "
+			     "where username<>%(LUser)s and "
+			     "device_id=%(DeviceID)s"))
+	    end;
+	    true ->
+		ejabberd_sql:sql_query_t(
+		    ?SQL("delete from gcm_cache "
+			 "where username<>%(LUser)s"))
+	end,
+	%% We must keep the previous local_badge if it exists.
+	?SQL_UPSERT_T(
+	    "gcm_cache",
+	    ["!username=%(LUser)s",
+	     "!device_id=%(DeviceID)s",
+	     "app_id=%(AppID)s",
+	     "send_body=%(SSendBody)s",
+	     "send_from=%(SSendFrom)s",
+	     "-local_badge=0"
+	    ])
+	end,
         {atomic, _} = sql_queries:sql_transaction(LServer, F).
 
 update_cache(JID, OldDeviceID, NewDeviceID) ->
@@ -950,8 +1002,13 @@ mod_opt_type(push_services) ->
     fun (L) when is_list(L) -> L end;
 mod_opt_type(silent_push_enabled) ->
     fun (L) when is_boolean(L) -> L end;
+mod_opt_type(multiple_accounts_per_device) ->
+    fun (L) when is_boolean(L) -> L end;
+mod_opt_type(multiple_devices_per_account) ->
+    fun (L) when is_boolean(L) -> L end;
 mod_opt_type(_) ->
     [db_type, default_service, default_services, iqdisc,
+     multiple_accounts_per_device, multiple_devices_per_account,
      p1db_group, push_services, silent_push_enabled].
 
 opt_type(p1db_group) ->

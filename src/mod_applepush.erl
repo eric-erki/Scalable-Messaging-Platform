@@ -885,15 +885,29 @@ store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom) ->
              (false) -> false
           end,
           false),
+    MultipleDevices =
+    gen_mod:get_module_opt(
+	LServer, ?MODULE,
+	multiple_devices_per_account,
+	fun(true) -> true;
+	   (false) -> false
+	end,
+	false),
     F = fun() ->
-                if
-                    MultipleAccs -> ok;
-                    true ->
-                        ejabberd_sql:sql_query_t(
-                          ?SQL("delete from applepush_cache "
-                               "where username<>%(LUser)s and "
-                               "device_id=%(SDeviceID)s"))
-                end,
+		if MultipleDevices ->
+		    if
+			MultipleAccs -> ok;
+			true ->
+			    ejabberd_sql:sql_query_t(
+			      ?SQL("delete from applepush_cache "
+				   "where username<>%(LUser)s and "
+				   "device_id=%(SDeviceID)s"))
+		    end;
+		    true ->
+			ejabberd_sql:sql_query_t(
+			    ?SQL("delete from applepush_cache "
+				 "where username<>%(LUser)s"))
+		end,
                 %% We must keep the previous local_badge if it exists.
                 ?SQL_UPSERT_T(
                    "applepush_cache",
@@ -1342,12 +1356,14 @@ mod_opt_type(send_groupchat_default) ->
     end;
 mod_opt_type(silent_push_enabled) ->
     fun (L) when is_boolean(L) -> L end;
+mod_opt_type(multiple_devices_per_account) ->
+    fun (L) when is_boolean(L) -> L end;
 mod_opt_type(_) ->
     [db_type, default_service, default_services, iqdisc,
      multiple_accounts_per_device, offline_default,
      p1db_group, push_services, send_body_default,
      send_from_default, send_groupchat_default,
-     silent_push_enabled].
+     silent_push_enabled, multiple_devices_per_account].
 
 opt_type(p1db_group) ->
     fun (G) when is_atom(G) -> G end;
