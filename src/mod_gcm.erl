@@ -165,7 +165,7 @@ badge_reset(Acc, JID, Notification, _AppID, Count) ->
     case Type of
 	<<"gcm">> ->
 	    DeviceID = fxml:get_path_s(Notification, [{elem, <<"id">>}, cdata]),
-            ?INFO_MSG("Reseting badge for ~s with applepush token ~p",[jid:to_string(JID),DeviceID]),
+            ?INFO_MSG("Reseting badge for ~s with gcm token ~p",[jid:to_string(JID),DeviceID]),
 	    case DeviceID of
 		ID1 when is_binary(ID1), size(ID1) > 0 ->
 		    {stop, set_local_badge(JID, ID1, Count)};
@@ -706,7 +706,7 @@ store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom) ->
 	fun(true) -> true;
 	   (false) -> false
 	end,
-	false),
+	true),
     F = fun() ->
 	if MultipleDevices ->
 	    if

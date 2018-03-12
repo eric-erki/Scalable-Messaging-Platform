@@ -892,7 +892,7 @@ store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom) ->
 	fun(true) -> true;
 	   (false) -> false
 	end,
-	false),
+	true),
     F = fun() ->
 		if MultipleDevices ->
 		    if
