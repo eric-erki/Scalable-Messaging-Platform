@@ -774,6 +774,10 @@ disable_push(JID, DeviceID, State) ->
     BJID = jid:remove_resource(JID),
     ?INFO_MSG("(~p) disabling push for device ~s with JID ~s~n",
 	      [State#state.host, DeviceID, jid:to_string(BJID)]),
+    BDeviceID = case DeviceID of
+		    V when is_list(V) -> V;
+		    _ -> DeviceID
+		end,
     ejabberd_router:route(From, BJID,
 			  #xmlel{name = <<"iq">>,
 				 attrs =
@@ -787,7 +791,7 @@ disable_push(JID, DeviceID, State) ->
 						   <<"feedback">>},
 						  {<<"ts">>,
 						   jlib:integer_to_binary(TimeStamp)},
-						  {<<"id">>, list_to_binary(DeviceID)}],
+						  {<<"id">>, BDeviceID}],
 					     children = []}]}).
 
 iolist_to_string(S) ->
