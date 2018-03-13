@@ -1392,10 +1392,11 @@ handle_info({route, _From, _To, {broadcast, Data}}, StateName, StateData) ->
 		    fsm_next_state(StateName, StateData)
 	    end;
 	{disable_push, DeviceID} ->
-	    case catch fxml:get_path_s(StateData#state.oor_notification,
-					 [{elem, <<"id">>}, cdata])
-	    of
-		DeviceID ->
+	    DID = (catch fxml:get_path_s(StateData#state.oor_notification,
+					 [{elem, <<"id">>}, cdata])),
+	    case {DID, catch str:to_upper(DID)} of
+		{D1, D2} when D1 == DeviceID orelse D2 == DeviceID ->
+		    NSD1 = change_reception(StateData, true),
 		    NSD1 = StateData#state{
 			     keepalive_timeout = undefined,
 			     oor_timeout = undefined,
