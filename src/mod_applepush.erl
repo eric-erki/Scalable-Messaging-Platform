@@ -939,7 +939,7 @@ store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom) ->
 
 delete_cache(JID, DeviceID) ->
     case multi_device_mode(JID#jid.lserver) of
-	false ->
+	true ->
 	    case gen_mod:db_type(JID#jid.lserver, ?MODULE) of
 		mnesia ->
 		    delete_cache_mnesia(JID, DeviceID);
