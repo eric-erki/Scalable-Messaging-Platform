@@ -301,7 +301,7 @@ handle_info({ssl, Socket, Packet}, State)
 					     attrs =
 					     [{<<"xmlns">>, ?NS_P1_PUSH_APPLEPUSH},
 					      {<<"status">>, <<"feedback">>},
-					      {<<"id">>, jlib:integer_to_binary(DeviceID, 16)}],
+					      {<<"id">>, DeviceID}],
 					     children = []}]});
 		      true ->
 			ok
@@ -441,39 +441,38 @@ handle_message(From, To, Packet, ResendCount, State) ->
     CustomFields  = get_custom_fields(Packet),
     PriorityFlag = check_push_priority(Msg, Badge, Sound),
     Payload = make_payload(State, Msg, Badge, Sound, Sender, CustomFields),
-    ID =
-	case catch erlang:list_to_integer(binary_to_list(DeviceID), 16) of
-	    ID1 when is_integer(ID1) ->
-		ID1;
-	    _ ->
-		false
-	end,
+    ID = case catch erlang:binary_to_integer(DeviceID, 16) of
+	     ID1 when is_integer(ID1) ->
+		 ID1;
+	     _ ->
+		 false
+	 end,
     if
-    is_integer(ID) ->
-        Notification = build_apns_notification(State#state.cmd_id,ID,Payload,
-                                               PriorityFlag, State#state.time_to_live),
+	is_integer(ID) ->
+	    Notification = build_apns_notification(State#state.cmd_id, ID, Payload,
+						   PriorityFlag, State#state.time_to_live),
 	    ?INFO_MSG("(~p) sending notification for ~s~n~p~npayload:~n~s~n"
 		      "Sender: ~s~n"
 		      "Receiver: ~s~n"
 		      "Device ID: ~s~n",
-		      [State#state.host, erlang:integer_to_list(ID, 16),
+		      [State#state.host, DeviceID,
 		       Notification, Payload,
 		       Sender,
 		       Receiver, DeviceID]),
 	    case ssl:send(State#state.socket, Notification) of
 		ok ->
-		    cache(From, ID, State);
+		    cache(From, DeviceID, State);
 		{error, Reason} ->
 		    ?INFO_MSG("(~p) Connection closed: ~p, reconnecting",
 			      [State#state.host, Reason]),
 		    ssl:close(State#state.socket),
 		    self() ! connect,
 		    if ResendCount >= ?MAX_RESEND_COUNT ->
-			    bounce_message(From, To, Packet,
-					   <<"Too many resend in push service">>),
-			    State#state{socket = undefined};
-		       true ->
-			    queue_message(From, To, Packet, ResendCount+1,
+			bounce_message(From, To, Packet,
+				       <<"Too many resend in push service">>),
+			State#state{socket = undefined};
+			true ->
+			    queue_message(From, To, Packet, ResendCount + 1,
 					  State#state{socket = undefined})
 		    end
 	    end;
@@ -803,14 +802,15 @@ parse_feedback_buf(Buf, State) ->
 	<<TimeStamp:32, IDLen:16, BDeviceID:IDLen/binary, Rest/binary>> ->
 	    IDLen8 = IDLen * 8,
 	    <<DeviceID:IDLen8>> = BDeviceID,
+	    SDeviceID = iolist_to_binary(io_lib:format("~64.16.0B", [DeviceID])),
 	    ?DEBUG("(~p) received feedback for ~s~n",
-                   [State#state.host, erlang:integer_to_list(DeviceID, 16)]),
+                   [State#state.host, SDeviceID]),
 	    case dict:find(DeviceID, State#state.device_cache) of
 		{ok, {_Counter, JID}} ->
                     BJID = jid:remove_resource(JID),
                     ?DEBUG("(~p) sending feedback for ~s to ~s~n",
                            [State#state.host,
-                            erlang:integer_to_list(DeviceID, 16),
+                            SDeviceID,
                             jid:to_string(BJID)]),
 		    From = jid:make(<<"">>, State#state.host, <<"">>),
 		    ejabberd_router:route(
@@ -824,7 +824,7 @@ parse_feedback_buf(Buf, State) ->
                                      [{<<"xmlns">>, ?NS_P1_PUSH_APPLEPUSH},
                                       {<<"status">>, <<"feedback">>},
                                       {<<"ts">>, jlib:integer_to_binary(TimeStamp)},
-                                      {<<"id">>, jlib:integer_to_binary(DeviceID, 16)}],
+                                      {<<"id">>, SDeviceID}],
                                      children = []}]});
 		error ->
 		    ok

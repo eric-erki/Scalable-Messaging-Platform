@@ -195,12 +195,12 @@ badge_reset(Acc, JID, Notification, _AppID, Count) ->
 	<<"applepush">> ->
 	    DeviceID = fxml:get_path_s(Notification, [{elem, <<"id">>}, cdata]),
             ?INFO_MSG("Reseting badge for ~s with applepush token ~p",[jid:to_string(JID),DeviceID]),
-	    case catch erlang:list_to_integer(binary_to_list(DeviceID), 16) of
-		ID1 when is_integer(ID1) ->
+	    case DeviceID of
+		ID1 when is_binary(ID1), size(ID1) > 0 ->
 		    {stop, set_local_badge(JID, ID1, Count)};
-                _ ->
-                    Acc
-            end;
+		_ ->
+		    Acc
+	    end;
 	_ ->
 	    Acc
     end.
@@ -245,11 +245,10 @@ set_local_badge_p1db(JID, DeviceID, Count) ->
     end.
 
 set_local_badge_sql(#jid{luser = LUser, lserver = LServer}, DeviceID, Count) ->
-    SDeviceID = jlib:integer_to_binary(DeviceID, 16),
     case ejabberd_sql:sql_query(
            LServer,
            ?SQL("UPDATE applepush_cache SET local_badge=%(Count)d"
-                " WHERE username=%(LUser)s and device_id=%(SDeviceID)s")) of
+                " WHERE username=%(LUser)s and device_id=%(DeviceID)s")) of
         {updated, 1} ->
             ok;
         {updated, 0} ->
@@ -292,14 +291,13 @@ enable_offline_notification(JID, Notification, SendBody, SendFrom, AppID1) ->
     case Type of
 	<<"applepush">> ->
 	    DeviceID = fxml:get_path_s(Notification, [{elem, <<"id">>}, cdata]),
-	    case catch erlang:list_to_integer(binary_to_list(DeviceID), 16) of
-		ID1 when is_integer(ID1) ->
-		    AppID =
-			case fxml:get_path_s(Notification,
-					    [{elem, <<"appid">>}, cdata]) of
-			    <<"">> -> AppID1;
-			    A -> A
-			end,
+	    case DeviceID of
+		ID1 when is_binary(ID1), size(ID1) > 0 ->
+		    AppID = case fxml:get_path_s(Notification,
+						 [{elem, <<"appid">>}, cdata]) of
+				<<"">> -> AppID1;
+				A -> A
+			    end,
 		    TimeStamp = p1_time_compat:system_time(seconds),
 		    store_cache(JID, ID1, AppID, SendBody, SendFrom, TimeStamp);
 		_ ->
@@ -316,13 +314,13 @@ disable_notification(JID, Notification, _AppID) ->
 	<<"applepush">> ->
 	    DeviceID = fxml:get_path_s(Notification, [{elem, <<"id">>}, cdata]),
             ?INFO_MSG("Disabling p1:push for ~s with applepush token ~p",[jid:to_string(JID),DeviceID]),
-	    case catch erlang:list_to_integer(binary_to_list(DeviceID), 16) of
-		ID1 when is_integer(ID1) ->
-	            delete_cache(JID, ID1),
-        	    stop;
-                _ ->
-                    ok
-            end;
+	    case DeviceID of
+		ID1 when is_binary(ID1), size(ID1) > 0 ->
+		    delete_cache(JID, ID1),
+		    stop;
+		_ ->
+		    ok
+	    end;
 	_ ->
 	    ok
     end.
@@ -349,17 +347,19 @@ send_offline_packet_notification(From, To, Packet, SDeviceID, BadgeCount) ->
             is_binary(SDeviceID) -> binary_to_list(SDeviceID);
             is_list(SDeviceID) -> SDeviceID
         end,
-    case catch erlang:list_to_integer(DeviceID, 16) of
-        ID1 when is_integer(ID1) ->
-            case lookup_cache(To, ID1) of
-                [{ID, AppID, SendBody, SendFrom, _LocalBadge}] -> %% LocalBadge is already counted here..
-                    do_send_offline_packet_notification(From, To, Packet, ID, AppID, SendBody, SendFrom, BadgeCount);
-                _ ->
-                    ok
-            end;
-        _ ->
-            ok
+    case DeviceID of
+	ID1 when is_binary(ID1), size(ID1) > 0 ->
+	    case lookup_cache(To, ID1) of
+		[{ID, AppID, SendBody, SendFrom, _LocalBadge}] ->
+		    %% LocalBadge is already counted here..
+		    do_send_offline_packet_notification(From, To, Packet, ID, AppID, SendBody, SendFrom, BadgeCount);
+		_ ->
+		    ok
+	    end;
+	_ ->
+	    ok
     end.
+
 receive_offline_packet(From, To, Packet) ->
     ?DEBUG("mod_applepush offline~n\tfrom ~p~n\tto ~p~n\tpacket ~P~n",
 	   [From, To, Packet, 8]),
@@ -390,17 +390,15 @@ process_sm_iq(From, To, #iq{type = Type, sub_el = SubEl} = IQ) ->
 	{set, #xmlel{name = <<"disable">>}} ->
             Host = To#jid.lserver,
             SDeviceID = fxml:get_tag_attr_s(<<"id">>, SubEl),
-            DeviceID =
-		erlang:binary_to_integer(SDeviceID, 16),
 	    ejabberd_sm:route(
 	      From, To, {broadcast, {disable_push, SDeviceID}}),
-            case lookup_cache(To, DeviceID) of
+            case lookup_cache(To, SDeviceID) of
                 [{_ID, AppID, _SendBody, _SendFrom, _LocalBadge}] ->
                     PushService = get_push_service(Host, To, AppID),
                     ServiceJID = jid:make(<<"">>, PushService, <<"">>),
                     if
                         From#jid.lserver == ServiceJID#jid.lserver ->
-                            delete_cache(To, DeviceID),
+                            delete_cache(To, SDeviceID),
 			    IQ#iq{type = result, sub_el = []};
                         true ->
                             IQ#iq{type = error,
@@ -597,8 +595,6 @@ device_reset_badge(Host, To, DeviceID, AppID, Badge) ->
                                [{xmlcdata, LBadge}]}]}]},
     ejabberd_router:route(To, ServiceJID, Packet1).
 
-
-
 resend_badge(To) ->
     Host = To#jid.lserver,
     case gen_mod:is_loaded(Host, mod_applepush) of
@@ -621,7 +617,6 @@ resend_badge(To) ->
                                 ok;
                             true ->
                                 Badge = jlib:integer_to_binary(Offline + LocalBadge),
-                                DeviceID = jlib:integer_to_binary(ID, 16),
                                 Packet1 =
                                     #xmlel{name = <<"message">>,
                                            attrs = [],
@@ -632,7 +627,7 @@ resend_badge(To) ->
                                                    [#xmlel{name = <<"id">>,
                                                            attrs = [],
                                                            children =
-                                                           [{xmlcdata, DeviceID}]},
+                                                           [{xmlcdata, ID}]},
                                                     #xmlel{name = <<"badge">>,
                                                            attrs = [],
                                                            children =
@@ -719,12 +714,11 @@ lookup_cache_p1db(JID, DeviceID) ->
 
 lookup_cache_sql(JID, DeviceID) ->
     #jid{luser = LUser, lserver = LServer} = JID,
-    SDeviceID = jlib:integer_to_binary(DeviceID, 16),
     do_lookup_cache_sql(
       LServer,
       ?SQL("select @(device_id)s, @(app_id)s, @(send_body)s,"
            " @(send_from)s, @(local_badge)s from applepush_cache "
-           "where username=%(LUser)s and device_id=%(SDeviceID)s")).
+           "where username=%(LUser)s and device_id=%(DeviceID)s")).
 
 do_lookup_cache_mnesia(MatchSpec) ->
     case mnesia:dirty_match_object(MatchSpec) of
@@ -748,7 +742,6 @@ do_lookup_cache_sql(LServer, Query) ->
         {selected, EntryList} ->
             lists:map(
               fun({SDeviceID, AppID, SSendBody, SSendFrom, LocalBadgeStr}) ->
-                      DeviceID = jlib:binary_to_integer(SDeviceID, 16),
                       SendBody =
                           case SSendBody of
                               <<"A">> -> all;
@@ -770,7 +763,7 @@ do_lookup_cache_sql(LServer, Query) ->
                             true ->
                                 0  %%is null
                         end,
-                      {DeviceID, AppID, SendBody, SendFrom, LocalBadge}
+                      {SDeviceID, AppID, SendBody, SendFrom, LocalBadge}
             end, EntryList);
 	_ ->
 	    false
@@ -891,7 +884,6 @@ store_cache_p1db(JID, DeviceID, Options) ->
 
 store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom) ->
     #jid{luser = LUser, lserver = LServer} = JID,
-    SDeviceID = jlib:integer_to_binary(DeviceID, 16),
     SSendBody =
         case SendBody of
             all -> <<"A">>;
@@ -921,14 +913,14 @@ store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom) ->
 		ejabberd_sql:sql_query_t(
 		    ?SQL("delete from applepush_cache "
 			 "where username<>%(LUser)s and "
-			 "device_id=%(SDeviceID)s"))
+			 "device_id=%(DeviceID)s"))
 	end,
 	case multi_device_mode(JID#jid.lserver) of
 	    true ->
 		ejabberd_sql:sql_query_t(
 		    ?SQL("delete from applepush_cache "
 			 "where username=%(LUser)s and "
-			 "device_id<>%(SDeviceID)s"));
+			 "device_id<>%(DeviceID)s"));
 	    _ ->
 		ok
 	end,
@@ -936,7 +928,7 @@ store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom) ->
 	?SQL_UPSERT_T(
 	    "applepush_cache",
 	    ["!username=%(LUser)s",
-	     "!device_id=%(SDeviceID)s",
+	     "!device_id=%(DeviceID)s",
 	     "app_id=%(AppID)s",
 	     "send_body=%(SSendBody)s",
 	     "send_from=%(SSendFrom)s",
@@ -969,17 +961,15 @@ delete_cache_p1db(JID, DeviceID) ->
     #jid{luser = LUser, lserver = LServer} = JID,
     Key = usd2key(LUser, LServer, DeviceID),
     p1db:delete(applepush_cache, Key),
-    SDeviceID = jlib:integer_to_binary(DeviceID, 16),
-    p1db:delete(applepush_cache_device, SDeviceID).
+    p1db:delete(applepush_cache_device, DeviceID).
 
 delete_cache_sql(JID, DeviceID) ->
     #jid{luser = LUser, lserver = LServer} = JID,
-    SDeviceID = jlib:integer_to_binary(DeviceID, 16),
     ejabberd_sql:sql_query(
       LServer,
       ?SQL("delete from applepush_cache"
            " where username=%(LUser)s and"
-           " device_id=%(SDeviceID)s")).
+           " device_id=%(DeviceID)s")).
 
 delete_cache(JID) ->
     case gen_mod:db_type(JID#jid.lserver, ?MODULE) of
@@ -1065,8 +1055,7 @@ read_push_customizations(LUser, LServer, #jid{luser = U, lserver = S}) ->
     end.
 
 usd2key(LUser, LServer, DeviceID) ->
-    SDeviceID = jlib:integer_to_binary(DeviceID, 16),
-    <<LServer/binary, 0, LUser/binary, 0, SDeviceID/binary>>.
+    <<LServer/binary, 0, LUser/binary, 0, DeviceID/binary>>.
 
 usj2key(LUser, LServer, JID) ->
     <<LServer/binary, 0, LUser/binary, 0, JID/binary>>.
@@ -1074,7 +1063,7 @@ usj2key(LUser, LServer, JID) ->
 key2did(USPrefix, Key) ->
     Size = size(USPrefix),
     <<_:Size/binary, SDeviceID/binary>> = Key,
-    jlib:binary_to_integer(SDeviceID, 16).
+    SDeviceID.
 
 key2jid(USPrefix, Key) ->
     Size = size(USPrefix),
@@ -1145,9 +1134,8 @@ device_dec_val(_, Bin) ->
      proplists:get_value(user, Options, <<"">>)].
 
 update_deviceid_p1db(DeviceID, LUser, LServer, Notify) ->
-    SDeviceID = jlib:integer_to_binary(DeviceID, 16),
     Insert =
-        case p1db:get(applepush_cache_device, SDeviceID) of
+        case p1db:get(applepush_cache_device, DeviceID) of
             {ok, Val, _VClock} ->
                 case device_dec_val(ok, Val) of
                     [LServer, LUser] -> false;
@@ -1171,7 +1159,7 @@ update_deviceid_p1db(DeviceID, LUser, LServer, Notify) ->
     if
         Insert ->
             DeviceVal = device_enc_val(ok, [LServer, LUser]),
-            p1db:insert(applepush_cache_device, SDeviceID, DeviceVal);
+            p1db:insert(applepush_cache_device, DeviceID, DeviceVal);
         true ->
             ok
     end.
@@ -1181,8 +1169,7 @@ p1db_update_device_table() ->
 
 p1db_update_device_table({ok, Key, _Val, _VClock}) ->
     [LServer, LUser, SDeviceID] = dec_key(Key),
-    DeviceID = jlib:binary_to_integer(SDeviceID, 16),
-    update_deviceid_p1db(DeviceID, LUser, LServer, false),
+    update_deviceid_p1db(SDeviceID, LUser, LServer, false),
     p1db_update_device_table(p1db:next(applepush_cache, Key));
 p1db_update_device_table({error, notfound}) ->
     ok;
@@ -1195,7 +1182,6 @@ export(_Server) ->
                                  device_id = DeviceID,
                                  options = Options})
 	 when LServer == Host ->
-              SDeviceID = jlib:integer_to_binary(DeviceID, 16),
               AppID = proplists:get_value(appid, Options, "applepush.localhost"),
               SendBody = proplists:get_value(send_body, Options, none),
               SendFrom = proplists:get_value(send_from, Options, true),
@@ -1215,10 +1201,10 @@ export(_Server) ->
                   end,
               [?SQL("delete from applepush_cache"
                     " where username=%(LUser)s and"
-                    " device_id=%(SDeviceID)s;"),
+                    " device_id=%(DeviceID)s;"),
                ?SQL("insert into applepush_cache(username, device_id, app_id, "
                     "                            send_body, send_from) "
-                    "values (%(LUser)s, %(SDeviceID)s, "
+                    "values (%(LUser)s, %(DeviceID)s, "
                     "%(AppID)s, %(SSendBody)s, %(SSendFrom)s);")];
 	 (_Host, _R) ->
       	      []
@@ -1257,7 +1243,6 @@ sql_to_p1db(LServer, Limit, Offset) ->
 
 row_to_p1db(LServer,
 	    [LUser, SDeviceID, AppID, SSendBody, SSendFrom, LocalBadgeStr]) ->
-    DeviceID = jlib:binary_to_integer(SDeviceID, 16),
     SendBody = case SSendBody of
 		   <<"A">> -> all;
 		   <<"U">> -> first_per_user;
@@ -1280,7 +1265,7 @@ row_to_p1db(LServer,
 	       {send_from, SendFrom},
 	       {local_badge, LocalBadge},
 	       {timestamp, 0}],
-    Key = usd2key(LUser, LServer, DeviceID),
+    Key = usd2key(LUser, LServer, SDeviceID),
     Val = opts_to_p1db(Options),
     p1db:async_insert(applepush_cache, Key, Val).
 
@@ -1329,7 +1314,7 @@ get_tokens_by_jid(JIDString) when is_binary(JIDString) ->
 	get_tokens_by_jid(jid:from_string(JIDString));
 get_tokens_by_jid(#jid{luser = LUser, lserver = LServer}) ->
     LUS = {LUser, LServer},
-    [erlang:integer_to_list(I, 16) || {applepush_cache,_,I,_} <-
+    [I || {applepush_cache,_,I,_} <-
        mnesia:dirty_read(applepush_cache, LUS)].
 
 transform_module_options(Opts) ->

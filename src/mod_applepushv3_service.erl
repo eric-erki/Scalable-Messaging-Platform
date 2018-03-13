@@ -414,42 +414,29 @@ handle_message(From, To, Packet, _ResendCount, State) ->
     CustomFields  = get_custom_fields(Packet),
     PriorityFlag = check_push_priority(Msg, Badge, Sound),
     Payload = make_payload(To#jid.lserver, State, Msg, Badge, Sound, Sender, CustomFields),
-    ID =
-	case catch erlang:list_to_integer(binary_to_list(DeviceID), 16) of
-	    ID1 when is_integer(ID1) ->
-		ID1;
-	    _ ->
-		false
-	end,
-    if
-    is_integer(ID) ->
-        {MegaSecs, Secs, _MicroSecs} = os:timestamp(),
-        Expiry = MegaSecs * 1000000 + Secs + State#state.time_to_live,
-	{Jwt, State2} = get_jwt(State),
-        APNS_Headers = [{<<"apns-expiration">>, integer_to_binary(Expiry)},
-                        {<<"apns-priority">>, integer_to_binary(PriorityFlag)}] ++
-			if Jwt == none -> []; true -> [{<<"authorization">>, Jwt}] end ++
-                        [{<<"apns-topic">>, State#state.default_topic} || State#state.default_topic /= <<"">>],
-        %%TODO:
-        %%   * apns-topic  ?
-        %%   * apns-collapse-id : This is to collapse multiple into one.  Likely not used by us for now
-        %%   * apns-thread-id  : This can be useful. For example to group all pushes of the same match together.
-        %%                       or all pushes related to the same news event.
-        ?INFO_MSG("(~p) sending notification for ~s~npayload:~n~s~n"
-		  "Sender: ~s~n"
-		  "Receiver: ~s~n"
-		  "Device ID: ~s~n",
-		  [State#state.host, erlang:integer_to_list(ID, 16),
-		   Payload,
-		   Sender,
-		   Receiver, DeviceID]),
-        GunConn = State#state.gun_connection,
-	Token = erlang:integer_to_list(ID, 16),
-        StreamRef = gun:post(GunConn, ["/3/device/", Token], APNS_Headers, Payload),
-	State2#state{requests = dict:store(StreamRef, {From, Token}, State#state.requests)};
-    true ->
-        State
-    end.
+    {MegaSecs, Secs, _MicroSecs} = os:timestamp(),
+    Expiry = MegaSecs * 1000000 + Secs + State#state.time_to_live,
+    {Jwt, State2} = get_jwt(State),
+    APNS_Headers = [{<<"apns-expiration">>, integer_to_binary(Expiry)},
+		    {<<"apns-priority">>, integer_to_binary(PriorityFlag)}] ++
+		    if Jwt == none -> []; true -> [{<<"authorization">>, Jwt}] end ++
+		    [{<<"apns-topic">>, State#state.default_topic} || State#state.default_topic /= <<"">>],
+    %%TODO:
+    %%   * apns-topic  ?
+    %%   * apns-collapse-id : This is to collapse multiple into one.  Likely not used by us for now
+    %%   * apns-thread-id  : This can be useful. For example to group all pushes of the same match together.
+    %%                       or all pushes related to the same news event.
+    ?INFO_MSG("(~p) sending notification for ~s~npayload:~n~s~n"
+	      "Sender: ~s~n"
+	      "Receiver: ~s~n"
+	      "Device ID: ~s~n",
+	      [State#state.host, DeviceID,
+	       Payload,
+	       Sender,
+	       Receiver, DeviceID]),
+    GunConn = State#state.gun_connection,
+    StreamRef = gun:post(GunConn, ["/3/device/", DeviceID], APNS_Headers, Payload),
+    State2#state{requests = dict:store(StreamRef, {From, DeviceID}, State#state.requests)}.
 
 handle_http_response(_From, Token, Error, State) ->
     ?ERROR_MSG("Apnsv3 push (~p) : gun error ~p", [Token, Error]),
