@@ -266,11 +266,10 @@ handle_message(From, To, Packet, State) ->
 			     {<<"data">>, Payload},
 			     {<<"time_to_live">>, Expiry},
 			     {<<"priority">>, ?GCM_PRIORITY_HIGH}]}),
-	  ?DEBUG("(~p) sending notification for ~s~n~p~npayload"
-		 ":~n~p~nSender: ~s~nReceiver: ~s~nDevice "
-		 "ID: ~s~n",
-		 [State#state.host, DeviceID, Notification, Payload,
-		  Sender, Receiver, DeviceID]),
+	  ?DEBUG("(~p) sending notification for ~s~npayload: ~p~n"
+		 "Sender: ~s~n"
+		 "Receiver: ~s~n",
+		 [State#state.host, DeviceID, Payload, Sender, Receiver]),
 	  try httpc:request(post,
 			    {Baseurl, [{"Authorization", ApiKey}],
 			     "application/json", Notification},
@@ -297,7 +296,7 @@ handle_message(From, To, Packet, State) ->
 		State;
 	    {ok,
 	     {{_, StatusCode, ReasonPhrase}, Headers, RespBody}} ->
-		?INFO_MSG("(~p) GCM returned an error: ~p - ~p "
+		?ERROR_MSG("(~p) GCM returned an error: ~p - ~p "
 			  "- ~p",
 			  [State#state.host, StatusCode, ReasonPhrase,
 			   RespBody]),
@@ -547,8 +546,8 @@ disable_push(JID, DeviceID, State) ->
     From = jid:make(<<"">>, State#state.host, <<"">>),
     TimeStamp = p1_time_compat:system_time(milli_seconds),
     BJID = jid:remove_resource(JID),
-    ?INFO_MSG("(~p) disabling push for device ~s with JID ~s~n",
-	      [State#state.host, DeviceID, jid:to_string(BJID)]),
+    ?WARNING_MSG("(~p) disabling push for ~s with JID ~s",
+		 [State#state.host, DeviceID, jid:to_string(BJID)]),
     ejabberd_router:route(From, BJID,
 			  #xmlel{name = <<"iq">>,
 				 attrs =

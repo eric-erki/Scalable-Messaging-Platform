@@ -226,18 +226,16 @@ handle_message(From, To, Packet, State) ->
     case size(DeviceID) of
       0 -> State;
       _ ->
-          Sender = get_sender(Packet),
-          Receiver = get_receiver(Packet),
-          Message = unwrap_message(Packet),
-          Payload = fxml:element_to_binary(Message),
-          Baseurl = build_endpoint(State#state.gateway, DeviceID),
-          Headers = prepare_headers(Payload,State),
-	  ?DEBUG("(~p) sending notification for ~s~npayload"
-		 ":~n~p~nSender: ~p~nReceiver: ~p~nDevice "
-		 "ID: ~s~n"
-                 "URL: ~p~n",
-		 [State#state.host, DeviceID, Payload,
-		  Sender, Receiver, DeviceID,Baseurl]),
+	  Sender = get_sender(Packet),
+	  Receiver = get_receiver(Packet),
+	  Message = unwrap_message(Packet),
+	  Payload = fxml:element_to_binary(Message),
+	  Baseurl = build_endpoint(State#state.gateway, DeviceID),
+	  Headers = prepare_headers(Payload,State),
+	  ?DEBUG("(~p) sending notification for ~s~npayload: ~p~n"
+		 "Sender: ~p~n"
+		 "Receiver: ~p~n",
+		 [State#state.host, DeviceID, Payload, Sender, Receiver]),
 	  try httpc:request(post,
 			    {binary_to_list(Baseurl), Headers,
 			     "application/xml", Payload},
@@ -264,7 +262,7 @@ handle_message(From, To, Packet, State) ->
 		       From, To, Packet, Payload, RespHeaders, DeviceID, State);
 	    {ok,
 	     {{_, StatusCode, ReasonPhrase}, Headers, RespBody}} ->
-		?INFO_MSG("(~p) Remote web push API returned an error: ~p - ~p "
+		?ERROR_MSG("(~p) Remote web push API returned an error: ~p - ~p "
 			  "- ~p",
 			  [State#state.host, StatusCode, ReasonPhrase,
 			   RespBody]),
@@ -464,8 +462,8 @@ disable_push(JID, DeviceID, State) ->
     From = jid:make(<<"">>, State#state.host, <<"">>),
     TimeStamp = p1_time_compat:system_time(milli_seconds),
     BJID = jid:remove_resource(JID),
-    ?INFO_MSG("(~p) disabling push for device ~s with JID ~s~n",
-	      [State#state.host, DeviceID, jid:to_string(BJID)]),
+    ?WARNING_MSG("(~p) disabling push for ~s with JID ~s",
+		 [State#state.host, DeviceID, jid:to_string(BJID)]),
     ejabberd_router:route(From, BJID,
 			  #xmlel{name = <<"iq">>,
 				 attrs =

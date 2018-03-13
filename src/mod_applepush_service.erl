@@ -291,6 +291,8 @@ handle_info({ssl, Socket, Packet}, State)
 			Status == 8 ->
 			    From = jid:make(<<"">>, State#state.host, <<"">>),
 			    BJID = jid:remove_resource(JID),
+			    ?WARNING_MSG("(~p) disabling push for ~s with JID ~s",
+					 [State#state.host, DeviceID, jid:to_string(BJID)]),
 			    ejabberd_router:route(
 			      From, BJID,
 			      #xmlel{name = <<"iq">>,
@@ -451,20 +453,16 @@ handle_message(From, To, Packet, ResendCount, State) ->
 	is_integer(ID) ->
 	    Notification = build_apns_notification(State#state.cmd_id, ID, Payload,
 						   PriorityFlag, State#state.time_to_live),
-	    ?INFO_MSG("(~p) sending notification for ~s~n~p~npayload:~n~s~n"
-		      "Sender: ~s~n"
-		      "Receiver: ~s~n"
-		      "Device ID: ~s~n",
-		      [State#state.host, DeviceID,
-		       Notification, Payload,
-		       Sender,
-		       Receiver, DeviceID]),
+	    ?DEBUG("(~p) sending notification for ~s~npayload: ~s~n"
+		   "Sender: ~s~n"
+		   "Receiver: ~s~n",
+		   [State#state.host, DeviceID, Payload, Sender, Receiver]),
 	    case ssl:send(State#state.socket, Notification) of
 		ok ->
 		    cache(From, DeviceID, State);
 		{error, Reason} ->
-		    ?INFO_MSG("(~p) Connection closed: ~p, reconnecting",
-			      [State#state.host, Reason]),
+		    ?DEBUG("(~p) Connection closed: ~p, reconnecting",
+			   [State#state.host, Reason]),
 		    ssl:close(State#state.socket),
 		    self() ! connect,
 		    if ResendCount >= ?MAX_RESEND_COUNT ->
@@ -807,11 +805,9 @@ parse_feedback_buf(Buf, State) ->
                    [State#state.host, SDeviceID]),
 	    case dict:find(DeviceID, State#state.device_cache) of
 		{ok, {_Counter, JID}} ->
-                    BJID = jid:remove_resource(JID),
-                    ?DEBUG("(~p) sending feedback for ~s to ~s~n",
-                           [State#state.host,
-                            SDeviceID,
-                            jid:to_string(BJID)]),
+		    BJID = jid:remove_resource(JID),
+		    ?WARNING_MSG("(~p) disabling push for ~s with JID ~s",
+				 [State#state.host, SDeviceID, jid:to_string(BJID)]),
 		    From = jid:make(<<"">>, State#state.host, <<"">>),
 		    ejabberd_router:route(
 		      From, BJID,

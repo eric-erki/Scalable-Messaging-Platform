@@ -426,14 +426,10 @@ handle_message(From, To, Packet, _ResendCount, State) ->
     %%   * apns-collapse-id : This is to collapse multiple into one.  Likely not used by us for now
     %%   * apns-thread-id  : This can be useful. For example to group all pushes of the same match together.
     %%                       or all pushes related to the same news event.
-    ?INFO_MSG("(~p) sending notification for ~s~npayload:~n~s~n"
-	      "Sender: ~s~n"
-	      "Receiver: ~s~n"
-	      "Device ID: ~s~n",
-	      [State#state.host, DeviceID,
-	       Payload,
-	       Sender,
-	       Receiver, DeviceID]),
+    ?DEBUG("(~p) sending notification for ~s~npayload: ~s~n"
+	   "Sender: ~s~n"
+	   "Receiver: ~s~n",
+	   [State#state.host, DeviceID, Payload, Sender, Receiver]),
     GunConn = State#state.gun_connection,
     StreamRef = gun:post(GunConn, ["/3/device/", DeviceID], APNS_Headers, Payload),
     State2#state{requests = dict:store(StreamRef, {From, DeviceID}, State#state.requests)}.
@@ -772,8 +768,8 @@ disable_push(JID, DeviceID, State) ->
     From = jid:make(<<"">>, State#state.host, <<"">>),
     TimeStamp = p1_time_compat:system_time(milli_seconds),
     BJID = jid:remove_resource(JID),
-    ?INFO_MSG("(~p) disabling push for device ~s with JID ~s~n",
-	      [State#state.host, DeviceID, jid:to_string(BJID)]),
+    ?WARNING_MSG("(~p) disabling push for ~s with JID ~s",
+		 [State#state.host, DeviceID, jid:to_string(BJID)]),
     BDeviceID = case DeviceID of
 		    V when is_list(V) -> V;
 		    _ -> DeviceID
