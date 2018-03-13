@@ -1397,23 +1397,21 @@ handle_info({route, _From, _To, {broadcast, Data}}, StateName, StateData) ->
 	    case {DID, catch str:to_upper(DID)} of
 		{D1, D2} when D1 == DeviceID orelse D2 == DeviceID ->
 		    NSD1 = change_reception(StateData, true),
-		    NSD1 = StateData#state{
-			     keepalive_timeout = undefined,
-			     oor_timeout = undefined,
-			     oor_status = <<"">>,
-			     oor_show = <<"">>,
-			     oor_notification = undefined,
-                             oor_send_body = all},
-                    NSD2 = change_reception(NSD1, true),
+		    NSD2 = NSD1#state{
+			keepalive_timeout = undefined,
+			oor_timeout = undefined,
+			oor_status = <<"">>,
+			oor_show = <<"">>,
+			oor_notification = undefined,
+			oor_send_body = all},
                     NSD3 = start_keepalive_timer(NSD2),
                     fsm_next_state(StateName, NSD3);
 		_ ->
 		    fsm_next_state(StateName, StateData)
 	    end;
 	{stop_by_device_id, DeviceID} ->
-	    case catch jlib:binary_to_integer(
-			 fxml:get_path_s(StateData#state.oor_notification,
-					[{elem, <<"id">>}, cdata]), 16)
+	    case catch str:to_upper(fxml:get_path_s(StateData#state.oor_notification,
+						    [{elem, <<"id">>}, cdata]))
 	    of
 		DeviceID ->
 		    fsm_stop_conflict(StateData, <<"Device conflict">>);
@@ -3107,14 +3105,14 @@ process_push_iq(From, To, #iq{type = _Type, sub_el = El} = IQ, StateData) ->
 					  ejabberd_hooks:run(p1_push_disable,
 							     StateData#state.server,
 							     [StateData#state.jid, Notif, AppId]),
-					  NSD1 = StateData#state{
+					  NSD1 = change_reception(StateData, true),
+					  NSD2 = NSD1#state{
 						   keepalive_timeout = undefined,
 						   oor_timeout = undefined,
 						   oor_status = <<"">>,
 						   oor_show = <<"">>,
 						   oor_notification = undefined,
 						   oor_send_body = all},
-                                          NSD2 = change_reception(NSD1, true),
                                           NSD3 = start_keepalive_timer(NSD2),
                                           {{result, []}, NSD3};
 				      {error, ErrText} ->
