@@ -619,7 +619,17 @@ store_cache_mnesia(JID, DeviceID, Options) ->
     R = #gcm_cache{us = LUS,
 			 device_id = DeviceID,
 			 options = Options},
-   case mnesia:dirty_match_object({gcm_cache, LUS, DeviceID, '_'}) of
+    case multi_device_mode(JID#jid.lserver) of
+	true ->
+	    lists:foreach(fun(#gcm_cache{device_id = DeviceID1}) when DeviceID1 == DeviceID ->
+				 ok;
+			     (Rec) ->
+				 mnesia:dirty_delete_object(Rec)
+			  end, mnesia:dirty_match_object(#gcm_cache{us = LUS, _ = '_'}));
+	_ ->
+	    ok
+    end,
+    case mnesia:dirty_match_object({gcm_cache, LUS, DeviceID, '_'}) of
         [] ->
             %%no previous entry, just write the new record
             mnesia:dirty_write(R);
@@ -650,6 +660,23 @@ store_cache_p1db(JID, DeviceID, Options) ->
     #jid{luser = LUser, lserver = LServer} = JID,
     Key = usd2key(LUser, LServer, DeviceID),
     Val = opts_to_p1db(Options),
+    case multi_device_mode(JID#jid.lserver) of
+	true ->
+	    USPrefix = us_prefix(LUser, LServer),
+	    case p1db:get_by_prefix(gcm_cache, USPrefix) of
+		{ok, L} ->
+		    lists:foreach(
+			fun({Key1, _Val, _VClock}) when Key1 == Key->
+			    ok;
+			   ({Key2, _Val, _VClock}) ->
+			    p1db:delete(gcm_cache, Key2)
+			end, L);
+		{error, _} ->
+		    ok
+	    end;
+	_ ->
+	    ok
+    end,
     case p1db:get(gcm_cache, Key) of
 	{ok, Val, _VClock} ->
 	    %%previous entry exists but is equal, don't do anything
@@ -699,28 +726,23 @@ store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom) ->
 	   (false) -> false
 	end,
 	false),
-    MultipleDevices =
-    gen_mod:get_module_opt(
-	LServer, ?MODULE,
-	multiple_devices_per_account,
-	fun(true) -> true;
-	   (false) -> false
-	end,
-	true),
     F = fun() ->
-	if MultipleDevices ->
-	    if
-		MultipleAccs -> ok;
-		true ->
-		    ejabberd_sql:sql_query_t(
-			?SQL("delete from gcm_cache "
-			     "where username<>%(LUser)s and "
-			     "device_id=%(DeviceID)s"))
-	    end;
+	if
+	    MultipleAccs -> ok;
 	    true ->
 		ejabberd_sql:sql_query_t(
 		    ?SQL("delete from gcm_cache "
-			 "where username<>%(LUser)s"))
+			 "where username<>%(LUser)s and "
+			 "device_id=%(DeviceID)s"))
+	end,
+	case multi_device_mode(JID#jid.lserver) of
+	    true ->
+		ejabberd_sql:sql_query_t(
+		    ?SQL("delete from gcm_cache "
+			 "where username=%(LUser)s and "
+			 "device_id<>%(DeviceID)s"));
+	    _ ->
+		ok
 	end,
 	%% We must keep the previous local_badge if it exists.
 	?SQL_UPSERT_T(
@@ -745,13 +767,18 @@ update_cache(JID, OldDeviceID, NewDeviceID) ->
     end.
 
 delete_cache(JID, DeviceID) ->
-    case gen_mod:db_type(JID#jid.lserver, ?MODULE) of
-        mnesia ->
-            delete_cache_mnesia(JID, DeviceID);
-	p1db ->
-	    delete_cache_p1db(JID, DeviceID);
-        sql ->
-            delete_cache_sql(JID, DeviceID)
+    case multi_device_mode(JID#jid.lserver) of
+	true ->
+	    case gen_mod:db_type(JID#jid.lserver, ?MODULE) of
+		mnesia ->
+		    delete_cache_mnesia(JID, DeviceID);
+		p1db ->
+		    delete_cache_p1db(JID, DeviceID);
+		sql ->
+		    delete_cache_sql(JID, DeviceID)
+	    end;
+	_ ->
+	    delete_cache(JID)
     end.
 
 delete_cache_mnesia(JID, DeviceID) ->
@@ -925,6 +952,14 @@ export(_Server) ->
       end
      }].
 
+multi_device_mode(LServer) ->
+    gen_mod:get_module_opt(LServer, ?MODULE,
+			   multiple_devices_per_account,
+			   fun(true) ->
+			       true;
+			      (false) ->
+				  false
+			   end, true).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Internal module protection

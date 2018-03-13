@@ -803,6 +803,16 @@ store_cache_mnesia(JID, DeviceID, Options) ->
     R = #applepush_cache{us = LUS,
 			 device_id = DeviceID,
 			 options = Options},
+    case multi_device_mode(JID#jid.lserver) of
+	true ->
+	    lists:foreach(fun(#applepush_cache{device_id = DeviceID1}) when DeviceID1 == DeviceID ->
+				 ok;
+			     (Rec) ->
+				 mnesia:dirty_delete_object(Rec)
+			  end, mnesia:dirty_match_object(#applepush_cache{us = LUS, _ = '_'}));
+	_ ->
+	    ok
+    end,
    case mnesia:dirty_match_object({applepush_cache, LUS, DeviceID, '_'}) of
         [] ->
             %%no previous entry, just write the new record
@@ -835,6 +845,25 @@ store_cache_p1db(JID, DeviceID, Options) ->
     Key = usd2key(LUser, LServer, DeviceID),
     Val = opts_to_p1db(Options),
     update_deviceid_p1db(DeviceID, LUser, LServer, true),
+    case multi_device_mode(JID#jid.lserver) of
+	true ->
+	    USPrefix = us_prefix(LUser, LServer),
+	    case p1db:get_by_prefix(applepush_cache, USPrefix) of
+		{ok, L} ->
+		    lists:foreach(
+			fun({Key1, _Val, _VClock}) when Key1 == Key->
+			    ok;
+			   ({Key2, _Val, _VClock}) ->
+			       [_, _, SDeviceID2] = dec_key(Key2),
+			       p1db:delete(applepush_cache, Key2),
+			       p1db:delete(applepush_cache_device, SDeviceID2)
+			end, L);
+		{error, _} ->
+		    ok
+	    end;
+	_ ->
+	    ok
+    end,
     case p1db:get(applepush_cache, Key) of
 	{ok, Val, _VClock} ->
 	    %%previous entry exists but is equal, don't do anything
@@ -885,50 +914,50 @@ store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom) ->
              (false) -> false
           end,
           false),
-    MultipleDevices =
-    gen_mod:get_module_opt(
-	LServer, ?MODULE,
-	multiple_devices_per_account,
-	fun(true) -> true;
-	   (false) -> false
-	end,
-	true),
     F = fun() ->
-		if MultipleDevices ->
-		    if
-			MultipleAccs -> ok;
-			true ->
-			    ejabberd_sql:sql_query_t(
-			      ?SQL("delete from applepush_cache "
-				   "where username<>%(LUser)s and "
-				   "device_id=%(SDeviceID)s"))
-		    end;
-		    true ->
-			ejabberd_sql:sql_query_t(
-			    ?SQL("delete from applepush_cache "
-				 "where username<>%(LUser)s"))
-		end,
-                %% We must keep the previous local_badge if it exists.
-                ?SQL_UPSERT_T(
-                   "applepush_cache",
-                   ["!username=%(LUser)s",
-                    "!device_id=%(SDeviceID)s",
-                    "app_id=%(AppID)s",
-                    "send_body=%(SSendBody)s",
-                    "send_from=%(SSendFrom)s",
-                    "-local_badge=0"
-                   ])
-        end,
+	if
+	    MultipleAccs -> ok;
+	    true ->
+		ejabberd_sql:sql_query_t(
+		    ?SQL("delete from applepush_cache "
+			 "where username<>%(LUser)s and "
+			 "device_id=%(SDeviceID)s"))
+	end,
+	case multi_device_mode(JID#jid.lserver) of
+	    true ->
+		ejabberd_sql:sql_query_t(
+		    ?SQL("delete from applepush_cache "
+			 "where username=%(LUser)s and "
+			 "device_id<>%(SDeviceID)s"));
+	    _ ->
+		ok
+	end,
+	%% We must keep the previous local_badge if it exists.
+	?SQL_UPSERT_T(
+	    "applepush_cache",
+	    ["!username=%(LUser)s",
+	     "!device_id=%(SDeviceID)s",
+	     "app_id=%(AppID)s",
+	     "send_body=%(SSendBody)s",
+	     "send_from=%(SSendFrom)s",
+	     "-local_badge=0"
+	    ])
+	end,
         {atomic, _} = sql_queries:sql_transaction(LServer, F).
 
 delete_cache(JID, DeviceID) ->
-    case gen_mod:db_type(JID#jid.lserver, ?MODULE) of
-        mnesia ->
-            delete_cache_mnesia(JID, DeviceID);
-	p1db ->
-	    delete_cache_p1db(JID, DeviceID);
-        sql ->
-            delete_cache_sql(JID, DeviceID)
+    case multi_device_mode(JID#jid.lserver) of
+	true ->
+	    case gen_mod:db_type(JID#jid.lserver, ?MODULE) of
+		mnesia ->
+		    delete_cache_mnesia(JID, DeviceID);
+		p1db ->
+		    delete_cache_p1db(JID, DeviceID);
+		sql ->
+		    delete_cache_sql(JID, DeviceID)
+	    end;
+	_ ->
+	    delete_cache(JID)
     end.
 
 delete_cache_mnesia(JID, DeviceID) ->
@@ -1254,6 +1283,15 @@ row_to_p1db(LServer,
     Key = usd2key(LUser, LServer, DeviceID),
     Val = opts_to_p1db(Options),
     p1db:async_insert(applepush_cache, Key, Val).
+
+multi_device_mode(LServer) ->
+    gen_mod:get_module_opt(LServer, ?MODULE,
+			   multiple_devices_per_account,
+			   fun(true) ->
+			       true;
+			      (false) ->
+				  false
+			   end, true).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Internal module protection
