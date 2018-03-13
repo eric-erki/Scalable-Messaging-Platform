@@ -620,7 +620,7 @@ store_cache_mnesia(JID, DeviceID, Options) ->
 			 device_id = DeviceID,
 			 options = Options},
     case multi_device_mode(JID#jid.lserver) of
-	true ->
+	false ->
 	    lists:foreach(fun(#gcm_cache{device_id = DeviceID1}) when DeviceID1 == DeviceID ->
 				 ok;
 			     (Rec) ->
@@ -661,7 +661,7 @@ store_cache_p1db(JID, DeviceID, Options) ->
     Key = usd2key(LUser, LServer, DeviceID),
     Val = opts_to_p1db(Options),
     case multi_device_mode(JID#jid.lserver) of
-	true ->
+	false ->
 	    USPrefix = us_prefix(LUser, LServer),
 	    case p1db:get_by_prefix(gcm_cache, USPrefix) of
 		{ok, L} ->
@@ -736,7 +736,7 @@ store_cache_sql(JID, DeviceID, AppID, SendBody, SendFrom) ->
 			 "device_id=%(DeviceID)s"))
 	end,
 	case multi_device_mode(JID#jid.lserver) of
-	    true ->
+	    false ->
 		ejabberd_sql:sql_query_t(
 		    ?SQL("delete from gcm_cache "
 			 "where username=%(LUser)s and "
@@ -768,7 +768,7 @@ update_cache(JID, OldDeviceID, NewDeviceID) ->
 
 delete_cache(JID, DeviceID) ->
     case multi_device_mode(JID#jid.lserver) of
-	true ->
+	false ->
 	    case gen_mod:db_type(JID#jid.lserver, ?MODULE) of
 		mnesia ->
 		    delete_cache_mnesia(JID, DeviceID);
