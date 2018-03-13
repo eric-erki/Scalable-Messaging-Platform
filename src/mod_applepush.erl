@@ -193,7 +193,7 @@ badge_reset(Acc, JID, Notification, _AppID, Count) ->
     Type = fxml:get_path_s(Notification, [{elem, <<"type">>}, cdata]),
     case Type of
 	<<"applepush">> ->
-	    DeviceID = fxml:get_path_s(Notification, [{elem, <<"id">>}, cdata]),
+	    DeviceID = str:to_upper(fxml:get_path_s(Notification, [{elem, <<"id">>}, cdata])),
             ?INFO_MSG("Reseting badge for ~s with applepush token ~p",[jid:to_string(JID),DeviceID]),
 	    case DeviceID of
 		ID1 when is_binary(ID1), size(ID1) > 0 ->
@@ -259,7 +259,7 @@ push_from_message(Val, From, To, Packet, Notification, AppID, SendBody, SendFrom
     Type = fxml:get_path_s(Notification, [{elem, <<"type">>}, cdata]),
     case Type of
 	<<"applepush">> ->
-	    DeviceID = fxml:get_path_s(Notification, [{elem, <<"id">>}, cdata]),
+	    DeviceID = str:to_upper(fxml:get_path_s(Notification, [{elem, <<"id">>}, cdata])),
             SilentPushEnabled = gen_mod:get_module_opt(
                                   To#jid.lserver, ?MODULE,
                                   silent_push_enabled,
@@ -290,7 +290,7 @@ enable_offline_notification(JID, Notification, SendBody, SendFrom, AppID1) ->
     Type = fxml:get_path_s(Notification, [{elem, <<"type">>}, cdata]),
     case Type of
 	<<"applepush">> ->
-	    DeviceID = fxml:get_path_s(Notification, [{elem, <<"id">>}, cdata]),
+	    DeviceID = str:to_upper(fxml:get_path_s(Notification, [{elem, <<"id">>}, cdata])),
 	    case DeviceID of
 		ID1 when is_binary(ID1), size(ID1) > 0 ->
 		    AppID = case fxml:get_path_s(Notification,
@@ -312,7 +312,7 @@ disable_notification(JID, Notification, _AppID) ->
     Type = fxml:get_path_s(Notification, [{elem, <<"type">>}, cdata]),
     case Type of
 	<<"applepush">> ->
-	    DeviceID = fxml:get_path_s(Notification, [{elem, <<"id">>}, cdata]),
+	    DeviceID = str:to_upper(fxml:get_path_s(Notification, [{elem, <<"id">>}, cdata])),
             ?INFO_MSG("Disabling p1:push for ~s with applepush token ~p",[jid:to_string(JID),DeviceID]),
 	    case DeviceID of
 		ID1 when is_binary(ID1), size(ID1) > 0 ->
@@ -389,7 +389,7 @@ process_sm_iq(From, To, #iq{type = Type, sub_el = SubEl} = IQ) ->
     case {Type, SubEl} of
 	{set, #xmlel{name = <<"disable">>}} ->
             Host = To#jid.lserver,
-            SDeviceID = fxml:get_tag_attr_s(<<"id">>, SubEl),
+            SDeviceID = str:to_upper(fxml:get_tag_attr_s(<<"id">>, SubEl)),
 	    ejabberd_sm:route(
 	      From, To, {broadcast, {disable_push, SDeviceID}}),
             case lookup_cache(To, SDeviceID) of
