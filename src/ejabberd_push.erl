@@ -72,6 +72,7 @@ build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom,
 
 build_push_packet_from_message2(From, To, Packet, ID, _AppID, SendBody, SendFrom, BadgeCount, First, FirstPerUser, SilentPushesEnabled, Module, Pushed) ->
     Body1 = fxml:get_path_s(Packet, [{elem, <<"body">>}, cdata]),
+    MsgId = fxml:get_tag_attr_s(<<"id">>, Packet),
     Body =
         case check_x_attachment(Packet) of
             true ->
@@ -183,7 +184,7 @@ build_push_packet_from_message2(From, To, Packet, ID, _AppID, SendBody, SendFrom
                                 {_, S} when S /= <<"">> -> S;
                                 _ -> true
                             end,
-		    case build_and_customize_push_packet(DeviceID, Msg, Badge, Sound, SFrom, To,
+		    case build_and_customize_push_packet(DeviceID, Msg, MsgId, Badge, Sound, SFrom, To,
 							 Custom0 ++ CustomFields, Module) of
 			skip ->
 			    skip;
@@ -193,7 +194,7 @@ build_push_packet_from_message2(From, To, Packet, ID, _AppID, SendBody, SendFrom
             end
     end.
 
-build_and_customize_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields, _Module) ->
+build_and_customize_push_packet(DeviceID, Msg, MsgId, Unread, Sound, Sender, JID, CustomFields, _Module) ->
     LServer = JID#jid.lserver,
     case gen_mod:db_type(LServer, mod_applepush) of
         sql ->
@@ -208,9 +209,9 @@ build_and_customize_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, Custo
                 {selected, [{true, _}]} ->
                     skip;
                 {selected, [{_, S}]} when S /= null andalso Sound == true ->
-                    build_push_packet(DeviceID, Msg, Unread, S, Sender, JID, CustomFields);
+                    build_push_packet(DeviceID, Msg, MsgId, Unread, S, Sender, JID, CustomFields);
                 _ ->
-                    build_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields)
+                    build_push_packet(DeviceID, Msg, MsgId, Unread, Sound, Sender, JID, CustomFields)
             end;
 	p1db ->
 	    LUser = JID#jid.luser,
@@ -222,18 +223,18 @@ build_and_customize_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, Custo
 		    if Mute ->
 			    skip;
 		       true ->
-			    build_push_packet(DeviceID, Msg, Unread,
+			    build_push_packet(DeviceID, Msg, MsgId, Unread,
 					      CustomSound, Sender, JID,
 					      CustomFields)
 		    end;
 		{error, _} ->
-		    build_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields)
+		    build_push_packet(DeviceID, Msg, MsgId, Unread, Sound, Sender, JID, CustomFields)
 	    end;
         _ ->
-            build_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields)
+            build_push_packet(DeviceID, Msg, MsgId, Unread, Sound, Sender, JID, CustomFields)
     end.
 
-build_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields) ->
+build_push_packet(DeviceID, Msg, MsgId, Unread, Sound, Sender, JID, CustomFields) ->
     Badge = case Unread of
                 none -> <<"">>;
                 _ -> jlib:integer_to_binary(Unread)
@@ -253,6 +254,8 @@ build_push_packet(DeviceID, Msg, Unread, Sound, Sender, JID, CustomFields) ->
                                children = [{xmlcdata, DeviceID}]},
                         #xmlel{name = <<"msg">>, attrs = [],
                                children = [{xmlcdata, Msg}]},
+			#xmlel{name = <<"msgid">>, attrs = [],
+			       children = [{xmlcdata, MsgId}]},
                         #xmlel{name = <<"badge">>, attrs = [],
                                children = [{xmlcdata, Badge}]},
                         #xmlel{name = <<"sound">>, attrs = [],
