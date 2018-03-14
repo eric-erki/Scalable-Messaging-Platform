@@ -229,13 +229,15 @@ handle_message(From, To, Packet, State) ->
 	  Sender = get_sender(Packet),
 	  Receiver = get_receiver(Packet),
 	  Message = unwrap_message(Packet),
+	  MsgId = get_msgid(Packet),
 	  Payload = fxml:element_to_binary(Message),
 	  Baseurl = build_endpoint(State#state.gateway, DeviceID),
 	  Headers = prepare_headers(Payload,State),
 	  ?DEBUG("(~p) sending notification for ~s~npayload: ~p~n"
 		 "Sender: ~p~n"
-		 "Receiver: ~p~n",
-		 [State#state.host, DeviceID, Payload, Sender, Receiver]),
+		 "Receiver: ~p~n"
+		 "Message id: ~s~n",
+		 [State#state.host, DeviceID, Payload, Sender, Receiver, MsgId]),
 	  try httpc:request(post,
 			    {binary_to_list(Baseurl), Headers,
 			     "application/xml", Payload},
@@ -539,6 +541,13 @@ get_receiver(FwdMessagePacket) ->
     case fxml:get_subtag(FwdMessagePacket, <<"push">>) of
 	#xmlel{name = <<"push">>, attrs = Attrs} ->
 	    fxml:get_attr_s(<<"to">>, Attrs);
+	_ -> undefined
+    end.
+
+get_msgid(FwdMessagePacket) ->
+    case fxml:get_subtag(FwdMessagePacket, <<"push">>) of
+	#xmlel{name = <<"push">>, attrs = Attrs} ->
+	    fxml:get_attr_s(<<"msgid">>, Attrs);
 	_ -> undefined
     end.
 

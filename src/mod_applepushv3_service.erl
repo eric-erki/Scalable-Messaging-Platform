@@ -399,6 +399,9 @@ handle_message(From, To, Packet, _ResendCount, State) ->
     Msg =
 	fxml:get_path_s(Packet,
 		       [{elem, <<"push">>}, {elem, <<"msg">>}, cdata]),
+    MsgId =
+	fxml:get_path_s(Packet,
+		       [{elem, <<"push">>}, {elem, <<"msgid">>}, cdata]),
     Badge =
 	fxml:get_path_s(Packet,
 		       [{elem, <<"push">>}, {elem, <<"badge">>}, cdata]),
@@ -428,8 +431,9 @@ handle_message(From, To, Packet, _ResendCount, State) ->
     %%                       or all pushes related to the same news event.
     ?DEBUG("(~p) sending notification for ~s~npayload: ~s~n"
 	   "Sender: ~s~n"
-	   "Receiver: ~s~n",
-	   [State#state.host, DeviceID, Payload, Sender, Receiver]),
+	   "Receiver: ~s~n"
+	   "Message id: ~s~n",
+	   [State#state.host, DeviceID, Payload, Sender, Receiver, MsgId]),
     GunConn = State#state.gun_connection,
     StreamRef = gun:post(GunConn, ["/3/device/", DeviceID], APNS_Headers, Payload),
     State2#state{requests = dict:store(StreamRef, {From, DeviceID}, State#state.requests)}.

@@ -428,6 +428,9 @@ handle_message(From, To, Packet, ResendCount, State) ->
     Msg =
 	fxml:get_path_s(Packet,
 		       [{elem, <<"push">>}, {elem, <<"msg">>}, cdata]),
+    MsgId =
+	fxml:get_path_s(Packet,
+		       [{elem, <<"push">>}, {elem, <<"msgid">>}, cdata]),
     Badge =
 	fxml:get_path_s(Packet,
 		       [{elem, <<"push">>}, {elem, <<"badge">>}, cdata]),
@@ -455,8 +458,9 @@ handle_message(From, To, Packet, ResendCount, State) ->
 						   PriorityFlag, State#state.time_to_live),
 	    ?DEBUG("(~p) sending notification for ~s~npayload: ~s~n"
 		   "Sender: ~s~n"
-		   "Receiver: ~s~n",
-		   [State#state.host, DeviceID, Payload, Sender, Receiver]),
+		   "Receiver: ~s~n"
+		   "Message id: ~s~n",
+		   [State#state.host, DeviceID, Payload, Sender, Receiver, MsgId]),
 	    case ssl:send(State#state.socket, Notification) of
 		ok ->
 		    cache(From, DeviceID, State);

@@ -244,6 +244,8 @@ handle_message(From, To, Packet, State) ->
 			      [{elem, <<"push">>}, {elem, <<"id">>}, cdata]),
     Msg = fxml:get_path_s(Packet,
 			 [{elem, <<"push">>}, {elem, <<"msg">>}, cdata]),
+    MsgId = fxml:get_path_s(Packet,
+			    [{elem, <<"push">>}, {elem, <<"msgid">>}, cdata]),
     Badge = fxml:get_path_s(Packet,
 			   [{elem, <<"push">>}, {elem, <<"badge">>}, cdata]),
     Sound = fxml:get_path_s(Packet,
@@ -268,8 +270,9 @@ handle_message(From, To, Packet, State) ->
 			     {<<"priority">>, ?GCM_PRIORITY_HIGH}]}),
 	  ?DEBUG("(~p) sending notification for ~s~npayload: ~p~n"
 		 "Sender: ~s~n"
-		 "Receiver: ~s~n",
-		 [State#state.host, DeviceID, Payload, Sender, Receiver]),
+		 "Receiver: ~s~n"
+		 "Message id: ~s~n",
+		 [State#state.host, DeviceID, Payload, Sender, Receiver, MsgId]),
 	  try httpc:request(post,
 			    {Baseurl, [{"Authorization", ApiKey}],
 			     "application/json", Notification},
