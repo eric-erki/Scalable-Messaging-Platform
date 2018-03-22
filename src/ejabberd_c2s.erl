@@ -2861,7 +2861,12 @@ send_ack_request(StateData) ->
 	undefined ->
 	    AckCounter = StateData#state.ack_counter,
 	    AckTimer = erlang:start_timer(?C2S_P1_ACK_TIMEOUT, self(), AckCounter),
-	    AckTimeout = StateData#state.keepalive_timeout + StateData#state.oor_timeout,
+	    AckTimeout = case {StateData#state.keepalive_timeout, StateData#state.oor_timeout} of
+			     {undefined, undefined} -> 60;
+			     {undefined, V2} -> V2;
+			     {V1, undefined} -> V1;
+			     {V1, V2} -> V1 + V2
+			 end,
 	    erlang:send_after(AckTimeout * 1000, self(), {ack_timeout, AckTimeout}),
 	    send_element(StateData, #xmlel{
 				       name = <<"r">>,
@@ -3064,12 +3069,20 @@ process_push_iq(From, To, #iq{type = _Type, sub_el = El} = IQ, StateData) ->
 					  end,
 				  ?INFO_MSG("Enabling p1:push with gateway type ~p for ~s with appid: ~p",
 					    [Type,jid:to_string(StateData#state.jid),AppID]),
-				  case catch
-					   {jlib:binary_to_integer(SKeepAlive),
-					    jlib:binary_to_integer(SOORTimeout)}
-				       of
+				  KeepAliveInt = try binary_to_integer(SKeepAlive) of
+						     KA -> KA
+						 catch
+						     _:_ -> undefined
+						 end,
+				  OORTimeoutInt = try binary_to_integer(SOORTimeout) of
+						     OT -> OT*60
+						 catch
+						     _:_ -> undefined
+						 end,
+				  case {KeepAliveInt, OORTimeoutInt} of
 					   {KeepAlive, OORTimeout}
-					     when OORTimeout =< (?MAX_OOR_TIMEOUT) ->
+					     when OORTimeout == undefined orelse
+						  OORTimeout =< (?MAX_OOR_TIMEOUT*60) ->
 					       if Offline ->
 						       ejabberd_hooks:run(
 							 p1_push_enable_offline, StateData#state.server,
@@ -3085,7 +3098,7 @@ process_push_iq(From, To, #iq{type = _Type, sub_el = El} = IQ, StateData) ->
 					       end,
 					       NSD1 = StateData#state{
 							keepalive_timeout = KeepAlive,
-							oor_timeout = OORTimeout*60,
+							oor_timeout = OORTimeout,
 							oor_status = Status,
 							oor_show = Show,
 							oor_notification = Notification,
