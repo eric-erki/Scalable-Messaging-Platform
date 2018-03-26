@@ -442,47 +442,51 @@ create_room(Name1, Host1, ServerHost) ->
     create_room_with_opts(Name1, Host1, ServerHost, []).
 
 create_room_with_opts(Name1, Host1, ServerHost, CustomRoomOpts) ->
-    Name = jid:nodeprep(Name1),
-    Host = jid:nodeprep(Host1),
+    case {jid:nodeprep(Name1), jid:nodeprep(Host1)} of
+	{error, _} ->
+	    error;
+	{_, error} ->
+	    error;
+	{Name, Host} ->
+	    %% Get the default room options from the muc configuration
+	    DefRoomOpts = gen_mod:get_module_opt(ServerHost, mod_muc,
+						 default_room_options, fun(X) -> X end, []),
+	    %% Change default room options as required
+	    FormattedRoomOpts = [format_room_option(Opt, Val) || {Opt, Val}<-CustomRoomOpts],
+	    RoomOpts = lists:ukeymerge(1,
+				       lists:keysort(1, FormattedRoomOpts),
+				       lists:keysort(1, DefRoomOpts)),
 
-    %% Get the default room options from the muc configuration
-    DefRoomOpts = gen_mod:get_module_opt(ServerHost, mod_muc,
-					 default_room_options, fun(X) -> X end, []),
-    %% Change default room options as required
-    FormattedRoomOpts = [format_room_option(Opt, Val) || {Opt, Val}<-CustomRoomOpts],
-    RoomOpts = lists:ukeymerge(1,
-                               lists:keysort(1, FormattedRoomOpts),
-                               lists:keysort(1, DefRoomOpts)),
+	    %% Store the room on the server, it is not started yet though at this point
+	    mod_muc:store_room(ServerHost, Host, Name, RoomOpts, []),
 
-    %% Store the room on the server, it is not started yet though at this point
-    mod_muc:store_room(ServerHost, Host, Name, RoomOpts, []),
+	    %% Get all remaining mod_muc parameters that might be utilized
+	    Access = gen_mod:get_module_opt(ServerHost, mod_muc, access, fun(X) -> X end, all),
+	    AcCreate = gen_mod:get_module_opt(ServerHost, mod_muc, access_create, fun(X) -> X end, all),
+	    AcAdmin = gen_mod:get_module_opt(ServerHost, mod_muc, access_admin, fun(X) -> X end, none),
+	    AcPer = gen_mod:get_module_opt(ServerHost, mod_muc, access_persistent, fun(X) -> X end, all),
+	    PersistHistory = gen_mod:get_module_opt(ServerHost, mod_muc, persist_history, fun(X) -> X end, false),
+	    HistorySize = gen_mod:get_module_opt(ServerHost, mod_muc, history_size, fun(X) -> X end, 20),
+	    RoomShaper = gen_mod:get_module_opt(ServerHost, mod_muc, room_shaper, fun(X) -> X end, none),
 
-    %% Get all remaining mod_muc parameters that might be utilized
-    Access = gen_mod:get_module_opt(ServerHost, mod_muc, access, fun(X) -> X end, all),
-    AcCreate = gen_mod:get_module_opt(ServerHost, mod_muc, access_create, fun(X) -> X end, all),
-    AcAdmin = gen_mod:get_module_opt(ServerHost, mod_muc, access_admin, fun(X) -> X end, none),
-    AcPer = gen_mod:get_module_opt(ServerHost, mod_muc, access_persistent, fun(X) -> X end, all),
-    PersistHistory = gen_mod:get_module_opt(ServerHost, mod_muc, persist_history, fun(X) -> X end, false),
-    HistorySize = gen_mod:get_module_opt(ServerHost, mod_muc, history_size, fun(X) -> X end, 20),
-    RoomShaper = gen_mod:get_module_opt(ServerHost, mod_muc, room_shaper, fun(X) -> X end, none),
-
-    %% If the room does not exist yet in the muc_online_room
-    case mnesia:dirty_read(muc_online_room, {Name, Host}) of
-        [] ->
-	    %% Start the room
-	    {ok, Pid} = mod_muc_room:start(
-			  Host,
-			  ServerHost,
-			  {Access, AcCreate, AcAdmin, AcPer},
-			  Name,
-			  HistorySize,
-			  PersistHistory,
-			  RoomShaper,
-			  RoomOpts),
-	    mod_muc:register_room(ServerHost, Host, Name, Pid),
-	    ok;
-	_ ->
-	    error
+	    %% If the room does not exist yet in the muc_online_room
+	    case mnesia:dirty_read(muc_online_room, {Name, Host}) of
+		[] ->
+		    %% Start the room
+		    {ok, Pid} = mod_muc_room:start(
+				  Host,
+				  ServerHost,
+				  {Access, AcCreate, AcAdmin, AcPer},
+				  Name,
+				  HistorySize,
+				  PersistHistory,
+				  RoomShaper,
+				  RoomOpts),
+		    mod_muc:register_room(ServerHost, Host, Name, Pid),
+		    ok;
+		_ ->
+		    error
+	    end
     end.
 
 %% Create the room only in the database.
