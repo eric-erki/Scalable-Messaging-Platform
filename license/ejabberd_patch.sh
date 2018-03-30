@@ -1,8 +1,8 @@
-#!/bin/sh
+#!/bin/bash
 
 ctl=${1:-ejabberdctl}
 erl=$(which erl 2>/dev/null || echo $(dirname $ctl)/erl)
-node=$($ctl status | grep started | cut -d' ' -f3)
+node=$($ctl status | grep started | cut -d' ' -f3 | sed 's/'\''//g')
 [ -z $node ] && {
   echo "Error: ejabberd node not running"
   exit 1
