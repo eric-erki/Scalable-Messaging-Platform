@@ -1,0 +1,14 @@
+diff --git a/c_src/eimp.c b/c_src/eimp.c
+index fc4a725..19ddcc8 100644
+--- a/c_src/eimp.c
++++ b/c_src/eimp.c
+@@ -21,7 +21,8 @@
+ #include <erl_interface.h>
+ #include <ei.h>
+ #include <unistd.h>
+-#include <arpa/inet.h>
++#include <winsock2.h>
++#include <inttypes.h>
+ #ifdef HAVE_GD
+ #include "gd.h"
+ #endif

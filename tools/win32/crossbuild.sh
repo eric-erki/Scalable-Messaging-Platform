@@ -6,17 +6,20 @@
 #  ssh cean
 #  cean20
 #  cd ~/crossbuild
+#  export CEAN_ROOT
+#  export ERLANG_VERSION
 #  ./crossbuild.sh ejabberd-17.12
 #  cdr
 #  export/bitrock ejabberd windows
 
+set -x
 [ $# -eq 1 ] || {
   echo "error: no ejabberd version provided"
   echo
 }
 dist=$1
-erts=$(sed '/VSN/!d;s/.*= //' ~/src/otp/erts/vsn.mk)
-otp=$(sed 's/\..*//' ~/src/otp/OTP_VERSION)
+erts=$(/bin/ls -d $CEAN_ROOT/lib/erts* | sed 's/.*erts-//')
+otp=${ERLANG_VERSION%.*}
 zlib=zlib-1.2.8
 expat=expat-2.1.0
 yaml=yaml-0.1.5
@@ -24,7 +27,7 @@ ssl=openssl-1.0.2l
 iconv=libiconv-1.14
 sql=sqlite-autoconf-3081002
 
-master=~/pub/bin/linux-x86_64/$otp/ejabberd/$dist.epkg
+master="$CEAN_ROOT/pub/bin/linux-x86_64/$otp/ejabberd/$dist.epkg"
 [ -f $dist.epkg ] && master="$PWD/$dist.epkg"
 
 [ -f ~/pub/src/ejabberd/$dist.tgz ] || {
@@ -57,14 +60,13 @@ ST=$CHOST-strip
 w=/usr/$CHOST/include
 i=$root/erl$erts/usr/include
 l=$root/erl$erts/usr/lib
-h=~/src/otp/erts/emulator/sys/win32
-e=~/src/otp/lib/erl_interface/include
+h=$CEAN_ROOT/src/otp/erts/emulator/sys/win32
+e=$CEAN_ROOT/src/otp/lib/erl_interface/include
 
-config=$(grep configure ~/.cean/pkg/ejabberd/ejabberd.pub | cut -d'"' -f2)
 mkdir -p $dll
 (cd $ejsrc
  ./autogen.sh
- ./configure $config
+ ./configure --enable-mysql --enable-pgsql --enable-sqlite --enable-riak --enable-redis --enable-elixir --enable-sip --enable-stun --enable-tools
  ./rebar get-deps)
 
 cd $ejdeps/ezlib/c_src
@@ -153,13 +155,12 @@ $CC -shared -o $dll/jid.dll jid.o
 $CC -shared -o $dll/xmpp_uri.dll xmpp_uri.o
 cd -
 
-[ -d $ejdeps/eimp ] && {
-  cd $ejdeps/eimp/c_src
-  rm *o
-  $CC -I$w -I$h -I$i -I$e -D_WIN32 -c *c
-  $CC -shared -o $dll/eimp.dll eimp.o
-  cd -
-}
+cd $ejdeps/eimp/c_src
+patch -p1<$root/eimp.patch
+rm *o
+$CC -I$w -I$h -I$i -I$e -D_WIN32 -c *c
+$CC -o $dll/eimp.exe eimp.o /usr/$CHOST/lib/libwsock32.a
+cd -
 
 $ST $dll/*dll
 
@@ -172,7 +173,7 @@ do
   rm $lib
   cp ~/crossbuild/lib/${name/.so/.dll} $(dirname $lib)
 done
-cp ~/crossbuild/inotifywait.exe $(/bin/ls -d $dist/deps/fs-*/priv)
+cp $dll/eimp.exe $dist/lib/eimp*/priv/bin/eimp
 rm $dist.deps.zip
 zip -9qr $dist.deps.zip $dist
 rm -Rf $dist
