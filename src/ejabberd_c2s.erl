@@ -53,7 +53,7 @@
 	 wait_for_feature_request/2, wait_for_feature_request/3,
 	 wait_for_bind/2, wait_for_bind/3,
 	 wait_for_sasl_response/2,
-	 wait_for_sasl_response/3, wait_for_resume/2,
+	 wait_for_sasl_response/3, wait_for_resume/2, wait_for_resume/3,
 	 session_established/2, session_established/3,
 	 handle_event/3, handle_sync_event/4, code_change/4,
 	 handle_info/3, terminate/3, print_state/1, migrate/3,
@@ -1261,6 +1261,9 @@ wait_for_resume(timeout, StateData) ->
 wait_for_resume(Event, StateData) ->
     ?DEBUG("Ignoring event while waiting for resumption: ~p", [Event]),
     fsm_next_state(wait_for_resume, StateData).
+
+wait_for_resume(stop_or_detach, From, State) ->
+    ?GEN_FSM:reply(From, detached), fsm_next_state(wait_for_resume, State).
 
 handle_event({add_rosteritem, IJID, ISubscription}, StateName, StateData) ->
     NewStateData = roster_change(IJID, ISubscription, StateData),
