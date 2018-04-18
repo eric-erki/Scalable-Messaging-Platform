@@ -179,6 +179,8 @@ base_url(Server, Path) ->
         _ -> Url
     end.
 
+url(Url, []) ->
+    Url;
 url(Url, Params) ->
     L = [<<"&", (iolist_to_binary(Key))/binary, "=",
           (ejabberd_http:url_encode(Value))/binary>>
