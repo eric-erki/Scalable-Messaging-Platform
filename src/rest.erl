@@ -186,7 +186,7 @@ url(Url, Params) ->
           (ejabberd_http:url_encode(Value))/binary>>
             || {Key, Value} <- Params],
     <<$&, Encoded/binary>> = iolist_to_binary(L),
-    <<Url/binary, $?, Encoded/binary>>.
+    binary_to_list(<<Url/binary, $?, Encoded/binary>>).
 url(Server, Path, Params) ->
     case binary:split(base_url(Server, Path), <<"?">>) of
         [Url] ->
