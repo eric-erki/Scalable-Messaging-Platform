@@ -40,8 +40,8 @@
 	 remove_user/2, remove_room/3, mod_opt_type/1, muc_process_iq/4,
 	 muc_filter_message/5, message_is_archived/5, delete_old_messages/2,
 	 opt_type/1, get_commands_spec/0, msg_to_el/4, get_room_config/4,
-         set_room_option/4,
-         offline_message/3]).
+	 set_room_option/4,
+	 offline_message/3, remove_mam_for_user/2, remove_mam_for_user_with_peer/3]).
 
 -include("jlib.hrl").
 -include("logger.hrl").
@@ -72,6 +72,7 @@
 		 none | #rsm_in{},
 		 chat | groupchat) ->
     {[{binary(), non_neg_integer(), xmlel()}], boolean(), non_neg_integer()}.
+-callback remove_from_archive(binary(), binary(), jid() | none) -> ok | {error, any()}.
 
 %%%===================================================================
 %%% API
@@ -199,6 +200,41 @@ remove_room(LServer, Name, Host) ->
     LHost = jid:nameprep(Host),
     Mod = gen_mod:db_mod(LServer, ?MODULE),
     Mod:remove_room(LServer, LName, LHost).
+
+-spec remove_mam_for_user(binary(), binary()) ->
+    {ok, binary()} | {error, binary()}.
+remove_mam_for_user(User, Server) ->
+    LUser = jid:nodeprep(User),
+    LServer = jid:nameprep(Server),
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+    case Mod:remove_from_archive(LUser, LServer, none) of
+	ok ->
+	    {ok, <<"MAM archive removed">>};
+	{error, Bin} when is_binary(Bin) ->
+	    {error, Bin};
+	{error, _} ->
+	    {error, <<"Db returned error">>}
+    end.
+
+-spec remove_mam_for_user_with_peer(binary(), binary(), binary()) ->
+    {ok, binary()} | {error, binary()}.
+remove_mam_for_user_with_peer(User, Server, Peer) ->
+    LUser = jid:nodeprep(User),
+    LServer = jid:nameprep(Server),
+    case jid:from_string(Peer) of
+	error ->
+	    {error, <<"Invalid peer JID">>};
+	Jid ->
+	    Mod = gen_mod:db_mod(LUser, ?MODULE),
+	    case Mod:remove_from_archive(LUser, LServer, Jid) of
+		ok ->
+		    {ok, <<"MAM archive removed">>};
+		{error, Bin} when is_binary(Bin) ->
+		    {error, Bin};
+		{error, _} ->
+		    {error, <<"Db returned error">>}
+	    end
+    end.
 
 get_room_config(X, RoomState, _From, Lang) ->
     Config = RoomState#state.config,
@@ -1154,7 +1190,25 @@ get_commands_spec() ->
                                      "Days to keep messages"],
 			args_example = [<<"all">>, 31],
 			args = [{type, binary}, {days, integer}],
-			result = {res, rescode}}].
+			result = {res, rescode}},
+     #ejabberd_commands{name = remove_mam_for_user, tags = [mam],
+			desc = "Remove mam archive for user",
+			module = ?MODULE, function = remove_mam_for_user,
+			args = [{user, binary}, {server, binary}],
+			args_desc = ["Username", "Server"],
+			args_example = [<<"bob">>, <<"example.com">>],
+			result = {res, restuple},
+			result_desc = "Result tuple",
+			result_example = {ok, <<"MAM archive removed">>}},
+     #ejabberd_commands{name = remove_mam_for_user_with_peer, tags = [mam],
+			desc = "Remove mam archive for user with peer",
+			module = ?MODULE, function = remove_mam_for_user_with_peer,
+			args = [{user, binary}, {server, binary}, {with, binary}],
+			args_desc = ["Username", "Server", "Peer"],
+			args_example = [<<"bob">>, <<"example.com">>, <<"anne@example.com">>],
+			result = {res, restuple},
+			result_desc = "Result tuple",
+			result_example = {ok, <<"MAM archive removed">>}}].
 
 mod_opt_type(assume_mam_usage) ->
     fun (B) when is_boolean(B) -> B end;

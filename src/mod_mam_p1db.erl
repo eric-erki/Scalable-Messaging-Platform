@@ -13,7 +13,7 @@
 %% API
 -export([init/2, remove_user/2, remove_room/3, delete_old_messages/3,
 	 extended_fields/0, store/7, write_prefs/4, get_prefs/2, select/8,
-	 need_cache/1]).
+	 need_cache/1, remove_from_archive/3]).
 -export([enc_key/1, dec_key/1, enc_val/2, dec_val/2, enc_prefs/2, dec_prefs/2]).
 
 -include("jlib.hrl").
@@ -68,6 +68,37 @@ remove_user(LUser, LServer) ->
 
 remove_room(_LServer, LName, LHost) ->
     remove_user(LName, LHost).
+
+remove_from_archive(LUser, LServer, none) ->
+    USPrefix = us_prefix(LUser, LServer),
+    case p1db:get_by_prefix(archive_msg, USPrefix) of
+	{ok, L} ->
+		lists:foreach(
+		    fun({Key, _, _}) ->
+			p1db:async_delete(archive_msg, Key)
+		    end, L);
+	{error, _} = Err ->
+	    Err
+    end;
+remove_from_archive(LUser, LServer, WithJid) ->
+    USPrefix = us_prefix(LUser, LServer),
+    With = jid:split(WithJid),
+    case p1db:get_by_prefix(archive_msg, USPrefix) of
+	{ok, L} ->
+	    lists:foreach(
+		fun({Key, Val, _}) ->
+		    Opts = binary_to_term(Val),
+		    Peer = proplists:get_value(peer, Opts),
+		    case match_with(Peer, With) of
+			true ->
+			    p1db:async_delete(archive_msg, Key);
+			_ ->
+			    ok
+		    end
+		end, L);
+	{error, _} = Err ->
+	    Err
+    end.
 
 delete_old_messages(_ServerHost, TimeStamp, Type) ->
     delete_old_messages_p1db(TimeStamp, Type, p1db:first(archive_msg)).

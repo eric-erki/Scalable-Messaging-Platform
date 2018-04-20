@@ -15,7 +15,7 @@
 %% API
 -export([init/2, remove_user/2, remove_room/3, delete_old_messages/3,
 	 extended_fields/0, store/7, write_prefs/4, get_prefs/2, select/8,
-	 need_cache/1]).
+	 need_cache/1, remove_from_archive/3]).
 
 -include_lib("stdlib/include/ms_transform.hrl").
 -include("jlib.hrl").
@@ -44,6 +44,22 @@ remove_user(LUser, LServer) ->
 remove_room(LServer, LName, LHost) ->
     LUser = jid:to_string({LName, LHost, <<>>}),
     remove_user(LUser, LServer).
+
+remove_from_archive(LUser, LServer, none) ->
+    Key = LUser,
+    case ejabberd_sql:sql_query(LServer, Key,
+				?SQL("delete from archive where username=%(LUser)s")) of
+	{error, Reason} -> {error, Reason};
+	_ -> ok
+    end;
+remove_from_archive(LUser, LServer, WithJid) ->
+    Key = LUser,
+    Peer = jid:to_string(jid:remove_resource(WithJid)),
+    case ejabberd_sql:sql_query(LServer, Key,
+				?SQL("delete from archive where username=%(LUser)s and bare_peer=%(Peer)s")) of
+	{error, Reason} -> {error, Reason};
+	_ -> ok
+    end.
 
 delete_old_messages(ServerHost, TimeStamp, Type) ->
     TypeClause = if Type == all -> <<"">>;

@@ -13,7 +13,7 @@
 %% API
 -export([init/2, remove_user/2, remove_room/3, delete_old_messages/3,
 	 extended_fields/0, store/7, write_prefs/4, get_prefs/2, select/8,
-	 need_cache/1]).
+	 need_cache/1, remove_from_archive/3]).
 
 -include("jlib.hrl").
 -include("mod_mam.hrl").
@@ -34,6 +34,9 @@ remove_user(_LUser, _LServer) ->
 
 remove_room(_LServer, _LName, _LHost) ->
     {atomic, ok}.
+
+remove_from_archive(_LUser, _LServer, _With) ->
+    {error, not_implemented}.
 
 delete_old_messages(_ServerHost, _TimeStamp, _Type) ->
     {error, not_implemented}.
