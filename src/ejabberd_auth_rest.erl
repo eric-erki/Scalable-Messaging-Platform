@@ -41,6 +41,8 @@
 -include("ejabberd.hrl").
 -include("logger.hrl").
 
+-define(CONTENT_TYPE, "application/json").
+
 %%%----------------------------------------------------------------------
 %%% API
 %%%----------------------------------------------------------------------
@@ -62,9 +64,16 @@ check_password(User, AuthzId, Server, Password) ->
     if AuthzId /= <<>> andalso AuthzId /= User ->
         false;
     true ->
-        Path = path(Server, auth),
-        case rest:get(Server, Path ,
-                      [{"username", User}, {"password",Password}]) of
+        Params = [{"username", User}, {"password",Password}],
+        Request = case binary:split(path(Server, auth), <<":">>) of
+                [Path] ->
+                      rest:request(Server, get, Path, Params, ?CONTENT_TYPE, <<>>);
+                [<<"POST">>, Path] ->
+                      BParams = [{iolist_to_binary(K), V} || {K, V} <- Params],
+                      Data = rest:encode_json({BParams}),
+                      rest:request(Server, post, Path, [], ?CONTENT_TYPE, Data)
+            end,
+        case Request of
             {ok, 200, _RespBody} ->
                 true;
             {ok, 401, RespBody} ->
@@ -151,7 +160,7 @@ path(Server, user) ->
 			       fun(X) -> iolist_to_binary(X) end,
 			       <<"/user">>);
 path(_Server, Method) when is_binary(Method) orelse is_list(Method)->
-    Method.
+    iolist_to_binary(Method).
 
 opt_type(ext_api_path_auth) ->
     fun (X) -> iolist_to_binary(X) end;
