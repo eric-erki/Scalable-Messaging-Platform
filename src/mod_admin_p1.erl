@@ -59,6 +59,7 @@
 	% mass notification
 	 start_mass_message/3, stop_mass_message/1,
 	 send_mass_message/4, mass_message/5,
+	 send_iq/3,
 	% mam
 	 purge_mam/2,
 	 get_commands_spec/0,
@@ -263,6 +264,11 @@ get_commands_spec() ->
 			module = ?MODULE, function = stop_mass_message,
 			args = [{server, binary}],
 			result = {res, integer}},
+     #ejabberd_commands{name = send_iq, tags = [stanza],
+			desc = "Send an IQ and wait for response",
+			module = ?MODULE, function = send_iq,
+			args = [{to, binary}, {type, binary}, {xml, binary}],
+			result = {res, {tuple, [{name, atom}, {value, string}]}}},
      #ejabberd_commands{name = iq_handlers_number,
 			tags = [internal],
 			desc = "Number of IQ handlers in the node",
@@ -846,6 +852,59 @@ stop_mass_message(Host) ->
 	undefined -> 1;
 	Pid -> Pid ! stop, 0
     end.
+
+%%%
+%%% Send IQ
+%%%
+
+send_iq(To, Type, Xml) ->
+    JID = jid:from_string(To),
+    case fxml_stream:parse_element(Xml) of
+	#xmlel{} = El ->
+	    case Type of
+		<<"get">> -> send_iq(JID, #iq{type = get, sub_el = [El]});
+		<<"set">> -> send_iq(JID, #iq{type = set, sub_el = [El]});
+		_ -> iq_err_s(<<"Invalid IQ: bad type '", Type/binary, "'">>)
+	    end;
+	{error, {_, Reason}} ->
+	    iq_err_s(<<"Invalid IQ: ", Reason/binary>>);
+	{error, Atom} ->
+	    iq_err_s(jlib:atom_to_binary(Atom))
+    end.
+
+send_iq(To, IQ) ->
+    From = jid:from_string(To#jid.lserver),
+    Pid = self(),
+    F = fun(Response) -> process_iq_response(Pid, Response) end,
+    ejabberd_local:route_iq(From, To, IQ, F, 15000),
+    receive
+	{ok, Result} -> {result, Result};
+	{error, Error} -> iq_err_c(Error)
+    end.
+
+process_iq_response(Pid, #iq{type = Type, sub_el = Els}) ->
+    case fxml:remove_cdata(Els) of
+	[#xmlel{} | _] = Rels ->
+	    Result = [binary_to_list(fxml:element_to_binary(El)) || El <- Rels],
+	    Pid ! {ok, iolist_to_binary(Result)};
+	_ ->
+	    Error = <<"Empty IQ ", (jlib:atom_to_binary(Type))/binary>>,
+	    Pid ! {error, Error}
+    end;
+process_iq_response(Pid, timeout) ->
+    Pid ! {error, <<"IQ timeout">>}.
+
+iq_err_s(Error) ->
+    {error, <<"<error code='503' type='cancel'>",
+	      "<internal-server-error xmlns='urn:ietf:params:xml:ns:xmpp-stanzas'/>",
+	      "<text xmlns='urn:ietf:params:xml:ns:xmpp-stanzas'>",
+	      Error/binary, "</text></error>">>}.
+iq_err_c(Error) ->
+    {error, <<"<error code='503' type='cancel'>",
+	      "<service-unavailable xmlns='urn:ietf:params:xml:ns:xmpp-stanzas'/>",
+	      "<text xmlns='urn:ietf:params:xml:ns:xmpp-stanzas'>",
+	      Error/binary, "</text></error>">>}.
+
 
 %%%
 %%% Stats
