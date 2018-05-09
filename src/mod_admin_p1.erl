@@ -268,7 +268,10 @@ get_commands_spec() ->
 			desc = "Send an IQ and wait for response",
 			module = ?MODULE, function = send_iq,
 			args = [{to, binary}, {type, binary}, {xml, binary}],
-			result = {res, {tuple, [{name, atom}, {value, string}]}}},
+			result = {res, {tuple, [
+			    {from, string},
+			    {type, string},
+			    {xml, string}]}}},
      #ejabberd_commands{name = iq_handlers_number,
 			tags = [internal],
 			desc = "Number of IQ handlers in the node",
@@ -864,12 +867,12 @@ send_iq(To, Type, Xml) ->
 	    case Type of
 		<<"get">> -> send_iq(JID, #iq{type = get, sub_el = [El]});
 		<<"set">> -> send_iq(JID, #iq{type = set, sub_el = [El]});
-		_ -> iq_err_s(<<"Invalid IQ: bad type '", Type/binary, "'">>)
+		_ -> {error, <<"Invalid IQ: bad type '", Type/binary, "'">>}
 	    end;
 	{error, {_, Reason}} ->
-	    iq_err_s(<<"Invalid IQ: ", Reason/binary>>);
+	    {error, <<"Invalid IQ: ", Reason/binary>>};
 	{error, Atom} ->
-	    iq_err_s(jlib:atom_to_binary(Atom))
+	    {error, jlib:atom_to_binary(Atom)}
     end.
 
 send_iq(To, IQ) ->
@@ -878,32 +881,15 @@ send_iq(To, IQ) ->
     F = fun(Response) -> process_iq_response(Pid, Response) end,
     ejabberd_local:route_iq(From, To, IQ, F, 15000),
     receive
-	{ok, Result} -> {result, Result};
-	{error, Error} -> iq_err_c(Error)
+	{ok, Type, Result} -> {jid:to_string(To), jlib:atom_to_binary(Type), Result};
+	{error, Error} -> {error, Error}
     end.
 
 process_iq_response(Pid, #iq{type = Type, sub_el = Els}) ->
-    case fxml:remove_cdata(Els) of
-	[#xmlel{} | _] = Rels ->
-	    Result = [binary_to_list(fxml:element_to_binary(El)) || El <- Rels],
-	    Pid ! {ok, iolist_to_binary(Result)};
-	_ ->
-	    Error = <<"Empty IQ ", (jlib:atom_to_binary(Type))/binary>>,
-	    Pid ! {error, Error}
-    end;
+    Result = [binary_to_list(fxml:element_to_binary(El)) || El <- fxml:remove_cdata(Els)],
+    Pid ! {ok, Type, iolist_to_binary(Result)};
 process_iq_response(Pid, timeout) ->
-    Pid ! {error, <<"IQ timeout">>}.
-
-iq_err_s(Error) ->
-    {error, <<"<error code='503' type='cancel'>",
-	      "<internal-server-error xmlns='urn:ietf:params:xml:ns:xmpp-stanzas'/>",
-	      "<text xmlns='urn:ietf:params:xml:ns:xmpp-stanzas'>",
-	      Error/binary, "</text></error>">>}.
-iq_err_c(Error) ->
-    {error, <<"<error code='503' type='cancel'>",
-	      "<service-unavailable xmlns='urn:ietf:params:xml:ns:xmpp-stanzas'/>",
-	      "<text xmlns='urn:ietf:params:xml:ns:xmpp-stanzas'>",
-	      Error/binary, "</text></error>">>}.
+    Pid ! {error, <<"Timeout when waiting for response">>}.
 
 
 %%%
