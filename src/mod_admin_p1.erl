@@ -268,10 +268,7 @@ get_commands_spec() ->
 			desc = "Send an IQ and wait for response",
 			module = ?MODULE, function = send_iq,
 			args = [{to, binary}, {type, binary}, {xml, binary}],
-			result = {res, {tuple, [
-			    {from, string},
-			    {type, string},
-			    {xml, string}]}}},
+			result = {res, restuple}},
      #ejabberd_commands{name = iq_handlers_number,
 			tags = [internal],
 			desc = "Number of IQ handlers in the node",
@@ -881,15 +878,14 @@ send_iq(To, IQ) ->
     F = fun(Response) -> process_iq_response(Pid, Response) end,
     ejabberd_local:route_iq(From, To, IQ, F, 15000),
     receive
-	{ok, Type, Result} -> {jid:to_string(To), jlib:atom_to_binary(Type), Result};
+	{ok, Result} -> {ok, fxml:element_to_binary(jlib:replace_from(To, Result))};
 	{error, Error} -> {error, Error}
     end.
 
-process_iq_response(Pid, #iq{type = Type, sub_el = Els}) ->
-    Result = [binary_to_list(fxml:element_to_binary(El)) || El <- fxml:remove_cdata(Els)],
-    Pid ! {ok, Type, iolist_to_binary(Result)};
 process_iq_response(Pid, timeout) ->
-    Pid ! {error, <<"Timeout when waiting for response">>}.
+    Pid ! {error, <<"Timeout when waiting for response">>};
+process_iq_response(Pid, Iq) ->
+    Pid ! {ok, jlib:iq_to_xml(Iq#iq{id = <<>>})}.
 
 
 %%%
