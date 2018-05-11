@@ -65,7 +65,8 @@
     trail = <<>>               :: binary(),
     compression                :: gzip,
     websocket_handlers = []    :: [{[binary()], atom(), list()}],
-    addr_re
+    addr_re,
+    copy_headers = []          :: [binary()]
 }).
 
 -define(XHTML_DOCTYPE,
@@ -156,6 +157,12 @@ init({SockMod, Socket}, Opts) ->
 				      _ -> Mod
 				  end} || {Path, Mod} <- Hs2]
                         end, []),
+    CopyHeader = gen_mod:get_opt(
+	copy_headers, Opts,
+	fun(Headers) -> lists:map(
+	    fun(V) when is_binary(V) ->
+		normalize_header_name(V)
+	    end, Headers) end, []),
     RequestHandlers = DefinedHandlers ++ Captcha ++ Register ++
         Admin ++ Bind ++ XMLRPC,
     ?DEBUG("S: ~p~n", [RequestHandlers]),
@@ -186,6 +193,7 @@ init({SockMod, Socket}, Opts) ->
 		   default_host = DefaultHost, options = Opts,
 		   request_handlers = RequestHandlers,
 		   websocket_handlers = WebSocketHandlers,
+		   copy_headers = CopyHeader,
 		   addr_re = RE},
     try receive_headers(State) of
         V -> V
@@ -381,7 +389,6 @@ get_host_really_served(Default, Provided) ->
 get_transfer_protocol(RE, SockMod, HostPort) ->
     {Proto, DefPort} = case SockMod of
 			   gen_tcp -> {http, 80};
-			   fast_tls -> {https, 443};
 			   fast_tls -> {https, 443}
 		       end,
     {Host, Port} = case re:run(HostPort, RE, [{capture,[1,2,3],binary}]) of
@@ -489,10 +496,15 @@ process_request(#state{request_method = Method,
 		       websocket_handlers = WebSocketHandlers,
 		       request_headers = RequestHeaders,
 		       request_handlers = RequestHandlers,
+		       copy_headers = CopyHeaders,
 		       trail = Trail} = State) ->
+    CopiedHeaders = lists:filter(
+	fun({HeaderName, _}) ->
+	    lists:member(HeaderName, CopyHeaders)
+	end, RequestHeaders),
     case extract_path_query(State) of
 	{State2, false} ->
-	    {State2, make_bad_request(State)};
+	    {State2, make_bad_request(State, CopiedHeaders)};
 	{State2, {LPath, LQuery, Data}} ->
 	    PeerName =
 		case SockMod of
@@ -519,28 +531,29 @@ process_request(#state{request_method = Method,
 			       opts = Options,
                                headers = RequestHeaders,
                                ip = IP},
+
             Res = case process(RequestHandlers ++ WebSocketHandlers, Request, Socket, SockMod, Trail) of
 		      El when is_record(El, xmlel) ->
-			  make_xhtml_output(State, 200, [], El);
+			  make_xhtml_output(State, 200, CopiedHeaders, El);
 		      {Status, Headers, El}
 			when is_record(El, xmlel) ->
-			  make_xhtml_output(State, Status, Headers, El);
+			  make_xhtml_output(State, Status, CopiedHeaders ++ Headers, El);
 		      Output when is_binary(Output) or is_list(Output) ->
-			  make_text_output(State, 200, [], Output);
+			  make_text_output(State, 200, CopiedHeaders, Output);
 		      {Status, Headers, Output}
 			when is_binary(Output) or is_list(Output) ->
-			  make_text_output(State, Status, Headers, Output);
+			  make_text_output(State, Status, CopiedHeaders ++ Headers, Output);
 		      {Status, Reason, Headers, Output}
 			when is_binary(Output) or is_list(Output) ->
-			  make_text_output(State, Status, Reason, Headers, Output);
+			  make_text_output(State, Status, Reason, CopiedHeaders ++ Headers, Output);
 		      _ ->
 			  none
 		  end,
 	    {State2, Res}
     end.
 
-make_bad_request(State) ->
-    make_xhtml_output(State, 400, [],
+make_bad_request(State, Headers) ->
+    make_xhtml_output(State, 400, Headers,
 		      ejabberd_web:make_xhtml([#xmlel{name = <<"h1">>,
 						      attrs = [],
 						      children =
