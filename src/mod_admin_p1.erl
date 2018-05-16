@@ -269,7 +269,7 @@ get_commands_spec() ->
 			module = ?MODULE, function = send_iq,
 			args = [{to, binary}, {type, binary}, {xml, binary}],
 			result = {res, {tuple, [
-			    {to, string},
+			    {from, string},
 			    {sub_elements, {list, {element, string}}},
 			    {errors, {list, {error, {tuple, [
 				{type, string},
