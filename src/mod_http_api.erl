@@ -150,11 +150,7 @@ check_permissions(Request, Command) ->
 
 check_permissions2(#request{auth = HTTPAuth, headers = Headers}, Call, _, ScopeList)
   when HTTPAuth /= undefined ->
-    Admin =
-        case lists:keysearch(<<"X-Admin">>, 1, Headers) of
-            {value, {_, <<"true">>}} -> true;
-            _ -> false
-        end,
+    Admin = true,
     Auth =
         case HTTPAuth of
             {SJID, Pass} ->
