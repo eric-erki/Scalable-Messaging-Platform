@@ -870,12 +870,10 @@ send_iq(To, Type, Xml) ->
 	    case Type of
 		<<"get">> -> send_iq(JID, #iq{type = get, sub_el = [El]});
 		<<"set">> -> send_iq(JID, #iq{type = set, sub_el = [El]});
-		_ -> {error, <<"Invalid IQ: bad type '", Type/binary, "'">>}
+		_ -> {To, [], [{<<"cancel">>, 500, <<"not-well-formed">>}]}
 	    end;
-	{error, {_, Reason}} ->
-	    {error, <<"Invalid IQ: ", Reason/binary>>};
-	{error, Atom} ->
-	    {error, jlib:atom_to_binary(Atom)}
+	{error, _} ->
+	    {To, [], [{<<"cancel">>, 500, <<"not-well-formed">>}]}
     end.
 
 send_iq(To, IQ) ->
@@ -919,11 +917,11 @@ send_iq(To, IQ) ->
 		    {ToS, SubElS, []}
 	    end;
 	{error, Error} ->
-	    {error, Error}
+	    {ToS, [], Error}
     end.
 
 process_iq_response(Pid, timeout) ->
-    Pid ! {error, <<"Timeout when waiting for response">>};
+    Pid ! {error, [{<<"cancel">>, 500, <<"timeout">>}]};
 process_iq_response(Pid, Iq) ->
     Pid ! {ok, Iq}.
 
