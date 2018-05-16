@@ -268,7 +268,13 @@ get_commands_spec() ->
 			desc = "Send an IQ and wait for response",
 			module = ?MODULE, function = send_iq,
 			args = [{to, binary}, {type, binary}, {xml, binary}],
-			result = {res, restuple}},
+			result = {res, {tuple, [
+			    {to, string},
+			    {sub_elements, {list, {element, string}}},
+			    {errors, {list, {error, {tuple, [
+				{type, string},
+				{code, integer},
+				{condition, string}]}}}}]}}},
      #ejabberd_commands{name = iq_handlers_number,
 			tags = [internal],
 			desc = "Number of IQ handlers in the node",
@@ -874,18 +880,52 @@ send_iq(To, Type, Xml) ->
 
 send_iq(To, IQ) ->
     From = jid:from_string(To#jid.lserver),
+    ToS = jid:to_string(To),
     Pid = self(),
     F = fun(Response) -> process_iq_response(Pid, Response) end,
     ejabberd_local:route_iq(From, To, IQ, F, 15000),
     receive
-	{ok, Result} -> {ok, fxml:element_to_binary(jlib:replace_from(To, Result))};
-	{error, Error} -> {error, Error}
+	{ok, #iq{type = Type, sub_el = SubEl}} ->
+	    SubElS = [fxml:element_to_binary(SubEl0) || SubEl0 <- SubEl],
+	    case Type of
+		error ->
+		    Errors = lists:filtermap(
+			fun(#xmlel{name = <<"error">>, attrs = Attrs, children = Children}) ->
+			    Cond0 = [Condition ||
+				#xmlel{name = Condition, attrs = [{<<"xmlns">>, ?NS_STANZAS}]}
+				    <- Children, Condition /= <<"text">>],
+			    Cond = case Cond0 of
+				       [] -> [<<"undefined-condition">>];
+				       _ -> Cond0
+				   end,
+			    Code = try jlib:binary_to_integer(fxml:get_attr_s(<<"code">>, Attrs)) of
+				       Code0 -> Code0
+				   catch _:_ -> 500
+				   end,
+			    EType = case fxml:get_attr(<<"type">>, Attrs) of
+					false -> <<"cancel">>;
+					{value, Type0} -> Type0
+				    end,
+			    {true, {EType, Code, Cond}};
+			   (_) ->
+			       false
+			end, SubEl),
+		    Err = case Errors of
+			      [] -> [{<<"cancel">>, 500, <<"undefined-condition">>}];
+			      _ -> Errors
+			  end,
+		    {ToS, SubElS, Err};
+		_ ->
+		    {ToS, SubElS, []}
+	    end;
+	{error, Error} ->
+	    {error, Error}
     end.
 
 process_iq_response(Pid, timeout) ->
     Pid ! {error, <<"Timeout when waiting for response">>};
 process_iq_response(Pid, Iq) ->
-    Pid ! {ok, jlib:iq_to_xml(Iq#iq{id = <<>>})}.
+    Pid ! {ok, Iq}.
 
 
 %%%
