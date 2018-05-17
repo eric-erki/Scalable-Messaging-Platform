@@ -865,25 +865,26 @@ stop_mass_message(Host) ->
 
 send_iq(To, Type, Xml) ->
     JID = jid:from_string(To),
+    Host = JID#jid.lserver,
     case fxml_stream:parse_element(Xml) of
 	#xmlel{} = El ->
 	    case Type of
 		<<"get">> -> send_iq(JID, #iq{type = get, sub_el = [El]});
 		<<"set">> -> send_iq(JID, #iq{type = set, sub_el = [El]});
-		_ -> {To, [], [{<<"cancel">>, 500, <<"not-well-formed">>}]}
+		_ -> {Host, [], [{<<"cancel">>, 500, <<"not-well-formed">>}]}
 	    end;
 	{error, _} ->
-	    {To, [], [{<<"cancel">>, 500, <<"not-well-formed">>}]}
+	    {Host, [], [{<<"cancel">>, 500, <<"not-well-formed">>}]}
     end.
 
 send_iq(To, IQ) ->
     From = jid:from_string(To#jid.lserver),
-    ToS = jid:to_string(To),
     Pid = self(),
     F = fun(Response) -> process_iq_response(Pid, Response) end,
     ejabberd_local:route_iq(From, To, IQ, F, 15000),
     receive
 	{ok, #iq{type = Type, sub_el = SubEl}} ->
+	    ToS = jid:to_string(To),
 	    SubElS = [fxml:element_to_binary(SubEl0) || SubEl0 <- SubEl],
 	    case Type of
 		error ->
@@ -917,7 +918,7 @@ send_iq(To, IQ) ->
 		    {ToS, SubElS, []}
 	    end;
 	{error, Error} ->
-	    {ToS, [], Error}
+	    {To#jid.lserver, [], Error}
     end.
 
 process_iq_response(Pid, timeout) ->
