@@ -132,15 +132,9 @@ depends(_Host, _Opts) ->
 
 check_permissions(Request, Command) ->
     case catch binary_to_existing_atom(Command, utf8) of
-	Call when Call == 'bulk_roster_update' ->
+	Call when Call == 'bulk_roster_update'; Call == 'bulk-roster-update' ->
             check_permissions2(Request, 'bulk-roster-update', admin,
-			       [atom_to_binary(Call, utf8), <<"ejabberd:admin">>])
-	    orelse
-            check_permissions2(Request, Call, admin,
-			       [atom_to_binary(Call, utf8), <<"ejabberd:admin">>]);
-	Call when Call == 'bulk-roster-update' ->
-            check_permissions2(Request, Call, admin,
-			       [atom_to_binary(Call, utf8), <<"ejabberd:admin">>]);
+			       [<<"bulk-roster-update">>, <<"ejabberd:admin">>]);
         Call when is_atom(Call) ->
             {ok, CommandPolicy, Scope} = ejabberd_commands:get_command_policy_and_scope(Call),
             check_permissions2(Request, Call, CommandPolicy, Scope);
