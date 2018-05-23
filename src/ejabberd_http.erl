@@ -381,7 +381,6 @@ get_host_really_served(Default, Provided) ->
 get_transfer_protocol(RE, SockMod, HostPort) ->
     {Proto, DefPort} = case SockMod of
 			   gen_tcp -> {http, 80};
-			   fast_tls -> {https, 443};
 			   fast_tls -> {https, 443}
 		       end,
     {Host, Port} = case re:run(HostPort, RE, [{capture,[1,2,3],binary}]) of
@@ -480,6 +479,7 @@ extract_path_query(State) ->
 process_request(#state{request_method = Method,
 		       request_auth = Auth,
 		       request_lang = Lang,
+		       request_version = Version,
 		       sockmod = SockMod,
 		       socket = Socket,
 		       options = Options,
@@ -490,6 +490,12 @@ process_request(#state{request_method = Method,
 		       request_headers = RequestHeaders,
 		       request_handlers = RequestHandlers,
 		       trail = Trail} = State) ->
+    case proplists:get_value(<<"Expect">>, RequestHeaders, <<>>) of
+	<<"100-", _/binary>> when Version == {1, 1} ->
+	    send_text(State, <<"HTTP/1.1 100 Continue\r\n\r\n">>);
+	_ ->
+	    ok
+    end,
     case extract_path_query(State) of
 	{State2, false} ->
 	    {State2, make_bad_request(State)};
