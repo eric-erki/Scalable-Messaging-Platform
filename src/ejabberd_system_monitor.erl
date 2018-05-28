@@ -278,7 +278,9 @@ format_mfa(WTF) ->
 
 -spec kill([proc_stat()], non_neg_integer()) -> ok.
 kill(Stats, Threshold) ->
-    case ejabberd_config:get_option(oom_killer, true) of
+    case ejabberd_config:get_option(oom_killer,
+				    fun(B) when is_boolean(B) -> B end,
+				    true) of
 	true ->
 	    do_kill(Stats, Threshold);
 	false ->
