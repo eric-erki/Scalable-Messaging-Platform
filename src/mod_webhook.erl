@@ -38,19 +38,19 @@
 	 enable_offline_notification/5,
 	 disable_notification/3,
 	 receive_offline_packet/3,
-         send_offline_packet_notification/5,
+	 send_offline_packet_notification/5,
 	 resend_badge/1,
 	 multi_resend_badge/1,
 	 offline_resend_badge/0,
-         device_reset_badge/5,
+	 device_reset_badge/5,
 	 remove_user/2,
-         transform_module_options/1,
-         process_sm_iq/3,
-         export/1,
+	 transform_module_options/1,
+	 process_sm_iq/3,
+	 export/1,
 	 enc_key/1,
 	 dec_key/1,
 	 enc_val/2,
-	 dec_val/2]).
+	 dec_val/2, push_for_received_message/5]).
 
 -export([get_tokens_by_jid/1, mod_opt_type/1,
 	 depends/2, opt_type/1]).
@@ -77,6 +77,8 @@ start(Host, Opts) ->
                                ?MODULE, remove_user, 50),
 	    ejabberd_hooks:add(offline_message_hook, Host,
 			       ?MODULE, receive_offline_packet, 35),
+	    ejabberd_hooks:add(push_for_received_message, Host,
+			       ?MODULE, push_for_received_message, 50),
             IQDisc = gen_mod:get_opt(
                        iqdisc, Opts, fun gen_iq_handler:check_type/1,
                        one_queue),
@@ -125,6 +127,8 @@ stop(Host) ->
                           ?MODULE, remove_user, 50),
     ejabberd_hooks:delete(offline_message_hook, Host,
 			  ?MODULE, receive_offline_packet, 35),
+    ejabberd_hooks:delete(push_for_received_message, Host,
+			  ?MODULE, push_for_received_message, 50),
     gen_iq_handler:remove_iq_handler(ejabberd_local, Host, ?NS_P1_PUSH).
 
 push_from_message(Val, From, To, Packet, Notification, AppID, SendBody, SendFrom, Badge, First, FirstFromUser) ->
@@ -214,7 +218,7 @@ do_send_offline_packet_notification(From, To, Packet, ID, AppID, SendBody, SendF
         skip ->
             ok;
         {_, _Silent} ->
-            FWDPacket = build_forward_packet(From, To, Packet, ID),      
+            FWDPacket = build_forward_packet(From, To, Packet, ID),
             route_push_notification(To#jid.lserver, To, AppID, FWDPacket)
     end.
 
@@ -229,6 +233,69 @@ send_offline_packet_notification(From, To, Packet, DeviceID, BadgeCount) ->
             end;
         _ ->
             ok
+    end.
+
+push_for_received_message(Pushed, Notifications, From, To, Packet) ->
+    Host = To#jid.lserver,
+    ProcessPacket = gen_mod:get_module_opt(Host, ?MODULE,
+					   always_push_to_all_devices,
+					   mod_opt_type(always_push_to_all_devices),
+					   false),
+    if ProcessPacket ->
+	?DEBUG("push_for_received_message~n\tfrom ~p~n\tto ~p~n\tpacket ~P~n",
+	       [From, To, Packet, 8]),
+	case gen_mod:is_loaded(Host, ?MODULE) of
+	    true ->
+		Silent = gen_mod:get_module_opt(Host, ?MODULE,
+						silent_push_enabled,
+						mod_opt_type(silent_push_enabled),
+						false),
+		case ejabberd_push:will_probably_push_for_message(From, To, Packet, Silent) of
+		    false ->
+			Pushed;
+		    _ ->
+			case lookup_cache(To) of
+			    false ->
+				Pushed;
+			    DeviceList ->
+				ActiveIDs = lists:filtermap(
+				    fun(El) ->
+					case fxml:get_path_s(El, [{elem, <<"type">>}, cdata]) of
+					    <<"gcm">> ->
+						{true, fxml:get_path_s(El, [{elem, <<"id">>}, cdata])};
+					    _ ->
+						false
+					end
+				    end, Notifications),
+				lists:foldl(
+				    fun({ID, AppID, SendBody, SendFrom, LocalBadge}, Acc) ->
+					case lists:member(ID, ActiveIDs) of
+					    true ->
+						Acc;
+					    _ ->
+						?DEBUG("lookup: ~p~n", [{ID, AppID, SendBody, SendFrom, LocalBadge}]),
+						case ejabberd_push:build_push_packet_from_message(From, To, Packet, ID,
+												  AppID,
+												  SendBody, SendFrom,
+												  LocalBadge,
+												  LocalBadge == 0,
+												  LocalBadge == 0,
+												  Silent, ?MODULE) of
+						    skip ->
+							Acc;
+						    {V, _Silent} ->
+							route_push_notification(Host, To, AppID, V),
+							true
+						end
+					end
+				    end, false, DeviceList) orelse Pushed
+			end
+		end;
+	    false ->
+		Pushed
+	end;
+	true ->
+	    Pushed
     end.
 
 receive_offline_packet(From, To, Packet) ->
@@ -565,7 +632,7 @@ store_cache_p1db(JID, DeviceID, Options) ->
                     %% As the record don't match anyway, write the new one
 		    p1db:insert(webhook_cache, Key, Val);
 		{local_badge, _} ->
-                    %% badge is useless on this module, so we set it always to 0      
+                    %% badge is useless on this module, so we set it always to 0
 		    NewVal = opts_to_p1db([{local_badge, 0} | Options]),
 		    p1db:insert(webhook_cache, Key, NewVal)
 	    end;
@@ -870,9 +937,12 @@ mod_opt_type(push_services) ->
     fun (L) when is_list(L) -> L end;
 mod_opt_type(silent_push_enabled) ->
     fun (L) when is_boolean(L) -> L end;
+mod_opt_type(always_push_to_all_devices) ->
+    fun (L) when is_boolean(L) -> L end;
 mod_opt_type(_) ->
     [db_type, default_service, default_services, iqdisc,
-     p1db_group, push_services, silent_push_enabled].
+     p1db_group, push_services, silent_push_enabled,
+     always_push_to_all_devices].
 
 opt_type(p1db_group) ->
     fun (G) when is_atom(G) -> G end;

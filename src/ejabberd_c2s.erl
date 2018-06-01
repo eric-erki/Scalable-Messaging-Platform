@@ -46,7 +46,7 @@
 	 get_aux_field/2, set_aux_field/3, del_aux_field/2,
 	 get_presence/1, get_subscription/2, get_subscribed/1,
 	 broadcast/4, transform_listen_option/2,
-	 socket_type/0, is_remote_socket/1]).
+	 socket_type/0, is_remote_socket/1, get_push_config/1]).
 
 -export([init/1, wakeup/2, wait_for_stream/2, wait_for_stream/3,
 	 wait_for_auth/2, wait_for_auth/3,
@@ -212,6 +212,9 @@ get_subscription(LFrom, StateData) ->
        T -> to;
        true -> none
     end.
+
+get_push_config(FsmRef) ->
+    (?GEN_FSM):sync_send_all_state_event(FsmRef, get_push_config, 1000).
 
 send_filtered(FsmRef, Feature, From, To, Packet) ->
     FsmRef ! {send_filtered, Feature, From, To, Packet}.
@@ -1291,6 +1294,8 @@ handle_sync_event({get_presence}, _From, StateName, StateData) ->
 handle_sync_event(get_subscribed, _From, StateName, StateData) ->
     Subscribed = (?SETS):to_list(StateData#state.pres_f),
     {reply, Subscribed, StateName, StateData};
+handle_sync_event(get_push_config, _From, StateName, StateData) ->
+    {reply, StateData#state.oor_notification, StateName, StateData};
 handle_sync_event({resume_session, Time}, _From, _StateName, StateData)
   when element(1, StateData#state.sid) == Time ->
     %% The old session should be closed before the new one is opened, so we do
@@ -1974,7 +1979,7 @@ send_trailer(StateData)
 send_trailer(StateData) ->
     send_text(StateData, ?STREAM_TRAILER).
 
-send_or_enqueue_packet(State, From, To, Packet) ->
+send_or_enqueue_packet(#state{server = Server, oor_notification = Notif} = State, From, To, Packet) ->
     #xmlel{name = Name} = Packet,
     if State#state.reception and
        not (State#state.standby
@@ -1984,16 +1989,18 @@ send_or_enqueue_packet(State, From, To, Packet) ->
 			State#state.server,
 			Packet,
 			[State, State#state.jid, From, To]),
-	    State1 = send_packet(State, Packet1),
-	    ack(State1, From, To, Packet1);
+	    Packet2 = ejabberd_push:process_push_for_received_message(From, To, Packet1, Server, Notif, self()),
+	    State1 = send_packet(State, Packet2),
+	    ack(State1, From, To, Packet2);
        true ->
-	    {NewState, Packet2} = send_oor_message(State, From, To, Packet),
-            Packet1 = ejabberd_hooks:run_fold(
+	    {NewState, Packet1} = send_oor_message(State, From, To, Packet),
+	    Packet2 = ejabberd_push:process_push_for_received_message(From, To, Packet1, Server, Notif, self()),
+            Packet3 = ejabberd_hooks:run_fold(
                         user_receive_packet,
                         NewState#state.server,
                         Packet2,
                         [NewState, State#state.jid, From, To]),
-	    enqueue(NewState, From, To, Packet1)
+	    enqueue(NewState, From, To, Packet3)
     end.
 
 new_id() ->

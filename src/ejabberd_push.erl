@@ -29,48 +29,171 @@
 
 -author('alexey@process-one.net').
 
--export([build_push_packet_from_message/12, utf8_cut/2]).
+-export([build_push_packet_from_message/12, utf8_cut/2, will_probably_push_for_message/4,
+	 process_push_for_received_message/6]).
 
 -include("ejabberd.hrl").
+-include("ejabberd_sm.hrl").
 -include("logger.hrl").
 -include("jlib.hrl").
 -include("mod_privacy.hrl").
 -include("ejabberd_sql_pt.hrl").
 
-build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom, BadgeCount, First, FirstPerUser, SilentPushesEnabled, Module) ->
-    Pushed = check_x_pushed(Packet),
-    Packet2 =
-        case fxml:get_subtag_with_xmlns(
-               Packet, <<"event">>, ?NS_PUBSUB_EVENT) of
-            #xmlel{} = EventEl ->
-                case fxml:get_subtag(EventEl, <<"items">>) of
-                    #xmlel{} = ItemsEl ->
-                        case fxml:get_tag_attr_s(<<"node">>, ItemsEl) of
-			    Node when Node == ?NS_MUCSUB_NODES_MESSAGES;
-				      Node == ?NS_MUCSUB_NODES_SUBJECT ->
-                                case fxml:get_subtag(ItemsEl, <<"item">>) of
-                                    #xmlel{} = ItemEl ->
-                                        case fxml:get_subtag(ItemEl, <<"message">>) of
-                                            #xmlel{} = MessageEl ->
-                                                MessageEl;
-                                            false ->
-                                                Packet
-                                        end;
-                                    false ->
-                                        Packet
-                                end;
-                            _ ->
-                                Packet
-                        end;
-                    false ->
-                        Packet
-                end;
-            false ->
-                Packet
-        end,
-    build_push_packet_from_message2(From, To, Packet2, ID, _AppID, SendBody, SendFrom, BadgeCount, First, FirstPerUser, SilentPushesEnabled, Module, Pushed).
+extract_payload_from_message(Packet) ->
+    case fxml:get_subtag_with_xmlns(
+	Packet, <<"event">>, ?NS_PUBSUB_EVENT) of
+	#xmlel{} = EventEl ->
+	    case fxml:get_subtag(EventEl, <<"items">>) of
+		#xmlel{} = ItemsEl ->
+		    case fxml:get_tag_attr_s(<<"node">>, ItemsEl) of
+			Node when Node == ?NS_MUCSUB_NODES_MESSAGES;
+				  Node == ?NS_MUCSUB_NODES_SUBJECT ->
+			    case fxml:get_subtag(ItemsEl, <<"item">>) of
+				#xmlel{} = ItemEl ->
+				    case fxml:get_subtag(ItemEl, <<"message">>) of
+					#xmlel{} = MessageEl ->
+					    MessageEl;
+					false ->
+					    Packet
+				    end;
+				false ->
+				    Packet
+			    end;
+			_ ->
+			    Packet
+		    end;
+		false ->
+		    Packet
+	    end;
+	false ->
+	    Packet
+    end.
 
-build_push_packet_from_message2(From, To, Packet, ID, _AppID, SendBody, SendFrom, BadgeCount, First, FirstPerUser, SilentPushesEnabled, Module, Pushed) ->
+will_probably_push_for_message(From, _To, Packet0, SilentPushEnabled) ->
+    Packet = extract_payload_from_message(Packet0),
+    Body1 = fxml:get_path_s(Packet, [{elem, <<"body">>}, cdata]),
+    Body = case check_x_attachment(Packet) of
+	true ->
+	    case Body1 of
+		<<"">> -> <<238, 128, 136>>;
+		_ ->
+		    <<238, 128, 136, 32, Body1/binary>>
+	    end;
+	false ->
+	    Body1
+    end,
+    Composing = fxml:get_subtag_with_xmlns(Packet, <<"composing">>, ?NS_CHATSTATES),
+    if
+	Body == <<"">> andalso (not SilentPushEnabled orelse Composing /= false) ->
+	    false;
+	true ->
+	    Customizations = lists:filtermap(
+		fun(#xmlel{name = <<"customize">>} = E) ->
+		    case fxml:get_tag_attr_s(<<"xmlns">>, E) of
+			?NS_P1_PUSH_CUSTOMIZE ->
+			    {true, {
+				fxml:get_tag_attr_s(<<"mute">>, E) == <<"true">>,
+				case fxml:get_subtag(E, <<"body">>) of
+				    false -> Body;
+				    V -> fxml:get_tag_cdata(V)
+				end
+			    }};
+			_ ->
+			    false
+		    end;
+		   (_) ->
+		       false
+		end, Packet#xmlel.children),
+	    {Mute, AltBody} = case Customizations of
+				  [] ->
+				      {false, Body};
+				  [Vals | _] ->
+				      Vals
+			      end,
+	    case Mute of
+		true ->
+		    skip;
+		_ ->
+		    {Msg, _, Custom0}  =
+		    if Body /= <<>> ->
+			process_muc_invitations(Packet, From, AltBody);
+			true ->
+			    {AltBody, From, []}
+		    end,
+		    CustomFields = lists:filtermap(
+			fun(#xmlel{name = <<"x">>} = E) ->
+			    case {fxml:get_tag_attr_s(<<"xmlns">>, E),
+				  fxml:get_tag_attr_s(<<"key">>, E),
+				  fxml:get_tag_attr_s(<<"value">>, E)} of
+				{?NS_P1_PUSH_CUSTOM, K, V} when K /= <<"">> ->
+				    {true, {K, V}};
+				_ ->
+				    false
+			    end;
+			   (_) ->
+			       false
+			end, Packet#xmlel.children),
+		    case {Msg, Custom0, CustomFields} of
+			{<<>>, [], []} ->
+			    false;
+			_ ->
+			    true
+		    end
+	    end
+    end.
+
+process_push_for_received_message(From, To, #xmlel{name = <<"message">>} = Packet,
+				  Server, Notification, C2SPid) ->
+    #jid{lserver = LServer, luser = LUser} = To,
+    C2SPids = lists:filtermap(
+	fun(#session{sid = {_, Pid}}) when Pid == C2SPid ->
+	       false;
+	   (#session{sid = {_, Pid}}) ->
+	       {true, Pid}
+	end, ejabberd_sm:get_user_sessions(LUser, LServer)),
+    ?DEBUG("P: ~p ~p", [C2SPid, C2SPids]),
+    PI = lists:map(
+	     fun(Pid1) ->
+		 catch ejabberd_c2s:get_push_config(Pid1)
+	     end, C2SPids),
+    ?DEBUG("PI: ~p", [PI]),
+    AllNotifications = lists:filter(fun(#xmlel{}) -> true; (_) -> false end, [Notification | PI]),
+    ?DEBUG("PIN: ~p", [AllNotifications]),
+    CleanPacket = fxml:remove_subtags(
+	Packet, <<"x">>,
+	{<<"xmlns">>, ?NS_P1_PUSHED}),
+    Pushed = ejabberd_hooks:run_fold(
+	push_for_received_message,
+	Server,
+	false,
+	[AllNotifications, From, To, CleanPacket]),
+    case Pushed of
+	true ->
+	    fxml:append_subtags(
+		CleanPacket,
+		[#xmlel{name  = <<"x">>,
+			attrs = [{<<"xmlns">>, ?NS_P1_PUSHED}]}]);
+	_ ->
+	    Packet
+    end;
+process_push_for_received_message(_From, _To, Packet, _Server, _Notification, _C2SPid) ->
+    Packet.
+
+
+build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom, BadgeCount, First,
+			       FirstPerUser, SilentPushEnabled, Module) ->
+    Pushed = check_x_pushed(Packet),
+    case Pushed of
+	true ->
+	    skip;
+	_ ->
+	    Packet2 = extract_payload_from_message(Packet),
+	    build_push_packet_from_message2(From, To, Packet2, ID, _AppID, SendBody, SendFrom, BadgeCount,
+					    First, FirstPerUser, SilentPushEnabled, Module, Pushed)
+    end.
+
+build_push_packet_from_message2(From, To, Packet, ID, _AppID, SendBody, SendFrom, BadgeCount, First,
+				FirstPerUser, SilentPushEnabled, Module, Pushed) ->
     Body1 = fxml:get_path_s(Packet, [{elem, <<"body">>}, cdata]),
     MsgId = fxml:get_tag_attr_s(<<"id">>, Packet),
     Body =
@@ -88,7 +211,7 @@ build_push_packet_from_message2(From, To, Packet, ID, _AppID, SendBody, SendFrom
     if
         Pushed ->
             skip;
-        Body == <<"">> andalso (not SilentPushesEnabled orelse Composing /= false) ->
+        Body == <<"">> andalso (not SilentPushEnabled orelse Composing /= false) ->
             skip;
         true ->
             IncludeBody =
