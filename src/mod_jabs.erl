@@ -113,7 +113,9 @@ init([Host, Opts]) ->
     ejabberd_commands:register_commands(commands(Host)),
     Ignore = gen_mod:get_opt(ignore, Opts,
                              fun(L) when is_list(L) -> L end, []),
-    {ok, TRef} = timer:send_interval(60000, backup),  % backup every 60s
+    SDiv = gen_mod:get_opt(sessions_div, Opts,
+                           fun (I) when is_number(I), I >= 0 -> I end, 0),
+    {ok, TRef} = timer:send_interval(60000, {tick, SDiv}),  % auto-inc and backup every 60s
     R1 = read_db(Host),
     IgnoreLast = lists:usort(Ignore++R1#jabs.ignore),
     R2 = R1#jabs{ignore = IgnoreLast, timer = TRef},
@@ -166,9 +168,18 @@ handle_cast(reset, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info(backup, State) ->
-    spawn(fun() -> write_db(State) end),
-    {noreply, State};
+handle_info({tick, SDiv}, State) ->
+    NewState = case SDiv of
+                 I when is_number(I), I > 0 ->
+                   % This requires optimized local session count from mod_mon
+                   Step = cheap_counters:get(State#jabs.host, sessions) div I,
+                   Old = State#jabs.counter,
+                   State#jabs{counter = Old+Step};
+                 _ ->
+                   State
+               end,
+    spawn(fun() -> write_db(NewState) end),
+    {noreply, NewState};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -282,7 +293,9 @@ mod_opt_type(ignore) ->
     fun (L) when is_list(L) -> L end;
 mod_opt_type(p1db_group) ->
     fun (G) when is_atom(G) -> G end;
-mod_opt_type(_) -> [db_type, ignore, p1db_group].
+mod_opt_type(sessions_div) ->
+    fun (I) when is_number(I), I >= 0 -> I end;
+mod_opt_type(_) -> [db_type, ignore, p1db_group, sessions_div].
 
 opt_type(p1db_group) ->
     fun (G) when is_atom(G) -> G end;
