@@ -112,7 +112,7 @@ will_probably_push_for_message(From, _To, Packet0, SilentPushEnabled) ->
 			      end,
 	    case Mute of
 		true ->
-		    skip;
+		    false;
 		_ ->
 		    {Msg, _, Custom0}  =
 		    if Body /= <<>> ->
