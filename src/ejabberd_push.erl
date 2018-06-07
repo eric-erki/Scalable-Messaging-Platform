@@ -151,14 +151,11 @@ process_push_for_received_message(From, To, #xmlel{name = <<"message">>} = Packe
 	   (#session{sid = {_, Pid}}) ->
 	       {true, Pid}
 	end, ejabberd_sm:get_user_sessions(LUser, LServer)),
-    ?DEBUG("P: ~p ~p", [C2SPid, C2SPids]),
     PI = lists:map(
 	     fun(Pid1) ->
 		 catch ejabberd_c2s:get_push_config(Pid1)
 	     end, C2SPids),
-    ?DEBUG("PI: ~p", [PI]),
     AllNotifications = lists:filter(fun(#xmlel{}) -> true; (_) -> false end, [Notification | PI]),
-    ?DEBUG("PIN: ~p", [AllNotifications]),
     CleanPacket = fxml:remove_subtags(
 	Packet, <<"x">>,
 	{<<"xmlns">>, ?NS_P1_PUSHED}),
