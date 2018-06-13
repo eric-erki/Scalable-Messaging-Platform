@@ -57,7 +57,7 @@ rules(_Host) ->
 filter(Host, From, To, Packet) ->
     Content = encode_filter_request(From, To, Packet),
     case rest:post(Host, path(Host), [], Content) of
-	{ok, 200, <<>>} ->
+	{ok, 200, []} ->
 	    pass;
 	{ok, 200, Body} ->
 	    case decode_filter_response(Body) of
