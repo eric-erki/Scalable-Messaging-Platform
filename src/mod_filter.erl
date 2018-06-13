@@ -131,14 +131,14 @@ handle_info(_Info, State) ->
 %%% =======================================================
 
 filter_packet({From, To, Packet}) ->
-    Host = From#jid.lserver,
+    Host = ejabberd_router:host_of_route(From#jid.lserver),
     Mod = gen_mod:db_mod(Host, ?MODULE),
-    case Mod:filter(Host, From, To, Packet) of
+    case catch Mod:filter(Host, From, To, Packet) of
 	drop -> drop;
 	pass -> {From, To, Packet};
 	{filter, NewPacket} -> {From, To, NewPacket};
 	{bounce, Msg} -> bounce_packet(From, To, Packet, Msg);
-	{error, Error} ->
+	Error ->
 	    ?ERROR_MSG("failed to filter packet from ~s to ~s~n"
 		       "== Packet: ~p~n== Error: ~p",
 		       [jid:to_string(From), jid:to_string(To),
