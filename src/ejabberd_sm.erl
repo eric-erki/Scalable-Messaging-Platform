@@ -35,6 +35,7 @@
 
 %% API
 -export([start/0,
+	 boot/0,
 	 start_link/0,
 	 route/3, do_route1/4,
 	 set_session/6,
@@ -124,6 +125,9 @@ start() ->
 
 start_link() ->
     ?GEN_SERVER:start_link({local, ?MODULE}, ?MODULE, [], []).
+
+boot() ->
+    ?GEN_SERVER:cast(?MODULE, boot).
 
 -spec route(jid(), jid(), xmlel() | broadcast()) -> ok.
 
@@ -424,7 +428,6 @@ init([]) ->
     ets:new(sm_iqtable, [named_table, bag]),
     lists:foreach(fun register_hooks/1, ?MYHOSTS),
     ejabberd_commands:register_commands(get_commands_spec()),
-    ejabberd_cluster:subscribe(),
     start_handlers(),
     cache_tab:new(crls, [{max_size, 10000},
 			 {life_time, timer:minutes(1) div 1000}]),
@@ -442,7 +445,11 @@ handle_call({delete, SID, USR}, _From, State) ->
 handle_call(_Request, _From, State) ->
     Reply = ok, {reply, Reply, State}.
 
-handle_cast(_Msg, State) -> {noreply, State}.
+handle_cast(boot, State) ->
+    ejabberd_cluster:subscribe(),
+    {noreply, State};
+handle_cast(_Msg, State) ->
+    {noreply, State}.
 
 handle_info({route, From, To, Packet}, State) ->
     handle_info({route, From, To, Packet, []}, State);

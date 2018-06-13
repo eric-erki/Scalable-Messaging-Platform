@@ -73,6 +73,7 @@ start(normal, _Args) ->
     gen_mod:start_modules(),
     ejabberd_node_groups:start(),
     ejabberd_cluster:boot(),
+    ejabberd_sm:boot(),
     ejabberd_listener:start_listeners(),
     register_elixir_config_hooks(),
     ?WARNING_MSG("~s~n", [ejabberd_license:info()]),
