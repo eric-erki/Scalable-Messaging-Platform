@@ -156,7 +156,7 @@ signature() ->
         _ -> ""
     end,
     Val = ?VALIDITY band 16#3FFF,
-    Secs = ((Val bsr 1) * 1000000) + ((Val band 1) * 500000) + 62167219200,
+    Secs = ((Val bsr 1) * 1000000) + ((Val band 1) * 500000) + 500000 + 62167219200,
     Md5 = erlang:md5([beamsum(M) || M<-[ejabberd, ejabberd_c2s, ejabberd_cluster, ejabberd_router]]),
     {Vsn, Md5, term_to_binary(Secs)}.
 
