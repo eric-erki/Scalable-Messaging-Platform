@@ -38,7 +38,7 @@
 
 %% module API
 -export([start_link/2, start/2, stop/1]).
--export([value/1, reset/1, add/2]).
+-export([value/1, reset/1, add/2, adjust/3]).
 %% administration commands
 -export([jabs_count_command/1, jabs_since_command/1, jabs_reset_command/1]).
 %% gen_server callbacks
@@ -102,6 +102,13 @@ reset(Host) ->
 
 add(Host, Count) ->
     gen_server:cast(process(Host), {inc, Count}).
+
+%% Allow smooth adjustment, add Count jabs in Minutes minutes.
+%% Count can be negative also.
+adjust(Host, Count, Minutes) ->
+    Proc = process(Host),
+    Inc = Count div Minutes,
+    spawn(fun() -> adjust_jabs(Proc, Inc, Minutes) end).
 
 %%====================================================================
 %% callbacks
@@ -203,6 +210,13 @@ process(Host) ->
 
 reset_jabs(#jabs{} = R) ->
     R#jabs{counter = 0, stamp = os:timestamp()}.
+
+adjust_jabs(Proc, Inc, Iter) when Iter > 0 ->
+    gen_server:cast(Proc, {inc, Inc}),
+    timer:sleep(60000),
+    adjust_jabs(Proc, Inc, Iter-1);
+adjust_jabs(_Proc, _Inc, _Iter) ->
+    ok.
 
 %%====================================================================
 %% database functions
