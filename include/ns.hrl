@@ -183,6 +183,7 @@
 -define(NS_MUCSUB_NODES_PRESENCE, <<"urn:xmpp:mucsub:nodes:presence">>).
 -define(NS_MUCSUB_NODES_MESSAGES, <<"urn:xmpp:mucsub:nodes:messages">>).
 -define(NS_MUCSUB_NODES_PARTICIPANTS, <<"urn:xmpp:mucsub:nodes:participants">>).
+-define(NS_MUCSUB_NODES_SUBSCRIBERS, <<"urn:xmpp:mucsub:nodes:subscribers">>).
 -define(NS_MUCSUB_NODES_AFFILIATIONS, <<"urn:xmpp:mucsub:nodes:affiliations">>).
 -define(NS_MUCSUB_NODES_SUBJECT, <<"urn:xmpp:mucsub:nodes:subject">>).
 -define(NS_MUCSUB_NODES_CONFIG, <<"urn:xmpp:mucsub:nodes:config">>).

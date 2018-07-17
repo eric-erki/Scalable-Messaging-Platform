@@ -1970,6 +1970,16 @@ set_subscriber(JID, Nick, Nodes, StateData) ->
     NewStateData = StateData#state{subscribers = Subscribers,
 				   subscriber_nicks = Nicks},
     store_room(NewStateData, [{add_subscription, BareJID, Nick, Nodes}]),
+    case not ?DICT:is_key(LBareJID, StateData#state.subscribers) of
+	true ->
+	    Packet = #xmlel{name = <<"subscribed">>, attrs = [{<<"jid">>, jid:to_string(LBareJID)},
+							      {<<"nick">>, Nick},
+							      {<<"xmlns">>, ?NS_MUCSUB}]},
+	    send_wrapped_to_all_subscribers(jid:replace_resource(StateData#state.jid, Nick),
+					    Packet, ?NS_MUCSUB_NODES_SUBSCRIBERS, NewStateData);
+	_ ->
+	    ok
+    end,
     NewStateData.
 
 add_online_user(JID, Nick, Role, StateData) ->
@@ -4993,6 +5003,11 @@ process_iq_mucsub(From, _Packet,
 	    Subscribers = ?DICT:erase(LBareJID, StateData#state.subscribers),
 	    NewStateData = StateData#state{subscribers = Subscribers,
 					   subscriber_nicks = Nicks},
+	    Packet = #xmlel{name = <<"unsubscribed">>, attrs = [{<<"jid">>, jid:to_string(LBareJID)},
+								{<<"nick">>, Nick},
+								{<<"xmlns">>, ?NS_MUCSUB}]},
+	    send_wrapped_to_all_subscribers(jid:replace_resource(StateData#state.jid, Nick),
+					    Packet, ?NS_MUCSUB_NODES_SUBSCRIBERS, StateData),
 	    store_room(NewStateData, [{del_subscription, LBareJID}]),
 	    {result, [], NewStateData};
 	error ->
@@ -5056,7 +5071,8 @@ get_subscription_nodes(#xmlel{name = <<"iq">>} = Packet) ->
 					       ?NS_MUCSUB_NODES_AFFILIATIONS,
 					       ?NS_MUCSUB_NODES_SUBJECT,
 					       ?NS_MUCSUB_NODES_CONFIG,
-					       ?NS_MUCSUB_NODES_PARTICIPANTS]) of
+					       ?NS_MUCSUB_NODES_PARTICIPANTS,
+					       ?NS_MUCSUB_NODES_SUBSCRIBERS]) of
 			  true ->
 			      [Node];
 			  false ->
@@ -5557,6 +5573,27 @@ set_hibernate_timer_if_empty(StateData) ->
 	_ ->
 	    StateData
     end.
+
+send_wrapped_to_all_subscribers(From, Packet, Node, State) ->
+    Item = #xmlel{name = <<"item">>,
+		  attrs = [{<<"id">>, randoms:get_string()}],
+		  children = [Packet]},
+    Items = #xmlel{name = <<"items">>, attrs = [{<<"node">>, Node}],
+		   children = [Item]},
+    Event = #xmlel{name = <<"event">>,
+		   attrs = [{<<"xmlns">>, ?NS_PUBSUB_EVENT}],
+		   children = [Items]},
+    Pkt = #xmlel{name = <<"message">>, children = [Event]},
+
+    ?DICT:fold(fun(_, #subscriber{nodes = Nodes, jid = JID}, _) ->
+	case lists:member(Node, Nodes) of
+	    true ->
+		NewPacket = wrap(From, JID, Packet, Node),
+		ejabberd_router:route(State#state.jid, JID, Pkt);
+	    false ->
+		ok
+	end
+    end, ok, State#state.subscribers).
 
 send_wrapped(From, To, Packet, Node, State) ->
     LTo = jid:tolower(To),
