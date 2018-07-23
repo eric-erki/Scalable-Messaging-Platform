@@ -2660,16 +2660,21 @@ change_reception(#state{reception = true} = StateData, false) ->
     StateData#state{reception = false};
 change_reception(#state{reception = false, standby = true} = StateData, true) ->
     ?DEBUG("reception -> standby", []),
-    NewQueue = lists:foldl(fun ({_From, _To,
-				 #xmlel{name = <<"message">>} = FixedPacket},
-				Q) ->
-				   send_element(StateData, FixedPacket), Q;
-			       (Item, Q) -> queue:in(Item, Q)
-			   end,
-			   queue:new(), queue:to_list(StateData#state.queue)),
-    StateData#state{queue = NewQueue,
-		    queue_len = queue:len(NewQueue), reception = true,
-		    oor_unread = 0, oor_unread_users = (?SETS):new()};
+    try
+        NewQueue = lists:foldl(fun ({_From, _To,
+                                     #xmlel{name = <<"message">>} = FixedPacket},
+                                    Q) ->
+                                       send_element(StateData, FixedPacket), Q;
+                                   (Item, Q) -> queue:in(Item, Q)
+                               end,
+                               queue:new(), queue:to_list(StateData#state.queue)),
+        StateData#state{queue = NewQueue,
+                        queue_len = queue:len(NewQueue), reception = true,
+                        oor_unread = 0, oor_unread_users = (?SETS):new()}
+    catch
+        exit:normal ->
+            StateData#state{reception = true}
+    end;
 change_reception(#state{reception = false} = StateData, true) ->
     ?DEBUG("reception -> true", []),
     case StateData#state.oor_show of
@@ -2688,17 +2693,22 @@ change_reception(#state{reception = false} = StateData, true) ->
 						  StateData#state.pres_a, Packet)
 	    end
     end,
-    lists:foreach(fun ({_From, _To, FixedPacket}) ->
-			  send_element(StateData, FixedPacket)
-		  end,
-		  queue:to_list(StateData#state.queue)),
-    lists:foreach(fun (FixedPacket) ->
-			  send_element(StateData, FixedPacket)
-		  end,
-		  gb_trees:values(StateData#state.pres_queue)),
-    StateData#state{queue = queue:new(), queue_len = 0,
-		    pres_queue = gb_trees:empty(), reception = true,
-		    oor_unread = 0, oor_unread_users = (?SETS):new()}.
+    try
+        lists:foreach(fun ({_From, _To, FixedPacket}) ->
+                              send_element(StateData, FixedPacket)
+                      end,
+                      queue:to_list(StateData#state.queue)),
+        lists:foreach(fun (FixedPacket) ->
+                              send_element(StateData, FixedPacket)
+                      end,
+                      gb_trees:values(StateData#state.pres_queue)),
+        StateData#state{queue = queue:new(), queue_len = 0,
+                        pres_queue = gb_trees:empty(), reception = true,
+                        oor_unread = 0, oor_unread_users = (?SETS):new()}
+    catch
+        exit:normal ->
+            StateData#state{reception = true}
+    end.
 
 change_standby(#state{standby = StandBy} = StateData, StandBy) ->
     StateData;
@@ -2707,16 +2717,21 @@ change_standby(#state{standby = false} = StateData, true) ->
     StateData#state{standby = true};
 change_standby(#state{standby = true} = StateData, false) ->
     ?DEBUG("standby -> false", []),
-    lists:foreach(fun ({_From, _To, FixedPacket}) ->
-			  send_element(StateData, FixedPacket)
-		  end,
-		  queue:to_list(StateData#state.queue)),
-    lists:foreach(fun (FixedPacket) ->
-			  send_element(StateData, FixedPacket)
-		  end,
-		  gb_trees:values(StateData#state.pres_queue)),
-    StateData#state{queue = queue:new(), queue_len = 0,
-		    pres_queue = gb_trees:empty(), standby = false}.
+    try
+        lists:foreach(fun ({_From, _To, FixedPacket}) ->
+                              send_element(StateData, FixedPacket)
+                      end,
+                      queue:to_list(StateData#state.queue)),
+        lists:foreach(fun (FixedPacket) ->
+                              send_element(StateData, FixedPacket)
+                      end,
+                      gb_trees:values(StateData#state.pres_queue)),
+        StateData#state{queue = queue:new(), queue_len = 0,
+                        pres_queue = gb_trees:empty(), standby = false}
+    catch
+        exit:normal ->
+            StateData#state{standby = false}
+    end.
 
 send_oor_message(StateData, From, To, #xmlel{name = <<"message">>} = Packet) ->
     Type = fxml:get_tag_attr_s(<<"type">>, Packet),
