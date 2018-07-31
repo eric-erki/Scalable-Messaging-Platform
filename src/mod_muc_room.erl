@@ -745,7 +745,7 @@ normal_state({route, From, ToNick,
     end,
     {next_state, normal_state, StateData};
 normal_state(hibernate, #state{config = Config} = StateData) ->
-    case ?DICT:size(StateData#state.users) of
+    case ?DICT:size(StateData#state.users) + ?DICT:size(StateData#state.subscribers) of
 	0 ->
 	    StateData1 = StateData#state{shutdown_reason = hibernated},
 	    if Config#config.persistent ->
