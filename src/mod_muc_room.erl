@@ -745,16 +745,22 @@ normal_state({route, From, ToNick,
     end,
     {next_state, normal_state, StateData};
 normal_state(hibernate, #state{config = Config} = StateData) ->
-    case ?DICT:size(StateData#state.users) + ?DICT:size(StateData#state.subscribers) of
-	0 ->
+    case ?DICT:is_empty(StateData#state.users) of
+	true ->
 	    StateData1 = StateData#state{shutdown_reason = hibernated},
-	    if Config#config.persistent ->
+	    case persistant_or_with_subscribers(StateData) of
+		true ->
 		    TS = p1_time_compat:system_time(micro_seconds),
 		    Config1 = Config#config{hibernate_time = TS},
 		    StateData2 = StateData1#state{config = Config1},
-		    store_room(StateData2),
+		    case (StateData#state.config)#config.persistent of
+			true ->
+			    store_room(StateData2);
+			_ ->
+			    force_store_room(StateData2, save_subscribers)
+		    end,
 		    {stop, normal, StateData2};
-	       true ->
+	       _ ->
 		    {stop, normal, StateData1}
 	    end;
 	_ ->
@@ -5541,15 +5547,25 @@ fsm_limit_opts() ->
         N -> [{max_queue, N}]
     end.
 
+persistant_or_with_subscribers(StateData) ->
+    if (StateData#state.config)#config.persistent ->
+	true;
+	true ->
+	    not ?DICT:is_empty(StateData#state.subscribers)
+    end.
+
+force_store_room(StateData, ChangesHints) ->
+    mod_muc:store_room(StateData#state.server_host,
+		       StateData#state.host, StateData#state.room,
+		       make_opts(StateData),
+		       make_affiliations(StateData),
+		       ChangesHints).
+
 store_room(StateData) ->
     store_room(StateData, []).
 store_room(StateData, ChangesHints) ->
     if (StateData#state.config)#config.persistent ->
-	    mod_muc:store_room(StateData#state.server_host,
-			       StateData#state.host, StateData#state.room,
-			       make_opts(StateData),
-			       make_affiliations(StateData),
-			       ChangesHints);
+	    force_store_room(StateData, ChangesHints);
        true ->
 	    ok
     end.

@@ -174,7 +174,19 @@ store_room(ServerHost, Host, Name, Config, Affiliations, ChangesHints) ->
 restore_room(ServerHost, Host, Name) ->
     LServer = jid:nameprep(ServerHost),
     Mod = gen_mod:db_mod(LServer, ?MODULE),
-    Mod:restore_room(LServer, Host, Name).
+    Opts = Mod:restore_room(LServer, Host, Name),
+    case Opts of
+	V when is_list(V) ->
+	    case lists:keyfind(persistent, 1, Opts) of
+		{_, true} ->
+		    ok;
+		_ ->
+		    forget_room(ServerHost, Host, Name)
+	    end;
+	_ ->
+	    ok
+    end,
+    Opts.
 
 forget_room(ServerHost, Host, Name) ->
     LServer = jid:nameprep(ServerHost),
@@ -576,11 +588,26 @@ do_route1(Host, ServerHost, Access, HistorySize,
 				    ejabberd_router:route(To, From, Err)
 			    end;
 			false ->
-			    Lang = fxml:get_attr_s(<<"xml:lang">>, Attrs),
-			    ErrText = <<"Conference room does not exist">>,
-			    Err = jlib:make_error_reply(Packet,
-				    ?ERRT_ITEM_NOT_FOUND(Lang, ErrText)),
-			    ejabberd_router:route_error(To, From, Err, Packet)
+			    Restored =
+			    case Packet of
+				#xmlel{name = <<"message">>} ->
+				    try_restoring_room(Host, ServerHost, Access,
+						       Room, HistorySize, PersistHistory,
+						       RoomShaper);
+				_ ->
+				    false
+			    end,
+
+			    case Restored of
+				{ok, Pid} ->
+				    mod_muc_room:route(Pid, From, Nick, Packet);
+				_ ->
+				    Lang = fxml:get_attr_s(<<"xml:lang">>, Attrs),
+				    ErrText = <<"Conference room does not exist">>,
+				    Err = jlib:make_error_reply(Packet,
+								?ERRT_ITEM_NOT_FOUND(Lang, ErrText)),
+				    ejabberd_router:route_error(To, From, Err, Packet)
+			    end
 		    end;
 		[R] ->
 		    Pid = R#muc_online_room.pid,
@@ -656,6 +683,17 @@ load_permanent_rooms(Host, ServerHost, Access,
 	      get_rooms(ServerHost, Host));
 	false ->
 	    ok
+    end.
+
+try_restoring_room(Host, ServerHost, Access, Room,
+		   HistorySize, PersistHistory, RoomShaper) ->
+    case restore_room(ServerHost, Host, Room) of
+	error ->
+	    error;
+	Opts ->
+	    ?DEBUG("MUC: restore room '~s'~n", [Room]),
+	    mod_muc_room:start(Host, ServerHost, Access, Room,
+			       HistorySize, PersistHistory, RoomShaper, Opts)
     end.
 
 start_new_room(Host, ServerHost, Access, Room,
