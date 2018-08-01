@@ -837,10 +837,10 @@ format_room_option(OptionString, ValueString) ->
 
 %% @doc Get the Pid of an existing MUC room, or 'room_not_found'.
 get_room_pid(Name, Service) ->
-    case mnesia:dirty_read(muc_online_room, {Name, Service}) of
-	[] ->
+    case get_muc_info(Name, Service) of
+	room_not_found ->
 	    room_not_found;
-	[Room] ->
+	Room ->
 	    Room#muc_online_room.pid
     end.
 
@@ -910,8 +910,10 @@ get_options(Config) ->
 %%    [{JID::string(), Domain::string(), Role::string(), Reason::string()}]
 %% @doc Get the affiliations of  the room Name@Service.
 get_room_affiliations(Name, Service) ->
-    case mnesia:dirty_read(muc_online_room, {Name, Service}) of
-	[R] ->
+    case get_muc_info(Name, Service) of
+	room_not_found ->
+	    throw({error, "The room does not exist."});
+	R ->
 	    %% Get the PID of the online room, then request its state
 	    Pid = R#muc_online_room.pid,
 	    {ok, StateData} = gen_fsm:sync_send_all_state_event(Pid, get_state),
@@ -921,9 +923,7 @@ get_room_affiliations(Name, Service) ->
 		      {Uname, Domain, Aff, Reason};
 		 ({{Uname, Domain, _Res}, Aff}) when is_atom(Aff)->
 		      {Uname, Domain, Aff, <<>>}
-	      end, Affiliations);
-	[] ->
-	    throw({error, "The room does not exist."})
+	      end, Affiliations)
     end.
 
 %%----------------------------
@@ -940,8 +940,10 @@ get_room_affiliations(Name, Service) ->
 %% In any other case the action will be to create the affiliation.
 set_room_affiliation(Name, Service, JID, AffiliationString) ->
     Affiliation = jlib:binary_to_atom(AffiliationString),
-    case mnesia:dirty_read(muc_online_room, {Name, Service}) of
-	[R] ->
+    case get_muc_info(Name, Service) of
+	room_not_found ->
+	    error;
+	R ->
 	    %% Get the PID for the online room so we can get the state of the room
 	    Pid = R#muc_online_room.pid,
 	    {ok, StateData} = gen_fsm:sync_send_all_state_event(Pid, {process_item_change, {jid:from_string(JID), affiliation, Affiliation, <<"">>}, <<"">>}),
@@ -949,9 +951,7 @@ set_room_affiliation(Name, Service, JID, AffiliationString) ->
 		StateData#state.host, StateData#state.room,
 		make_opts(StateData),
 		make_affiliations(StateData)),
-	    ok;
-	[] ->
-	    error
+	    ok
     end.
 
 %%%
@@ -1053,6 +1053,35 @@ make_affiliations(StateData) ->
 %%----------------------------
 %% Utils
 %%----------------------------
+
+get_muc_info(Name, Service) ->
+    case mnesia:dirty_read(muc_online_room, {Name, Service}) of
+	[] ->
+	    case find_host_for_service(Service) of
+		not_found ->
+		    room_not_found;
+		Host ->
+		    case mod_muc:try_restore_room(Host, Name) of
+			{ok, _} ->
+			    get_muc_info(Name, Service);
+			_ ->
+			    room_not_found
+		    end
+	    end;
+	[Room] ->
+	    Room
+    end.
+
+find_host_for_service(Service) ->
+    case lists:dropwhile(
+	fun(Host) ->
+	    gen_mod:get_module_opt_host(Host, mod_muc, <<"conference.@HOST@">>) /= Service
+	end, ?MYHOSTS) of
+	[Found|_] ->
+	    Found;
+	_ ->
+	    not_found
+    end.
 
 uptime_seconds() ->
     trunc(element(1, erlang:statistics(wall_clock))/1000).

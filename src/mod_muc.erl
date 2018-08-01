@@ -59,7 +59,8 @@
 	 is_broadcasted/1,
 	 moderate_room_history/2,
 	 persist_recent_messages/1,
-         opts_to_binary/1]).
+         opts_to_binary/1,
+	 try_restore_room/2]).
 
 -export([init/1, handle_call/3, handle_cast/2,
 	 handle_info/2, terminate/2, code_change/3,
@@ -154,6 +155,10 @@ moderate_room_history(RoomStr, Nick) ->
 	  Pid = R#muc_online_room.pid,
 	  mod_muc_room:moderate_room_history(Pid, Nick)
     end.
+
+try_restore_room(Host, Name) ->
+    Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
+    ?GEN_SERVER:call(Proc, {try_restore, Name}).
 
 %% @doc Create a room.
 %% If Opts = default, the default room options are used.
@@ -317,6 +322,14 @@ handle_call(stop, _From, State) ->
     {stop, normal, ok, State};
 handle_call({delete, RoomHost, Pid}, _From, State) ->
     Res = delete_room(RoomHost, Pid),
+    {reply, Res, State};
+handle_call({try_restore, Room}, _From,
+	    #state{host = Host, server_host = ServerHost,
+		   access = Access, history_size = HistorySize,
+		   persist_history = PersistHistory,
+		   room_shaper = RoomShaper} = State) ->
+    Res = try_restore_room(Host, ServerHost, Access, Room,
+			   HistorySize, PersistHistory, RoomShaper),
     {reply, Res, State};
 handle_call({create, Room, From, Nick, Opts}, _From,
 	    #state{host = Host, server_host = ServerHost,
@@ -591,9 +604,9 @@ do_route1(Host, ServerHost, Access, HistorySize,
 			    Restored =
 			    case Packet of
 				#xmlel{name = <<"message">>} ->
-				    try_restoring_room(Host, ServerHost, Access,
-						       Room, HistorySize, PersistHistory,
-						       RoomShaper);
+				    try_restore_room(Host, ServerHost, Access,
+						     Room, HistorySize, PersistHistory,
+						     RoomShaper);
 				_ ->
 				    false
 			    end,
@@ -685,8 +698,8 @@ load_permanent_rooms(Host, ServerHost, Access,
 	    ok
     end.
 
-try_restoring_room(Host, ServerHost, Access, Room,
-		   HistorySize, PersistHistory, RoomShaper) ->
+try_restore_room(Host, ServerHost, Access, Room,
+		 HistorySize, PersistHistory, RoomShaper) ->
     case restore_room(ServerHost, Host, Room) of
 	error ->
 	    error;
