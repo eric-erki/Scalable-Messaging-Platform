@@ -1271,14 +1271,13 @@ mass_message_parse(Payload, Rs) ->
 		    file:close(IoDevice),
 		    Error
 	    end;
-	{error, FError} ->
+	{error, _} ->
 	    % if argument is payload, send it to all online users or defined recipients
 	    case fxml_stream:parse_element(Payload) of
-		{error, XError} ->
-		    {error, {FError, XError}};
-		Packet ->
-		    Uids = mass_message_uids(Rs),
-		    {ok, Packet, Uids}
+		% Payload is message Body
+		{error, _} -> {ok, Payload, mass_message_uids(Rs)};
+		% Payload is xmpp stanza
+		Packet -> {ok, Packet, mass_message_uids(Rs)}
 	    end
     end.
 
