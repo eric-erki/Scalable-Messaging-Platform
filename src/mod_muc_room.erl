@@ -1273,12 +1273,19 @@ get_participant_data(From, StateData) ->
       {ok, #user{nick = FromNick, role = Role}} ->
 	  {FromNick, Role};
       error ->
+	    RoleFromAff = get_default_role(get_affiliation(From, StateData),
+					   StateData),
 	    case ?DICT:find(jid:tolower(jid:remove_resource(From)),
 			    StateData#state.subscribers) of
 		{ok, #subscriber{nick = FromNick}} ->
-		    {FromNick, none};
+		    case RoleFromAff of
+			none ->
+			    {FromNick, participant};
+			_ ->
+			    {FromNick, RoleFromAff}
+		    end;
 		error ->
-		    {<<"">>, moderator}
+		    {<<"">>, RoleFromAff}
 	    end
     end.
 
