@@ -3063,7 +3063,8 @@ subscription_to_string(_) -> <<"none">>.
 pubopts_valid([]) ->
     true;
 pubopts_valid([{Opt, _} | PubOpts]) when Opt == <<"FORM_TYPE">>;
-					 Opt == <<"pubsub#access_model">> ->
+                                         Opt == <<"pubsub#access_model">>;
+                                         Opt == <<"pubsub#persist_items">> ->
     pubopts_valid(PubOpts);
 pubopts_valid(_PubOpts) ->
     false.
@@ -3073,12 +3074,18 @@ pubopts_valid(_PubOpts) ->
 preconditions_met([], _Options) ->
     true;
 preconditions_met([{<<"FORM_TYPE">>,
-		   [?NS_PUBSUB_PUBLISH_OPTIONS | _]} | PubOpts], Options) ->
+                    [?NS_PUBSUB_PUBLISH_OPTIONS | _]} | PubOpts], Options) ->
     preconditions_met(PubOpts, Options);
 preconditions_met([{<<"pubsub#access_model">>,
-		   [DesiredModel | _]} | PubOpts], Options) ->
+                    [DesiredModel | _]} | PubOpts], Options) ->
     AccessModel = jlib:atom_to_binary(get_option(Options, access_model)),
     if AccessModel /= DesiredModel -> false;
+       true -> preconditions_met(PubOpts, Options)
+    end;
+preconditions_met([{<<"pubsub#persist_items">>,
+                    [DesiredPersist | _]} | PubOpts], Options) ->
+    PersistItems = jlib:atom_to_binary(get_option(Options, persist_items)),
+    if PersistItems /= DesiredPersist -> false;
        true -> preconditions_met(PubOpts, Options)
     end;
 preconditions_met(_PubOpts, _Options) ->
