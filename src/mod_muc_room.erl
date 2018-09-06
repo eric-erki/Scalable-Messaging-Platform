@@ -5598,21 +5598,11 @@ set_hibernate_timer_if_empty(StateData) ->
     end.
 
 send_wrapped_to_all_subscribers(From, Packet, Node, State) ->
-    Item = #xmlel{name = <<"item">>,
-		  attrs = [{<<"id">>, randoms:get_string()}],
-		  children = [Packet]},
-    Items = #xmlel{name = <<"items">>, attrs = [{<<"node">>, Node}],
-		   children = [Item]},
-    Event = #xmlel{name = <<"event">>,
-		   attrs = [{<<"xmlns">>, ?NS_PUBSUB_EVENT}],
-		   children = [Items]},
-    Pkt = #xmlel{name = <<"message">>, children = [Event]},
-
     ?DICT:fold(fun(_, #subscriber{nodes = Nodes, jid = JID}, _) ->
 	case lists:member(Node, Nodes) of
 	    true ->
 		NewPacket = wrap(From, JID, Packet, Node),
-		ejabberd_router:route(State#state.jid, JID, Pkt);
+		ejabberd_router:route(State#state.jid, JID, NewPacket);
 	    false ->
 		ok
 	end
