@@ -5619,6 +5619,9 @@ send_wrapped_to_all_subscribers(From, Packet, Node, State) ->
     end, ok, State#state.subscribers).
 
 send_wrapped(From, To, Packet, Node, State) ->
+    send_wrapped(false, From, To, Packet, Node, State).
+
+send_wrapped(OwnMessage, From, To, Packet, Node, State) ->
     LTo = jid:tolower(To),
     LBareTo = jid:tolower(jid:remove_resource(To)),
     IsOffline = case ?DICT:find(LTo, State#state.users) of
@@ -5631,7 +5634,15 @@ send_wrapped(From, To, Packet, Node, State) ->
 		{ok, #subscriber{nodes = Nodes, jid = JID}} ->
 		    case lists:member(Node, Nodes) of
 			true ->
-			    NewPacket = wrap(From, JID, Packet, Node),
+			    Packet2 = case OwnMessage of
+					  true ->
+					      Marker = #xmlel{name = <<"own-message">>,
+							      attrs = [{<<"xmlns">>, ?NS_MUCSUB}]},
+					      Packet#xmlel{children = Packet#xmlel.children ++ [Marker]};
+					  _ ->
+					      Packet
+				      end,
+			    NewPacket = wrap(From, JID, Packet2, Node),
 			    ejabberd_router:route(State#state.jid, JID, NewPacket);
 			false ->
 			    ok
@@ -5665,9 +5676,12 @@ wrap(From, To, Packet, Node) ->
 %%     ejabberd_router_multicast:route_multicast(From, Server, JIDs, Packet).
 
 send_wrapped_multiple(From, Users, Packet, Node, State) ->
+    MsgNode = Node == ?NS_MUCSUB_NODES_MESSAGES orelse
+	      Node == ?NS_MUCSUB_NODES_SUBJECT,
     lists:foreach(
-      fun({_, #user{jid = To}}) ->
-	      send_wrapped(From, To, Packet, Node, State)
+      fun({_, #user{jid = To, nick = Nick}}) ->
+	  send_wrapped(MsgNode andalso From#jid.resource == Nick,
+		       From, To, Packet, Node, State)
       end, ?DICT:to_list(Users)).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

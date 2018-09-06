@@ -69,8 +69,19 @@ extract_payload_from_message(Packet) ->
 	    Packet
     end.
 
-will_probably_push_for_message(From, _To, Packet0, SilentPushEnabled) ->
-    Packet = extract_payload_from_message(Packet0),
+will_probably_push_for_message(From, To, Packet0, SilentPushEnabled) ->
+    case check_x_pushed(Packet0) of
+	true -> false;
+	_ ->
+	    Packet = extract_payload_from_message(Packet0),
+	    case fxml:get_subtag_with_xmlns(Packet, <<"own-message">>, ?NS_MUCSUB) of
+		false ->
+		    will_probably_push_for_message2(From, To, Packet, SilentPushEnabled);
+		_ ->
+		    false
+	    end
+    end.
+will_probably_push_for_message2(From, _To, Packet, SilentPushEnabled) ->
     Body1 = fxml:get_path_s(Packet, [{elem, <<"body">>}, cdata]),
     Body = case check_x_attachment(Packet) of
 	true ->
@@ -185,8 +196,13 @@ build_push_packet_from_message(From, To, Packet, ID, _AppID, SendBody, SendFrom,
 	    skip;
 	_ ->
 	    Packet2 = extract_payload_from_message(Packet),
-	    build_push_packet_from_message2(From, To, Packet2, ID, _AppID, SendBody, SendFrom, BadgeCount,
-					    First, FirstPerUser, SilentPushEnabled, Module, Pushed)
+	    case fxml:get_subtag_with_xmlns(Packet2, <<"own-message">>, ?NS_MUCSUB) of
+		false ->
+		    build_push_packet_from_message2(From, To, Packet2, ID, _AppID, SendBody, SendFrom, BadgeCount,
+						    First, FirstPerUser, SilentPushEnabled, Module, Pushed);
+		_ ->
+		    skip
+	    end
     end.
 
 build_push_packet_from_message2(From, To, Packet, ID, _AppID, SendBody, SendFrom, BadgeCount, First,
