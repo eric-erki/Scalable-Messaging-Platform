@@ -37,23 +37,28 @@ store_room(LServer, Host, Name, Opts, ChangesHints) ->
 			_ -> {[], Opts}
 		    end,
     SOpts = jlib:term_to_expr(Opts2),
-    F = fun () ->
-	?SQL_UPSERT_T(
-	   "muc_room",
-	   ["!name=%(Name)s",
-	    "!host=%(Host)s",
-	    "opts=%(SOpts)s"]),
-	case ChangesHints of
-	    Changes when is_list(Changes) ->
-		[change_room(Host, Name, Change) || Change <- Changes];
-	    _ ->
-		ejabberd_sql:sql_query_t(?SQL("delete from muc_room_subscribers where "
-					      "room=%(Name)s and host=%(Host)s")),
-		[change_room(Host, Name, {add_subscription, JID, Nick, Nodes})
-		 || {JID, Nick, Nodes} <- Subs]
-	end
-    end,
-    ejabberd_sql:sql_transaction(LServer, F).
+    case size(SOpts) of
+	V when V >= 65535 ->
+	    {error, <<"Options too long">>};
+	_ ->
+	    F = fun () ->
+		?SQL_UPSERT_T(
+		    "muc_room",
+		    ["!name=%(Name)s",
+		     "!host=%(Host)s",
+		     "opts=%(SOpts)s"]),
+		case ChangesHints of
+		    Changes when is_list(Changes) ->
+			[change_room(Host, Name, Change) || Change <- Changes];
+		    _ ->
+			ejabberd_sql:sql_query_t(?SQL("delete from muc_room_subscribers where "
+						      "room=%(Name)s and host=%(Host)s")),
+			[change_room(Host, Name, {add_subscription, JID, Nick, Nodes})
+			 || {JID, Nick, Nodes} <- Subs]
+		end
+		end,
+	    ejabberd_sql:sql_transaction(LServer, F)
+    end.
 
 change_room(Host, Room, {add_subscription, JID, Nick, Nodes}) ->
     SJID = jid:to_string(JID),
