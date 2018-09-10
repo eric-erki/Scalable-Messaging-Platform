@@ -903,7 +903,7 @@ expr_to_term(Expr) ->
     Term.
 
 term_to_expr(Term) ->
-    list_to_binary(io_lib:print(Term)).
+    list_to_binary(io_lib:print(Term, 1, 100000, -1)).
 
 l2i(I) when is_integer(I) -> I;
 l2i(L) when is_binary(L) -> binary_to_integer(L).
