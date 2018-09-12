@@ -1165,6 +1165,8 @@ process_groupchat_message(From,
 		 Subject = check_subject(Packet),
 		 {NewStateData1, IsAllowed} = case Subject of
 						false -> {StateData, true};
+						V  when size(V) > 512 ->
+						    {StateData, too_big};
 						_ ->
 						    case
 						      can_change_subject(Role,
@@ -1214,6 +1216,12 @@ process_groupchat_message(From,
 					     end,
 			     {next_state, normal_state, NewStateData2}
 		       end;
+		   too_big ->
+		       Err = ?ERRT_BAD_REQUEST(Lang,
+				       <<"Subject length is limited to 512 bytes">>),
+		       ejabberd_router:route(StateData#state.jid, From,
+					     jlib:make_error_reply(Packet, Err)),
+		       {next_state, normal_state, StateData};
 		   _ ->
 		       Err = case
 			       (StateData#state.config)#config.allow_change_subj
