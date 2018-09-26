@@ -782,8 +782,7 @@ Business Edition.
 === Oct 11 2017: eBE 3.2.18
 
 This is a bugfix version of 3.2.17 and also add few improvements and
-new extra features. This version is a "long term" revision of ejabberd
-Business Edition.
+new extra features.
 
 - Use p1db 1.1.4 for better cluster recover and improved join
 - Avoid ping timeout to grow above 2 minutes for faster cluster recover
@@ -807,3 +806,46 @@ Business Edition.
 - Allow a room admin also to subscribe another JID
 - Fix Etag and add Last-Modified handling in mod_http_fileserver
 - Set mutable-content: 1 in Apple push aps payload
+
+=== Apr 19 2018: eBE 3.2.19
+
+This is a bugfix version of 3.2.18 which also adds optimizations on mucsub
+feature and allows use of message archives instead of offline messages.
+This is an improved version for mobile support.
+
+- R19 no longer have ssl_manager:clear_pem_cache(), use replacement
+- Don't bounce offline messages when mod_mam enabled, mod_offline disabled
+- Make roster_rest more flexible with code 200
+- Allow standard naming convention for bulk_roster_update command
+- Optimize muc subscriptions handling
+- Make TTL of push messages configurable
+- Add stateful/stateless mode for vcard
+- Fix session table cleanup
+- Add support of PubSub publish-options
+- Rewrite ejabberd system monitor
+- Kill and restart lager when it's overloaded
+- Add support for s2s_cafile
+- Add support for DataDog metrics API
+- Add simple packet filter with mnesia or rest backend
+- Accept json string in mod_vcard_rest
+- Set reception to normal when disabling push
+- Add validation of VOIP push certs
+- Add option to applepush/gcm to have just one device per account
+- Default value of multiple_devices_per_account should be true
+
+=== Sep 26 2018: eBE 3.2.20
+
+This is last bugfix version for eBE 3.2.x serie. It includes a fix on BOSH
+and few minor fixes and improvements on push and mucsub.
+
+- Add commands for cleaning up mam archive
+- Add reload_push_config command
+- Don't crash in bosh when we receive request with RID < prev_rid
+- Add option always_push_to_all_devices to push modules
+- Make message filter more robust and compatible with pubsub/groupchat
+- Add ability to receive mucsub notifications for subscription changes
+- Make it possible to hibernate room that have subscribers
+- Allow to change room subject by subscribers
+- Don't generate pushes for mucsub messages that were sent by us
+- Don't accept room subject longer that 512 bytes
+- Improve muc room migration process
