@@ -435,7 +435,7 @@ migrate() ->
 			Tail++[DestNode]
 		end, Cluster, Rs),
 	    [mod_muc_sql:get_rooms(Host, gen_mod:get_module_opt_host(Host, mod_muc, <<"conference.@HOST@">>))
-		|| {Host, Opts} <- module_options(mod_muc)],
+		|| {Host, Opts} <- mod_admin_p1:module_options(mod_muc)],
 	    ok
     end.
 
