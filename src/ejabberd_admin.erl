@@ -427,13 +427,15 @@ migrate() ->
 	    ?ERROR_MSG("Can not start migration from node ~p: no cluster", [node()]),
 	    {error, no_cluster};
 	Cluster ->
-	    Rs = [{Room,Pid} ||
-		    {_,{Room,_},_,Pid} <- ets:tab2list(muc_online_room),
+	    Rs = [Pid ||
+		    {_,_,_,Pid} <- ets:tab2list(muc_online_room),
 		    node(Pid) == node()],
-	    lists:foldl(fun({_Room, Pid}, [DestNode|Tail]) ->
+	    lists:foldl(fun(Pid, [DestNode|Tail]) ->
 			mod_muc_room:migrate(Pid, DestNode, 0),
 			Tail++[DestNode]
 		end, Cluster, Rs),
+	    [mod_muc_sql:get_rooms(Host, gen_mod:get_module_opt_host(Host, mod_muc, <<"conference.@HOST@">>))
+		|| {Host, Opts} <- module_options(mod_muc)],
 	    ok
     end.
 
