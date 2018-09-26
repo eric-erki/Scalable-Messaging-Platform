@@ -70,6 +70,7 @@
 	 get_webhook_config/1, update_webhook/3, setup_webhook/3,
 	 add_push_entry/4, del_push_entry/3,
 	 get_push_config/2, set_push_config/3,
+	 reload_push_config/1,
 	% API IP whitelist
 	 get_whitelist_ip/0, set_whitelist_ip/1,
 	 opt_type/1]).
@@ -412,6 +413,12 @@ get_commands_spec() ->
 			desc = "Setup the Web Hook based Push API service",
 			module = ?MODULE, function = setup_webhook,
 			args = [{host, binary}, {gateway, binary}, {appid, binary}],
+			result = {res, integer}},
+      #ejabberd_commands{name = reload_push_config,
+			tags = [config],
+			desc = "Reload all push setup from config file",
+			module = ?MODULE, function = reload_push_config,
+			args = [{host, binary}],
 			result = {res, integer}},
       #ejabberd_commands{name = get_whitelist_ip,
 			tags = [config],
@@ -1394,6 +1401,21 @@ update_gcm(Host, Key, App) ->
     upd_push_entry(<<"gcm">>, Host, App, Key).
 update_webhook(Host, Url, App) ->
     upd_push_entry(<<"webhook">>, Host, App, Url).
+
+reload_push_config(Host) ->
+    lists:sum([reload_push_config(Service, Host)
+	       || Service <- [<<"applepush">>, <<"gcm">>, <<"webhook">>]]).
+reload_push_config(Service, Host) ->
+    ConfigFile = <<Service/binary, ".yml">>,
+    BaseDir = filename:dirname(os:getenv("EJABBERD_CONFIG_PATH")),
+    File = filename:append(BaseDir, ConfigFile),
+    ejabberd_config:load_file(File),
+    Config = proplists:get_value(Host, read_extra_config(ConfigFile), []),
+    [gen_mod:stop_module(Host, Mod)
+     || {Mod, _} <- proplists:get_value(modules, Config, [])],
+    [gen_mod:start_module(Host, Mod)
+     || {Mod, _} <- proplists:get_value(modules, Config, [])],
+    0.
 
 upd_push_entry(Service, Host, App, Key) ->
     Setup = lists:keydelete(App, 1, get_push_config(Service, Host)),
