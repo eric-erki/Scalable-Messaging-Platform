@@ -630,7 +630,7 @@ mod_doc() ->
              ?T("Specify rules to restrict access for user unregistration. "
                 "By default any user is able to unregister their account.")}},
       {captcha_protected,
-       #{value => "boolean()",
+       #{value => "true | false",
          desc =>
              ?T("Protect registrations with CAPTCHA (see section "
                 "https://docs.ejabberd.im/admin/configuration/#captcha[CAPTCHA] "
