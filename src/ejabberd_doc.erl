@@ -163,7 +163,7 @@ man_footer(Lang) ->
      "VERSION",
      "-------",
      str:format(
-       tr(Lang, ?T("This document describes a configuration file of ejabberd ~ts. "
+       tr(Lang, ?T("This document describes the configuration file of ejabberd ~ts. "
                    "Configuration options of other ejabberd versions "
                    "may differ significantly.")),
        [ejabberd_config:version()]),

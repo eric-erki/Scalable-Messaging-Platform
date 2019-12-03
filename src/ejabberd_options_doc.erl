@@ -189,9 +189,38 @@ doc() ->
                  "specified 'Pattern' according to the rules used by the "
                  "Unix shell.")}}]},
      {access_rules,
-      #{value => "{AccessName: {allow|deny: ACLRule|ACLName}}",
+      #{value => "{AccessName: {allow|deny: ACLRules|ACLName}}",
         desc =>
-            ?T("The option specifies access rules. TODO")}},
+            ?T("The option specifies access rules. Each access rule is "
+               "assigned a name that can be referenced from other parts "
+               "of the configuration file (mostly from 'access' options of "
+               "ejabberd modules). Each rule definition may contain "
+               "arbitrary number of 'allow' or 'deny' sections, and each "
+               "section may contain any number of ACL rules (see 'acl' option). "
+               "There are no access rules defined by default."),
+        example =>
+            ["access_rules:",
+             "  configure:",
+             "    allow: admin",
+             "  something:",
+             "    deny: someone",
+             "    allow: all",
+             "  s2s_banned:",
+             "    deny: problematic_hosts",
+             "    deny: banned_forever",
+             "    deny:",
+             "      ip: 222.111.222.111/32",
+             "    deny:",
+             "      ip: 111.222.111.222/32",
+             "    allow: all",
+             "  xmlrpc_access:",
+             "    allow:",
+             "      user: peter@example.com",
+             "    allow:",
+             "      user: ivone@example.com",
+             "    allow:",
+             "      user: bot@example.com",
+             "      ip: 10.0.0.0/24"]}},
      {acme,
       #{value => ?T("Options"),
         desc =>
@@ -324,12 +353,20 @@ doc() ->
      {c2s_ciphers,
       #{value => "[Cipher, ...]",
         desc =>
-            ?T("A list of OpenSSL ciphers. The default is "
-               "'[\"HIGH\", \"!aNULL\", \"!eNULL\", \"!3DES\", \"@STRENGTH\"]'.")}},
+            ?T("A list of OpenSSL ciphers to use for c2s connections. "
+               "The default value is shown in the example below:"),
+        example =>
+            ["c2s_ciphers:",
+             "  - HIGH",
+             "  - \"!aNULL\"",
+             "  - \"!eNULL\"",
+             "  - \"!3DES\"",
+             "  - \"@STRENGTH\""]}},
      {c2s_dhfile,
       #{value => ?T("Path"),
         desc =>
-            ?T("Full path to a file containing custom DH parameters. "
+            ?T("Full path to a file containing custom DH parameters "
+               "to use for c2s connections. "
                "Such a file could be created with the command \"openssl "
                "dhparam -out dh.pem 2048\". If this option is not specified, "
                "2048-bit MODP Group with 256-bit Prime Order Subgroup will be "
@@ -337,9 +374,14 @@ doc() ->
      {c2s_protocol_options,
       #{value => "[Option, ...]",
         desc =>
-            ?T("List of general options relating to SSL/TLS. "
-               "These map to OpenSSL's 'set_options()'. The default value is: "
-               "'[no_sslv3, cipher_server_preference, no_compression]'.")}},
+            ?T("List of general SSL options to use for c2s connections. "
+               "These map to OpenSSL's 'set_options()'. The default value is "
+               "shown in the example below:"),
+        example =>
+            ["c2s_protocol_options:",
+             "  - no_sslv3",
+             "  - cipher_server_preference",
+             "  - no_compression"]}},
      {c2s_tls_compression,
       #{value => "true | false",
         desc =>
@@ -384,7 +426,10 @@ doc() ->
                "cluster. The only available value so far is 'mnesia'.")}},
      {cluster_nodes,
       #{value => "[Node, ...]",
-        desc => ?T("TODO")}},
+        desc =>
+            ?T("A list of Erlang nodes to connect on ejabberd startup. "
+               "This option is mostly intended for ejabberd customization "
+               "and sofisticated setups. The default value is an empty list.")}},
      {define_macro,
       #{value => "{MacroName: MacroValue}",
         desc =>
@@ -422,14 +467,14 @@ doc() ->
                "instances of the same component on each ejabberd node and that "
                "the traffic will be automatically distributed. The algorithm "
                "to deliver messages to the component(s) can be specified by "
-               "this option. For any component connected as 'Domain' available "
+               "this option. For any component connected as 'Domain', available "
                "'Options' are:"),
         example =>
             ["domain_balancing:",
-             "  x.domain.tld:",
+             "  component.domain.tld:",
              "    type: destination",
              "    component_number: 5",
-             "  y.domain.tld:",
+             "  transport.example.org:",
              "    type: bare_source"]},
       [{type,
         #{value => "random | source | destination | bare_source | bare_destination",
@@ -648,6 +693,45 @@ doc() ->
                "possibly be killed (see 'oom_killer' option). Later, when "
                "memory drops below this 'Percent', OOM killer is deactivated. "
                "The default value is '80' percents.")}},
+     {outgoing_s2s_families,
+      #{value => "[ipv4 | ipv6, ...]",
+        desc =>
+            ?T("Specify which address families to try, in what order. "
+               "The default is '[ipv4, ipv6]' which means it first tries "
+               "connecting with IPv4, if that fails it tries using IPv6.")}},
+     {outgoing_s2s_port,
+      #{value => "1..65535",
+        desc =>
+            ?T("A port number to use for outgoing s2s connections when the target "
+               "server doesn't have an SRV record. The default value is '5269'.")}},
+     {outgoing_s2s_timeout,
+      #{value => "timeout()",
+        desc =>
+            ?T("The timeout in seconds for outgoing S2S connection attempts. "
+               "The default value is '10' seconds.")}},
+     {pam_service,
+      #{value => ?T("Name"),
+        desc =>
+            ?T("This option defines the PAM service name. Refer to the PAM "
+               "documentation of your operation system for more information. "
+               "The default value is 'ejabberd'.")}},
+     {pam_userinfotype,
+      #{value => "username | jid",
+        desc =>
+            ?T("This option defines what type of information about the "
+               "user ejabberd provides to the PAM service: only the username, "
+               "or the user's JID. Default is 'username'.")}},
+     {pgsql_users_number_estimate,
+      #{value => "true | false",
+        desc =>
+            ?T("Whether to use PostgreSQL estimation when counting registered "
+               "users. The default value is 'false'.")}},
+     {queue_dir,
+      #{value => ?T("Directory"),
+        desc =>
+            ?T("If 'queue_type' option is set to 'file', use this 'Directory' "
+               "to store file queues. The default is to keep queues inside "
+               "Mnesia directory.")}},
      {redis_connect_timeout,
       #{value => "timeout()",
         desc =>
@@ -705,7 +789,336 @@ doc() ->
                "The default value is 'closeold'. If the client "
                "uses old Jabber Non-SASL authentication (XEP-0078), "
                "then this option is not respected, and the action performed "
-               "is 'closeold'.")}}].
+               "is 'closeold'.")}},
+     {router_cache_life_time,
+      #{value => "timeout()",
+        desc =>
+            ?T("Same as 'cache_life_time', but applied to routing table cache "
+               "only. If not set, the value from 'cache_life_time' will be used.")}},
+     {router_cache_missed,
+      #{value => "true | false",
+        desc =>
+            ?T("Same as 'cache_missed', but applied to routing table cache "
+               "only. If not set, the value from 'cache_missed' will be used.")}},
+     {router_cache_size,
+      #{value => "pos_integer() | infinity",
+        desc =>
+            ?T("Same as 'cache_size', but applied to routing table cache "
+               "only. If not set, the value from 'cache_size' will be used.")}},
+     {router_db_type,
+      #{value => "mnesia | sql | redis",
+        desc =>
+            ?T("Database backend to use for routing information. "
+               "The default value is picked from 'default_ram_db' option, or "
+               "if it's not set, 'mnesia' will be used.")}},
+     {router_use_cache,
+      #{value => "true | false",
+        desc =>
+            ?T("Same as 'use_cache', but applied to routing table cache "
+               "only. If not set, the value from 'use_cache' will be used.")}},
+     {rpc_timeout,
+      #{value => "timeout()",
+        desc =>
+            ?T("A timeout for remote function calls between nodes "
+               "in an ejabberd cluster. You should probably never change "
+               "this value since those calls are used for internal needs "
+               "only. The default value is '5' seconds.")}},
+     {s2s_access,
+      #{value => ?T("Access"),
+        desc =>
+            ?T("The access rule to restrict server-to-server connections. "
+               "The default value is 'all' which means no restrictions "
+               "are applied.")}},
+     {s2s_cafile,
+      #{value => ?T("Path"),
+        desc =>
+            ?T("A path to a file with CA root certificates that will "
+               "be used to authenticate s2s connections. If not set "
+               "the value of 'ca_file' will be used.")}},
+     {s2s_ciphers,
+      #{value => "[Cipher, ...]",
+        desc =>
+            ?T("A list of OpenSSL ciphers to use for s2s connections. "
+               "The default value is shown in the example below:"),
+        example =>
+            ["s2s_ciphers:",
+             "  - HIGH",
+             "  - \"!aNULL\"",
+             "  - \"!eNULL\"",
+             "  - \"!3DES\"",
+             "  - \"@STRENGTH\""]}},
+     {s2s_dhfile,
+      #{value => ?T("Path"),
+        desc =>
+            ?T("Full path to a file containing custom DH parameters "
+               "to use for s2s connections. "
+               "Such a file could be created with the command \"openssl "
+               "dhparam -out dh.pem 2048\". If this option is not specified, "
+               "2048-bit MODP Group with 256-bit Prime Order Subgroup will be "
+               "used as defined in RFC5114 Section 2.3.")}},
+     {s2s_protocol_options,
+      #{value => "[Option, ...]",
+        desc =>
+            ?T("List of general SSL options to use for s2s connections. "
+               "These map to OpenSSL's 'set_options()'. The default value is "
+               "shown in the example below:"),
+        example =>
+            ["s2s_protocol_options:",
+             "  - no_sslv3",
+             "  - cipher_server_preference",
+             "  - no_compression"]}},
+     {s2s_tls_compression,
+      #{value => "true | false",
+        desc =>
+            ?T("Whether to enable or disable TLS compression for s2s connections. "
+               "The default value is 'false'.")}},
+     {s2s_dns_retries,
+      #{value => ?T("Number"),
+        desc =>
+            ?T("DNS resolving retries. The default value is '2'.")}},
+     {s2s_dns_timeout,
+      #{value => "timeout()",
+        desc =>
+            ?T("The timeout for DNS resolving. The default value is '10' seconds.")}},
+     {s2s_max_retry_delay,
+      #{value => "timeout()",
+        desc =>
+            ?T("The maximum allowed delay for s2s connection retry to connect after a "
+               "failed connection attempt. The default value is '300' seconds "
+               "(5 minutes).")}},
+     {s2s_queue_type,
+      #{value => "ram | file",
+        desc =>
+            ?T("The type of a queue for s2s packets. "
+               "See description of 'queue_type' option for the explanation. "
+               "The default value is the value defined in 'queue_type' "
+               "or 'ram' if the latter is not set.")}},
+     {s2s_timeout,
+      #{value => "timeout()",
+        desc =>
+            ?T("A time to wait before closing an idle s2s connection. "
+               "The default value is '10' minutes.")}},
+     {s2s_use_starttls,
+      #{value => "true | false | optional | required",
+        desc =>
+            ?T("Whether to use STARTTLS for s2s connections. "
+               "The value of 'false' means STARTTLS is prohibited. "
+               "The value of 'true' or 'optional' means STARTTLS is enabled "
+               "but plain connections are still allowed. And the value of "
+               "'required' means that only STARTTLS connections are allowed. "
+               "The default value is 'false' (for historical reasons).")}},
+     {s2s_zlib,
+      #{value => "true | false",
+        desc =>
+            ?T("Whether to use 'zlib' compression (as defined in "
+               "https://xmpp.org/extensions/xep-0138.html[XEP-0138]) or not. "
+               "The default value is 'false'. WARNING: this type "
+               "of compression is nowadays considered insecure.")}},
+     {shaper,
+      #{value => "{ShaperName: Rate}",
+        desc =>
+            ?T("The option defines a set of shapers. Every shaper is assigned "
+               "a name 'ShaperName' that can be used in other parts of the "
+               "configuration file, such as 'shaper_rules' option. The shaper "
+               "itself is defined by its 'Rate', where 'Rate' stands for the "
+               "maximum allowed incoming rate in **bytes** per second. "
+               "When a connection exceeds this limit, ejabberd stops reading "
+               "from the socket until the average rate is again below the "
+               "allowed maximum. In the example below shaper 'normal' limits "
+               "the traffic speed to 1,000 bytes/sec and shaper 'fast' limits "
+               "the traffic speed to 50,000 bytes/sec:"),
+        example =>
+            ["shaper:",
+             "  normal: 1000",
+             "  fast: 50000"]}},
+     {shaper_rules,
+      #{value => "{ShaperRuleName: {Number|ShaperName: ACLRule|ACLName}}",
+        desc =>
+            ?T("An entry allowing to declaring shaper to use for matching user/hosts. "
+               "Semantics is similar to 'access_rules' option, the only difference is "
+               "that instead using 'allow' or 'deny', a name of a shaper (defined in "
+               "'shaper' option) or a positive number should be used."),
+        example =>
+            ["shaper_rules:",
+             "  connections_limit:",
+             "    10:",
+             "      user: peter@example.com",
+             "    100: admin",
+             "    5: all",
+             "  download_speed:",
+             "    fast: admin",
+             "    slow: anonymous_users",
+             "    normal: all",
+             "  log_days: 30"]}},
+     {sm_cache_life_time,
+      #{value => "timeout()",
+        desc =>
+            ?T("Same as 'cache_life_time', but applied to client sessions table cache "
+               "only. If not set, the value from 'cache_life_time' will be used.")}},
+     {sm_cache_missed,
+      #{value => "true | false",
+        desc =>
+            ?T("Same as 'cache_missed', but applied to client sessions table cache "
+               "only. If not set, the value from 'cache_missed' will be used.")}},
+     {sm_cache_size,
+      #{value => "pos_integer() | infinity",
+        desc =>
+            ?T("Same as 'cache_size', but applied to client sessions table cache "
+               "only. If not set, the value from 'cache_size' will be used.")}},
+     {sm_db_type,
+      #{value => "mnesia | sql | redis",
+        desc =>
+            ?T("Database backend to use for client sessions information. "
+               "The default value is picked from 'default_ram_db' option, or "
+               "if it's not set, 'mnesia' will be used.")}},
+     {sm_use_cache,
+      #{value => "true | false",
+        desc =>
+            ?T("Same as 'use_cache', but applied to client sessions table cache "
+               "only. If not set, the value from 'use_cache' will be used.")}},
+     {sql_type,
+      #{value => "mysql | pgsql | sqlite | mssql | odbc",
+        desc =>
+            ?T("The type of an SQL connection. The default is 'odbc'.")}},
+     {sql_connect_timeout,
+      #{value => "timeout()",
+        desc =>
+            ?T("A time to wait for connection to an SQL server to be "
+               "established. The default value is '5' seconds.")}},
+     {sql_database,
+      #{value => ?T("Database"),
+        desc =>
+            ?T("An SQL database name. For SQLite this must be a full "
+               "path to a database file. The default value is 'ejabberd'.")}},
+     {sql_keepalive_interval,
+      #{value => "timeout()",
+        desc =>
+            ?T("An interval to make a dummy SQL request to keep alive the "
+               "connections to the database. There is no default value, so no "
+               "keepalive requests are made.")}},
+     {sql_password,
+      #{value => ?T("Password"),
+        desc =>
+            ?T("The password for SQL authentication. The default is empty string.")}},
+     {sql_pool_size,
+      #{value => ?T("Size"),
+        desc =>
+            ?T("A number of connections to the SQL server. By default ejabberd opens "
+               "10 connections to the database for each virtual host. WARNING: "
+               "for SQLite this value is '1' by default and it's not recommended "
+               "to change it due to potential race conditions.")}},
+     {sql_port,
+      #{value => "1..65535",
+        desc =>
+            ?T("The port where the SQL server is accepting connections. "
+               "The default is '3306' for MySQL, '5432' for PostgreSQL and "
+               "'1433' for MSSQL. The option has no effect for SQLite.")}},
+     {sql_query_timeout,
+      #{value => "timeout()",
+        desc =>
+            ?T("A time to wait for an SQL query response. "
+               "The default value is '60' seconds.")}},
+     {sql_queue_type,
+      #{value => "ram | file",
+        desc =>
+            ?T("The type of a request queue for the SQL server. "
+               "See description of 'queue_type' option for the explanation. "
+               "The default value is the value defined in 'queue_type' "
+               "or 'ram' if the latter is not set.")}},
+     {sql_server,
+      #{value => ?T("Host"),
+        desc =>
+            ?T("A hostname or an IP address of the SQL server. "
+               "The default value is 'localhost'.")}},
+     {sql_ssl,
+      #{value => "true | false",
+        desc =>
+            ?T("Whether to use SSL encrypted connections to the "
+               "SQL server. The option is only available for "
+               "PostgreSQL. The default value is 'false'.")}},
+     {sql_ssl_cafile,
+      #{value => ?T("Path"),
+        desc =>
+            ?T("A path to a file with CA root certificates that will "
+               "be used to verify SQL connections. Implies 'sql_ssl' "
+               "and 'sql_ssl_verify' options are set to 'true'. "
+               "There is no default which means "
+               "certificate verification is disabled.")}},
+     {sql_ssl_certfile,
+      #{value => ?T("Path"),
+        desc =>
+            ?T("A path to a certificate file that will be used "
+               "for SSL connections to the SQL server. Implies 'sql_ssl' "
+               "option is set to 'true'. There is no default which means "
+               "ejabberd won't provide a client certificate to the SQL "
+               "server.")}},
+     {sql_ssl_verify,
+      #{value => "true | false",
+        desc =>
+            ?T("Whether to verify SSL connection to the SQL server against "
+               "CA root certificates defined in 'sql_ssl_cafile' option. "
+               "Implies 'sql_ssl' option is set to 'true'. "
+               "The default value is 'false'.")}},
+     {sql_start_interval,
+      #{value => "timeout()",
+        desc =>
+            ?T("A time to wait before retrying to restore failed SQL connection. "
+               "The default value is '30' seconds.")}},
+     {sql_username,
+      #{value => ?T("Username"),
+        desc =>
+            ?T("A user name for SQL authentication. "
+               "The default value is 'ejabberd'.")}},
+     {trusted_proxies,
+      #{value => "all | [Network1, Network2, ...]",
+        desc =>
+            ?T("Specify what proxies are trusted when an HTTP request "
+               "contains the header 'X-Forwarded-For'. You can specify "
+               "'all' to allow all proxies, or specify a list of IPs, "
+               "possibly with masks. The default value is an empty list. "
+               "This allows, if enabled, to be able to know the real IP "
+               "of the request, for admin purpose, or security configuration "
+               "(for example using 'mod_fail2ban'). IMPORTANT: The proxy MUST "
+               "be configured to set the 'X-Forwarded-For' header if you "
+               "enable this option as, otherwise, the client can set it "
+               "itself and as a result the IP value cannot be trusted for "
+               "security rules in ejabberd.")}},
+     {validate_stream,
+      #{value => "true | false",
+        desc =>
+            ?T("Whether to validate any incoming XML packet according "
+               "to the schemas of "
+               "https://github.com/processone/xmpp#supported-xmpp-elements"
+               "[supported XMPP extensions]. WARNING: the validation is only "
+               "intended for the use by client developers - don't enable "
+               "it in production environment. The default value is 'false'.")}},
+     {websocket_origin,
+      #{value => "ignore | URL",
+        desc =>
+            ?T("This option enables validation for 'Origin' header to "
+               "protect against connections from other domains than given "
+               "in the configuration file. In this way, the lower layer load "
+               "balancer can be chosen for a specific ejabberd implementation "
+               "while still providing a secure Websocket connection. "
+               "The default value is 'ignore'. An example value of the 'URL' is "
+               "\"https://test.example.org:8081\".")}},
+     {websocket_ping_interval,
+      #{value => "timeout()",
+        desc =>
+            ?T("Defines time between pings sent by the server to a client "
+               "(Websocket level protocol pings are used for this) to keep "
+               "a connection active. If the client doesn't respond to two "
+               "consecutive pings, the connection will be assumed as closed. "
+               "The value of '0' can be used to disable the feature. This option "
+               "makes the server sending pings only for connections using the RFC "
+               "compliant protocol. For older style connections the server "
+               "expects that whitespace pings would be used for this purpose. "
+               "The default value is '60' seconds.")}},
+     {websocket_timeout,
+      #{value => "timeout()",
+        desc =>
+            ?T("Amount of time without any communication after which the "
+               "connection would be closed. The default value is '300' seconds.")}}].
 
 %%%===================================================================
 %%% Internal functions
