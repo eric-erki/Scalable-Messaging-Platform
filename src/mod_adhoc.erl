@@ -280,9 +280,7 @@ mod_options(_Host) ->
     [{report_commands_node, false}].
 
 mod_doc() ->
-    {?T("This module implements https://xmpp.org/extensions/xep-0050.html"
-        "[XEP-0050: Ad-Hoc Commands]. It's an auxiliary module and is "
-        "only needed by some of the other modules."),
-     [{report_commands_node,
-       #{value => "true|false",
-         desc => ?T("TODO")}}]}.
+    #{desc =>
+          ?T("This module implements https://xmpp.org/extensions/xep-0050.html"
+             "[XEP-0050: Ad-Hoc Commands]. It's an auxiliary module and is "
+             "only needed by some of the other modules.")}.

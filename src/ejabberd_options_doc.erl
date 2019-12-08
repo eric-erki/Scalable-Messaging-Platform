@@ -33,6 +33,16 @@ doc() ->
             ?T("The option defines a list containing one or more "
                "domains that 'ejabberd' will serve. This is a "
                "**mandatory** option.")}},
+     {listen,
+      #{value => "[Options, ...]",
+        desc =>
+            ?T("A list of listening options. See section "
+               "'Listeners' of this document for details.")}},
+     {modules,
+      #{value => "{Module: Options}",
+        desc =>
+            ?T("The option for modules configuration. See section "
+               "'Modules' of this document for details.")}},
      {loglevel,
       #{value =>
             "none | emergency | alert | critical | "
@@ -288,8 +298,6 @@ doc() ->
                "'sasl_anon' means that the SASL Anonymous method will be used. "
                "'both' means that SASL Anonymous and login anonymous are both "
                "enabled. The default value is 'sasl_anon'.")}},
-     {api_permissions,
-      #{value => ?T("TODO"), desc => ?T("TODO")}},
      {append_host_config,
       #{value => "{Host: Options}",
         desc =>
@@ -404,6 +412,8 @@ doc() ->
             ?T("Maximum number of CAPTCHA generated images per minute for "
                "any given JID. The option is intended to protect the server "
                "from CAPTCHA DoS. The default value is 'infinity'.")}},
+     {captcha_host,
+      #{desc => ?T("Deprecated. Use 'captcha_url' instead.")}},
      {captcha_url,
       #{value => ?T("URL"),
         desc =>
@@ -415,10 +425,15 @@ doc() ->
         desc =>
             ?T("The option accepts a list of file paths (optionally with "
                "wildcards) containing either PEM certificates or PEM private "
-               "keys. At startup, ejabberd sorts the certificates, "
-               "finds matching private keys and rebuilds full certificates "
-               "chains. Use this option when TLS is enabled in either of "
-               "ejabberd listeners: 'ejabberd_c2s', 'ejabberd_http' and so on.")}},
+               "keys. At startup or configuration reload, ejabberd reads all "
+               "certificates from these files, sorts them, removes duplicates, "
+               "finds matching private keys and then rebuilds full certificate "
+               "chains for the use in TLS connections. "
+               "Use this option when TLS is enabled in either of "
+               "ejabberd listeners: 'ejabberd_c2s', 'ejabberd_http' and so on. "
+               "NOTE: if you modify the certificate files or change the value "
+               "of the option, run 'ejabberdctl reload-config' in order to "
+               "rebuild and reload the certificate chains.")}},
      {cluster_backend,
       #{value => ?T("Backend"),
         desc =>
@@ -435,11 +450,11 @@ doc() ->
         desc =>
             ?T("Defines a macro. The value can be any valid arbitrary "
                "YAML value. For convenience, it's recommended to define "
-               "a macro name in capital letters. Duplicated macros are not allowed. "
+               "a 'MacroName' in capital letters. Duplicated macros are not allowed. "
                "Macros are processed after additional configuration files have "
                "been included, so it is possible to use macros that are defined "
                "in configuration files included before the usage. "
-               "It is possible to use a macro in the definition of another macro."),
+               "It is possible to use a 'MacroValue' in the definition of another macro."),
         example =>
             ["define_macro:",
              "  DEBUG: debug",
@@ -492,16 +507,6 @@ doc() ->
         #{value => "2..1000",
           desc =>
               ?T("The number of components to balance.")}}]},
-     {ext_api_headers,
-      #{value => ?T("Headers"), desc => ?T("TODO")}},
-     {ext_api_http_pool_size,
-      #{value => ?T("Size"), desc => ?T("TODO")}},
-     {ext_api_path_oauth,
-      #{value => ?T("Path"), desc => ?T("TODO")}},
-     {ext_api_url,
-      #{value => ?T("URL"), desc => ?T("TODO")}},
-     {extauth_pool_name,
-      #{value => ?T("Pool"), desc => ?T("TODO")}},
      {extauth_pool_size,
       #{value => ?T("Size"),
         desc =>
@@ -664,9 +669,6 @@ doc() ->
                "After that amount of time, the token expires and the delegated "
                "credential cannot be used and is removed from the database. "
                "The default is '4294967' seconds.")}},
-     {oauth_client_id_check,
-      #{value => "allow | deny | db",
-        desc => ?T("TODO")}},
      {oom_killer,
       #{value => "true | false",
         desc =>
