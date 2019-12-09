@@ -35,30 +35,34 @@ man() ->
 man(Lang) when is_list(Lang) ->
     man(list_to_binary(Lang));
 man(Lang) ->
-    ModDoc = lists:flatmap(
-               fun(M) ->
-                       case lists:prefix("mod_", atom_to_list(M)) orelse
-                            lists:prefix("Elixir.Mod", atom_to_list(M)) of
-                           true ->
-                               try M:mod_doc() of
-                                   #{desc := Descr} = Map ->
-                                       DocOpts = maps:get(opts, Map, []),
-                                       Example = maps:get(example, Map, []),
-                                       [{M, Descr, DocOpts, #{example => Example}}]
-                               catch _:undef ->
-                                       case erlang:function_exported(
-                                              M, mod_options, 1) of
+    {ModDoc, SubModDoc} =
+        lists:foldl(
+          fun(M, {Mods, SubMods} = Acc) ->
+                  case lists:prefix("mod_", atom_to_list(M)) orelse
+                      lists:prefix("Elixir.Mod", atom_to_list(M)) of
+                      true ->
+                          try M:mod_doc() of
+                              #{desc := Descr} = Map ->
+                                  DocOpts = maps:get(opts, Map, []),
+                                  Example = maps:get(example, Map, []),
+                                  {[{M, Descr, DocOpts, #{example => Example}}|Mods], SubMods};
+                              #{opts := DocOpts} ->
+                                  {ParentMod, Backend} = strip_backend_suffix(M),
+                                  {Mods, dict:append(ParentMod, {M, Backend, DocOpts}, SubMods)}
+                          catch _:undef ->
+                                  case erlang:function_exported(
+                                         M, mod_options, 1) of
                                            true ->
-                                               warn("module ~s is not documented", [M]);
-                                           false ->
-                                               ok
-                                       end,
-                                       []
-                               end;
-                           false ->
-                               []
-                       end
-               end, ejabberd_config:beams(all)),
+                                          warn("module ~s is not documented", [M]);
+                                      false ->
+                                          ok
+                                  end,
+                                  Acc
+                          end;
+                      false ->
+                          Acc
+                  end
+          end, {[], dict:new()}, ejabberd_config:beams(all)),
     Doc = lists:flatmap(
             fun(M) ->
                     try M:doc()
@@ -72,56 +76,80 @@ man(Lang) ->
          io_lib:nl()] ++
         lists:flatmap(
           fun(Opt) ->
-                  opt_to_asciidoc(Lang, Opt, 1)
+                  opt_to_man(Lang, Opt, 1)
           end, lists:keysort(1, Doc)),
+    ModDoc1 = lists:map(
+                fun({M, Descr, DocOpts, Ex}) ->
+                        case dict:find(M, SubModDoc) of
+                            {ok, Backends} ->
+                                {M, Descr, DocOpts, Backends, Ex};
+                            error ->
+                                {M, Descr, DocOpts, [], Ex}
+                        end
+                end, ModDoc),
     ModOptions =
         [io_lib:nl(),
          "MODULES",
          "-------",
+         "[[modules]]",
          tr(Lang, ?T("This section describes options of all ejabberd modules.")),
          io_lib:nl()] ++
         lists:flatmap(
-          fun({M, Descr, DocOpts, Example}) ->
+          fun({M, Descr, DocOpts, Backends, Example}) ->
+                  ModName = atom_to_list(M),
                   [io_lib:nl(),
-                   atom_to_list(M),
+                   ModName,
                    lists:duplicate(length(atom_to_list(M)), $~),
+                   "[[" ++ ModName ++ "]]",
                    io_lib:nl()] ++
                       tr_multi(Lang, Descr) ++ [io_lib:nl()] ++
-                      opts_to_asciidoc(Lang, DocOpts) ++ [io_lib:nl()] ++
-                      format_example(0, Example)
-          end, lists:keysort(1, ModDoc)),
+                      opts_to_man(Lang, [{M, '', DocOpts}|Backends]) ++
+                      format_example(0, Lang, Example)
+          end, lists:keysort(1, ModDoc1)),
     AsciiData =
          [[unicode:characters_to_binary(Line), io_lib:nl()]
           || Line <- man_header(Lang) ++ Options ++ [io_lib:nl()]
                  ++ ModOptions ++ man_footer(Lang)],
-    warn_undocumented_modules(ModDoc),
+    warn_undocumented_modules(ModDoc1),
     warn_undocumented_options(Doc),
     write_man(AsciiData).
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-opts_to_asciidoc(Lang, []) ->
+opts_to_man(Lang, [{_, _, []}]) ->
     Text = tr(Lang, ?T("The module has no options.")),
-    [Text];
-opts_to_asciidoc(Lang, DocOpts) ->
-    Text = tr(Lang, ?T("Available options")),
-    [Text ++ ":", lists:duplicate(length(Text)+1, $^)|
-     lists:flatmap(
-       fun(Opt) -> opt_to_asciidoc(Lang, Opt, 1) end,
-       lists:keysort(1, DocOpts))].
+    [Text, io_lib:nl()];
+opts_to_man(Lang, Backends) ->
+    lists:flatmap(
+      fun({_, Backend, DocOpts}) when DocOpts /= [] ->
+              Text = if Backend == '' ->
+                             tr(Lang, ?T("Available options"));
+                        true ->
+                             lists:flatten(
+                               io_lib:format(
+                                 tr(Lang, ?T("Available options for '~s' backend")),
+                                 [Backend]))
+                     end,
+              [Text ++ ":", lists:duplicate(length(Text)+1, $^)|
+               lists:flatmap(
+                 fun(Opt) -> opt_to_man(Lang, Opt, 1) end,
+                 lists:keysort(1, DocOpts))] ++ [io_lib:nl()];
+         (_) ->
+              []
+      end, Backends).
 
-opt_to_asciidoc(Lang, {Option, Options}, Level) ->
+opt_to_man(Lang, {Option, Options}, Level) ->
     [format_option(Lang, Option, Options)|format_desc(Lang, Options)] ++
-        format_example(Level, Options);
-opt_to_asciidoc(Lang, {Option, Options, Children}, Level) ->
+        format_example(Level, Lang, Options);
+opt_to_man(Lang, {Option, Options, Children}, Level) ->
     [format_option(Lang, Option, Options)|format_desc(Lang, Options)] ++
         lists:append(
           [[H ++ ":"|T]
            || [H|T] <- lists:map(
-                         fun(Opt) -> opt_to_asciidoc(Lang, Opt, Level+1) end,
+                         fun(Opt) -> opt_to_man(Lang, Opt, Level+1) end,
                          lists:keysort(1, Children))]) ++
-        [io_lib:nl()|format_example(Level, Options)].
+        [io_lib:nl()|format_example(Level, Lang, Options)].
 
 format_option(Lang, Option, #{value := Val}) ->
     "*" ++ atom_to_list(Option) ++ "*: 'pass:[" ++
@@ -132,22 +160,41 @@ format_option(_Lang, Option, #{}) ->
 format_desc(Lang, #{desc := Desc}) ->
     tr_multi(Lang, Desc).
 
-format_example(Level, #{example := [_|_] = Lines}) ->
-    if Level == 0 ->
-            ["*Example*",
-             "^^^^^^^^^"];
-       true ->
-            ["+",
-             "*Example*",
-             "+"]
-    end ++
-        ["==========================",
-         "[source,yaml]",
-         "----"|Lines] ++
-        ["----",
-         "=========================="];
-format_example(_, _) ->
+format_example(Level, Lang, #{example := [_|_] = Example}) ->
+    case lists:all(fun is_list/1, Example) of
+        true ->
+            if Level == 0 ->
+                    ["*Example*:",
+                     "^^^^^^^^^^"];
+               true ->
+                    ["+", "*Example*:", "+"]
+            end ++ format_yaml(Example);
+        false when Level == 0 ->
+            ["Examples:",
+             "^^^^^^^^^"] ++
+                lists:flatmap(
+                    fun({Text, Lines}) ->
+                            [tr(Lang, Text)] ++ format_yaml(Lines)
+                    end, Example);
+        false ->
+            lists:flatmap(
+              fun(Block) ->
+                      ["+", "''''", "+"|Block]
+              end,
+              lists:map(
+                fun({Text, Lines}) ->
+                        [tr(Lang, Text), "+"] ++ format_yaml(Lines)
+                end, Example))
+    end;
+format_example(_, _, _) ->
     [].
+
+format_yaml(Lines) ->
+    ["==========================",
+     "[source,yaml]",
+     "----"|Lines] ++
+        ["----",
+         "=========================="].
 
 man_header(Lang) ->
     ["ejabberd.yml(5)",
@@ -280,27 +327,34 @@ run_a2x(Cwd, AsciiDocFile) ->
 
 warn_undocumented_modules(Docs) ->
     lists:foreach(
-      fun({M, _, DocOpts, _}) ->
-              try M:mod_options(ejabberd_config:get_myname()) of
-                  Defaults ->
-                      lists:foreach(
-                        fun(OptDefault) ->
-                                Opt = case OptDefault of
-                                          O when is_atom(O) -> O;
-                                          {O, _} -> O
-                                      end,
-                                case lists:keymember(Opt, 1, DocOpts) of
-                                    false ->
-                                        warn("~s: option ~s is not documented",
-                                             [M, Opt]);
-                                    true ->
-                                        ok
-                                end
-                        end, Defaults)
-              catch _:undef ->
-                      ok
-              end
+      fun({M, _, DocOpts, Backends, _}) ->
+              warn_undocumented_module(M, DocOpts),
+              lists:foreach(
+                fun({SubM, _, SubOpts}) ->
+                        warn_undocumented_module(SubM, SubOpts)
+                end, Backends)
       end, Docs).
+
+warn_undocumented_module(M, DocOpts) ->
+    try M:mod_options(ejabberd_config:get_myname()) of
+        Defaults ->
+            lists:foreach(
+              fun(OptDefault) ->
+                      Opt = case OptDefault of
+                                O when is_atom(O) -> O;
+                                {O, _} -> O
+                            end,
+                      case lists:keymember(Opt, 1, DocOpts) of
+                          false ->
+                              warn("~s: option ~s is not documented",
+                                   [M, Opt]);
+                          true ->
+                              ok
+                      end
+              end, Defaults)
+    catch _:undef ->
+            ok
+    end.
 
 warn_undocumented_options(Docs) ->
     Opts = lists:flatmap(
@@ -327,3 +381,7 @@ warn_undocumented_options(Docs) ->
 
 warn(Format, Args) ->
     io:format(standard_error, "Warning: " ++ Format ++ "~n", Args).
+
+strip_backend_suffix(M) ->
+    [H|T] = lists:reverse(string:tokens(atom_to_list(M), "_")),
+    {list_to_atom(string:join(lists:reverse(T), "_")), list_to_atom(H)}.

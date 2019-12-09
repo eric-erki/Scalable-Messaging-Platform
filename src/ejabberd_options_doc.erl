@@ -33,16 +33,12 @@ doc() ->
             ?T("The option defines a list containing one or more "
                "domains that 'ejabberd' will serve. This is a "
                "**mandatory** option.")}},
-     {listen,
-      #{value => "[Options, ...]",
-        desc =>
-            ?T("A list of listening options. See section "
-               "'Listeners' of this document for details.")}},
      {modules,
       #{value => "{Module: Options}",
         desc =>
-            ?T("The option for modules configuration. See section "
-               "'Modules' of this document for details.")}},
+            ?T("The option for modules configuration. See "
+               "<<modules,Modules>> section of this document "
+               "for details.")}},
      {loglevel,
       #{value =>
             "none | emergency | alert | critical | "
@@ -61,7 +57,7 @@ doc() ->
                "Once it's expired, the corresponding item is "
                "erased from cache. The default value is 'one hour'.")}},
      {cache_missed,
-      #{value => "true|false",
+      #{value => "true | false",
         desc =>
             ?T("Whether or not to cache missed lookups. When there is "
                "an attempt to lookup for a value in a database and "
@@ -70,7 +66,7 @@ doc() ->
                "performed until the cache expires (see 'cache_life_time'). "
                "Usually you don't want to change it. Default is 'true'.")}},
      {cache_size,
-      #{value => "pos_integer()|infinity",
+      #{value => "pos_integer() | infinity",
         desc =>
             ?T("A maximum number of items (not memory!) in cache. "
                "The rule of thumb, for all tables except rosters, "
@@ -82,22 +78,22 @@ doc() ->
                "frequent cache clearance, because this degrades "
                "performance. The default value is '1000'.")}},
      {use_cache,
-      #{value => "true|false",
+      #{value => "true | false",
         desc => ?T("Enable or disable cache. The default is 'true'.")}},
      {default_db,
-      #{value => "mnesia|sql",
+      #{value => "mnesia | sql",
         desc =>
             ?T("Default persistent storage for ejabberd. "
                "Modules and other components (e.g. authentication) "
                "may have its own value. The default value is 'mnesia'.")}},
      {default_ram_db,
-      #{value => "mnesia|sql|redis",
+      #{value => "mnesia | sql | redis",
         desc =>
             ?T("Default volatile (in-memory) storage for ejabberd. "
                "Modules and other components (e.g. session management) "
                "may have its own value. The default value is 'mnesia'.")}},
      {queue_type,
-      #{value => "ram|file",
+      #{value => "ram | file",
         desc =>
             ?T("Default type of queues in ejabberd. "
                "Modules may have its own value of the option. "
@@ -433,7 +429,14 @@ doc() ->
                "ejabberd listeners: 'ejabberd_c2s', 'ejabberd_http' and so on. "
                "NOTE: if you modify the certificate files or change the value "
                "of the option, run 'ejabberdctl reload-config' in order to "
-               "rebuild and reload the certificate chains.")}},
+               "rebuild and reload the certificate chains."),
+        example =>
+            [{?T("If you use https://letsencrypt.org[Let's Encrypt] certificates "
+                 "for your domain \"domain.tld\", the configuration will look "
+                 "like this:"),
+              ["certfiles:",
+               "  - /etc/letsencrypt/live/domain.tld/fullchain.pem",
+               "  - /etc/letsencrypt/live/domain.tld/privkey.pem"]}]}},
      {cluster_backend,
       #{value => ?T("Backend"),
         desc =>
@@ -574,6 +577,115 @@ doc() ->
             ?T("The option defines the default language of server strings "
                "that can be seen by XMPP clients. If an XMPP client does not "
                "possess 'xml:lang' attribute, the specified language is used.")}},
+     {ldap_servers,
+      #{value => "[Host, ...]",
+        desc =>
+            ?T("A list of IP addresses or DNS names of your LDAP servers. "
+               "The default value is '[localhost]'.")}},
+     {ldap_encrypt,
+      #{value => "tls | none",
+        desc =>
+            ?T("Whether to encrypt LDAP connection using TLS or not. "
+               "The default value is 'none'. NOTE: STARTTLS encryption "
+               "is not supported.")}},
+     {ldap_tls_certfile,
+      #{value => ?T("Path"),
+        desc =>
+            ?T("A path to a file containing PEM encoded certificate "
+               "along with PEM encoded private key. This certificate "
+               "will be provided by ejabberd when TLS enabled for "
+               "LDAP connections. There is no default value, which means "
+               "no client certificate will be sent.")}},
+     {ldap_tls_verify,
+      #{value => "false | soft | hard",
+        desc =>
+            ?T("This option specifies whether to verify LDAP server "
+               "certificate or not when TLS is enabled. When 'hard' is set, "
+               "ejabberd doesn't proceed if the certificate is invalid. "
+               "When 'soft' is set, ejabberd proceeds even if the check has failed. "
+               "The default is 'false', which means no checks are performed.")}},
+     {ldap_tls_cacertfile,
+      #{value => ?T("Path"),
+        desc =>
+            ?T("A path to a file containing PEM encoded CA certificates. "
+               "This option is required when TLS verification is enabled.")}},
+     {ldap_tls_depth,
+      #{value => ?T("Number"),
+        desc =>
+            ?T("Specifies the maximum verification depth when TLS verification "
+               "is enabled, i.e. how far in a chain of certificates the "
+               "verification process can proceed before the verification "
+               "is considered to be failed. Peer certificate = 0, "
+               "CA certificate = 1, higher level CA certificate = 2, etc. "
+               "The value '2' thus means that a chain can at most contain "
+               "peer cert, CA cert, next CA cert, and an additional CA cert. "
+               "The default value is '1'.")}},
+     {ldap_port,
+      #{value => "1..65535",
+        desc =>
+            ?T("Port to connect to your LDAP server. The default port is "
+               "'389' if encryption is disabled and '636' if encryption is "
+               "enabled.")}},
+     {ldap_rootdn,
+      #{value => "RootDN",
+        desc =>
+            ?T("Bind Distinguished Name. The default value is an empty "
+               "string, which means \"anonymous connection\".")}},
+     {ldap_password,
+      #{value => ?T("Password"),
+        desc =>
+            ?T("Bind password. The default value is an empty string.")}},
+     {ldap_deref_aliases,
+      #{value => "never | always | finding | searching",
+        desc =>
+            ?T("Whether to dereference aliases or not. "
+               "The default value is 'never'.")}},
+     {ldap_base,
+      #{value => "Base",
+        desc =>
+            ?T("LDAP base directory which stores users accounts. "
+               "There is no default value: you must set the option "
+               "in order for LDAP connections to work properly.")}},
+     {ldap_uids,
+      #{value => "[Attr\\] | {Attr: AttrFormat}",
+        desc =>
+            ?T("LDAP attributes which hold a list of attributes to use "
+               "as alternatives for getting the JID, where 'Attr' is "
+               "an LDAP attribute which holds the user's part of the JID and "
+               "'AttrFormat' must contain one and only one pattern variable "
+               "\"%u\" which will be replaced by the user's part of the JID. "
+               "For example, \"%u@example.org\". If the value is in the form "
+               "of '[Attr]' then 'AttrFormat' is assumed to be \"%u\".")}},
+     {ldap_filter,
+      #{value => ?T("Filter"),
+        desc =>
+            ?T("An LDAP filter as defined in "
+               "https://tools.ietf.org/html/rfc4515[RFC4515]. "
+               "There is no default value. Example: "
+               "\"(&(objectClass=shadowAccount)(memberOf=Jabber Users))\". "
+               "NOTE: don't forget to close brackets and don't use superfluous "
+               "whitespaces. Also you must not use \"uid\" attribute in the "
+               "filter because this attribute will be appended to the filter "
+               "automatically.")}},
+     {ldap_dn_filter,
+      #{value => "{Filter: FilterAttrs}",
+        desc =>
+            ?T("This filter is applied on the results returned by the main "
+               "filter. The filter performs an additional LDAP lookup to make "
+               "the complete result. This is useful when you are unable to "
+               "define all filter rules in 'ldap_filter'. You can define "
+               "\"%u\", \"%d\", \"%s\" and \"%D\" pattern variables in 'Filter': "
+               "\"%u\" is replaced by a user's part of the JID, \"%d\" is "
+               "replaced by the corresponding domain (virtual host), all \"%s\" "
+               "variables are consecutively replaced by values from the attributes "
+               "in 'FilterAttrs' and \"%D\" is replaced by Distinguished Name from "
+               "the result set. There is no default value, which means the "
+               "result is not filtered. WARNING: Since this filter makes "
+               "additional LDAP lookups, use it only as the last resort: "
+               "try to define all filter rules in 'ldap_filter' option if possible."),
+        example =>
+            ["ldap_dn_filter:",
+             "  \"(&(name=%s)(owner=%D)(user=%u@%d))\": [sn]"]}},
      {log_rotate_count,
       #{value => ?T("Number"),
         desc =>

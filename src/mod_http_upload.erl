@@ -357,10 +357,7 @@ mod_doc() ->
                      "should be removed when that user is unregistered. "
                      "The default value is 'true'.")}}],
       example =>
-          ["certfiles:",
-           "  - /etc/ejabberd/certificate.pem",
-           "",
-           "listen:",
+          ["listen:",
            "  ...",
            "  -",
            "    port: 5443",

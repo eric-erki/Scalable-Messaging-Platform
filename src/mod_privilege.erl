@@ -99,7 +99,9 @@ mod_doc() ->
            ?T("By default a component does not have any privileged access. "
               "It is worth noting that the permissions grant access to "
               "the component to a specific data type for all users of "
-              "the virtual host on which 'mod_privilege' is loaded.")],
+              "the virtual host on which 'mod_privilege' is loaded."), "",
+           ?T("NOTE: This module is complementary to 'mod_delegation', "
+              "but can also be used separately.")],
       opts =>
           [{roster,
             #{value => ?T("Options"),

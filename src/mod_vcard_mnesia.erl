@@ -276,8 +276,7 @@ mod_options(_) ->
     [{search_all_hosts, true}].
 
 mod_doc() ->
-    #{desc => ?T("See 'mod_vcard'."),
-      opts =>
+    #{opts =>
           [{search_all_hosts,
             #{value => "true | false",
               desc =>

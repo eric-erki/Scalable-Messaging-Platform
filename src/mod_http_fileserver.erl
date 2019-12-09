@@ -520,12 +520,12 @@ mod_doc() ->
                   ?T("Specify mappings of extension to content type. "
                      "There are several content types already defined. "
                      "With this option you can add new definitions "
-                     "or modify existing ones. "
-                     "The default is shown in the example below:"),
+                     "or modify existing ones."),
               example =>
-                  ["content_types:"|
-                   ["  " ++ binary_to_list(E) ++ ": " ++ binary_to_list(T)
-                    || {E, T} <- ?DEFAULT_CONTENT_TYPES]]}},
+                  [{?T("The default value is shown in the example below:"),
+                    ["content_types:"|
+                     ["  " ++ binary_to_list(E) ++ ": " ++ binary_to_list(T)
+                      || {E, T} <- ?DEFAULT_CONTENT_TYPES]]}]}},
            {default_content_type,
             #{value => ?T("Type"),
               desc =>

@@ -458,40 +458,49 @@ mod_doc() ->
                      "This will only be displayed by special XMPP clients. "
                      "The default value is 'ejabberd'.")}},
            {server_info,
-            #{value => "[{modules: Modules, name: Name, urls: [URL, ...]}]",
+            #{value => "[Info, ...]",
+              example =>
+                  ["server_info:",
+                   "  -",
+                   "    modules: all",
+                   "    name: abuse-addresses",
+                   "    urls: [mailto:abuse@shakespeare.lit]",
+                   "  -",
+                   "    modules: [mod_muc]",
+                   "    name: \"Web chatroom logs\"",
+                   "    urls: [http://www.example.org/muc-logs]",
+                   "  -",
+                   "    modules: [mod_disco]",
+                   "    name: feedback-addresses",
+                   "    urls:",
+                   "      - http://shakespeare.lit/feedback.php",
+                   "      - mailto:feedback@shakespeare.lit",
+                   "      - xmpp:feedback@shakespeare.lit",
+                   "  -",
+                   "    modules:",
+                   "      - mod_disco",
+                   "      - mod_vcard",
+                   "    name: admin-addresses",
+                   "    urls:",
+                   "      - mailto:xmpp@shakespeare.lit",
+                   "      - xmpp:admins@shakespeare.lit"],
               desc =>
                   ?T("Specify additional information about the server, "
                      "as described in https://xmpp.org/extensions/xep-0157.html"
-                     "[XEP-0157: Contact Addresses for XMPP Services]. "
-                     "The value 'Modules' can be the keyword 'all', in which case the "
-                     "information is reported in all the services; "
-                     "or a list of ejabberd modules, in which case the "
-                     "information is only specified for the services provided "
-                     "by those modules. Any arbitrary 'Name' and 'URL' can be specified, "
-                     "not only contact addresses.")}}],
-      example =>
-          ["mod_disco:",
-           "  server_info:",
-           "    -",
-           "      modules: all",
-           "      name: abuse-addresses",
-           "      urls: [mailto:abuse@shakespeare.lit]",
-           "    -",
-           "      modules: [mod_muc]",
-           "      name: \"Web chatroom logs\"",
-           "      urls: [http://www.example.org/muc-logs]",
-           "    -",
-           "      modules: [mod_disco]",
-           "      name: feedback-addresses",
-           "      urls:",
-           "        - http://shakespeare.lit/feedback.php",
-           "        - mailto:feedback@shakespeare.lit",
-           "        - xmpp:feedback@shakespeare.lit",
-           "    -",
-           "      modules:",
-           "        - mod_disco",
-           "        - mod_vcard",
-           "      name: admin-addresses",
-           "      urls:",
-           "        - mailto:xmpp@shakespeare.lit",
-           "        - xmpp:admins@shakespeare.lit"]}.
+                     "[XEP-0157: Contact Addresses for XMPP Services]. Every 'Info' "
+                     "element in the list is constructed from the following options:")},
+            [{modules,
+              #{value => "all | [Module, ...]",
+                desc =>
+                    ?T("The value can be the keyword 'all', in which case the "
+                       "information is reported in all the services, "
+                       "or a list of ejabberd modules, in which case the "
+                       "information is only specified for the services provided "
+                       "by those modules.")}},
+             {name,
+              #{value => ?T("Name"),
+                desc => ?T("Any arbitrary name of the contact.")}},
+             {urls,
+              #{value => "[URI, ...]",
+                desc => ?T("A list of contact URIs, such as "
+                           "HTTP URLs, XMPP URIs and so on.")}}]}]}.

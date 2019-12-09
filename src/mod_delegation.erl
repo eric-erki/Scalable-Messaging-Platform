@@ -98,26 +98,7 @@ mod_doc() ->
               desc =>
                   ?T("If you want to delegate namespaces to a component, "
                      "specify them in this option, and associate them "
-                     "to an access rule. The 'Options' are:"),
-              example =>
-                  ["access_rules:",
-                   "  external_pubsub:",
-                   "    allow: external_component",
-                   "  external_mam:",
-                   "    allow: external_component",
-                   "",
-                   "acl:",
-                   "  external_component:",
-                   "    server: sat-pubsub.example.org",
-                   "",
-                   "modules:",
-                   "  ...",
-                   "  mod_delegation:",
-                   "    namespaces:",
-                   "      urn:xmpp:mam:1:",
-                   "        access: external_mam",
-                   "      http://jabber.org/protocol/pubsub:",
-                   "        access: external_pubsub"]},
+                     "to an access rule. The 'Options' are:")},
             [{filtering,
               #{value => ?T("Attributes"),
                 desc =>
@@ -126,7 +107,26 @@ mod_doc() ->
               #{value => ?T("AccessName"),
                 desc =>
                     ?T("The option defines which components are allowed "
-                       "for namespace delegation. The default value is 'none'.")}}]}]}.
+                       "for namespace delegation. The default value is 'none'.")}}]}],
+      example =>
+          ["access_rules:",
+           "  external_pubsub:",
+           "    allow: external_component",
+           "  external_mam:",
+           "    allow: external_component",
+           "",
+           "acl:",
+           "  external_component:",
+           "    server: sat-pubsub.example.org",
+           "",
+           "modules:",
+           "  ...",
+           "  mod_delegation:",
+           "    namespaces:",
+           "      urn:xmpp:mam:1:",
+           "        access: external_mam",
+           "      http://jabber.org/protocol/pubsub:",
+           "        access: external_pubsub"]}.
 
 depends(_, _) ->
     [].

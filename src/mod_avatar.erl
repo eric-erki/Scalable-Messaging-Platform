@@ -481,9 +481,12 @@ mod_doc() ->
                      "the list of supported formats is detected at compile time "
                      "depending on the image libraries installed in the system."),
               example =>
-                  ["convert:",
-                   "  webp: jpeg",
-                   "  default: png"]}},
+                  [{?T("In this example avatars in WebP format are "
+                       "converted to JPEG, all other formats are "
+                       "converted to PNG:"),
+                    ["convert:",
+                     "  webp: jpg",
+                     "  default: png"]}]}},
            {rate_limit,
             #{value => ?T("Number"),
               desc =>

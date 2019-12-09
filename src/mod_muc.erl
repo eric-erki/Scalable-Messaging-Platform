@@ -1327,7 +1327,7 @@ mod_doc() ->
                      "backward compatibility, which means that any user is allowed "
                      "to register any free nick.")}},
            {db_type,
-            #{value => "mnesia|sql",
+            #{value => "mnesia | sql",
               desc =>
                   ?T("Define the type of persistent storage where the module will "
                      "store room information. The default is the storage defined "
@@ -1454,7 +1454,7 @@ mod_doc() ->
                      "must satisfy to allow the room creation. The default value "
                      "is the empty string.")}},
            {preload_rooms,
-            #{value => "true|false",
+            #{value => "true | false",
               desc =>
                   ?T("Whether to load all persistent rooms in memory on startup. "
                      "If disabled, the room is only loaded on first participant join. "
@@ -1469,45 +1469,45 @@ mod_doc() ->
                      "can modify the options of his room at any time using an "
                      "XMPP client with MUC capability. The 'Options' are:")},
             [{allow_change_subj,
-              #{value => "true|false",
+              #{value => "true | false",
                 desc =>
                     ?T("Allow occupants to change the subject. "
                        "The default value is 'true'.")}},
              {allow_private_messages,
-              #{value => "true|false",
+              #{value => "true | false",
                 desc =>
                     ?T("Occupants can send private messages to other occupants. "
                        "The default value is 'true'.")}},
              {allow_query_users,
-              #{value => "true|false",
+              #{value => "true | false",
                 desc =>
                     ?T("Occupants can send IQ queries to other occupants. "
                        "The default value is 'true'.")}},
              {allow_user_invites,
-              #{value => "true|false",
+              #{value => "true | false",
                 desc =>
                     ?T("Allow occupants to send invitations. "
                        "The default value is 'false'.")}},
              {allow_visitor_nickchange,
-              #{value => "true|false",
+              #{value => "true | false",
                 desc => ?T("Allow visitors to change nickname. "
                            "The default value is 'true'.")}},
              {allow_visitor_status,
-              #{value => "true|false",
+              #{value => "true | false",
                 desc =>
                     ?T("Allow visitors to send status text in presence updates. "
                        "If disallowed, the status text is stripped before broadcasting "
                        "the presence update to all the room occupants. "
                        "The default value is 'true'.")}},
              {anonymous,
-              #{value => "true|false",
+              #{value => "true | false",
                 desc =>
                     ?T("The room is anonymous: occupants don't see the real "
                        "JIDs of other occupants. Note that the room moderators "
                        "can always see the real JIDs of the occupants. "
                        "The default value is 'true'.")}},
              {captcha_protected,
-              #{value => "true|false",
+              #{value => "true | false",
                 desc =>
                     ?T("When a user tries to join a room where they have no "
                        "affiliation (not owner, admin or member), the room "
@@ -1522,28 +1522,28 @@ mod_doc() ->
                        "The language format should conform to RFC 5646. "
                        "There is no value by default.")}},
              {logging,
-              #{value => "true|false",
+              #{value => "true | false",
                 desc =>
                     ?T("The public messages are logged using 'mod_muc_log'. "
                        "The default value is 'false'.")}},
              {members_by_default,
-              #{value => "true|false",
+              #{value => "true | false",
                 desc =>
                     ?T("The occupants that enter the room are participants "
                        "by default, so they have \"voice\". "
                        "The default value is 'true'.")}},
              {members_only,
-              #{value => "true|false",
+              #{value => "true | false",
                 desc =>
                     ?T("Only members of the room can enter. "
                        "The default value is 'false'.")}},
              {moderated,
-              #{value => "true|false",
+              #{value => "true | false",
                 desc =>
                     ?T("Only occupants with \"voice\" can send public messages. "
                        "The default value is 'true'.")}},
              {password_protected,
-              #{value => "true|false",
+              #{value => "true | false",
                 desc =>
                     ?T("The password is required to enter the room. "
                        "The default value is 'false'.")}},
@@ -1553,12 +1553,12 @@ mod_doc() ->
                     ?T("Password of the room. Implies option 'password_protected' "
                        "set to 'true'. There is no default value.")}},
              {persistent,
-              #{value => "true|false",
+              #{value => "true | false",
                 desc =>
                     ?T("The room persists even if the last participant leaves. "
                        "The default value is 'false'.")}},
              {public,
-              #{value => "true|false",
+              #{value => "true | false",
                 desc =>
                     ?T("The room is public in the list of the MUC service, "
                        "so it can be discovered. MUC admins and room participants "
@@ -1566,17 +1566,17 @@ mod_doc() ->
                        "client supports this feature. "
                        "The default value is 'true'.")}},
              {public_list,
-              #{value => "true|false",
+              #{value => "true | false",
                 desc =>
                     ?T("The list of participants is public, without requiring "
                        "to enter the room. The default value is 'true'.")}},
              {mam,
-              #{value => "true|false",
+              #{value => "true | false",
                 desc =>
                     ?T("Enable message archiving. Implies mod_mam is enabled. "
                        "The default value is 'false'.")}},
              {allow_subscription,
-              #{value => "true|false",
+              #{value => "true | false",
                 desc =>
                     ?T("Allow users to subscribe to room events as described in "
                        "https://docs.ejabberd.im/developer/xmpp-clients-bots/extensions/muc-sub/"
@@ -1588,7 +1588,7 @@ mod_doc() ->
                     ?T("A human-readable title of the room. "
                        "There is no default value")}},
              {allow_private_messages_from_visitors,
-              #{value => "anyone|moderators|nobody",
+              #{value => "anyone | moderators | nobody",
                 desc =>
                     ?T("Visitors can send private messages to other occupants. "
                        "The default value is 'anyone' which means visitors "
@@ -1599,8 +1599,14 @@ mod_doc() ->
                     ?T("Maximum number of occupants in the room. "
                        "The default value is '200'.")}},
              {presence_broadcast,
-              #{value => "[moderator|participant|visitor, ...]",
+              #{value => "[moderator | participant | visitor, ...]",
                 desc =>
                     ?T("List of roles for which presence is broadcasted. "
-                       "The list can contain one or several of: 'moderator', 'participant', 'visitor'. "
-                       "The default value is '[moderator, participant, visitor]'.")}}]}]}.
+                       "The list can contain one or several of: 'moderator', "
+                       "'participant', 'visitor'. The default value is shown "
+                       "in the example below:"),
+                example =>
+                    ["presence_broadcast:",
+                     "  - moderator",
+                     "  - participant",
+                     "  - visitor"]}}]}]}.
