@@ -33,6 +33,12 @@ doc() ->
             ?T("The option defines a list containing one or more "
                "domains that 'ejabberd' will serve. This is a "
                "**mandatory** option.")}},
+     {listen,
+      #{value => "[Options, ...]",
+        desc =>
+            ?T("The option for listeners configuration. See "
+               "<<listeners,Listeners>> section of this document "
+               "for details.")}},
      {modules,
       #{value => "{Module: Options}",
         desc =>

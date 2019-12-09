@@ -106,10 +106,18 @@ man(Lang) ->
                       opts_to_man(Lang, [{M, '', DocOpts}|Backends]) ++
                       format_example(0, Lang, Example)
           end, lists:keysort(1, ModDoc1)),
+    ListenOptions =
+        [io_lib:nl(),
+         "LISTENERS",
+         "-------",
+         "[[listeners]]",
+         tr(Lang, ?T("This section describes options of all ejabberd listeners.")),
+         io_lib:nl(),
+         "TODO"],
     AsciiData =
          [[unicode:characters_to_binary(Line), io_lib:nl()]
           || Line <- man_header(Lang) ++ Options ++ [io_lib:nl()]
-                 ++ ModOptions ++ man_footer(Lang)],
+                 ++ ModOptions ++ ListenOptions ++ man_footer(Lang)],
     warn_undocumented_modules(ModDoc1),
     warn_undocumented_options(Doc),
     write_man(AsciiData).
