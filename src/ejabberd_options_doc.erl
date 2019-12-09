@@ -588,6 +588,17 @@ doc() ->
         desc =>
             ?T("A list of IP addresses or DNS names of your LDAP servers. "
                "The default value is '[localhost]'.")}},
+     {ldap_backups,
+      #{value => "[Host, ...]",
+        desc =>
+            ?T("A list of IP addresses or DNS names of LDAP backup servers. "
+               "When no servers listed in 'ldap_servers' option are reachable, "
+               "ejabberd will try to connect to these backup servers. "
+               "The default is an empty list, i.e. no backup servers specified. "
+               "WARNING: ejabberd doesn't try to reconnect back to the main "
+               "servers when they become operational again, so the only way "
+               "to restore these connections is to restart ejabberd. This "
+               "limitation might be fixed in future releases.")}},
      {ldap_encrypt,
       #{value => "tls | none",
         desc =>

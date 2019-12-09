@@ -355,7 +355,31 @@ mod_doc() ->
               desc =>
                   ?T("This option specifies whether files uploaded by a user "
                      "should be removed when that user is unregistered. "
-                     "The default value is 'true'.")}}],
+                     "The default value is 'true'.")}},
+           {vcard,
+            #{value => ?T("vCard"),
+              desc =>
+                  ?T("A custom vCard of the service that will be displayed "
+                     "by some XMPP clients in Service Discovery. The value of "
+                     "'vCard' is a YAML map constructed from an XML representation "
+                     "of vCard. Since the representation has no attributes, "
+                     "the mapping is straightforward."),
+              example =>
+                  [{?T("For example, the following XML representation of vCard:"),
+                    ["<vCard xmlns='vcard-temp'>",
+                     "  <FN>Conferences</FN>",
+                     "  <ADR>",
+                     "    <WORK/>",
+                     "    <STREET>Elm Street</STREET>",
+                     "  </ADR>",
+                     "</vCard>"]},
+                   {?T("will be translated to:"),
+                    ["vcard:",
+                     "  fn: Conferences",
+                     "  adr:",
+                     "    -",
+                     "      work: true",
+                     "      street: Elm Street"]}]}}],
       example =>
           ["listen:",
            "  ...",

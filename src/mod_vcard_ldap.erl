@@ -486,4 +486,4 @@ mod_doc() ->
                       ldap_deref_aliases, ldap_encrypt, ldap_password,
                       ldap_port, ldap_rootdn, ldap_filter,
                       ldap_tls_certfile, ldap_tls_cacertfile,
-                      ldap_tls_depth, ldap_tls_verify]]}.
+                      ldap_tls_depth, ldap_tls_verify, ldap_backups]]}.

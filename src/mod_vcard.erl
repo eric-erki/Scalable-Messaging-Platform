@@ -652,4 +652,28 @@ mod_doc() ->
            {cache_life_time,
             #{value => "timeout()",
               desc =>
-                  ?T("Same as top-level 'cache_life_time' option, but applied to this module only.")}}]}.
+                  ?T("Same as top-level 'cache_life_time' option, but applied to this module only.")}},
+           {vcard,
+            #{value => ?T("vCard"),
+              desc =>
+                  ?T("A custom vCard of the server that will be displayed "
+                     "by some XMPP clients in Service Discovery. The value of "
+                     "'vCard' is a YAML map constructed from an XML representation "
+                     "of vCard. Since the representation has no attributes, "
+                     "the mapping is straightforward."),
+              example =>
+                  [{?T("For example, the following XML representation of vCard:"),
+                    ["<vCard xmlns='vcard-temp'>",
+                     "  <FN>Conferences</FN>",
+                     "  <ADR>",
+                     "    <WORK/>",
+                     "    <STREET>Elm Street</STREET>",
+                     "  </ADR>",
+                     "</vCard>"]},
+                   {?T("will be translated to:"),
+                    ["vcard:",
+                     "  fn: Conferences",
+                     "  adr:",
+                     "    -",
+                     "      work: true",
+                     "      street: Elm Street"]}]}}]}.

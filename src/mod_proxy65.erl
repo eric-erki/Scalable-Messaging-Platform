@@ -229,7 +229,31 @@ mod_doc() ->
                      "If you define a shaper, set the value of this "
                      "option to the size of the shaper in order "
                      "to avoid traffic spikes in file transfers. "
-                     "The default value is '65536' bytes.")}}],
+                     "The default value is '65536' bytes.")}},
+           {vcard,
+            #{value => ?T("vCard"),
+              desc =>
+                  ?T("A custom vCard of the service that will be displayed "
+                     "by some XMPP clients in Service Discovery. The value of "
+                     "'vCard' is a YAML map constructed from an XML representation "
+                     "of vCard. Since the representation has no attributes, "
+                     "the mapping is straightforward."),
+              example =>
+                  [{?T("For example, the following XML representation of vCard:"),
+                    ["<vCard xmlns='vcard-temp'>",
+                     "  <FN>Conferences</FN>",
+                     "  <ADR>",
+                     "    <WORK/>",
+                     "    <STREET>Elm Street</STREET>",
+                     "  </ADR>",
+                     "</vCard>"]},
+                   {?T("will be translated to:"),
+                    ["vcard:",
+                     "  fn: Conferences",
+                     "  adr:",
+                     "    -",
+                     "      work: true",
+                     "      street: Elm Street"]}]}}],
       example =>
           ["acl:",
            "  admin:",
