@@ -1589,7 +1589,7 @@ mod_doc() ->
     #{desc =>
           [?T("This module provides additional administrative commands."), "",
            ?T("Details for some commands:"), "",
-           "- 'ban-acount':",
+           ?T("- 'ban-acount':"),
            ?T("This command kicks all the connected sessions of the
            account from the server. It also changes their password to
            a randomly generated one, so they can't login anymore
@@ -1602,14 +1602,14 @@ mod_doc() ->
            is boby@example.org will be kicked, and its password will
            be set to something like this:
            'BANNED_ACCOUNT--20080425T21:45:07--2176635--Spammed_rooms'"),
-           "- 'pushroster' (and 'pushroster-all'):",
+           ?T("- 'pushroster' (and 'pushroster-all'):"),
            ?T("The roster file must be placed, if using Windows, on
            the directory where you installed ejabberd: C:/Program
            Files/ejabberd or similar. If you use other Operating
            System, place the file on the same directory where the
            .beam files are installed. See below an example roster
            file."),
-           "- 'srg-create':",
+           ?T("- 'srg-create':"),
            ?T("If you want to put a group Name with blankspaces, use
            the characters \"\' and \\'\" to define when the Name
            starts and ends. For example: 'ejabberdctl srg-create g1
